@@ -19,6 +19,9 @@ try {
     $ws.Range("A4").Formula = "=SUM(A2:A3)"
     $ws.Range("A2").Interior.Color = 65535
     $ws.Columns.Item(1).ColumnWidth = 25
+    # формула внутри объединённой ячейки — проверка замены значений с фолбэком
+    $ws.Range("D1:E1").Merge()
+    $ws.Range("D1").Formula = "=A2+A3"
     $wb.SaveAs((Join-Path $dir "Отчет управления A.xlsx"), 51)
     $wb.Close($false)
 
@@ -68,7 +71,17 @@ try {
     $wb.Close($false)
     Rename-Item (Join-Path $dir "Отчет скобки.xlsx") "Отчет [март 2026].xlsx"
 
-    # 8. Запароленный файл -> должен быть пропущен с причиной
+    # 8. Естественный порядок: «Отчет 2» должен встать раньше «Отчет 10»
+    $wb = $xl.Workbooks.Add()
+    $wb.Sheets.Item(1).Range("A1").Value2 = "второй"
+    $wb.SaveAs((Join-Path $dir "Отчет 2.xlsx"), 51)
+    $wb.Close($false)
+    $wb = $xl.Workbooks.Add()
+    $wb.Sheets.Item(1).Range("A1").Value2 = "десятый"
+    $wb.SaveAs((Join-Path $dir "Отчет 10.xlsx"), 51)
+    $wb.Close($false)
+
+    # 9. Запароленный файл -> должен быть пропущен с причиной
     $wb = $xl.Workbooks.Add()
     $wb.Sheets.Item(1).Range("A1").Value2 = "секрет"
     $wb.SaveAs((Join-Path $dir "Запароленный.xlsx"), 51, "secret123")

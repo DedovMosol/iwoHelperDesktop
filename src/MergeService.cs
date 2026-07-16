@@ -13,6 +13,7 @@ namespace ExcelMerger
         public string SheetName; // имя листа в итоговой книге (null, если пропущен)
         public bool Ok;
         public string Note;      // причина пропуска или предупреждение
+        public bool Linkable;    // на лист можно сослаться гиперссылкой (есть ячейка A1)
     }
 
     public class MergeResult
@@ -22,6 +23,7 @@ namespace ExcelMerger
         public int SkipCount;
         public bool Cancelled;
         public string OutputPath;
+        public string TocError; // не null, если лист «Содержание» создать не удалось
     }
 
     /// <summary>Ошибка объединения с понятным пользователю сообщением.</summary>
@@ -44,6 +46,10 @@ namespace ExcelMerger
 
         // Служебное имя листа-заглушки новой книги; резервируется в SheetNamer.
         private const string PlaceholderName = "zz_tmp_5f2a9c";
+
+        private const string TocSheetName = "Содержание";
+        private const int XlCalculationManual = -4135;
+        private const int XlCalculationAutomatic = -4105;
 
         // Заведомо неверный пароль: защищённый файл даёт исключение,
         // а не модальный диалог, который повесил бы скрытый Excel.
@@ -80,12 +86,18 @@ namespace ExcelMerger
                     continue;
                 files.Add(path);
             }
-            files.Sort(StringComparer.OrdinalIgnoreCase);
+            // Порядок как в Проводнике: «Отчет 2» раньше «Отчет 10».
+            files.Sort(delegate(string a, string b)
+            {
+                return NaturalStringComparer.Instance.Compare(Path.GetFileName(a), Path.GetFileName(b));
+            });
             return files;
         }
 
-        public MergeResult Merge(string inputFolder, string outputPath)
+        public MergeResult Merge(string inputFolder, string outputPath, MergeOptions options)
         {
+            if (options == null)
+                throw new ArgumentNullException("options");
             var result = new MergeResult();
             result.OutputPath = outputPath;
 
@@ -99,6 +111,7 @@ namespace ExcelMerger
 
             dynamic excel = null;
             dynamic target = null;
+            ComMessageFilter.Register(); // авто-повтор вызовов, отклонённых занятым Excel
             try
             {
                 excel = Activator.CreateInstance(excelType);
@@ -113,8 +126,13 @@ namespace ExcelMerger
                 dynamic placeholder = target.Sheets[1];
                 placeholder.Name = PlaceholderName;
 
+                // Без пересчёта после вставки каждого листа — заметно быстрее на формулах.
+                try { excel.Calculation = XlCalculationManual; } catch { }
+
                 var namer = new SheetNamer();
                 namer.Reserve(PlaceholderName);
+                if (options.AddToc)
+                    namer.Reserve(TocSheetName); // файл с таким именем получит суффикс _2
 
                 int index = 0;
                 foreach (string path in files)
@@ -130,7 +148,7 @@ namespace ExcelMerger
                     FileResult fr;
                     try
                     {
-                        fr = CopyFirstVisibleSheet((object)excel, (object)target, path, namer);
+                        fr = CopyFirstVisibleSheet((object)excel, (object)target, path, namer, options);
                     }
                     catch (Exception ex)
                     {
@@ -152,6 +170,21 @@ namespace ExcelMerger
                     throw new MergeException("Не удалось перенести ни один лист — итоговый файл не создан. Причины указаны в списке файлов.");
 
                 try { target.Sheets[PlaceholderName].Delete(); } catch { }
+
+                // Итоговый файл сохраняется со стандартным авторасчётом (один пересчёт здесь).
+                try { excel.Calculation = XlCalculationAutomatic; } catch { }
+
+                if (options.AddToc)
+                {
+                    try
+                    {
+                        TocBuilder.Build((object)target, TocSheetName, result.Files);
+                    }
+                    catch (Exception ex)
+                    {
+                        result.TocError = "лист «Содержание» создать не удалось (" + ShortMessage(ex) + ")";
+                    }
+                }
 
                 try
                 {
@@ -187,10 +220,11 @@ namespace ExcelMerger
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
+                ComMessageFilter.Revoke();
             }
         }
 
-        private FileResult CopyFirstVisibleSheet(object excelObj, object targetObj, string path, SheetNamer namer)
+        private FileResult CopyFirstVisibleSheet(object excelObj, object targetObj, string path, SheetNamer namer, MergeOptions options)
         {
             dynamic excel = excelObj;
             dynamic target = targetObj;
@@ -238,10 +272,21 @@ namespace ExcelMerger
                 RaiseTrace("renamed: " + name);
                 fr.SheetName = name;
                 fr.Ok = true;
+
+                // Лист-диаграмма не имеет ячеек: гиперссылка на A1 невозможна.
+                try { dynamic probe = copied.Range("A1"); fr.Linkable = true; }
+                catch { fr.Linkable = false; }
+
+                if (options.ValuesOnly && fr.Linkable)
+                {
+                    try { ReplaceFormulasWithValues((object)copied); }
+                    catch (Exception) { AppendNote(fr, "формулы заменены не полностью"); }
+                }
+
                 try
                 {
                     if ((bool)source.Date1904)
-                        fr.Note = "источник использует систему дат 1904 — проверьте даты";
+                        AppendNote(fr, "источник использует систему дат 1904 — проверьте даты");
                 }
                 catch { }
                 return fr;
@@ -263,6 +308,69 @@ namespace ExcelMerger
                 }
                 RaiseTrace("closed source");
             }
+        }
+
+        /// <summary>
+        /// Заменяет формулы листа их вычисленными (кэшированными) значениями.
+        /// Обрабатываются только области с формулами (SpecialCells) — массовое
+        /// присваивание по областям, а не по ячейкам. Область с объединёнными
+        /// ячейками не принимает массив — для неё поячеечный фолбэк через
+        /// верхнюю левую ячейку MergeArea.
+        /// </summary>
+        private static void ReplaceFormulasWithValues(object sheetObj)
+        {
+            dynamic sheet = sheetObj;
+            dynamic formulaCells = null;
+            try
+            {
+                formulaCells = sheet.UsedRange.SpecialCells(-4123); // xlCellTypeFormulas
+            }
+            catch
+            {
+                return; // формул на листе нет
+            }
+            dynamic areas = formulaCells.Areas;
+            int count = (int)areas.Count;
+            for (int i = 1; i <= count; i++)
+            {
+                dynamic area = areas[i];
+                try
+                {
+                    object values = area.Value2;
+                    if (values != null)
+                        area.Value2 = values;
+                }
+                catch (Exception)
+                {
+                    ReplaceCellByCell(area);
+                }
+            }
+        }
+
+        private static void ReplaceCellByCell(dynamic area)
+        {
+            int rows = (int)area.Rows.Count;
+            int cols = (int)area.Columns.Count;
+            for (int r = 1; r <= rows; r++)
+            {
+                for (int c = 1; c <= cols; c++)
+                {
+                    try
+                    {
+                        // Значение объединённой ячейки живёт в её верхней левой ячейке.
+                        dynamic topLeft = area.Cells[r, c].MergeArea.Cells[1, 1];
+                        object v = topLeft.Value2;
+                        if (v != null)
+                            topLeft.Value2 = v;
+                    }
+                    catch { } // не top-left объединённой области — значение уже заменено
+                }
+            }
+        }
+
+        private static void AppendNote(FileResult fr, string note)
+        {
+            fr.Note = string.IsNullOrEmpty(fr.Note) ? note : fr.Note + "; " + note;
         }
 
         /// <summary>Если Excel аварийно завершился, продолжать бессмысленно — падаем с понятной ошибкой.</summary>
