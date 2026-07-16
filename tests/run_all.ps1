@@ -60,6 +60,11 @@ Step 'Прогон в формат .xlsb' {
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Дослияние пропущенных в существующий свод' {
+    powershell -NoProfile -File "$PSScriptRoot\verify_retry.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
 Step 'Зомби-процессы Excel' {
     Start-Sleep -Seconds 3
     if (Get-Process EXCEL -ErrorAction SilentlyContinue) { Write-Host 'ZOMBIE EXCEL'; exit 1 }

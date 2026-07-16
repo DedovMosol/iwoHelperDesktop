@@ -44,6 +44,7 @@ namespace ExcelMerger
         private MergeOptions _lastOptions;
         private DateTime _lastStartedAt;
         private MergeResult _lastResult;
+        private ListViewNaturalSorter _sorter;
         private int _foundCount;
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
         private bool _closeRequested; // пользователь закрыл окно во время объединения
@@ -161,8 +162,14 @@ namespace ExcelMerger
             _list.Anchor = stretch | AnchorStyles.Bottom;
             _list.View = View.Details;
             _list.FullRowSelect = true;
-            _list.HeaderStyle = ColumnHeaderStyle.Nonclickable;
+            _list.HeaderStyle = ColumnHeaderStyle.Clickable; // клик по заголовку сортирует
             _list.BorderStyle = BorderStyle.FixedSingle;
+            _sorter = new ListViewNaturalSorter(_list);
+            _list.ColumnClick += delegate(object sender, ColumnClickEventArgs e)
+            {
+                if (!_running) // во время прогона строки идут в порядке обработки
+                    _sorter.SortBy(e.Column);
+            };
             _list.Columns.Add("Файл", 270);
             _list.Columns.Add("Лист", 170);
             _list.Columns.Add("Результат", 110);
@@ -576,6 +583,7 @@ namespace ExcelMerger
         {
             _running = true;
             SetRunning(true);
+            _sorter.Reset();
             _list.Items.Clear();
             _lnkOpenFile.Visible = false;
             _lnkOpenFolder.Visible = false;
