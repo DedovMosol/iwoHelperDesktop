@@ -8,8 +8,9 @@ namespace ExcelMerger
     {
         public string LastInputFolder;
         public string LastOutputFolder;
-        public bool AddToc = true;     // «Содержание» по умолчанию включено
-        public bool ValuesOnly;        // формулы по умолчанию сохраняются
+        public bool AddToc = true;              // «Содержание» по умолчанию включено
+        public bool ValuesOnly;                 // формулы по умолчанию сохраняются
+        public string OutputExtension = ".xlsx";
 
         private static string FilePath
         {
@@ -35,6 +36,7 @@ namespace ExcelMerger
                     else if (key == "lastOutputFolder") s.LastOutputFolder = value;
                     else if (key == "addToc" && bool.TryParse(value, out flag)) s.AddToc = flag;
                     else if (key == "valuesOnly" && bool.TryParse(value, out flag)) s.ValuesOnly = flag;
+                    else if (key == "outputExtension" && OutputFormats.FileFormatFor("x" + value) != 0) s.OutputExtension = value;
                 }
             }
             catch { } // повреждённые настройки не должны мешать запуску
@@ -51,7 +53,8 @@ namespace ExcelMerger
                     "lastInputFolder=" + (LastInputFolder ?? ""),
                     "lastOutputFolder=" + (LastOutputFolder ?? ""),
                     "addToc=" + AddToc,
-                    "valuesOnly=" + ValuesOnly
+                    "valuesOnly=" + ValuesOnly,
+                    "outputExtension=" + (OutputExtension ?? ".xlsx")
                 });
             }
             catch { }
