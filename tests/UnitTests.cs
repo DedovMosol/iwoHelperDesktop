@@ -35,6 +35,13 @@ namespace ExcelMerger.Tests
             Run("CellText: массив области (включая 1-базный COM)", TestCellTextArrays);
             Run("CLI: разбор флагов --toc/--values", TestCliOptions);
             Run("CLI: неизвестный флаг — ошибка", TestCliUnknownFlag);
+            Run("ReportWriter: формат строки файла", TestReportLine);
+            Run("ReportWriter: содержимое полного отчёта", TestReportBuild);
+            Run("ReportWriter: ротация хранит не более 3 отчётов", TestReportRotation);
+            Run("ReportWriter: коллизия имён в одну секунду", TestReportNameCollision);
+            Run("CheckOutputWritable: занятый файл распознан", TestOutputLocked);
+            Run("CheckOutputWritable: свободный и новый файлы", TestOutputWritable);
+            Run("CheckOutputWritable: несуществующая папка", TestOutputBadFolder);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -221,6 +228,125 @@ namespace ExcelMerger.Tests
             string err;
             AssertTrue(!Program.TryParseCliOptions(new[] { "--cli", "in", "out", "--wtf" }, 3, out o, out err), "неизвестный флаг отвергнут");
             AssertTrue(err != null && err.Contains("--wtf"), "текст ошибки называет флаг");
+        }
+
+        // ---------- ReportWriter ----------
+
+        private static void TestReportLine()
+        {
+            var ok = new FileResult();
+            ok.FileName = "а.xlsx";
+            ok.Ok = true;
+            ok.SheetName = "а";
+            AssertEqual("OK      а.xlsx -> [а]", ReportWriter.FormatFileLine(ok), "перенесённый");
+
+            var skip = new FileResult();
+            skip.FileName = "б.xlsx";
+            skip.Note = "битый";
+            AssertEqual("SKIPPED б.xlsx | битый", ReportWriter.FormatFileLine(skip), "пропущенный");
+        }
+
+        private static void TestReportBuild()
+        {
+            var result = new MergeResult();
+            result.OutputPath = @"C:\out\Свод.xlsx";
+            result.OkCount = 1;
+            result.SkipCount = 1;
+            var ok = new FileResult(); ok.FileName = "а.xlsx"; ok.Ok = true; ok.SheetName = "а";
+            var skip = new FileResult(); skip.FileName = "б.xlsx"; skip.Note = "битый";
+            result.Files.Add(ok);
+            result.Files.Add(skip);
+            var options = new MergeOptions(); options.AddToc = true;
+
+            string report = ReportWriter.BuildReport(result, @"C:\in", options, new DateTime(2026, 7, 16, 14, 0, 0));
+            AssertTrue(report.Contains("2026-07-16 14:00:00"), "дата");
+            AssertTrue(report.Contains(@"C:\in"), "входная папка");
+            AssertTrue(report.Contains(@"C:\out\Свод.xlsx"), "итоговый файл");
+            AssertTrue(report.Contains("лист «Содержание»: да"), "параметры");
+            AssertTrue(report.Contains("перенесено 1, пропущено 1"), "итог");
+            AssertTrue(report.Contains("OK      а.xlsx"), "строка файла");
+            AssertTrue(report.Contains("SKIPPED б.xlsx"), "строка пропуска");
+        }
+
+        private static void TestReportRotation()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var stamp = new DateTime(2026, 7, 16, 10, 0, 0);
+                for (int i = 0; i < 5; i++)
+                    ReportWriter.SaveWithRotation(dir, "отчёт " + i, stamp.AddMinutes(i), 3);
+
+                string[] files = Directory.GetFiles(dir, "report_*.txt");
+                AssertEqual(3, files.Length, "число отчётов после ротации");
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                AssertTrue(files[0].Contains("10-02-00"), "старейший из оставшихся");
+                AssertTrue(files[2].Contains("10-04-00"), "новейший");
+                AssertEqual("отчёт 4", File.ReadAllText(files[2]).TrimStart('﻿'), "содержимое новейшего");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void TestReportNameCollision()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var stamp = new DateTime(2026, 7, 16, 10, 0, 0);
+                string p1 = ReportWriter.SaveWithRotation(dir, "первый", stamp, 3);
+                string p2 = ReportWriter.SaveWithRotation(dir, "второй", stamp, 3);
+                AssertTrue(!string.Equals(p1, p2, StringComparison.OrdinalIgnoreCase), "имена различаются");
+                AssertEqual(2, Directory.GetFiles(dir, "report_*.txt").Length, "оба сохранены");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        // ---------- CheckOutputWritable ----------
+
+        private static void TestOutputLocked()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N") + ".xlsx");
+            using (new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                string error = MergeService.CheckOutputWritable(path);
+                AssertTrue(error != null, "занятый файл должен давать ошибку");
+                AssertTrue(error.Contains("занят"), "сообщение о занятости: " + error);
+            }
+            File.Delete(path);
+        }
+
+        private static void TestOutputWritable()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N") + ".xlsx");
+
+            // Несуществующий файл: проверка не должна оставлять след
+            AssertEqual(null, MergeService.CheckOutputWritable(path), "новый файл");
+            AssertTrue(!File.Exists(path), "пробный файл удалён");
+
+            // Существующий свободный файл
+            File.WriteAllText(path, "x");
+            try
+            {
+                AssertEqual(null, MergeService.CheckOutputWritable(path), "свободный файл");
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        private static void TestOutputBadFolder()
+        {
+            string path = Path.Combine(Path.GetTempPath(),
+                "ExcelMergerTests_нет_такой_" + Guid.NewGuid().ToString("N"), "Свод.xlsx");
+            string error = MergeService.CheckOutputWritable(path);
+            AssertTrue(error != null && error.Contains("не существует"), "папка не существует: " + error);
         }
 
         // ---------- мини-раннер ----------

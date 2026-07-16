@@ -94,6 +94,47 @@ namespace ExcelMerger
             return files;
         }
 
+        /// <summary>
+        /// Быстрая проверка, что итоговый файл можно записать. null — можно,
+        /// иначе понятное пользователю сообщение. Вызывается до запуска Excel,
+        /// чтобы о занятом файле стало известно сразу, а не после обработки
+        /// всех исходных файлов. Окончательная защита — обработчик SaveAs.
+        /// </summary>
+        public static string CheckOutputWritable(string outputPath)
+        {
+            try
+            {
+                string full = Path.GetFullPath(outputPath);
+                string dir = Path.GetDirectoryName(full);
+                if (dir == null || !Directory.Exists(dir))
+                    return "Папка сохранения не существует: " + dir;
+                if (File.Exists(full))
+                {
+                    // Эксклюзивное открытие: открытый в Excel файл даст IOException.
+                    using (new FileStream(full, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
+                }
+                else
+                {
+                    // Файла нет — пробное создание с немедленным удалением.
+                    using (new FileStream(full, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+                    File.Delete(full);
+                }
+                return null;
+            }
+            catch (IOException)
+            {
+                return "Итоговый файл занят другой программой — закройте его (обычно он открыт в Excel) и повторите.";
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return "Нет прав на запись в папку сохранения.";
+            }
+            catch (Exception ex)
+            {
+                return "Итоговый файл недоступен для записи (" + ShortMessage(ex) + ").";
+            }
+        }
+
         public MergeResult Merge(string inputFolder, string outputPath, MergeOptions options)
         {
             if (options == null)
@@ -104,6 +145,10 @@ namespace ExcelMerger
             List<string> files = FindSourceFiles(inputFolder, outputPath);
             if (files.Count == 0)
                 throw new MergeException("В папке нет файлов Excel (.xlsx, .xls, .xlsm, .xlsb).");
+
+            string lockError = CheckOutputWritable(outputPath);
+            if (lockError != null)
+                throw new MergeException(lockError);
 
             Type excelType = Type.GetTypeFromProgID("Excel.Application");
             if (excelType == null)

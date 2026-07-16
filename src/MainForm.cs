@@ -28,11 +28,17 @@ namespace ExcelMerger
         private ListView _list;
         private LinkLabel _lnkOpenFile;
         private LinkLabel _lnkOpenFolder;
+        private LinkLabel _lnkOpenReport;
 
         private MergeService _service;
         private Thread _worker;
         private UserSettings _settings;
+        private readonly TaskbarProgress _taskbar = new TaskbarProgress();
         private string _lastOutputPath;
+        private string _lastReportPath;
+        private string _lastInputFolder;
+        private MergeOptions _lastOptions;
+        private DateTime _lastStartedAt;
         private int _foundCount;
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
         private bool _closeRequested; // пользователь закрыл окно во время объединения
@@ -152,6 +158,9 @@ namespace ExcelMerger
             _lnkOpenFile.LinkClicked += delegate { OpenPath(_lastOutputPath, false); };
             _lnkOpenFolder = AddLink("Открыть папку", 145, ClientSize.Height - 32);
             _lnkOpenFolder.LinkClicked += delegate { OpenPath(_lastOutputPath, true); };
+            _lnkOpenReport = AddLink("Открыть отчёт", 280, ClientSize.Height - 32);
+            _lnkOpenReport.LinkClicked += delegate { OpenPath(_lastReportPath, false); };
+            _tips.SetToolTip(_lnkOpenReport, "Отчёт о слиянии; в истории хранятся три последних");
 
             _tips.SetToolTip(_txtInput, "Папку можно перетащить мышью в окно программы");
             _tips.SetToolTip(_txtName, "Расширение .xlsx добавится автоматически");
@@ -414,6 +423,15 @@ namespace ExcelMerger
                     "Файл «" + Path.GetFileName(outputPath) + "» уже есть в папке сохранения.\nПерезаписать его?"))
                 return;
 
+            // Занятый итоговый файл должен остановить работу сейчас,
+            // а не после обработки всех исходных файлов.
+            string lockError = MergeService.CheckOutputWritable(outputPath);
+            if (lockError != null)
+            {
+                Dialogs.Error(this, AppTitle, "Итоговый файл недоступен для записи", lockError);
+                return;
+            }
+
             _settings.LastInputFolder = folder;
             _settings.LastOutputFolder = outDir;
             _settings.AddToc = _chkToc.Checked;
@@ -433,9 +451,14 @@ namespace ExcelMerger
             _list.Items.Clear();
             _lnkOpenFile.Visible = false;
             _lnkOpenFolder.Visible = false;
+            _lnkOpenReport.Visible = false;
             _progress.Value = 0;
             SetStatus("Запуск Excel…", Theme.TextMuted);
             _lastOutputPath = outputPath;
+            _lastInputFolder = folder;
+            _lastOptions = options;
+            _lastStartedAt = DateTime.Now;
+            _taskbar.SetState(Handle, TaskbarProgressState.Indeterminate);
 
             _service = new MergeService();
             _service.Progress += OnServiceProgress;
@@ -481,6 +504,7 @@ namespace ExcelMerger
                 _progress.Maximum = total; // реальное число файлов известно только сервису
                 if (current - 1 <= total)
                     _progress.Value = current - 1;
+                SyncTaskbar();
                 SetStatus("Файл " + current + " из " + total + ": " + fileName, Theme.TextMuted);
             });
         }
@@ -498,6 +522,7 @@ namespace ExcelMerger
                 item.EnsureVisible();
                 if (_progress.Value < _progress.Maximum)
                     _progress.Value++;
+                SyncTaskbar();
             });
         }
 
@@ -514,15 +539,24 @@ namespace ExcelMerger
                 return;
             }
 
+            // Пользователь работает в другом окне — мигнуть кнопкой на панели задач.
+            if (Form.ActiveForm == null)
+                WindowFlasher.FlashUntilForeground(this);
+
+            SaveReport(result);
+
             if (error != null)
             {
+                _taskbar.SetState(Handle, TaskbarProgressState.Error);
                 SetStatus("Объединение не выполнено.", Theme.ErrRed);
                 Dialogs.Error(this, AppTitle, "Объединение не выполнено", error.Message);
+                _taskbar.SetState(Handle, TaskbarProgressState.None);
                 return;
             }
 
             if (result.Cancelled)
             {
+                _taskbar.SetState(Handle, TaskbarProgressState.None);
                 SetStatus("Отменено — итоговый файл не создан.", Theme.WarnOrange);
                 return;
             }
@@ -540,6 +574,34 @@ namespace ExcelMerger
             SetStatus(text, clean ? Theme.OkGreen : Theme.WarnOrange);
             _lnkOpenFile.Visible = true;
             _lnkOpenFolder.Visible = true;
+        }
+
+        /// <summary>Отчёт о завершённом слиянии — в историю (три последних, %APPDATA%).</summary>
+        private void SaveReport(MergeResult result)
+        {
+            if (result == null)
+                return; // ошибка до начала обработки — отчитываться не о чем
+            try
+            {
+                string content = ReportWriter.BuildReport(result, _lastInputFolder, _lastOptions, _lastStartedAt);
+                _lastReportPath = ReportWriter.SaveWithRotation(AppPaths.ReportsDir, content, DateTime.Now, 3);
+                _lnkOpenReport.Visible = true;
+            }
+            catch { } // недоступный профиль не должен ломать результат слияния
+        }
+
+        /// <summary>Прогресс на кнопке панели задач зеркалит ProgressBar.</summary>
+        private void SyncTaskbar()
+        {
+            _taskbar.SetState(Handle, TaskbarProgressState.Normal);
+            _taskbar.SetValue(Handle, _progress.Value, _progress.Maximum);
+        }
+
+        protected override void OnActivated(EventArgs e)
+        {
+            base.OnActivated(e);
+            if (!_running)
+                _taskbar.SetState(Handle, TaskbarProgressState.None); // пользователь увидел результат
         }
 
         private void OnCancelClick(object sender, EventArgs e)

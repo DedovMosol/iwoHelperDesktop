@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -14,12 +13,7 @@ namespace ExcelMerger
 
         private static string FilePath
         {
-            get
-            {
-                return Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "ExcelMerger", "settings.txt");
-            }
+            get { return AppPaths.SettingsFile; }
         }
 
         public static UserSettings Load()
