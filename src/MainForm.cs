@@ -32,6 +32,7 @@ namespace ExcelMerger
         private LinkLabel _lnkOpenFile;
         private LinkLabel _lnkOpenFolder;
         private LinkLabel _lnkOpenReport;
+        private LinkLabel _lnkNote;
         private Button _btnRetry;
 
         private MergeService _service;
@@ -47,6 +48,7 @@ namespace ExcelMerger
         private ListViewNaturalSorter _sorter;
         private int _foundCount;
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
+        private bool _noteBusy;       // готовится записка Word (только UI-поток)
         private bool _closeRequested; // пользователь закрыл окно во время объединения
 
         public MainForm()
@@ -206,6 +208,9 @@ namespace ExcelMerger
             _lnkOpenReport = AddBottomLink("Открыть отчёт", 280);
             _lnkOpenReport.LinkClicked += delegate { OpenPath(_lastReportPath, false); };
             _tips.SetToolTip(_lnkOpenReport, "Отчёт о слиянии; в истории хранятся три последних");
+            _lnkNote = AddBottomLink("Записка Word", 415);
+            _lnkNote.LinkClicked += delegate { OnNoteClick(); };
+            _tips.SetToolTip(_lnkNote, "Сопроводительная записка к своду (.docx): итоги, пропущенные файлы, оформление по стандарт");
 
             _tips.SetToolTip(_txtInput, "Папку можно перетащить мышью в окно программы");
             _tips.SetToolTip(_txtName, "Расширение .xlsx добавится автоматически");
@@ -589,6 +594,7 @@ namespace ExcelMerger
             _lnkOpenFile.Visible = false;
             _lnkOpenFolder.Visible = false;
             _lnkOpenReport.Visible = false;
+            _lnkNote.Visible = false;
             _btnRetry.Visible = false;
             _progress.Value = 0;
             _progress.Visible = true;
@@ -720,6 +726,56 @@ namespace ExcelMerger
             SetStatus(text, clean ? Theme.OkGreen : Theme.WarnOrange);
             _lnkOpenFile.Visible = true;
             _lnkOpenFolder.Visible = true;
+            _lnkNote.Visible = true;
+        }
+
+        /// <summary>Сопроводительная записка .docx рядом со сводом — в фоновом STA-потоке.</summary>
+        private void OnNoteClick()
+        {
+            if (_running || _noteBusy || _lastResult == null)
+                return;
+            MergeResult result = _lastResult;
+            string folder = _lastInputFolder;
+            MergeOptions options = _lastOptions;
+            DateTime startedAt = _lastStartedAt;
+            string notePath = Path.Combine(
+                Path.GetDirectoryName(result.OutputPath),
+                Path.GetFileNameWithoutExtension(result.OutputPath) + " — записка.docx");
+
+            _noteBusy = true;
+            _lnkNote.Enabled = false;
+            SetStatus("Готовится записка Word…", Theme.TextMuted);
+
+            var thread = new Thread(delegate()
+            {
+                Exception error = null;
+                try
+                {
+                    WordNoteWriter.Write(NoteText.Build(result, folder, options, startedAt), notePath);
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                }
+                OnUi(delegate
+                {
+                    _noteBusy = false;
+                    _lnkNote.Enabled = true;
+                    if (error != null)
+                    {
+                        SetStatus("Записка не создана.", Theme.ErrRed);
+                        Dialogs.Error(this, AppTitle, "Записка не создана", error.Message);
+                    }
+                    else
+                    {
+                        SetStatus("Записка сохранена рядом со сводом.", Theme.OkGreen);
+                        OpenPath(notePath, false);
+                    }
+                });
+            });
+            thread.SetApartmentState(ApartmentState.STA); // требование Word COM
+            thread.IsBackground = true;
+            thread.Start();
         }
 
         /// <summary>«Повторить пропущенные» видима, когда есть что и куда дослить.</summary>
@@ -790,6 +846,12 @@ namespace ExcelMerger
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            if (_noteBusy)
+            {
+                SetStatus("Дождитесь завершения записки Word…", Theme.WarnOrange);
+                e.Cancel = true; // генерация занимает секунды; иначе остался бы зомби-WINWORD
+                return;
+            }
             if (_running)
             {
                 if (!_closeRequested &&
