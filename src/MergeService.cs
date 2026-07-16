@@ -338,7 +338,7 @@ namespace ExcelMerger
                 {
                     object values = area.Value2;
                     if (values != null)
-                        area.Value2 = values;
+                        area.Value2 = CellText.EscapeValues(values); // строковые результаты — буквально, без повторного разбора
                 }
                 catch (Exception)
                 {
@@ -361,7 +361,7 @@ namespace ExcelMerger
                         dynamic topLeft = area.Cells[r, c].MergeArea.Cells[1, 1];
                         object v = topLeft.Value2;
                         if (v != null)
-                            topLeft.Value2 = v;
+                            topLeft.Value2 = CellText.EscapeValues(v);
                     }
                     catch { } // не top-left объединённой области — значение уже заменено
                 }

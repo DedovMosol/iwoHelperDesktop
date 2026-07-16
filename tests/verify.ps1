@@ -37,6 +37,9 @@ try {
     if ([math]::Abs($wsA.Columns.Item(1).ColumnWidth - 25) -gt 0.5) { $fails += "ширина колонки не перенесена: $($wsA.Columns.Item(1).ColumnWidth)" }
     if ($wsA.Range("D1").Formula -ne '=A2+A3') { $fails += "D1: формула в объединённой ячейке не перенесена" }
     if (-not $wsA.Range("D1").MergeCells) { $fails += "D1 не объединена" }
+    # без опции «значения» формулы со строковыми результатами остаются формулами
+    if (-not $wsA.Range("F1").HasFormula) { $fails += "F1 потеряла формулу" }
+    if (-not $wsA.Range("G1").HasFormula) { $fails += "G1 потеряла формулу" }
 
     $wsH = $wb.Sheets.Item('Скрытый первый лист')
     if ($wsH.Range("A1").Value2 -ne 'видимый лист') { $fails += "взят не видимый лист: '$($wsH.Range('A1').Value2)'" }
