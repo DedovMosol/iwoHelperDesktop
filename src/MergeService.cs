@@ -450,6 +450,15 @@ namespace ExcelMerger
 
                 try
                 {
+                    // Макросы не выполнялись (AutomationSecurity), но код листа
+                    // переносится копированием и сохранится, если свод — .xlsm/.xls.
+                    if ((bool)source.HasVBProject)
+                        AppendNote(fr, "файл содержит макросы (не выполнялись)");
+                }
+                catch { } // старые версии Excel без HasVBProject
+
+                try
+                {
                     if ((bool)source.Date1904)
                         AppendNote(fr, "источник использует систему дат 1904 — проверьте даты");
                 }
