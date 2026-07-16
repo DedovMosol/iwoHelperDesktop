@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -31,6 +32,7 @@ namespace ExcelMerger
         private LinkLabel _lnkOpenFile;
         private LinkLabel _lnkOpenFolder;
         private LinkLabel _lnkOpenReport;
+        private Button _btnRetry;
 
         private MergeService _service;
         private Thread _worker;
@@ -41,6 +43,7 @@ namespace ExcelMerger
         private string _lastInputFolder;
         private MergeOptions _lastOptions;
         private DateTime _lastStartedAt;
+        private MergeResult _lastResult;
         private int _foundCount;
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
         private bool _closeRequested; // пользователь закрыл окно во время объединения
@@ -56,7 +59,8 @@ namespace ExcelMerger
                 _txtOutDir.Text = _settings.LastOutputFolder;
             _txtName.Text = "Свод_" + DateTime.Now.ToString("yyyy-MM-dd");
             _chkToc.Checked = _settings.AddToc;
-            _chkValues.Checked = _settings.ValuesOnly;
+            // «Заменить формулы значениями» всегда стартует выключенным: режим
+            // меняет содержимое свода и включается осознанно на каждый запуск.
             int formatIndex = Array.IndexOf(OutputFormats.Extensions, _settings.OutputExtension);
             _cmbFormat.SelectedIndex = formatIndex >= 0 ? formatIndex : 0;
             RefreshFileCount();
@@ -164,7 +168,28 @@ namespace ExcelMerger
             _list.Columns.Add("Результат", 110);
             _list.Columns.Add("Примечание", 160);
             EnableDoubleBuffer(_list);
+            var copyMenu = new ContextMenuStrip();
+            var copyItem = new ToolStripMenuItem("Копировать");
+            copyItem.ShortcutKeyDisplayString = "Ctrl+C";
+            copyItem.Click += delegate { CopySelectedRows(); };
+            copyMenu.Items.Add(copyItem);
+            copyMenu.Opening += delegate { copyItem.Enabled = _list.SelectedItems.Count > 0; };
+            _list.ContextMenuStrip = copyMenu;
+            _list.KeyDown += delegate(object sender, KeyEventArgs e)
+            {
+                if (e.Control && e.KeyCode == Keys.C)
+                {
+                    CopySelectedRows();
+                    e.Handled = true;
+                }
+            };
             Controls.Add(_list);
+
+            _btnRetry = AddButton("Повторить пропущенные", false, right - 200, ClientSize.Height - 40, 200, 30);
+            _btnRetry.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            _btnRetry.Visible = false;
+            _btnRetry.Click += OnRetryClick;
+            _tips.SetToolTip(_btnRetry, "Дослить исправленные файлы в существующий свод без полного пересбора");
 
             _lnkOpenFile = AddBottomLink("Открыть файл", 20);
             _lnkOpenFile.LinkClicked += delegate { OpenPath(_lastOutputPath, false); };
@@ -301,6 +326,24 @@ namespace ExcelMerger
             l.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             l.Visible = false;
             return l;
+        }
+
+        /// <summary>Выбранные строки журнала — в буфер обмена (формат как в отчёте).</summary>
+        private void CopySelectedRows()
+        {
+            if (_list.SelectedItems.Count == 0)
+                return;
+            var sb = new StringBuilder();
+            foreach (ListViewItem item in _list.SelectedItems)
+            {
+                var fr = item.Tag as FileResult;
+                if (fr != null)
+                    sb.AppendLine(ReportWriter.FormatFileLine(fr));
+            }
+            if (sb.Length == 0)
+                return;
+            try { Clipboard.SetText(sb.ToString()); }
+            catch { } // буфер обмена занят другим приложением — не повод падать
         }
 
         private static void EnableDoubleBuffer(ListView list)
@@ -496,7 +539,6 @@ namespace ExcelMerger
             _settings.LastInputFolder = folder;
             _settings.LastOutputFolder = outDir;
             _settings.AddToc = _chkToc.Checked;
-            _settings.ValuesOnly = _chkValues.Checked;
             _settings.OutputExtension = (string)_cmbFormat.SelectedItem;
             _settings.Save();
 
@@ -508,12 +550,37 @@ namespace ExcelMerger
 
         private void StartMerge(string folder, string outputPath, MergeOptions options)
         {
+            PrepareRun(folder, outputPath, options);
+            StartWorker(delegate { return _service.Merge(folder, outputPath, options); });
+        }
+
+        private void OnRetryClick(object sender, EventArgs e)
+        {
+            MergeResult previous = _lastResult;
+            if (_running || previous == null || previous.SkipCount == 0)
+                return;
+            string outputPath = previous.OutputPath;
+            string lockError = MergeService.CheckOutputWritable(outputPath);
+            if (lockError != null)
+            {
+                Dialogs.Error(this, AppTitle, "Итоговый файл недоступен для записи", lockError);
+                return;
+            }
+            MergeOptions options = _lastOptions;
+            PrepareRun(_lastInputFolder, outputPath, options);
+            StartWorker(delegate { return _service.RetrySkipped(outputPath, options, previous); });
+        }
+
+        /// <summary>Общий сброс интерфейса перед обычным и повторным слиянием.</summary>
+        private void PrepareRun(string folder, string outputPath, MergeOptions options)
+        {
             _running = true;
             SetRunning(true);
             _list.Items.Clear();
             _lnkOpenFile.Visible = false;
             _lnkOpenFolder.Visible = false;
             _lnkOpenReport.Visible = false;
+            _btnRetry.Visible = false;
             _progress.Value = 0;
             _progress.Visible = true;
             SetStatus("Запуск Excel…", Theme.TextMuted);
@@ -526,27 +593,28 @@ namespace ExcelMerger
             _service = new MergeService();
             _service.Progress += OnServiceProgress;
             _service.FileDone += OnServiceFileDone;
+        }
 
-            _worker = new Thread(delegate() { RunMergeWorker(folder, outputPath, options); });
+        /// <summary>Запуск фонового STA-потока: исключения доставляются в UI, поток не падает.</summary>
+        private void StartWorker(Func<MergeResult> work)
+        {
+            _worker = new Thread(delegate()
+            {
+                MergeResult result = null;
+                Exception error = null;
+                try
+                {
+                    result = work();
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                }
+                OnUi(delegate { OnMergeFinished(result, error); });
+            });
             _worker.SetApartmentState(ApartmentState.STA); // требование Excel COM
             _worker.IsBackground = true;
             _worker.Start();
-        }
-
-        /// <summary>Тело фонового потока: любые исключения доставляются в UI, поток не падает.</summary>
-        private void RunMergeWorker(string folder, string outputPath, MergeOptions options)
-        {
-            MergeResult result = null;
-            Exception error = null;
-            try
-            {
-                result = _service.Merge(folder, outputPath, options);
-            }
-            catch (Exception ex)
-            {
-                error = ex;
-            }
-            OnUi(delegate { OnMergeFinished(result, error); });
         }
 
         /// <summary>Безопасная доставка действия в UI-поток из фонового.</summary>
@@ -577,6 +645,7 @@ namespace ExcelMerger
             OnUi(delegate
             {
                 var item = new ListViewItem(fr.FileName);
+                item.Tag = fr; // для копирования строки в буфер
                 item.SubItems.Add(fr.SheetName ?? "—");
                 item.SubItems.Add(fr.Ok ? "✓ перенесён" : "✗ пропущен");
                 item.SubItems.Add(fr.Note ?? "");
@@ -605,6 +674,11 @@ namespace ExcelMerger
             // Пользователь работает в другом окне — мигнуть кнопкой на панели задач.
             if (Form.ActiveForm == null)
                 WindowFlasher.FlashUntilForeground(this);
+
+            // Отменённый прогон не менял свод — прежний результат остаётся актуальным.
+            if (result != null && !result.Cancelled)
+                _lastResult = result;
+            UpdateRetryButton();
 
             SaveReport(result);
 
@@ -637,6 +711,13 @@ namespace ExcelMerger
             SetStatus(text, clean ? Theme.OkGreen : Theme.WarnOrange);
             _lnkOpenFile.Visible = true;
             _lnkOpenFolder.Visible = true;
+        }
+
+        /// <summary>«Повторить пропущенные» видима, когда есть что и куда дослить.</summary>
+        private void UpdateRetryButton()
+        {
+            _btnRetry.Visible = !_running && _lastResult != null &&
+                _lastResult.SkipCount > 0 && File.Exists(_lastResult.OutputPath);
         }
 
         /// <summary>Отчёт о завершённом слиянии — в историю (три последних, %APPDATA%).</summary>
@@ -727,7 +808,6 @@ namespace ExcelMerger
             if (Directory.Exists(outDir))
                 _settings.LastOutputFolder = outDir;
             _settings.AddToc = _chkToc.Checked;
-            _settings.ValuesOnly = _chkValues.Checked;
             _settings.OutputExtension = (string)_cmbFormat.SelectedItem;
             _settings.Save();
         }

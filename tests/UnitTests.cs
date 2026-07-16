@@ -39,6 +39,9 @@ namespace ExcelMerger.Tests
             Run("ReportWriter: содержимое полного отчёта", TestReportBuild);
             Run("ReportWriter: ротация хранит не более 3 отчётов", TestReportRotation);
             Run("ReportWriter: коллизия имён в одну секунду", TestReportNameCollision);
+            Run("Retry: пропущенные заменяются свежими результатами", TestCombineRetryReplaces);
+            Run("Retry: неудачный повтор обновляет причину", TestCombineRetryKeepsFailed);
+            Run("Retry: порядок и успешные записи не меняются", TestCombineRetryOrder);
             Run("OutputFormats: код формата по расширению", TestOutputFormatCodes);
             Run("OutputFormats: срез введённого расширения", TestStripExtension);
             Run("CheckOutputWritable: занятый файл распознан", TestOutputLocked);
@@ -307,6 +310,74 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        // ---------- CombineRetryResults ----------
+
+        private static FileResult MakeResult(string path, bool ok, string note)
+        {
+            var fr = new FileResult();
+            fr.FullPath = path;
+            fr.FileName = Path.GetFileName(path);
+            fr.Ok = ok;
+            fr.Note = note;
+            if (ok)
+                fr.SheetName = Path.GetFileNameWithoutExtension(path);
+            return fr;
+        }
+
+        private static MergeResult MakePrevious()
+        {
+            var prev = new MergeResult();
+            prev.OutputPath = @"C:\out\Свод.xlsx";
+            prev.Files.Add(MakeResult(@"C:\in\А.xlsx", true, null));
+            prev.Files.Add(MakeResult(@"C:\in\Б.xlsx", false, "битый"));
+            prev.Files.Add(MakeResult(@"C:\in\В.xlsx", false, "пароль"));
+            prev.OkCount = 1;
+            prev.SkipCount = 2;
+            return prev;
+        }
+
+        private static void TestCombineRetryReplaces()
+        {
+            MergeResult prev = MakePrevious();
+            var attempts = new List<FileResult> { MakeResult(@"C:\in\Б.xlsx", true, null) };
+            MergeResult combined = MergeService.CombineRetryResults(prev, attempts);
+
+            AssertEqual(3, combined.Files.Count, "число записей");
+            AssertEqual(2, combined.OkCount, "перенесено после повтора");
+            AssertEqual(1, combined.SkipCount, "осталось пропущенных");
+            AssertTrue(combined.Files[1].Ok, "Б теперь перенесён");
+            AssertEqual(prev.OutputPath, combined.OutputPath, "путь свода");
+        }
+
+        private static void TestCombineRetryKeepsFailed()
+        {
+            MergeResult prev = MakePrevious();
+            var attempts = new List<FileResult> { MakeResult(@"C:\in\Б.xlsx", false, "снова битый") };
+            MergeResult combined = MergeService.CombineRetryResults(prev, attempts);
+
+            AssertEqual(1, combined.OkCount, "перенесено не изменилось");
+            AssertEqual(2, combined.SkipCount, "пропущенных столько же");
+            AssertEqual("снова битый", combined.Files[1].Note, "причина обновлена");
+        }
+
+        private static void TestCombineRetryOrder()
+        {
+            MergeResult prev = MakePrevious();
+            var attempts = new List<FileResult>
+            {
+                MakeResult(@"C:\in\В.xlsx", true, null),
+                MakeResult(@"C:\in\Б.xlsx", true, null)
+            };
+            MergeResult combined = MergeService.CombineRetryResults(prev, attempts);
+
+            AssertEqual("А.xlsx|Б.xlsx|В.xlsx",
+                combined.Files[0].FileName + "|" + combined.Files[1].FileName + "|" + combined.Files[2].FileName,
+                "порядок исходного прогона сохранён");
+            AssertEqual(3, combined.OkCount, "все перенесены");
+            AssertEqual(0, combined.SkipCount, "пропущенных не осталось");
+            AssertTrue(!ReferenceEquals(prev.Files[0], null) && combined.Files[0].Ok, "успешная запись не тронута");
         }
 
         // ---------- OutputFormats ----------

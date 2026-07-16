@@ -10,6 +10,7 @@ namespace ExcelMerger
     public class FileResult
     {
         public string FileName;
+        public string FullPath;  // полный путь источника (для повторной попытки)
         public string SheetName; // имя листа в итоговой книге (null, если пропущен)
         public bool Ok;
         public string Note;      // причина пропуска или предупреждение
@@ -33,10 +34,11 @@ namespace ExcelMerger
     }
 
     /// <summary>
-    /// Объединяет первый видимый лист каждого Excel-файла папки в один .xlsx
-    /// через COM-автоматизацию установленного Excel (перенос без потерь:
-    /// форматирование, диаграммы, сводные таблицы, картинки).
-    /// Метод Merge должен вызываться в STA-потоке.
+    /// Объединяет первый видимый лист каждого Excel-файла папки в один итоговый
+    /// файл через COM-автоматизацию установленного Excel (перенос без потерь:
+    /// форматирование, диаграммы, сводные таблицы, картинки). Поддерживает
+    /// повторное слияние пропущенных файлов в существующий свод.
+    /// Методы Merge/RetrySkipped должны вызываться в STA-потоке.
     /// </summary>
     public class MergeService
     {
@@ -66,7 +68,7 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Файлы Excel папки в алфавитном порядке; временные файлы «~$*»
+        /// Файлы Excel папки в естественном порядке; временные файлы «~$*»
         /// и сам итоговый файл исключаются.
         /// </summary>
         public static List<string> FindSourceFiles(string folder, string outputPath)
@@ -98,7 +100,7 @@ namespace ExcelMerger
         /// Быстрая проверка, что итоговый файл можно записать. null — можно,
         /// иначе понятное пользователю сообщение. Вызывается до запуска Excel,
         /// чтобы о занятом файле стало известно сразу, а не после обработки
-        /// всех исходных файлов. Окончательная защита — обработчик SaveAs.
+        /// всех исходных файлов. Окончательная защита — обработчик сохранения.
         /// </summary>
         public static string CheckOutputWritable(string outputPath)
         {
@@ -135,25 +137,90 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>Объединяет все файлы папки в новый итоговый файл.</summary>
         public MergeResult Merge(string inputFolder, string outputPath, MergeOptions options)
         {
             if (options == null)
                 throw new ArgumentNullException("options");
-            var result = new MergeResult();
-            result.OutputPath = outputPath;
 
             List<string> files = FindSourceFiles(inputFolder, outputPath);
             if (files.Count == 0)
                 throw new MergeException("В папке нет файлов Excel (.xlsx, .xls, .xlsm, .xlsb).");
 
-            int fileFormat = OutputFormats.FileFormatFor(outputPath);
-            if (fileFormat == 0)
+            ValidateOutput(outputPath);
+            return Run(outputPath, files, options, null);
+        }
+
+        /// <summary>
+        /// Повторяет только пропущенные файлы предыдущего прогона, дослияя их
+        /// листы в уже существующий итоговый файл. Оглавление перестраивается.
+        /// </summary>
+        public MergeResult RetrySkipped(string outputPath, MergeOptions options, MergeResult previous)
+        {
+            if (options == null)
+                throw new ArgumentNullException("options");
+            if (previous == null)
+                throw new ArgumentNullException("previous");
+            if (!File.Exists(outputPath))
+                throw new MergeException("Итоговый файл не найден — сначала выполните обычное объединение.");
+
+            var retryPaths = new List<string>();
+            foreach (FileResult fr in previous.Files)
+            {
+                if (!fr.Ok && fr.FullPath != null)
+                    retryPaths.Add(fr.FullPath);
+            }
+            if (retryPaths.Count == 0)
+                throw new MergeException("Пропущенных файлов нет — повторять нечего.");
+
+            ValidateOutput(outputPath);
+            return Run(outputPath, retryPaths, options, previous);
+        }
+
+        /// <summary>
+        /// Итог после повторной попытки: пропущенные записи предыдущего прогона
+        /// заменяются свежими результатами (по полному пути), успешные и порядок
+        /// сохраняются. Чистая функция — покрыта юнит-тестами.
+        /// </summary>
+        public static MergeResult CombineRetryResults(MergeResult previous, IList<FileResult> attempts)
+        {
+            var byPath = new Dictionary<string, FileResult>(StringComparer.OrdinalIgnoreCase);
+            foreach (FileResult a in attempts)
+                byPath[a.FullPath ?? a.FileName] = a;
+
+            var combined = new MergeResult();
+            combined.OutputPath = previous.OutputPath;
+            foreach (FileResult old in previous.Files)
+            {
+                FileResult use = old;
+                FileResult fresh;
+                if (!old.Ok && byPath.TryGetValue(old.FullPath ?? old.FileName, out fresh))
+                    use = fresh;
+                combined.Files.Add(use);
+                if (use.Ok) combined.OkCount++; else combined.SkipCount++;
+            }
+            return combined;
+        }
+
+        private static void ValidateOutput(string outputPath)
+        {
+            if (OutputFormats.FileFormatFor(outputPath) == 0)
                 throw new MergeException("Неподдерживаемое расширение итогового файла. Допустимы: " +
                     string.Join(", ", OutputFormats.Extensions) + ".");
-
             string lockError = CheckOutputWritable(outputPath);
             if (lockError != null)
                 throw new MergeException(lockError);
+        }
+
+        /// <summary>
+        /// Движок слияния. previous == null — новый свод; иначе дослияние
+        /// в существующий файл с объединением результатов.
+        /// </summary>
+        private MergeResult Run(string outputPath, List<string> files, MergeOptions options, MergeResult previous)
+        {
+            bool intoExisting = previous != null;
+            var attempt = new MergeResult();
+            attempt.OutputPath = outputPath;
 
             Type excelType = Type.GetTypeFromProgID("Excel.Application");
             if (excelType == null)
@@ -172,15 +239,38 @@ namespace ExcelMerger
                 try { excel.AskToUpdateLinks = false; } catch { }
                 try { excel.AutomationSecurity = 3; } catch { } // msoAutomationSecurityForceDisable: макросы источников не выполняются
 
-                target = excel.Workbooks.Add(-4167); // xlWBATWorksheet: новая книга с одним листом
-                dynamic placeholder = target.Sheets[1];
-                placeholder.Name = PlaceholderName;
+                if (intoExisting)
+                {
+                    target = excel.Workbooks.Open(
+                        Filename: outputPath,
+                        UpdateLinks: 0,
+                        ReadOnly: false,
+                        IgnoreReadOnlyRecommended: true,
+                        Notify: false,
+                        AddToMru: false);
+                }
+                else
+                {
+                    target = excel.Workbooks.Add(-4167); // xlWBATWorksheet: новая книга с одним листом
+                    dynamic placeholder = target.Sheets[1];
+                    placeholder.Name = PlaceholderName;
+                }
 
                 // Без пересчёта после вставки каждого листа — заметно быстрее на формулах.
                 try { excel.Calculation = XlCalculationManual; } catch { }
 
                 var namer = new SheetNamer();
-                namer.Reserve(PlaceholderName);
+                if (intoExisting)
+                {
+                    // Старое «Содержание» удаляется — будет перестроено по общему итогу.
+                    if (options.AddToc)
+                        try { target.Sheets[TocSheetName].Delete(); } catch { }
+                    ReserveExistingSheetNames((object)target, namer);
+                }
+                else
+                {
+                    namer.Reserve(PlaceholderName);
+                }
                 if (options.AddToc)
                     namer.Reserve(TocSheetName); // файл с таким именем получит суффикс _2
 
@@ -189,7 +279,7 @@ namespace ExcelMerger
                 {
                     if (_cancel)
                     {
-                        result.Cancelled = true;
+                        attempt.Cancelled = true;
                         break;
                     }
                     index++;
@@ -205,21 +295,30 @@ namespace ExcelMerger
                         // Защита от ошибок вне per-file обработчика (например, сбой COM-привязки).
                         fr = new FileResult();
                         fr.FileName = Path.GetFileName(path);
+                        fr.FullPath = path;
                         fr.Note = "не удалось обработать (" + ShortMessage(ex) + ")";
                         EnsureExcelAlive((object)excel, fr.FileName);
                     }
-                    result.Files.Add(fr);
-                    if (fr.Ok) result.OkCount++; else result.SkipCount++;
+                    attempt.Files.Add(fr);
+                    if (fr.Ok) attempt.OkCount++; else attempt.SkipCount++;
                     RaiseFileDone(fr);
                 }
 
-                if (result.Cancelled)
-                    return result; // без сохранения
+                if (attempt.Cancelled)
+                    return attempt; // без сохранения: существующий свод не тронут
 
-                if (result.OkCount == 0)
+                if (!intoExisting && attempt.OkCount == 0)
                     throw new MergeException("Не удалось перенести ни один лист — итоговый файл не создан. Причины указаны в списке файлов.");
 
-                try { target.Sheets[PlaceholderName].Delete(); } catch { }
+                MergeResult final = intoExisting
+                    ? CombineRetryResults(previous, attempt.Files)
+                    : attempt;
+
+                if (intoExisting && attempt.OkCount == 0)
+                    return final; // ни одна повторная попытка не удалась — файл не трогаем
+
+                if (!intoExisting)
+                    try { target.Sheets[PlaceholderName].Delete(); } catch { }
 
                 // Итоговый файл сохраняется со стандартным авторасчётом (один пересчёт здесь).
                 try { excel.Calculation = XlCalculationAutomatic; } catch { }
@@ -228,17 +327,20 @@ namespace ExcelMerger
                 {
                     try
                     {
-                        TocBuilder.Build((object)target, TocSheetName, result.Files);
+                        TocBuilder.Build((object)target, TocSheetName, final.Files);
                     }
                     catch (Exception ex)
                     {
-                        result.TocError = "лист «Содержание» создать не удалось (" + ShortMessage(ex) + ")";
+                        final.TocError = "лист «Содержание» создать не удалось (" + ShortMessage(ex) + ")";
                     }
                 }
 
                 try
                 {
-                    target.SaveAs(outputPath, fileFormat); // код формата — по расширению пути
+                    if (intoExisting)
+                        target.Save(); // формат существующего файла сохраняется
+                    else
+                        target.SaveAs(outputPath, OutputFormats.FileFormatFor(outputPath));
                 }
                 catch (Exception ex)
                 {
@@ -247,7 +349,7 @@ namespace ExcelMerger
                         ShortMessage(ex) + ")");
                 }
 
-                return result;
+                return final;
             }
             finally
             {
@@ -274,12 +376,25 @@ namespace ExcelMerger
             }
         }
 
+        private static void ReserveExistingSheetNames(object targetObj, SheetNamer namer)
+        {
+            dynamic target = targetObj;
+            dynamic sheets = target.Sheets;
+            int count = (int)sheets.Count;
+            for (int i = 1; i <= count; i++)
+            {
+                dynamic s = sheets[i];
+                namer.Reserve((string)s.Name);
+            }
+        }
+
         private FileResult CopyFirstVisibleSheet(object excelObj, object targetObj, string path, SheetNamer namer, MergeOptions options)
         {
             dynamic excel = excelObj;
             dynamic target = targetObj;
             var fr = new FileResult();
             fr.FileName = Path.GetFileName(path);
+            fr.FullPath = path;
 
             dynamic source = null;
             try
