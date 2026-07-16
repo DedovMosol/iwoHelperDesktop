@@ -763,12 +763,14 @@ namespace ExcelMerger
                     _lnkNote.Enabled = true;
                     if (error != null)
                     {
-                        SetStatus("Записка не создана.", Theme.ErrRed);
+                        if (!_running) // статус идущего слияния не перебиваем
+                            SetStatus("Записка не создана.", Theme.ErrRed);
                         Dialogs.Error(this, AppTitle, "Записка не создана", error.Message);
                     }
                     else
                     {
-                        SetStatus("Записка сохранена рядом со сводом.", Theme.OkGreen);
+                        if (!_running)
+                            SetStatus("Записка сохранена рядом со сводом.", Theme.OkGreen);
                         OpenPath(notePath, false);
                     }
                 });
