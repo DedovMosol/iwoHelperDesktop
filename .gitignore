@@ -12,3 +12,4 @@ tests/icon_preview.png
 Thumbs.db
 desktop.ini
 tests/UnitTests.exe
+tests/retrydata/
