@@ -1,0 +1,47 @@
+# Сборка встроенным в Windows csc + юнит-тесты + смоук-тест GUI.
+# Интеграционные тесты (tests/verify*.ps1) требуют установленный Excel
+# и выполняются только локально: tests\run_all.cmd.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # публикация exe в Releases при пуше тега
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сборка приложения
+        shell: cmd
+        run: call build.cmd
+
+      - name: Юнит-тесты
+        shell: cmd
+        run: call tests\build_tests.cmd
+
+      - name: Смоук-тест GUI (создание окна без показа)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath .\ExcelMerger.exe -ArgumentList '--selftest' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode)"; exit 1 }
+
+      - name: Артефакт сборки
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExcelMerger
+          path: ExcelMerger.exe
+
+      - name: Релиз (при пуше тега v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME ExcelMerger.exe --generate-notes

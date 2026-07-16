@@ -98,9 +98,7 @@ namespace ExcelMerger
                 service.Trace += delegate(string msg) { lines.Add("  trace: " + msg); };
                 service.FileDone += delegate(FileResult fr)
                 {
-                    string line = (fr.Ok ? "OK      " : "SKIPPED ") + fr.FileName +
-                        (fr.SheetName != null ? " -> [" + fr.SheetName + "]" : "") +
-                        (string.IsNullOrEmpty(fr.Note) ? "" : " | " + fr.Note);
+                    string line = ReportWriter.FormatFileLine(fr);
                     lines.Add(line);
                     WriteConsole(line);
                 };
