@@ -8,7 +8,7 @@ if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
     /r:System.Drawing.dll "%~dp0make_icon.cs"
 if errorlevel 1 exit /b 1
 
-"%TEMP%\make_icon_tmp.exe" "%~dp0..\app.ico"
+"%TEMP%\make_icon_tmp.exe" "%~dp0..\build\app.ico"
 set RC=%ERRORLEVEL%
 del "%TEMP%\make_icon_tmp.exe" >nul 2>&1
 exit /b %RC%

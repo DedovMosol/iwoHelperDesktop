@@ -30,18 +30,18 @@ jobs:
       - name: Смоук-тест GUI (создание окна без показа)
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath .\ExcelMerger.exe -ArgumentList '--selftest' -Wait -PassThru
+          $p = Start-Process -FilePath .\dist\ExcelMerger.exe -ArgumentList '--selftest' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode)"; exit 1 }
 
       - name: Артефакт сборки
         uses: actions/upload-artifact@v4
         with:
           name: ExcelMerger
-          path: ExcelMerger.exe
+          path: dist/ExcelMerger.exe
 
       - name: Релиз (при пуше тега v*)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME ExcelMerger.exe --generate-notes
+        run: gh release create $env:GITHUB_REF_NAME dist/ExcelMerger.exe --generate-notes
