@@ -45,7 +45,6 @@ namespace ExcelMerger
         private DateTime _lastStartedAt;
         private MergeResult _lastResult;
         private ListViewNaturalSorter _sorter;
-        private Label _lblListHint;
         private int _foundCount;
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
         private bool _closeRequested; // пользователь закрыл окно во время объединения
@@ -177,14 +176,6 @@ namespace ExcelMerger
             _list.Columns.Add("Результат", 110);
             _list.Columns.Add("Примечание", 160);
             EnableDoubleBuffer(_list);
-            // Подсказка пустого состояния — внутри списка, пока нет ни одной строки.
-            _lblListHint = new Label();
-            _lblListHint.Text = "Здесь появится результат по каждому файлу:\nимя листа в своде, статус и причина пропуска.";
-            _lblListHint.AutoSize = true;
-            _lblListHint.ForeColor = Theme.TextMuted;
-            _lblListHint.BackColor = Color.White;
-            _lblListHint.Location = new Point(14, 34);
-            _list.Controls.Add(_lblListHint);
             var copyMenu = new ContextMenuStrip();
             var copyItem = new ToolStripMenuItem("Копировать");
             copyItem.ShortcutKeyDisplayString = "Ctrl+C";
@@ -595,7 +586,6 @@ namespace ExcelMerger
             SetRunning(true);
             _sorter.Reset();
             _list.Items.Clear();
-            _lblListHint.Visible = false;
             _lnkOpenFile.Visible = false;
             _lnkOpenFolder.Visible = false;
             _lnkOpenReport.Visible = false;
