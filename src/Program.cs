@@ -70,6 +70,12 @@ namespace ExcelMerger
                     if (handle == IntPtr.Zero)
                         return 3;
                 }
+                using (var about = new AboutForm())
+                {
+                    IntPtr handle = about.Handle;
+                    if (handle == IntPtr.Zero)
+                        return 3;
+                }
                 return 0;
             }
             catch (Exception ex)

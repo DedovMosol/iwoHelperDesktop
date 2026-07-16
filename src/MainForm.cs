@@ -11,6 +11,7 @@ namespace ExcelMerger
     public class MainForm : Form
     {
         private const string AppTitle = "Свод листов Excel";
+        private const int MenuHeight = 28;
 
         private TextBox _txtInput;
         private Button _btnBrowseInput;
@@ -62,7 +63,8 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            Text = AppTitle;
+            Version version = Assembly.GetExecutingAssembly().GetName().Version;
+            Text = AppTitle + " " + version.ToString(2);
             Icon icon = LoadAppIcon();
             if (icon != null)
                 Icon = icon;
@@ -71,8 +73,8 @@ namespace ExcelMerger
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(780, 700);
-            MinimumSize = new Size(700, 640);
+            ClientSize = new Size(780, 731);
+            MinimumSize = new Size(700, 671);
             AllowDrop = true;
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
@@ -81,67 +83,69 @@ namespace ExcelMerger
             int right = ClientSize.Width - 20;
             var stretch = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
-            // Шапка
-            var topBar = new Panel();
-            topBar.SetBounds(0, 0, ClientSize.Width, 4);
-            topBar.Anchor = stretch;
-            topBar.BackColor = Theme.Accent;
-            Controls.Add(topBar);
+            BuildMenu();
+            Ui.AccentBar(this, MenuHeight);
 
-            AddLabel("Свод листов Excel", 20, 16, new Font("Segoe UI", 15f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
-            AddLabel("Первый видимый лист каждого файла папки — в один итоговый файл .xlsx",
-                22, 48, Font, Theme.TextMuted);
+            // Шапка
+            Ui.Label(this, "Свод листов Excel", 20, 47,
+                new Font("Segoe UI", 15f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+            Ui.Label(this, "Первый видимый лист каждого файла папки — в один итоговый файл .xlsx",
+                22, 79, Font, Theme.TextMuted);
 
             // Шаг 1: исходная папка
-            AddSectionLabel("ПАПКА С ИСХОДНЫМИ ФАЙЛАМИ", 84);
-            _txtInput = AddTextBox(20, 104, right - 20 - 110);
+            AddSectionLabel("ПАПКА С ИСХОДНЫМИ ФАЙЛАМИ", 115);
+            _txtInput = AddTextBox(20, 135, right - 20 - 110);
             _txtInput.TextChanged += delegate { RefreshFileCount(); };
-            _btnBrowseInput = AddButton("Обзор…", false, right - 100, 103, 100, 29);
+            _btnBrowseInput = AddButton("Обзор…", false, right - 100, 134, 100, 29);
             _btnBrowseInput.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseInput.Click += OnBrowseInput;
-            _lblFound = AddLabel("", 20, 136, Font, Theme.TextMuted);
+            _lblFound = Ui.Label(this, "", 20, 167, Font, Theme.TextMuted);
 
             // Шаг 2: итоговый файл
-            AddSectionLabel("ИТОГОВЫЙ ФАЙЛ", 168);
-            AddLabel("Имя:", 20, 191, Font, Theme.TextPrimary);
-            _txtName = AddTextBox(75, 188, 300);
+            AddSectionLabel("ИТОГОВЫЙ ФАЙЛ", 199);
+            Ui.Label(this, "Имя:", 20, 222, Font, Theme.TextPrimary);
+            _txtName = AddTextBox(75, 219, 300);
             _txtName.Anchor = AnchorStyles.Top | AnchorStyles.Left; // фиксированная ширина: справа подпись .xlsx
             _txtName.TextChanged += delegate { UpdateReadiness(); };
-            AddLabel(".xlsx", 380, 191, Font, Theme.TextMuted);
+            Ui.Label(this, ".xlsx", 380, 222, Font, Theme.TextMuted);
 
-            AddLabel("Папка:", 20, 227, Font, Theme.TextPrimary);
-            _txtOutDir = AddTextBox(75, 224, right - 75 - 110);
-            _btnBrowseOut = AddButton("Обзор…", false, right - 100, 223, 100, 29);
+            Ui.Label(this, "Папка:", 20, 258, Font, Theme.TextPrimary);
+            _txtOutDir = AddTextBox(75, 255, right - 75 - 110);
+            _btnBrowseOut = AddButton("Обзор…", false, right - 100, 254, 100, 29);
             _btnBrowseOut.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseOut.Click += OnBrowseOutput;
 
             // Параметры
-            AddSectionLabel("ПАРАМЕТРЫ", 258);
-            _chkToc = AddCheckBox("Добавить лист «Содержание» с оглавлением и ссылками", 20, 278,
+            AddSectionLabel("ПАРАМЕТРЫ", 289);
+            _chkToc = AddCheckBox("Добавить лист «Содержание» с оглавлением и ссылками", 20, 309,
                 "Первым листом свода будет оглавление: гиперссылки на листы и статусы всех файлов");
-            _chkValues = AddCheckBox("Заменить формулы значениями", 20, 304,
+            _chkValues = AddCheckBox("Заменить формулы значениями", 20, 335,
                 "Свод не будет зависеть от исходных файлов: вместо формул — вычисленные значения");
 
-            // Действия
-            _btnMerge = AddButton("Объединить", true, 20, 340, 170, 40);
+            // Действия: основная слева, отмена — у правого края, подальше от основной
+            _btnMerge = AddButton("Объединить", true, 20, 371, 170, 40);
             _btnMerge.Click += OnMergeClick;
             AcceptButton = _btnMerge;
+            _tips.SetToolTip(_btnMerge, "Собрать свод из файлов выбранной папки (Enter)");
 
-            _btnCancel = AddButton("Отменить", false, 200, 340, 130, 40);
+            _btnCancel = AddButton("Отменить", false, right - 130, 371, 130, 40);
+            _btnCancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnCancel.Enabled = false;
             _btnCancel.Click += OnCancelClick;
             CancelButton = _btnCancel;
+            _tips.SetToolTip(_btnCancel, "Остановить после текущего файла (Esc)");
 
             _progress = new ProgressBar();
-            _progress.SetBounds(20, 398, right - 20, 8);
+            _progress.SetBounds(20, 429, right - 20, 8);
             _progress.Anchor = stretch;
+            _progress.Visible = false; // пустая полоса в простое только путает
             Controls.Add(_progress);
 
-            _lblStatus = AddLabel("Выберите папку с исходными файлами.", 20, 416, Font, Theme.TextMuted);
+            _lblStatus = Ui.Label(this, "Выберите папку с исходными файлами.", 20, 447, Font, Theme.TextMuted);
 
             // Журнал
             _list = new ListView();
-            _list.SetBounds(20, 444, right - 20, ClientSize.Height - 444 - 44);
+            _list.SetBounds(20, 475, right - 20, ClientSize.Height - 475 - 44);
             _list.Anchor = stretch | AnchorStyles.Bottom;
             _list.View = View.Details;
             _list.FullRowSelect = true;
@@ -154,11 +158,11 @@ namespace ExcelMerger
             EnableDoubleBuffer(_list);
             Controls.Add(_list);
 
-            _lnkOpenFile = AddLink("Открыть файл", 20, ClientSize.Height - 32);
+            _lnkOpenFile = AddBottomLink("Открыть файл", 20);
             _lnkOpenFile.LinkClicked += delegate { OpenPath(_lastOutputPath, false); };
-            _lnkOpenFolder = AddLink("Открыть папку", 145, ClientSize.Height - 32);
+            _lnkOpenFolder = AddBottomLink("Открыть папку", 145);
             _lnkOpenFolder.LinkClicked += delegate { OpenPath(_lastOutputPath, true); };
-            _lnkOpenReport = AddLink("Открыть отчёт", 280, ClientSize.Height - 32);
+            _lnkOpenReport = AddBottomLink("Открыть отчёт", 280);
             _lnkOpenReport.LinkClicked += delegate { OpenPath(_lastReportPath, false); };
             _tips.SetToolTip(_lnkOpenReport, "Отчёт о слиянии; в истории хранятся три последних");
 
@@ -169,6 +173,69 @@ namespace ExcelMerger
             Resize += delegate { AdjustNoteColumn(); };
             AdjustNoteColumn();
             UpdateReadiness();
+        }
+
+        private void BuildMenu()
+        {
+            var menu = new MenuStrip();
+            menu.AutoSize = false;
+            menu.Height = MenuHeight;
+            menu.Dock = DockStyle.Top;
+            menu.BackColor = Color.White;
+            menu.Padding = new Padding(12, 4, 0, 0);
+
+            var help = new ToolStripMenuItem("Справка");
+
+            var howTo = new ToolStripMenuItem("Как пользоваться…");
+            howTo.ShortcutKeys = Keys.F1;
+            howTo.Click += delegate { ShowHelp(); };
+
+            var reports = new ToolStripMenuItem("Папка отчётов");
+            reports.Click += delegate { OpenReportsFolder(); };
+
+            var about = new ToolStripMenuItem("О программе…");
+            about.Click += delegate
+            {
+                using (var form = new AboutForm())
+                    form.ShowDialog(this);
+            };
+
+            help.DropDownItems.Add(howTo);
+            help.DropDownItems.Add(new ToolStripSeparator());
+            help.DropDownItems.Add(reports);
+            help.DropDownItems.Add(new ToolStripSeparator());
+            help.DropDownItems.Add(about);
+            menu.Items.Add(help);
+
+            MainMenuStrip = menu;
+            Controls.Add(menu);
+        }
+
+        private void ShowHelp()
+        {
+            Dialogs.Info(this, AppTitle, "Как пользоваться",
+                "1. Укажите папку с исходными файлами — «Обзор…» или перетащите папку в окно.\n" +
+                "2. Задайте имя свода; папку сохранения можно сменить (пустая — папка с исходными).\n" +
+                "3. Нажмите «Объединить»: из каждого файла переносится первый видимый лист " +
+                "со всем оформлением, формулами и диаграммами.\n\n" +
+                "Параметры:\n" +
+                "• лист «Содержание» — оглавление свода с гиперссылками и статусами файлов;\n" +
+                "• «Заменить формулы значениями» — свод не зависит от исходных файлов.\n\n" +
+                "Битые и запароленные файлы пропускаются, причина видна в списке и в отчёте.\n" +
+                "Отчёты (три последних): Справка → «Папка отчётов».");
+        }
+
+        private void OpenReportsFolder()
+        {
+            try
+            {
+                Directory.CreateDirectory(AppPaths.ReportsDir);
+                Process.Start("explorer.exe", "\"" + AppPaths.ReportsDir + "\"");
+            }
+            catch (Exception ex)
+            {
+                Dialogs.Error(this, AppTitle, "Не удалось открыть папку отчётов", ex.Message);
+            }
         }
 
         private static Icon LoadAppIcon()
@@ -183,22 +250,9 @@ namespace ExcelMerger
             }
         }
 
-        private Label AddLabel(string text, int x, int y, Font font, Color color)
-        {
-            var l = new Label();
-            l.Text = text;
-            l.Location = new Point(x, y);
-            l.AutoSize = true;
-            l.Font = font;
-            l.ForeColor = color;
-            l.BackColor = Color.Transparent;
-            Controls.Add(l);
-            return l;
-        }
-
         private void AddSectionLabel(string text, int y)
         {
-            AddLabel(text, 20, y, new Font("Segoe UI", 8f, FontStyle.Bold), Theme.TextMuted);
+            Ui.Label(this, text, 20, y, new Font("Segoe UI", 8f, FontStyle.Bold), Theme.TextMuted);
         }
 
         private CheckBox AddCheckBox(string text, int x, int y, string tooltip)
@@ -231,17 +285,11 @@ namespace ExcelMerger
             return b;
         }
 
-        private LinkLabel AddLink(string text, int x, int y)
+        private LinkLabel AddBottomLink(string text, int x)
         {
-            var l = new LinkLabel();
-            l.Text = text;
-            l.Location = new Point(x, y);
-            l.AutoSize = true;
+            LinkLabel l = Ui.Link(this, text, x, ClientSize.Height - 32);
             l.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            l.LinkColor = Theme.Accent;
-            l.ActiveLinkColor = Theme.AccentPressed;
             l.Visible = false;
-            Controls.Add(l);
             return l;
         }
 
@@ -453,6 +501,7 @@ namespace ExcelMerger
             _lnkOpenFolder.Visible = false;
             _lnkOpenReport.Visible = false;
             _progress.Value = 0;
+            _progress.Visible = true;
             SetStatus("Запуск Excel…", Theme.TextMuted);
             _lastOutputPath = outputPath;
             _lastInputFolder = folder;
@@ -600,8 +649,9 @@ namespace ExcelMerger
         protected override void OnActivated(EventArgs e)
         {
             base.OnActivated(e);
-            if (!_running)
-                _taskbar.SetState(Handle, TaskbarProgressState.None); // пользователь увидел результат
+            // Пользователь вернулся в окно и увидел результат — индикатор больше не нужен.
+            if (!_running && _lastOutputPath != null)
+                _taskbar.SetState(Handle, TaskbarProgressState.None);
         }
 
         private void OnCancelClick(object sender, EventArgs e)

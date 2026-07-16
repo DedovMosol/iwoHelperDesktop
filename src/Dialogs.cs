@@ -23,6 +23,7 @@ namespace ExcelMerger
 
         private static readonly IntPtr WarningIcon = new IntPtr(0xFFFF); // TD_WARNING_ICON
         private static readonly IntPtr ErrorIcon = new IntPtr(0xFFFE);   // TD_ERROR_ICON
+        private static readonly IntPtr InfoIcon = new IntPtr(0xFFFD);    // TD_INFORMATION_ICON
 
         /// <summary>Вопрос с кнопками Да/Нет и предупреждающим значком. true = Да.</summary>
         public static bool ConfirmWarning(IWin32Window owner, string title, string instruction, string content)
@@ -33,6 +34,15 @@ namespace ExcelMerger
                 return button == IDYES;
             return MessageBox.Show(owner, Fallback(instruction, content), title,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+        }
+
+        public static void Info(IWin32Window owner, string title, string instruction, string content)
+        {
+            int button;
+            if (TryShowNative(owner, title, instruction, content, TDCBF_OK_BUTTON, InfoIcon, out button))
+                return;
+            MessageBox.Show(owner, Fallback(instruction, content), title,
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         public static void Error(IWin32Window owner, string title, string instruction, string content)
