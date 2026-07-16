@@ -146,6 +146,11 @@ namespace ExcelMerger
             if (files.Count == 0)
                 throw new MergeException("В папке нет файлов Excel (.xlsx, .xls, .xlsm, .xlsb).");
 
+            int fileFormat = OutputFormats.FileFormatFor(outputPath);
+            if (fileFormat == 0)
+                throw new MergeException("Неподдерживаемое расширение итогового файла. Допустимы: " +
+                    string.Join(", ", OutputFormats.Extensions) + ".");
+
             string lockError = CheckOutputWritable(outputPath);
             if (lockError != null)
                 throw new MergeException(lockError);
@@ -233,7 +238,7 @@ namespace ExcelMerger
 
                 try
                 {
-                    target.SaveAs(outputPath, 51); // xlOpenXMLWorkbook: .xlsx, Excel 2007–2024
+                    target.SaveAs(outputPath, fileFormat); // код формата — по расширению пути
                 }
                 catch (Exception ex)
                 {
