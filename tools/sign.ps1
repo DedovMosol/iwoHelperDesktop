@@ -5,7 +5,7 @@
 # (репутация для антивирусов); «доверенной» для Windows она станет только после
 # добавления сертификата в доверенные корневые на целевой машине.
 param(
-    [string]$ExePath = (Join-Path (Split-Path $PSScriptRoot) 'ExcelMerger.exe')
+    [string]$ExePath = (Join-Path (Split-Path $PSScriptRoot) 'dist\ExcelMerger.exe')
 )
 $ErrorActionPreference = 'Stop'
 

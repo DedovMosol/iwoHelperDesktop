@@ -15,9 +15,19 @@
 - установленный Microsoft Excel (2007–2024);
 - права администратора и сеть **не нужны**.
 
+## Структура репозитория
+
+```
+src/     исходники приложения          tools/   генератор иконки, подпись exe
+tests/   юнит- и интеграционные тесты  build/   входы сборки (манифест, .ico)
+assets/  дизайн иконки (SVG)           dist/    результат сборки (не в git)
+```
+
 ## Развёртывание
 
-Скопировать один файл `ExcelMerger.exe` на целевую машину. Всё.
+Скопировать один файл `ExcelMerger.exe` на целевую машину — из
+[Releases](https://github.com/DedovMosol/Svod-excel/releases) или собранный
+локально (`dist\ExcelMerger.exe`). Всё.
 
 Программа не упакована и не обфусцирована (обычная .NET-сборка, ~40 КБ),
 не обращается к сети, пишет только в выбранные пользователем папки и в
@@ -90,7 +100,9 @@ build.cmd
 (`%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe`, язык C# 5).
 Внешние зависимости отсутствуют.
 
-Иконка приложения: дизайн — `assets/icon.svg`, встраиваемый `app.ico`
+Результат сборки — `dist\ExcelMerger.exe`.
+
+Иконка приложения: дизайн — `assets/icon.svg`, встраиваемый `build/app.ico`
 генерируется из того же дизайна командой `tools\make_icon.cmd`
 (перегенерация нужна только при изменении дизайна, `app.ico` закоммичен).
 Палитра интерфейса и иконки — `src/Theme.cs`.
@@ -108,8 +120,8 @@ powershell -NoProfile -File tools\sign.ps1
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`): на каждый пуш — сборка, 25
-юнит-тестов, смоук-тест GUI, артефакт `ExcelMerger.exe`; на тег `v*` — публикация
+GitHub Actions (`.github/workflows/ci.yml`): на каждый пуш — сборка,
+юнит-тесты, смоук-тест GUI, артефакт `ExcelMerger.exe`; на тег `v*` — публикация
 exe в Releases. Интеграционные тесты требуют Excel и выполняются только локально.
 
 ## Тесты
@@ -130,9 +142,9 @@ tests\build_tests.cmd    # сборка и запуск; код выхода 0 =
 
 ```
 powershell -NoProfile -File tests\make_testdata.ps1   # генерирует корпус
-ExcelMerger.exe --cli tests\testdata tests\out\Свод.xlsx
+dist\ExcelMerger.exe --cli tests\testdata tests\out\Свод.xlsx
 powershell -NoProfile -File tests\verify.ps1          # базовое поведение
-ExcelMerger.exe --cli tests\testdata tests\out\Свод_toc.xlsx --toc --values
+dist\ExcelMerger.exe --cli tests\testdata tests\out\Свод_toc.xlsx --toc --values
 powershell -NoProfile -File tests\verify_toc.ps1      # оглавление и замена формул
 ```
 
