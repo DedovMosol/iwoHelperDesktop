@@ -39,6 +39,8 @@ namespace ExcelMerger.Tests
             Run("ReportWriter: содержимое полного отчёта", TestReportBuild);
             Run("ReportWriter: ротация хранит не более 3 отчётов", TestReportRotation);
             Run("ReportWriter: коллизия имён в одну секунду", TestReportNameCollision);
+            Run("OutputFormats: код формата по расширению", TestOutputFormatCodes);
+            Run("OutputFormats: срез введённого расширения", TestStripExtension);
             Run("CheckOutputWritable: занятый файл распознан", TestOutputLocked);
             Run("CheckOutputWritable: свободный и новый файлы", TestOutputWritable);
             Run("CheckOutputWritable: несуществующая папка", TestOutputBadFolder);
@@ -305,6 +307,26 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        // ---------- OutputFormats ----------
+
+        private static void TestOutputFormatCodes()
+        {
+            AssertEqual(51, OutputFormats.FileFormatFor(@"C:\a\Свод.xlsx"), "xlsx");
+            AssertEqual(52, OutputFormats.FileFormatFor("Свод.xlsm"), "xlsm");
+            AssertEqual(50, OutputFormats.FileFormatFor("Свод.XLSB"), "xlsb в верхнем регистре");
+            AssertEqual(56, OutputFormats.FileFormatFor("Свод.xls"), "xls");
+            AssertEqual(0, OutputFormats.FileFormatFor("Свод.pdf"), "чужое расширение");
+            AssertEqual(0, OutputFormats.FileFormatFor("Свод"), "без расширения");
+        }
+
+        private static void TestStripExtension()
+        {
+            AssertEqual("Свод", OutputFormats.StripKnownExtension("Свод.xlsx"), "xlsx");
+            AssertEqual("Свод", OutputFormats.StripKnownExtension("Свод.XLS"), "xls в верхнем регистре");
+            AssertEqual("Свод.pdf", OutputFormats.StripKnownExtension("Свод.pdf"), "чужое расширение не трогаем");
+            AssertEqual("Свод", OutputFormats.StripKnownExtension("Свод"), "без расширения");
         }
 
         // ---------- CheckOutputWritable ----------

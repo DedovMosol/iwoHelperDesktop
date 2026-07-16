@@ -21,6 +21,7 @@ namespace ExcelMerger
         private Button _btnBrowseOut;
         private CheckBox _chkToc;
         private CheckBox _chkValues;
+        private ComboBox _cmbFormat;
         private ToolTip _tips;
         private Button _btnMerge;
         private Button _btnCancel;
@@ -56,6 +57,8 @@ namespace ExcelMerger
             _txtName.Text = "Свод_" + DateTime.Now.ToString("yyyy-MM-dd");
             _chkToc.Checked = _settings.AddToc;
             _chkValues.Checked = _settings.ValuesOnly;
+            int formatIndex = Array.IndexOf(OutputFormats.Extensions, _settings.OutputExtension);
+            _cmbFormat.SelectedIndex = formatIndex >= 0 ? formatIndex : 0;
             RefreshFileCount();
         }
 
@@ -105,9 +108,14 @@ namespace ExcelMerger
             AddSectionLabel("ИТОГОВЫЙ ФАЙЛ", 199);
             Ui.Label(this, "Имя:", 20, 222, Font, Theme.TextPrimary);
             _txtName = AddTextBox(75, 219, 300);
-            _txtName.Anchor = AnchorStyles.Top | AnchorStyles.Left; // фиксированная ширина: справа подпись .xlsx
+            _txtName.Anchor = AnchorStyles.Top | AnchorStyles.Left; // фиксированная ширина: справа выбор формата
             _txtName.TextChanged += delegate { UpdateReadiness(); };
-            Ui.Label(this, ".xlsx", 380, 222, Font, Theme.TextMuted);
+            _cmbFormat = new ComboBox();
+            _cmbFormat.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cmbFormat.Items.AddRange(OutputFormats.Extensions);
+            _cmbFormat.SetBounds(383, 219, 85, 27);
+            Controls.Add(_cmbFormat);
+            _tips.SetToolTip(_cmbFormat, "Формат итогового файла; .xls — старый формат Excel 97–2003");
 
             Ui.Label(this, "Папка:", 20, 258, Font, Theme.TextPrimary);
             _txtOutDir = AddTextBox(75, 255, right - 75 - 110);
@@ -186,14 +194,16 @@ namespace ExcelMerger
 
             var help = new ToolStripMenuItem("Справка");
 
-            var howTo = new ToolStripMenuItem("Как пользоваться…");
+            // По гайдлайнам Windows многоточие — только у команд, требующих
+            // дополнительного ввода; просмотр справки и «О программе» — без него.
+            var howTo = new ToolStripMenuItem("Как пользоваться");
             howTo.ShortcutKeys = Keys.F1;
             howTo.Click += delegate { ShowHelp(); };
 
             var reports = new ToolStripMenuItem("Папка отчётов");
             reports.Click += delegate { OpenReportsFolder(); };
 
-            var about = new ToolStripMenuItem("О программе…");
+            var about = new ToolStripMenuItem("О программе");
             about.Click += delegate
             {
                 using (var form = new AboutForm())
@@ -219,7 +229,7 @@ namespace ExcelMerger
                 "3. Нажмите «Объединить»: из каждого файла переносится первый видимый лист " +
                 "со всем оформлением, формулами и диаграммами.\n\n" +
                 "Параметры:\n" +
-                "• лист «Содержание» — оглавление свода с гиперссылками и статусами файлов;\n" +
+                "• лист «Содержание» — оглавление свода с гиперссылками и статусами файлов,\n" +
                 "• «Заменить формулы значениями» — свод не зависит от исходных файлов.\n\n" +
                 "Битые и запароленные файлы пропускаются, причина видна в списке и в отчёте.\n" +
                 "Отчёты (три последних): Справка → «Папка отчётов».");
@@ -257,7 +267,7 @@ namespace ExcelMerger
 
         private CheckBox AddCheckBox(string text, int x, int y, string tooltip)
         {
-            var c = new CheckBox();
+            var c = new AccentCheckBox();
             c.Text = text;
             c.Location = new Point(x, y);
             c.AutoSize = true;
@@ -302,12 +312,17 @@ namespace ExcelMerger
                 p.SetValue(list, true, null);
         }
 
+        // Доли колонок журнала: Файл / Лист / Результат / Примечание.
+        private static readonly float[] ColumnWeights = { 0.36f, 0.22f, 0.14f, 0.28f };
+
+        /// <summary>Колонки журнала делят ширину списка пропорционально.</summary>
         private void AdjustNoteColumn()
         {
-            int used = _list.Columns[0].Width + _list.Columns[1].Width + _list.Columns[2].Width;
-            int rest = _list.ClientSize.Width - used - 4;
-            if (rest > 100)
-                _list.Columns[3].Width = rest;
+            int width = _list.ClientSize.Width - 4;
+            if (width < 300)
+                return;
+            for (int i = 0; i < _list.Columns.Count; i++)
+                _list.Columns[i].Width = (int)(width * ColumnWeights[i]);
         }
 
         // ---------- выбор папок, drag&drop, живая валидация ----------
@@ -422,9 +437,7 @@ namespace ExcelMerger
                 return;
             }
 
-            string name = _txtName.Text.Trim();
-            if (name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-                name = name.Substring(0, name.Length - 5).TrimEnd();
+            string name = OutputFormats.StripKnownExtension(_txtName.Text.Trim());
             if (name.Length == 0)
             {
                 Dialogs.Error(this, AppTitle, "Укажите имя итогового файла",
@@ -457,7 +470,7 @@ namespace ExcelMerger
                 }
             }
 
-            string outputPath = Path.Combine(outDir, name + ".xlsx");
+            string outputPath = Path.Combine(outDir, name + (string)_cmbFormat.SelectedItem);
 
             if (MergeService.FindSourceFiles(folder, outputPath).Count == 0)
             {
@@ -484,6 +497,7 @@ namespace ExcelMerger
             _settings.LastOutputFolder = outDir;
             _settings.AddToc = _chkToc.Checked;
             _settings.ValuesOnly = _chkValues.Checked;
+            _settings.OutputExtension = (string)_cmbFormat.SelectedItem;
             _settings.Save();
 
             var options = new MergeOptions();
@@ -679,6 +693,7 @@ namespace ExcelMerger
             _btnBrowseOut.Enabled = !running;
             _chkToc.Enabled = !running;
             _chkValues.Enabled = !running;
+            _cmbFormat.Enabled = !running;
             _btnMerge.Enabled = !running;
             _btnCancel.Enabled = running;
         }
@@ -713,6 +728,7 @@ namespace ExcelMerger
                 _settings.LastOutputFolder = outDir;
             _settings.AddToc = _chkToc.Checked;
             _settings.ValuesOnly = _chkValues.Checked;
+            _settings.OutputExtension = (string)_cmbFormat.SelectedItem;
             _settings.Save();
         }
 

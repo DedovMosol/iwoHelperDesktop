@@ -53,6 +53,13 @@ Step 'Прогон с оглавлением и заменой формул' {
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Прогон в формат .xlsb' {
+    $code = Invoke-Exe "--cli `"$PSScriptRoot\testdata`" `"$PSScriptRoot\out\Свод_b.xlsb`""
+    if ($code -ne 2) { Write-Host "XLSB RUN exit=$code, ожидалось 2"; exit 1 }
+    powershell -NoProfile -File "$PSScriptRoot\verify_format.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
 Step 'Зомби-процессы Excel' {
     Start-Sleep -Seconds 3
     if (Get-Process EXCEL -ErrorAction SilentlyContinue) { Write-Host 'ZOMBIE EXCEL'; exit 1 }
