@@ -354,24 +354,20 @@ namespace ExcelMerger
             finally
             {
                 // Статические ссылки: после Close/Quit никаких динамических операций
-                // над объектами (см. комментарий у ReleaseCom).
+                // над объектами (см. комментарий у ComSafe.Release).
                 object targetObj = target;
                 if (targetObj != null)
                 {
                     try { target.Close(false); } catch { }
-                    ReleaseCom(targetObj);
+                    ComSafe.Release(targetObj);
                 }
                 object excelObj = excel;
                 if (excelObj != null)
                 {
                     try { excel.Quit(); } catch { }
-                    ReleaseCom(excelObj);
+                    ComSafe.Release(excelObj);
                 }
-                // Гарантированная сборка RCW, чтобы не оставался процесс EXCEL.EXE.
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
+                ComSafe.Collect();
                 ComMessageFilter.Revoke();
             }
         }
@@ -478,7 +474,7 @@ namespace ExcelMerger
                 if (sourceObj != null)
                 {
                     try { source.Close(false); } catch { }
-                    ReleaseCom(sourceObj);
+                    ComSafe.Release(sourceObj);
                 }
                 RaiseTrace("closed source");
             }
@@ -600,22 +596,6 @@ namespace ExcelMerger
             if (m.Length > 200)
                 m = m.Substring(0, 200) + "…";
             return m;
-        }
-
-        /// <summary>
-        /// ВАЖНО: передавать аргумент только со статическим типом object (сохранить
-        /// dynamic-ссылку в object-переменную до Close/Quit). Динамическая привязка
-        /// любой операции на уже закрытом COM-объекте (например, Workbook после Close)
-        /// падает с COMException 0x80010114 ещё до входа в метод, мимо его try/catch.
-        /// </summary>
-        private static void ReleaseCom(object o)
-        {
-            try
-            {
-                if (o != null && Marshal.IsComObject(o))
-                    Marshal.FinalReleaseComObject(o);
-            }
-            catch { }
         }
 
         private void RaiseTrace(string msg)

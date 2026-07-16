@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 
 namespace ExcelMerger
 {
@@ -8,7 +7,7 @@ namespace ExcelMerger
     /// Оформление по ГОСТ Р 7.0.97-2016: поля 30/15/20/20 мм, Times New Roman 14,
     /// красная строка 1,25 см, полуторный интервал, выравнивание по ширине.
     /// Действуют те же COM-правила, что и в MergeService: после Close/Quit —
-    /// никаких динамических операций (см. комментарий у MergeService.ReleaseCom).
+    /// никаких динамических операций (см. комментарий у ComSafe.Release).
     /// Вызывать в STA-потоке.
     /// </summary>
     public static class WordNoteWriter
@@ -116,18 +115,15 @@ namespace ExcelMerger
                 if (docObj != null)
                 {
                     try { doc.Close(0); } catch { } // wdDoNotSaveChanges: файл уже сохранён
-                    ReleaseCom(docObj);
+                    ComSafe.Release(docObj);
                 }
                 object wordObj = word;
                 if (wordObj != null)
                 {
                     try { word.Quit(0); } catch { }
-                    ReleaseCom(wordObj);
+                    ComSafe.Release(wordObj);
                 }
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
+                ComSafe.Collect();
                 ComMessageFilter.Revoke();
             }
         }
@@ -157,16 +153,6 @@ namespace ExcelMerger
             dynamic range = table.Cell(row, col).Range;
             range.Text = text;
             range.Font.Bold = bold ? 1 : 0;
-        }
-
-        private static void ReleaseCom(object o)
-        {
-            try
-            {
-                if (o != null && Marshal.IsComObject(o))
-                    Marshal.FinalReleaseComObject(o);
-            }
-            catch { }
         }
     }
 }

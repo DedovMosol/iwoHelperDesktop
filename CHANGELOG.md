@@ -3,7 +3,7 @@
 Формат — по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — по [SemVer](https://semver.org/lang/ru/).
 
-## [Unreleased]
+## [1.6.0] — 2026-07-16
 
 ### Добавлено
 - **Сопроводительная записка Word**: ссылка «Записка Word» после слияния —
