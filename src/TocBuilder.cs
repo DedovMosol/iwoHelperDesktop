@@ -36,7 +36,9 @@ namespace ExcelMerger
                 data[i + 1, 2] = fr.FileName;
                 data[i + 1, 3] = fr.Ok ? (fr.Note ?? "") : ("пропущен: " + fr.Note);
             }
-            toc.Range("A1").Resize(rows, 4).Value2 = data;
+            // Экранирование: имя файла, начинающееся с «=», Excel разобрал бы
+            // как формулу, а ведущий апостроф имени — съел бы как префикс.
+            toc.Range("A1").Resize(rows, 4).Value2 = CellText.EscapeValues(data);
 
             dynamic header = toc.Range("A1:D1");
             header.Font.Bold = true;
