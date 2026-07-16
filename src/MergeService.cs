@@ -1,0 +1,357 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+
+namespace ExcelMerger
+{
+    /// <summary>Результат обработки одного исходного файла.</summary>
+    public class FileResult
+    {
+        public string FileName;
+        public string SheetName; // имя листа в итоговой книге (null, если пропущен)
+        public bool Ok;
+        public string Note;      // причина пропуска или предупреждение
+    }
+
+    public class MergeResult
+    {
+        public readonly List<FileResult> Files = new List<FileResult>();
+        public int OkCount;
+        public int SkipCount;
+        public bool Cancelled;
+        public string OutputPath;
+    }
+
+    /// <summary>Ошибка объединения с понятным пользователю сообщением.</summary>
+    public class MergeException : Exception
+    {
+        public MergeException(string message) : base(message) { }
+    }
+
+    /// <summary>
+    /// Объединяет первый видимый лист каждого Excel-файла папки в один .xlsx
+    /// через COM-автоматизацию установленного Excel (перенос без потерь:
+    /// форматирование, диаграммы, сводные таблицы, картинки).
+    /// Метод Merge должен вызываться в STA-потоке.
+    /// </summary>
+    public class MergeService
+    {
+        public event Action<int, int, string> Progress; // номер файла, всего, имя файла
+        public event Action<string> Trace;              // пошаговая диагностика (используется в --cli)
+        public event Action<FileResult> FileDone;
+
+        // Служебное имя листа-заглушки новой книги; резервируется в SheetNamer.
+        private const string PlaceholderName = "zz_tmp_5f2a9c";
+
+        // Заведомо неверный пароль: защищённый файл даёт исключение,
+        // а не модальный диалог, который повесил бы скрытый Excel.
+        private const string WrongPassword = "\u0001\u0002";
+
+        private static readonly string[] Extensions = { ".xlsx", ".xls", ".xlsm", ".xlsb" };
+
+        private volatile bool _cancel;
+
+        /// <summary>Мягкая отмена: останов после текущего файла, без сохранения результата.</summary>
+        public void Cancel()
+        {
+            _cancel = true;
+        }
+
+        /// <summary>
+        /// Файлы Excel папки в алфавитном порядке; временные файлы «~$*»
+        /// и сам итоговый файл исключаются.
+        /// </summary>
+        public static List<string> FindSourceFiles(string folder, string outputPath)
+        {
+            var files = new List<string>();
+            string outputFull = outputPath != null ? Path.GetFullPath(outputPath) : null;
+            foreach (string path in Directory.GetFiles(folder))
+            {
+                string name = Path.GetFileName(path);
+                if (name.StartsWith("~$", StringComparison.Ordinal))
+                    continue;
+                string ext = Path.GetExtension(path).ToLowerInvariant();
+                if (Array.IndexOf(Extensions, ext) < 0)
+                    continue;
+                if (outputFull != null &&
+                    string.Equals(Path.GetFullPath(path), outputFull, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                files.Add(path);
+            }
+            files.Sort(StringComparer.OrdinalIgnoreCase);
+            return files;
+        }
+
+        public MergeResult Merge(string inputFolder, string outputPath)
+        {
+            var result = new MergeResult();
+            result.OutputPath = outputPath;
+
+            List<string> files = FindSourceFiles(inputFolder, outputPath);
+            if (files.Count == 0)
+                throw new MergeException("В папке нет файлов Excel (.xlsx, .xls, .xlsm, .xlsb).");
+
+            Type excelType = Type.GetTypeFromProgID("Excel.Application");
+            if (excelType == null)
+                throw new MergeException("Microsoft Excel не установлен: COM-компонент Excel.Application не найден.");
+
+            dynamic excel = null;
+            dynamic target = null;
+            try
+            {
+                excel = Activator.CreateInstance(excelType);
+                excel.Visible = false;
+                excel.DisplayAlerts = false;
+                excel.ScreenUpdating = false;
+                excel.EnableEvents = false;
+                try { excel.AskToUpdateLinks = false; } catch { }
+                try { excel.AutomationSecurity = 3; } catch { } // msoAutomationSecurityForceDisable: макросы источников не выполняются
+
+                target = excel.Workbooks.Add(-4167); // xlWBATWorksheet: новая книга с одним листом
+                dynamic placeholder = target.Sheets[1];
+                placeholder.Name = PlaceholderName;
+
+                var namer = new SheetNamer();
+                namer.Reserve(PlaceholderName);
+
+                int index = 0;
+                foreach (string path in files)
+                {
+                    if (_cancel)
+                    {
+                        result.Cancelled = true;
+                        break;
+                    }
+                    index++;
+                    RaiseProgress(index, files.Count, Path.GetFileName(path));
+
+                    FileResult fr;
+                    try
+                    {
+                        fr = CopyFirstVisibleSheet((object)excel, (object)target, path, namer);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Защита от ошибок вне per-file обработчика (например, сбой COM-привязки).
+                        fr = new FileResult();
+                        fr.FileName = Path.GetFileName(path);
+                        fr.Note = "не удалось обработать (" + ShortMessage(ex) + ")";
+                        EnsureExcelAlive((object)excel, fr.FileName);
+                    }
+                    result.Files.Add(fr);
+                    if (fr.Ok) result.OkCount++; else result.SkipCount++;
+                    RaiseFileDone(fr);
+                }
+
+                if (result.Cancelled)
+                    return result; // без сохранения
+
+                if (result.OkCount == 0)
+                    throw new MergeException("Не удалось перенести ни один лист — итоговый файл не создан. Причины указаны в списке файлов.");
+
+                try { target.Sheets[PlaceholderName].Delete(); } catch { }
+
+                try
+                {
+                    target.SaveAs(outputPath, 51); // xlOpenXMLWorkbook: .xlsx, Excel 2007–2024
+                }
+                catch (Exception ex)
+                {
+                    throw new MergeException(
+                        "Не удалось сохранить итоговый файл. Возможно, он открыт в Excel или нет прав на запись в папку.\n(" +
+                        ShortMessage(ex) + ")");
+                }
+
+                return result;
+            }
+            finally
+            {
+                // Статические ссылки: после Close/Quit никаких динамических операций
+                // над объектами (см. комментарий у ReleaseCom).
+                object targetObj = target;
+                if (targetObj != null)
+                {
+                    try { target.Close(false); } catch { }
+                    ReleaseCom(targetObj);
+                }
+                object excelObj = excel;
+                if (excelObj != null)
+                {
+                    try { excel.Quit(); } catch { }
+                    ReleaseCom(excelObj);
+                }
+                // Гарантированная сборка RCW, чтобы не оставался процесс EXCEL.EXE.
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+        }
+
+        private FileResult CopyFirstVisibleSheet(object excelObj, object targetObj, string path, SheetNamer namer)
+        {
+            dynamic excel = excelObj;
+            dynamic target = targetObj;
+            var fr = new FileResult();
+            fr.FileName = Path.GetFileName(path);
+
+            dynamic source = null;
+            try
+            {
+                RaiseTrace("open: " + fr.FileName);
+                source = excel.Workbooks.Open(
+                    Filename: path,
+                    UpdateLinks: 0,
+                    ReadOnly: true,
+                    Password: WrongPassword,
+                    IgnoreReadOnlyRecommended: true,
+                    Notify: false,
+                    AddToMru: false);
+
+                RaiseTrace("opened");
+                dynamic ws = FindFirstVisibleSheet(source);
+                if (ws == null)
+                {
+                    fr.Note = "в файле нет видимых листов";
+                    return fr;
+                }
+
+                dynamic last = target.Sheets[target.Sheets.Count];
+                ws.Copy(Type.Missing, last); // After: в конец итоговой книги
+                RaiseTrace("copied");
+                dynamic copied = target.Sheets[target.Sheets.Count];
+
+                string name = namer.Next(Path.GetFileNameWithoutExtension(path));
+                try
+                {
+                    copied.Name = name;
+                }
+                catch (Exception)
+                {
+                    try { copied.Delete(); } catch { }
+                    fr.Note = "не удалось назначить имя листа «" + name + "»";
+                    return fr;
+                }
+
+                RaiseTrace("renamed: " + name);
+                fr.SheetName = name;
+                fr.Ok = true;
+                try
+                {
+                    if ((bool)source.Date1904)
+                        fr.Note = "источник использует систему дат 1904 — проверьте даты";
+                }
+                catch { }
+                return fr;
+            }
+            catch (Exception ex)
+            {
+                fr.Ok = false;
+                fr.Note = ClassifyError(ex);
+                return fr;
+            }
+            finally
+            {
+                // Статическая ссылка: после Close никаких динамических операций над source.
+                object sourceObj = source;
+                if (sourceObj != null)
+                {
+                    try { source.Close(false); } catch { }
+                    ReleaseCom(sourceObj);
+                }
+                RaiseTrace("closed source");
+            }
+        }
+
+        /// <summary>Если Excel аварийно завершился, продолжать бессмысленно — падаем с понятной ошибкой.</summary>
+        private static void EnsureExcelAlive(object excelObj, string fileName)
+        {
+            dynamic excel = excelObj;
+            try
+            {
+                string probe = (string)excel.Name;
+            }
+            catch (Exception)
+            {
+                throw new MergeException("Excel аварийно завершился при обработке файла «" + fileName +
+                    "». Итоговый файл не создан. Запустите объединение повторно, при повторении — исключите этот файл.");
+            }
+        }
+
+        private static dynamic FindFirstVisibleSheet(dynamic workbook)
+        {
+            dynamic sheets = workbook.Sheets; // включая листы-диаграммы
+            int count = (int)sheets.Count;
+            for (int i = 1; i <= count; i++)
+            {
+                dynamic s = sheets[i];
+                if ((int)s.Visible == -1) // xlSheetVisible
+                    return s;
+            }
+            return null;
+        }
+
+        private static string ClassifyError(Exception ex)
+        {
+            Exception e = Unwrap(ex);
+            string m = (e.Message ?? "").ToLowerInvariant();
+            if (m.Contains("парол") || m.Contains("password"))
+                return "файл защищён паролем";
+            return "не удалось открыть или скопировать (" + ShortMessage(e) + ")";
+        }
+
+        private static Exception Unwrap(Exception ex)
+        {
+            var t = ex as TargetInvocationException;
+            if (t != null && t.InnerException != null)
+                return t.InnerException;
+            return ex;
+        }
+
+        private static string ShortMessage(Exception ex)
+        {
+            string m = (Unwrap(ex).Message ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+            while (m.Contains("  "))
+                m = m.Replace("  ", " ");
+            if (m.Length > 200)
+                m = m.Substring(0, 200) + "…";
+            return m;
+        }
+
+        /// <summary>
+        /// ВАЖНО: передавать аргумент только со статическим типом object (сохранить
+        /// dynamic-ссылку в object-переменную до Close/Quit). Динамическая привязка
+        /// любой операции на уже закрытом COM-объекте (например, Workbook после Close)
+        /// падает с COMException 0x80010114 ещё до входа в метод, мимо его try/catch.
+        /// </summary>
+        private static void ReleaseCom(object o)
+        {
+            try
+            {
+                if (o != null && Marshal.IsComObject(o))
+                    Marshal.FinalReleaseComObject(o);
+            }
+            catch { }
+        }
+
+        private void RaiseTrace(string msg)
+        {
+            var h = Trace;
+            if (h != null) h(msg);
+        }
+
+        private void RaiseProgress(int current, int total, string fileName)
+        {
+            var h = Progress;
+            if (h != null) h(current, total, fileName);
+        }
+
+        private void RaiseFileDone(FileResult fr)
+        {
+            var h = FileDone;
+            if (h != null) h(fr);
+        }
+    }
+}

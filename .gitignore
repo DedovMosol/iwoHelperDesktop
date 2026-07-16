@@ -1,0 +1,13 @@
+# Артефакты сборки
+ExcelMerger.exe
+selftest.log
+
+# Тестовые артефакты (генерируются tests/make_testdata.ps1 и прогонами)
+tests/testdata/
+tests/out/
+tests/icon_preview.png
+*.report.txt
+
+# Windows
+Thumbs.db
+desktop.ini
