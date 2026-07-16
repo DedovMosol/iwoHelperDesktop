@@ -41,6 +41,14 @@ try {
     if ($wsA.Range("D1").Value2 -ne 30) { $fails += "D1: $($wsA.Range('D1').Value2), ожидалось 30" }
     if (-not $wsA.Range("D1").MergeCells) { $fails += "D1 потеряла объединение" }
 
+    # Строковые результаты формул записаны буквально, без повторного разбора Excel
+    if ($wsA.Range("F1").HasFormula) { $fails += "F1 осталась формулой" }
+    if ($wsA.Range("F1").Value2 -cne '=тест') { $fails += "F1: «$($wsA.Range('F1').Value2)», ожидалось «=тест»" }
+    $g1 = $wsA.Range("G1").Value2
+    if ($g1 -isnot [string] -or $g1 -cne '12 345') { $fails += "G1: строка «12 345» превратилась в «$g1» ($($g1.GetType().Name))" }
+    $h1 = $wsA.Range("H1").Value2
+    if ($h1 -isnot [string] -or $h1 -cne '01.02.2026') { $fails += "H1: строка-дата превратилась в «$h1» ($($h1.GetType().Name))" }
+
     # Форматирование не пострадало от замены значений
     if (-not $wsA.Range("A1").Font.Bold) { $fails += "A1 потеряла жирный шрифт" }
     if ($wsA.Range("A2").Interior.Color -ne 65535) { $fails += "A2 потеряла заливку" }

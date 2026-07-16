@@ -30,6 +30,9 @@ namespace ExcelMerger.Tests
             Run("Natural: null меньше любой строки", TestNaturalNulls);
             Run("Natural: сортировка списка как в Проводнике", TestNaturalSortList);
             Run("FindSourceFiles: фильтры, исключения, порядок", TestFindSourceFiles);
+            Run("CellText: строки экранируются апострофом", TestCellTextEscape);
+            Run("CellText: не-строки проходят без изменений", TestCellTextPassthrough);
+            Run("CellText: массив области (включая 1-базный COM)", TestCellTextArrays);
             Run("CLI: разбор флагов --toc/--values", TestCliOptions);
             Run("CLI: неизвестный флаг — ошибка", TestCliUnknownFlag);
 
@@ -155,6 +158,45 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        // ---------- CellText ----------
+
+        private static void TestCellTextEscape()
+        {
+            AssertEqual("'=SUM(A1)", CellText.EscapeForEntry("=SUM(A1)"), "формула-инъекция");
+            AssertEqual("'12 345", CellText.EscapeForEntry("12 345"), "число-подобная строка");
+            AssertEqual("'01.02.2026", CellText.EscapeForEntry("01.02.2026"), "дата-подобная строка");
+            AssertEqual("''уже с апострофом", CellText.EscapeForEntry("'уже с апострофом"), "апостроф сохраняется");
+            AssertEqual(null, CellText.EscapeForEntry(null), "null");
+            AssertEqual("", CellText.EscapeForEntry(""), "пустая строка");
+        }
+
+        private static void TestCellTextPassthrough()
+        {
+            AssertEqual(42.5, CellText.EscapeValues(42.5), "число");
+            AssertEqual(true, CellText.EscapeValues(true), "булево");
+            AssertEqual(null, CellText.EscapeValues(null), "null");
+        }
+
+        private static void TestCellTextArrays()
+        {
+            // Обычный 0-базный массив
+            var plain = new object[1, 2];
+            plain[0, 0] = "=x";
+            plain[0, 1] = 7.0;
+            var outPlain = (object[,])CellText.EscapeValues(plain);
+            AssertEqual("'=x", outPlain[0, 0], "строка в 0-базном массиве");
+            AssertEqual(7.0, outPlain[0, 1], "число в 0-базном массиве");
+
+            // 1-базный массив — именно такой возвращает Range.Value2 через COM
+            var comStyle = (object[,])Array.CreateInstance(
+                typeof(object), new[] { 2, 1 }, new[] { 1, 1 });
+            comStyle[1, 1] = "12 345";
+            comStyle[2, 1] = 30.0;
+            var outCom = (object[,])CellText.EscapeValues(comStyle);
+            AssertEqual("'12 345", outCom[1, 1], "строка в 1-базном массиве");
+            AssertEqual(30.0, outCom[2, 1], "число в 1-базном массиве");
         }
 
         // ---------- CLI ----------
