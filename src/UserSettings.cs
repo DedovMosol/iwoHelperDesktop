@@ -4,11 +4,13 @@ using System.IO;
 
 namespace ExcelMerger
 {
-    /// <summary>Последние выбранные пути; хранятся в %APPDATA%\ExcelMerger\settings.txt.</summary>
+    /// <summary>Пользовательские настройки; хранятся в %APPDATA%\ExcelMerger\settings.txt.</summary>
     public class UserSettings
     {
         public string LastInputFolder;
         public string LastOutputFolder;
+        public bool AddToc = true;     // «Содержание» по умолчанию включено
+        public bool ValuesOnly;        // формулы по умолчанию сохраняются
 
         private static string FilePath
         {
@@ -34,8 +36,11 @@ namespace ExcelMerger
                         continue;
                     string key = line.Substring(0, eq).Trim();
                     string value = line.Substring(eq + 1).Trim();
+                    bool flag;
                     if (key == "lastInputFolder") s.LastInputFolder = value;
                     else if (key == "lastOutputFolder") s.LastOutputFolder = value;
+                    else if (key == "addToc" && bool.TryParse(value, out flag)) s.AddToc = flag;
+                    else if (key == "valuesOnly" && bool.TryParse(value, out flag)) s.ValuesOnly = flag;
                 }
             }
             catch { } // повреждённые настройки не должны мешать запуску
@@ -50,7 +55,9 @@ namespace ExcelMerger
                 File.WriteAllLines(FilePath, new List<string>
                 {
                     "lastInputFolder=" + (LastInputFolder ?? ""),
-                    "lastOutputFolder=" + (LastOutputFolder ?? "")
+                    "lastOutputFolder=" + (LastOutputFolder ?? ""),
+                    "addToc=" + AddToc,
+                    "valuesOnly=" + ValuesOnly
                 });
             }
             catch { }
