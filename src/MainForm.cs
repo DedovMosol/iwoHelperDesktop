@@ -18,6 +18,9 @@ namespace ExcelMerger
         private TextBox _txtName;
         private TextBox _txtOutDir;
         private Button _btnBrowseOut;
+        private CheckBox _chkToc;
+        private CheckBox _chkValues;
+        private ToolTip _tips;
         private Button _btnMerge;
         private Button _btnCancel;
         private ProgressBar _progress;
@@ -44,6 +47,8 @@ namespace ExcelMerger
             if (!string.IsNullOrEmpty(_settings.LastOutputFolder) && Directory.Exists(_settings.LastOutputFolder))
                 _txtOutDir.Text = _settings.LastOutputFolder;
             _txtName.Text = "Свод_" + DateTime.Now.ToString("yyyy-MM-dd");
+            _chkToc.Checked = _settings.AddToc;
+            _chkValues.Checked = _settings.ValuesOnly;
             RefreshFileCount();
         }
 
@@ -60,11 +65,12 @@ namespace ExcelMerger
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(780, 640);
-            MinimumSize = new Size(700, 580);
+            ClientSize = new Size(780, 700);
+            MinimumSize = new Size(700, 640);
             AllowDrop = true;
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
+            _tips = new ToolTip();
 
             int right = ClientSize.Width - 20;
             var stretch = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -103,26 +109,33 @@ namespace ExcelMerger
             _btnBrowseOut.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseOut.Click += OnBrowseOutput;
 
+            // Параметры
+            AddSectionLabel("ПАРАМЕТРЫ", 258);
+            _chkToc = AddCheckBox("Добавить лист «Содержание» с оглавлением и ссылками", 20, 278,
+                "Первым листом свода будет оглавление: гиперссылки на листы и статусы всех файлов");
+            _chkValues = AddCheckBox("Заменить формулы значениями", 20, 304,
+                "Свод не будет зависеть от исходных файлов: вместо формул — вычисленные значения");
+
             // Действия
-            _btnMerge = AddButton("Объединить", true, 20, 270, 170, 40);
+            _btnMerge = AddButton("Объединить", true, 20, 340, 170, 40);
             _btnMerge.Click += OnMergeClick;
             AcceptButton = _btnMerge;
 
-            _btnCancel = AddButton("Отменить", false, 200, 270, 130, 40);
+            _btnCancel = AddButton("Отменить", false, 200, 340, 130, 40);
             _btnCancel.Enabled = false;
             _btnCancel.Click += OnCancelClick;
             CancelButton = _btnCancel;
 
             _progress = new ProgressBar();
-            _progress.SetBounds(20, 328, right - 20, 8);
+            _progress.SetBounds(20, 398, right - 20, 8);
             _progress.Anchor = stretch;
             Controls.Add(_progress);
 
-            _lblStatus = AddLabel("Выберите папку с исходными файлами.", 20, 346, Font, Theme.TextMuted);
+            _lblStatus = AddLabel("Выберите папку с исходными файлами.", 20, 416, Font, Theme.TextMuted);
 
             // Журнал
             _list = new ListView();
-            _list.SetBounds(20, 376, right - 20, ClientSize.Height - 376 - 44);
+            _list.SetBounds(20, 444, right - 20, ClientSize.Height - 444 - 44);
             _list.Anchor = stretch | AnchorStyles.Bottom;
             _list.View = View.Details;
             _list.FullRowSelect = true;
@@ -140,10 +153,9 @@ namespace ExcelMerger
             _lnkOpenFolder = AddLink("Открыть папку", 145, ClientSize.Height - 32);
             _lnkOpenFolder.LinkClicked += delegate { OpenPath(_lastOutputPath, true); };
 
-            var tips = new ToolTip();
-            tips.SetToolTip(_txtInput, "Папку можно перетащить мышью в окно программы");
-            tips.SetToolTip(_txtName, "Расширение .xlsx добавится автоматически");
-            tips.SetToolTip(_txtOutDir, "Пусто — итоговый файл сохранится в папку с исходными");
+            _tips.SetToolTip(_txtInput, "Папку можно перетащить мышью в окно программы");
+            _tips.SetToolTip(_txtName, "Расширение .xlsx добавится автоматически");
+            _tips.SetToolTip(_txtOutDir, "Пусто — итоговый файл сохранится в папку с исходными");
 
             Resize += delegate { AdjustNoteColumn(); };
             AdjustNoteColumn();
@@ -178,6 +190,18 @@ namespace ExcelMerger
         private void AddSectionLabel(string text, int y)
         {
             AddLabel(text, 20, y, new Font("Segoe UI", 8f, FontStyle.Bold), Theme.TextMuted);
+        }
+
+        private CheckBox AddCheckBox(string text, int x, int y, string tooltip)
+        {
+            var c = new CheckBox();
+            c.Text = text;
+            c.Location = new Point(x, y);
+            c.AutoSize = true;
+            c.ForeColor = Theme.TextPrimary;
+            Controls.Add(c);
+            _tips.SetToolTip(c, tooltip);
+            return c;
         }
 
         private TextBox AddTextBox(int x, int y, int width)
@@ -392,12 +416,17 @@ namespace ExcelMerger
 
             _settings.LastInputFolder = folder;
             _settings.LastOutputFolder = outDir;
+            _settings.AddToc = _chkToc.Checked;
+            _settings.ValuesOnly = _chkValues.Checked;
             _settings.Save();
 
-            StartMerge(folder, outputPath);
+            var options = new MergeOptions();
+            options.AddToc = _chkToc.Checked;
+            options.ValuesOnly = _chkValues.Checked;
+            StartMerge(folder, outputPath, options);
         }
 
-        private void StartMerge(string folder, string outputPath)
+        private void StartMerge(string folder, string outputPath, MergeOptions options)
         {
             _running = true;
             SetRunning(true);
@@ -412,20 +441,20 @@ namespace ExcelMerger
             _service.Progress += OnServiceProgress;
             _service.FileDone += OnServiceFileDone;
 
-            _worker = new Thread(delegate() { RunMergeWorker(folder, outputPath); });
+            _worker = new Thread(delegate() { RunMergeWorker(folder, outputPath, options); });
             _worker.SetApartmentState(ApartmentState.STA); // требование Excel COM
             _worker.IsBackground = true;
             _worker.Start();
         }
 
         /// <summary>Тело фонового потока: любые исключения доставляются в UI, поток не падает.</summary>
-        private void RunMergeWorker(string folder, string outputPath)
+        private void RunMergeWorker(string folder, string outputPath, MergeOptions options)
         {
             MergeResult result = null;
             Exception error = null;
             try
             {
-                result = _service.Merge(folder, outputPath);
+                result = _service.Merge(folder, outputPath, options);
             }
             catch (Exception ex)
             {
@@ -499,11 +528,16 @@ namespace ExcelMerger
             }
 
             _progress.Value = _progress.Maximum;
+            string text;
             if (result.SkipCount > 0)
-                SetStatus("Готово: перенесено " + result.OkCount + ", пропущено " + result.SkipCount +
-                    " — причины в списке.", Theme.WarnOrange);
+                text = "Готово: перенесено " + result.OkCount + ", пропущено " + result.SkipCount +
+                    " — причины в списке.";
             else
-                SetStatus("✓ Готово: перенесено листов — " + result.OkCount + ".", Theme.OkGreen);
+                text = "✓ Готово: перенесено листов — " + result.OkCount + ".";
+            if (result.TocError != null)
+                text += " Внимание: " + result.TocError + ".";
+            bool clean = result.SkipCount == 0 && result.TocError == null;
+            SetStatus(text, clean ? Theme.OkGreen : Theme.WarnOrange);
             _lnkOpenFile.Visible = true;
             _lnkOpenFolder.Visible = true;
         }
@@ -531,6 +565,8 @@ namespace ExcelMerger
             _txtName.Enabled = !running;
             _txtOutDir.Enabled = !running;
             _btnBrowseOut.Enabled = !running;
+            _chkToc.Enabled = !running;
+            _chkValues.Enabled = !running;
             _btnMerge.Enabled = !running;
             _btnCancel.Enabled = running;
         }
@@ -563,6 +599,8 @@ namespace ExcelMerger
                 _settings.LastInputFolder = input;
             if (Directory.Exists(outDir))
                 _settings.LastOutputFolder = outDir;
+            _settings.AddToc = _chkToc.Checked;
+            _settings.ValuesOnly = _chkValues.Checked;
             _settings.Save();
         }
 

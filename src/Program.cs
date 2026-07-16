@@ -15,12 +15,43 @@ namespace ExcelMerger
             if (args.Length >= 1 && string.Equals(args[0], "--selftest", StringComparison.OrdinalIgnoreCase))
                 return RunSelfTest();
             if (args.Length >= 3 && string.Equals(args[0], "--cli", StringComparison.OrdinalIgnoreCase))
-                return RunCli(args[1], args[2]);
+            {
+                MergeOptions options;
+                string parseError;
+                if (!TryParseCliOptions(args, 3, out options, out parseError))
+                {
+                    AttachConsole(-1);
+                    WriteConsole("ERROR: " + parseError);
+                    WriteConsole("Использование: ExcelMerger.exe --cli <папка> <итоговый.xlsx> [--toc] [--values]");
+                    return 1;
+                }
+                return RunCli(args[1], args[2], options);
+            }
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
             return 0;
+        }
+
+        /// <summary>Флаги CLI после обязательных аргументов: --toc, --values. Неизвестный флаг — ошибка.</summary>
+        internal static bool TryParseCliOptions(string[] args, int startIndex, out MergeOptions options, out string error)
+        {
+            options = new MergeOptions();
+            error = null;
+            for (int i = startIndex; i < args.Length; i++)
+            {
+                if (string.Equals(args[i], "--toc", StringComparison.OrdinalIgnoreCase))
+                    options.AddToc = true;
+                else if (string.Equals(args[i], "--values", StringComparison.OrdinalIgnoreCase))
+                    options.ValuesOnly = true;
+                else
+                {
+                    error = "неизвестный параметр «" + args[i] + "»";
+                    return false;
+                }
+            }
+            return true;
         }
 
         [DllImport("kernel32.dll")]
@@ -49,11 +80,12 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Режим для автотестов и скриптования: ExcelMerger.exe --cli &lt;папка&gt; &lt;итоговый.xlsx&gt;.
+        /// Режим для автотестов и скриптования:
+        /// ExcelMerger.exe --cli &lt;папка&gt; &lt;итоговый.xlsx&gt; [--toc] [--values].
         /// Отчёт пишется рядом с итоговым файлом (&lt;имя&gt;.report.txt) и, если возможно, в консоль.
         /// Коды выхода: 0 — все файлы перенесены, 2 — есть пропущенные, 1 — ошибка.
         /// </summary>
-        private static int RunCli(string inputFolder, string outputPath)
+        private static int RunCli(string inputFolder, string outputPath, MergeOptions options)
         {
             AttachConsole(-1);
             var lines = new List<string>();
@@ -72,7 +104,12 @@ namespace ExcelMerger
                     lines.Add(line);
                     WriteConsole(line);
                 };
-                MergeResult result = service.Merge(Path.GetFullPath(inputFolder), fullOutput);
+                MergeResult result = service.Merge(Path.GetFullPath(inputFolder), fullOutput, options);
+                if (result.TocError != null)
+                {
+                    lines.Add("WARN: " + result.TocError);
+                    WriteConsole("WARN: " + result.TocError);
+                }
                 summary = "RESULT: ok=" + result.OkCount + " skipped=" + result.SkipCount +
                     " output=" + result.OutputPath;
                 lines.Add(summary);

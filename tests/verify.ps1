@@ -13,8 +13,11 @@ try {
     foreach ($s in $wb.Sheets) { $names += $s.Name }
     Write-Host ("SHEETS: " + ($names -join ' | '))
 
+    # Естественный порядок (как в Проводнике): «Отчет 2» раньше «Отчет 10».
     $expected = @(
         'Отчет _март 2026_',
+        'Отчет 2',
+        'Отчет 10',
         'Отчет управления A',
         'Отчет управления A_2',
         'Отчет управления B',
@@ -32,6 +35,8 @@ try {
     if (-not $wsA.Range("A1").Font.Bold) { $fails += "A1 не жирный" }
     if ($wsA.Range("A2").Interior.Color -ne 65535) { $fails += "A2 без заливки" }
     if ([math]::Abs($wsA.Columns.Item(1).ColumnWidth - 25) -gt 0.5) { $fails += "ширина колонки не перенесена: $($wsA.Columns.Item(1).ColumnWidth)" }
+    if ($wsA.Range("D1").Formula -ne '=A2+A3') { $fails += "D1: формула в объединённой ячейке не перенесена" }
+    if (-not $wsA.Range("D1").MergeCells) { $fails += "D1 не объединена" }
 
     $wsH = $wb.Sheets.Item('Скрытый первый лист')
     if ($wsH.Range("A1").Value2 -ne 'видимый лист') { $fails += "взят не видимый лист: '$($wsH.Range('A1').Value2)'" }
