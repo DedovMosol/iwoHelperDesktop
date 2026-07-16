@@ -39,6 +39,9 @@ namespace ExcelMerger.Tests
             Run("ReportWriter: содержимое полного отчёта", TestReportBuild);
             Run("ReportWriter: ротация хранит не более 3 отчётов", TestReportRotation);
             Run("ReportWriter: коллизия имён в одну секунду", TestReportNameCollision);
+            Run("NoteText: период, счётчики, файл свода", TestNoteBasics);
+            Run("NoteText: таблица пропущенных", TestNoteSkippedTable);
+            Run("NoteText: без пропусков — «замечания отсутствуют»", TestNoteClean);
             Run("Retry: пропущенные заменяются свежими результатами", TestCombineRetryReplaces);
             Run("Retry: неудачный повтор обновляет причину", TestCombineRetryKeepsFailed);
             Run("Retry: порядок и успешные записи не меняются", TestCombineRetryOrder);
@@ -310,6 +313,53 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        // ---------- NoteText ----------
+
+        private static void TestNoteBasics()
+        {
+            MergeResult res = MakePrevious(); // 1 ok, 2 skip
+            var options = new MergeOptions();
+            options.AddToc = true;
+            NoteContent note = NoteText.Build(res, @"C:\in", options,
+                new DateTime(2026, 7, 16, 14, 5, 0));
+
+            AssertEqual("СПРАВКА", note.Title, "заголовок");
+            string all = string.Join("|", note.Body.ToArray()) + "|" + string.Join("|", note.Tail.ToArray());
+            AssertTrue(all.Contains("16 июля 2026 г.") && all.Contains("14:05"), "период: " + note.Body[0]);
+            AssertTrue(all.Contains("Обработано файлов: 3"), "всего");
+            AssertTrue(all.Contains("Включено листов в сводный файл: 1"), "включено");
+            AssertTrue(all.Contains("Пропущено файлов: 2"), "пропущено");
+            AssertTrue(all.Contains(res.OutputPath) && all.Contains("(XLSX)"), "файл свода и формат");
+            AssertTrue(all.Contains("лист «Содержание» — да"), "параметры");
+            AssertTrue(note.Signature.Contains("Составитель"), "подпись");
+        }
+
+        private static void TestNoteSkippedTable()
+        {
+            MergeResult res = MakePrevious();
+            NoteContent note = NoteText.Build(res, @"C:\in", new MergeOptions(), DateTime.MinValue);
+
+            AssertTrue(note.SkippedIntro != null, "есть вводная к таблице");
+            AssertEqual(2, note.SkippedRows.Count, "строк в таблице");
+            AssertEqual("1", note.SkippedRows[0][0], "нумерация");
+            AssertEqual("Б.xlsx", note.SkippedRows[0][1], "имя файла");
+            AssertEqual("битый", note.SkippedRows[0][2], "причина");
+        }
+
+        private static void TestNoteClean()
+        {
+            var res = new MergeResult();
+            res.OutputPath = @"C:\out\Свод.xlsb";
+            res.Files.Add(MakeResult(@"C:\in\А.xlsx", true, null));
+            res.OkCount = 1;
+            NoteContent note = NoteText.Build(res, @"C:\in", new MergeOptions(), DateTime.MinValue);
+
+            AssertTrue(note.SkippedIntro == null, "таблица не нужна");
+            AssertEqual(0, note.SkippedRows.Count, "нет строк");
+            string all = string.Join("|", note.Body.ToArray());
+            AssertTrue(all.Contains("Замечания отсутствуют"), "формулировка чистого итога");
         }
 
         // ---------- CombineRetryResults ----------

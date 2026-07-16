@@ -65,6 +65,11 @@ Step 'Дослияние пропущенных в существующий св
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Записка Word' {
+    powershell -NoProfile -File "$PSScriptRoot\verify_note.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
 Step 'Зомби-процессы Excel' {
     Start-Sleep -Seconds 3
     if (Get-Process EXCEL -ErrorAction SilentlyContinue) { Write-Host 'ZOMBIE EXCEL'; exit 1 }
