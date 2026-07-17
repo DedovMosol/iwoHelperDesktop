@@ -38,7 +38,7 @@ namespace ExcelMerger
             Text = Title;
             Font = new Font("Segoe UI", 9.75f);
             BackColor = Color.White;
-            StartPosition = FormStartPosition.CenterParent;
+            StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(720, 560);
