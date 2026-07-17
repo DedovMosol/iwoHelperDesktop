@@ -13,12 +13,15 @@ if not exist "%CSC%" (
 
 if not exist "%~dp0dist" mkdir "%~dp0dist"
 
+rem PdfSharp.dll (MIT) вшивается ресурсом — наружу уходит один exe.
 "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 ^
     /out:"%~dp0dist\ExcelMerger.exe" ^
     /win32manifest:"%~dp0build\app.manifest" ^
     /win32icon:"%~dp0build\app.ico" ^
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll ^
     /r:System.Windows.Forms.dll /r:Microsoft.CSharp.dll ^
+    /r:"%~dp0build\PdfSharp.dll" ^
+    /resource:"%~dp0build\PdfSharp.dll",PdfSharp.dll ^
     "%~dp0src\*.cs"
 
 if errorlevel 1 (

@@ -65,6 +65,16 @@ Step 'Дослияние пропущенных в существующий св
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Вшитый PdfSharp резолвится из ресурса exe' {
+    powershell -NoProfile -File "$PSScriptRoot\verify_embedded.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
+Step 'Объединение PDF' {
+    powershell -NoProfile -File "$PSScriptRoot\verify_pdf.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
 Step 'Записка Word' {
     powershell -NoProfile -File "$PSScriptRoot\verify_note.ps1"
     if ($LASTEXITCODE) { exit 1 }

@@ -14,6 +14,8 @@ namespace ExcelMerger
         {
             if (args.Length >= 1 && string.Equals(args[0], "--selftest", StringComparison.OrdinalIgnoreCase))
                 return RunSelfTest();
+            if (args.Length >= 1 && string.Equals(args[0], "--pdfcheck", StringComparison.OrdinalIgnoreCase))
+                return RunPdfCheck();
             if (args.Length >= 3 && string.Equals(args[0], "--cli", StringComparison.OrdinalIgnoreCase))
             {
                 MergeOptions options;
@@ -76,12 +78,46 @@ namespace ExcelMerger
                     if (handle == IntPtr.Zero)
                         return 3;
                 }
+                using (var pdf = new PdfMergeForm())
+                {
+                    IntPtr handle = pdf.Handle;
+                    if (handle == IntPtr.Zero)
+                        return 3;
+                }
                 return 0;
             }
             catch (Exception ex)
             {
                 try { File.WriteAllText("selftest.log", ex.ToString()); } catch { }
                 return 3;
+            }
+        }
+
+        /// <summary>
+        /// Проверка резолва вшитого PdfSharp из ресурса exe. LoadPages ссылается
+        /// на типы PdfSharp — если сборка не резолвится, JIT падает с
+        /// FileNotFoundException ДО тела метода; если резолвится — получаем нашу
+        /// MergeException про несуществующий файл. 0 = резолв работает.
+        /// </summary>
+        private static int RunPdfCheck()
+        {
+            AttachConsole(-1);
+            try
+            {
+                PdfMergeService.LoadPages(Path.Combine(Path.GetTempPath(),
+                    "нет_такого_" + Guid.NewGuid().ToString("N") + ".pdf"));
+                WriteConsole("PDFCHECK: неожиданно без ошибки");
+                return 2;
+            }
+            catch (MergeException)
+            {
+                WriteConsole("PDFCHECK OK"); // PdfSharp резолвнулся, дошли до нашей ошибки
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                WriteConsole("PDFCHECK FAIL: " + ex.GetType().Name + " — " + ex.Message);
+                return 1;
             }
         }
 

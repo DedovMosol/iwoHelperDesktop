@@ -39,6 +39,9 @@ namespace ExcelMerger.Tests
             Run("ReportWriter: содержимое полного отчёта", TestReportBuild);
             Run("ReportWriter: ротация хранит не более 3 отчётов", TestReportRotation);
             Run("ReportWriter: коллизия имён в одну секунду", TestReportNameCollision);
+            Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
+            Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
+            Run("PdfPageOrder: удаление набора строк", TestPdfOrderRemove);
             Run("NoteText: период, счётчики, файл свода", TestNoteBasics);
             Run("NoteText: таблица пропущенных", TestNoteSkippedTable);
             Run("NoteText: без пропусков — «замечания отсутствуют»", TestNoteClean);
@@ -313,6 +316,57 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        // ---------- PdfPageOrder ----------
+
+        private static string OrderSignature(PdfPageOrder order)
+        {
+            var parts = new List<string>();
+            for (int i = 0; i < order.Count; i++)
+                parts.Add(order[i].FileName + ":" + (order[i].PageIndex + 1));
+            return string.Join("|", parts.ToArray());
+        }
+
+        private static PdfPageOrder MakeOrder()
+        {
+            var order = new PdfPageOrder();
+            order.AddDocument(@"C:\in\А.pdf", 2);
+            order.AddDocument(@"C:\in\Б.pdf", 1);
+            return order; // А:1 | А:2 | Б:1
+        }
+
+        private static void TestPdfOrderMoves()
+        {
+            PdfPageOrder order = MakeOrder();
+            AssertEqual("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "исходный порядок");
+
+            AssertEqual(0, order.MoveUp(0), "MoveUp с верхней строки — на месте");
+            AssertEqual(2, order.MoveDown(2), "MoveDown с нижней строки — на месте");
+
+            AssertEqual(1, order.MoveUp(2), "MoveUp возвращает новый индекс");
+            AssertEqual("А.pdf:1|Б.pdf:1|А.pdf:2", OrderSignature(order), "после MoveUp");
+            AssertEqual(2, order.MoveDown(1), "MoveDown возвращает новый индекс");
+            AssertEqual("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "MoveDown вернул порядок");
+        }
+
+        private static void TestPdfOrderDragMove()
+        {
+            PdfPageOrder order = MakeOrder();
+            order.Move(2, 0); // Б:1 в начало
+            AssertEqual("Б.pdf:1|А.pdf:1|А.pdf:2", OrderSignature(order), "перенос вверх");
+            order.Move(0, 3); // Б:1 в конец (вставка перед позицией 3)
+            AssertEqual("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "перенос вниз");
+            order.Move(1, 1); // на себя — без изменений
+            AssertEqual("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "перенос на себя");
+        }
+
+        private static void TestPdfOrderRemove()
+        {
+            PdfPageOrder order = MakeOrder();
+            order.RemoveAt(new[] { 2, 0 }); // произвольный порядок индексов
+            AssertEqual("А.pdf:2", OrderSignature(order), "удаление набора");
+            AssertEqual(1, order.Count, "осталась одна строка");
         }
 
         // ---------- NoteText ----------
