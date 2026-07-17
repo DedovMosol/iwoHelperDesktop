@@ -254,17 +254,7 @@ namespace ExcelMerger
             help.DropDownItems.Add(new ToolStripSeparator());
             help.DropDownItems.Add(about);
 
-            var tools = new ToolStripMenuItem("Инструменты");
-            var pdfMerge = new ToolStripMenuItem("Объединить PDF…"); // многоточие: команда требует выбора файлов
-            pdfMerge.Click += delegate
-            {
-                using (var form = new PdfMergeForm())
-                    form.ShowDialog(this);
-            };
-            tools.DropDownItems.Add(pdfMerge);
-
-            menu.Items.Add(tools);
-            menu.Items.Add(help); // «Справка» — последняя, по гайдлайнам Windows
+            menu.Items.Add(help);
 
             MainMenuStrip = menu;
             Controls.Add(menu);
