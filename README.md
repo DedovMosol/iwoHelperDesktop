@@ -1,6 +1,6 @@
 # iwo Helper Desktop
 
-![CI](https://github.com/DedovMosol/Svod-excel/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml/badge.svg)
 
 История версий — в [CHANGELOG.md](CHANGELOG.md).
 
@@ -38,7 +38,7 @@ dist/    результат сборки (не в git)
 ## Развёртывание
 
 Скопировать один файл `iwoHelperDesktop.exe` на целевую машину — из
-[Releases](https://github.com/DedovMosol/Svod-excel/releases) или собранный
+[Releases](https://github.com/DedovMosol/iwoHelperDesktop/releases) или собранный
 локально (`dist\iwoHelperDesktop.exe`). Всё.
 
 Программа не упакована и не обфусцирована (обычная .NET-сборка, ~0,7 МБ —

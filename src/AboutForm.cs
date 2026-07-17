@@ -47,8 +47,8 @@ namespace ExcelMerger
             Ui.Label(this, "© 2026 · Лицензия MIT", 24, 152, Font, Theme.TextMuted);
 
             Ui.UrlLink(this, "Telegram: t.me/i_wantout", 24, 184, "https://t.me/i_wantout");
-            Ui.UrlLink(this, "GitHub: github.com/DedovMosol/Svod-excel", 24, 208,
-                "https://github.com/DedovMosol/Svod-excel");
+            Ui.UrlLink(this, "GitHub: github.com/DedovMosol/iwoHelperDesktop", 24, 208,
+                "https://github.com/DedovMosol/iwoHelperDesktop");
 
             var ok = new RoundedButton(true);
             ok.Text = "OK";
