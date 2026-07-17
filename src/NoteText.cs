@@ -38,7 +38,7 @@ namespace ExcelMerger
             note.Body.Add(startedAt.ToString("d MMMM yyyy 'г.'", Ru) + " в " +
                 startedAt.ToString("HH:mm", Ru) +
                 " выполнено объединение файлов отчётности из папки «" + inputFolder + "».");
-            note.Body.Add("Обработано файлов: " + result.Files.Count +
+            note.Body.Add("Обработано файлов: " + result.FileCount +
                 ". Включено листов в сводный файл: " + result.OkCount +
                 ". Пропущено файлов: " + result.SkipCount + ".");
 

@@ -25,6 +25,18 @@ namespace ExcelMerger
         public bool Cancelled;
         public string OutputPath;
         public string TocError; // не null, если лист «Содержание» создать не удалось
+
+        /// <summary>Число исходных файлов (в режиме «все листы» листов больше).</summary>
+        public int FileCount
+        {
+            get
+            {
+                var files = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+                foreach (FileResult f in Files)
+                    files.Add(f.FullPath ?? f.FileName);
+                return files.Count;
+            }
+        }
     }
 
     /// <summary>Ошибка объединения с понятным пользователю сообщением.</summary>
@@ -58,6 +70,14 @@ namespace ExcelMerger
         private const string WrongPassword = "\u0001\u0002";
 
         private static readonly string[] Extensions = { ".xlsx", ".xls", ".xlsm", ".xlsb" };
+
+        /// <summary>Имя-основа листа в своде: в режиме «все листы» — «файл · лист».</summary>
+        public static string SheetBaseName(string fileBaseName, string sheetName, bool allSheets)
+        {
+            if (!allSheets)
+                return fileBaseName;
+            return fileBaseName + " · " + sheetName;
+        }
 
         private volatile bool _cancel;
 
@@ -184,21 +204,45 @@ namespace ExcelMerger
         /// </summary>
         public static MergeResult CombineRetryResults(MergeResult previous, IList<FileResult> attempts)
         {
-            var byPath = new Dictionary<string, FileResult>(StringComparer.OrdinalIgnoreCase);
+            // Свежие результаты повтора, сгруппированные по исходному файлу
+            // (в режиме «все листы» один файл даёт несколько листов).
+            var freshByPath = new Dictionary<string, List<FileResult>>(StringComparer.OrdinalIgnoreCase);
             foreach (FileResult a in attempts)
-                byPath[a.FullPath ?? a.FileName] = a;
+            {
+                string key = a.FullPath ?? a.FileName;
+                List<FileResult> bucket;
+                if (!freshByPath.TryGetValue(key, out bucket))
+                {
+                    bucket = new List<FileResult>();
+                    freshByPath[key] = bucket;
+                }
+                bucket.Add(a);
+            }
 
             var combined = new MergeResult();
             combined.OutputPath = previous.OutputPath;
+            var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (FileResult old in previous.Files)
             {
-                FileResult use = old;
-                FileResult fresh;
-                if (!old.Ok && byPath.TryGetValue(old.FullPath ?? old.FileName, out fresh))
-                    use = fresh;
-                combined.Files.Add(use);
-                if (use.Ok) combined.OkCount++; else combined.SkipCount++;
+                if (old.Ok)
+                {
+                    combined.Files.Add(old); // успешные листы сохраняются
+                    continue;
+                }
+                string key = old.FullPath ?? old.FileName;
+                List<FileResult> fresh;
+                if (key != null && freshByPath.TryGetValue(key, out fresh))
+                {
+                    if (expanded.Add(key)) // разворачиваем файл один раз
+                        combined.Files.AddRange(fresh);
+                }
+                else
+                {
+                    combined.Files.Add(old); // файл не повторялся
+                }
             }
+            foreach (FileResult f in combined.Files)
+                if (f.Ok) combined.OkCount++; else combined.SkipCount++;
             return combined;
         }
 
@@ -285,23 +329,27 @@ namespace ExcelMerger
                     index++;
                     RaiseProgress(index, files.Count, Path.GetFileName(path));
 
-                    FileResult fr;
+                    List<FileResult> frs;
                     try
                     {
-                        fr = CopyFirstVisibleSheet((object)excel, (object)target, path, namer, options);
+                        frs = CopySheets((object)excel, (object)target, path, namer, options);
                     }
                     catch (Exception ex)
                     {
                         // Защита от ошибок вне per-file обработчика (например, сбой COM-привязки).
-                        fr = new FileResult();
+                        var fr = new FileResult();
                         fr.FileName = Path.GetFileName(path);
                         fr.FullPath = path;
                         fr.Note = "не удалось обработать (" + ShortMessage(ex) + ")";
                         EnsureExcelAlive((object)excel, fr.FileName);
+                        frs = new List<FileResult> { fr };
                     }
-                    attempt.Files.Add(fr);
-                    if (fr.Ok) attempt.OkCount++; else attempt.SkipCount++;
-                    RaiseFileDone(fr);
+                    foreach (FileResult fr in frs)
+                    {
+                        attempt.Files.Add(fr);
+                        if (fr.Ok) attempt.OkCount++; else attempt.SkipCount++;
+                        RaiseFileDone(fr);
+                    }
                 }
 
                 if (attempt.Cancelled)
@@ -384,88 +432,110 @@ namespace ExcelMerger
             }
         }
 
-        private FileResult CopyFirstVisibleSheet(object excelObj, object targetObj, string path, SheetNamer namer, MergeOptions options)
+        private List<FileResult> CopySheets(object excelObj, object targetObj, string path, SheetNamer namer, MergeOptions options)
         {
             dynamic excel = excelObj;
             dynamic target = targetObj;
-            var fr = new FileResult();
-            fr.FileName = Path.GetFileName(path);
-            fr.FullPath = path;
+            string fileName = Path.GetFileName(path);
+            string fileBase = Path.GetFileNameWithoutExtension(path);
+            var results = new List<FileResult>();
 
             dynamic source = null;
             try
             {
-                RaiseTrace("open: " + fr.FileName);
-                source = excel.Workbooks.Open(
-                    Filename: path,
-                    UpdateLinks: 0,
-                    ReadOnly: true,
-                    Password: WrongPassword,
-                    IgnoreReadOnlyRecommended: true,
-                    Notify: false,
-                    AddToMru: false);
+                RaiseTrace("open: " + fileName);
+                try
+                {
+                    source = excel.Workbooks.Open(
+                        Filename: path,
+                        UpdateLinks: 0,
+                        ReadOnly: true,
+                        Password: WrongPassword,
+                        IgnoreReadOnlyRecommended: true,
+                        Notify: false,
+                        AddToMru: false);
+                }
+                catch (Exception ex)
+                {
+                    results.Add(Skipped(fileName, path, ClassifyError(ex)));
+                    return results;
+                }
 
                 RaiseTrace("opened");
-                dynamic ws = FindFirstVisibleSheet(source);
-                if (ws == null)
+                List<object> sheets = VisibleSheets(source, options.AllSheets);
+                if (sheets.Count == 0)
                 {
-                    fr.Note = "в файле нет видимых листов";
-                    return fr;
+                    results.Add(Skipped(fileName, path, "в файле нет видимых листов"));
+                    return results;
                 }
 
-                dynamic last = target.Sheets[target.Sheets.Count];
-                ws.Copy(Type.Missing, last); // After: в конец итоговой книги
-                RaiseTrace("copied");
-                dynamic copied = target.Sheets[target.Sheets.Count];
-
-                string name = namer.Next(Path.GetFileNameWithoutExtension(path));
-                try
+                bool fileNotesPending = true;
+                foreach (object wsObj in sheets)
                 {
-                    copied.Name = name;
-                }
-                catch (Exception)
-                {
-                    try { copied.Delete(); } catch { }
-                    fr.Note = "не удалось назначить имя листа «" + name + "»";
-                    return fr;
-                }
+                    dynamic ws = wsObj;
+                    var fr = new FileResult();
+                    fr.FileName = fileName;
+                    fr.FullPath = path;
+                    try
+                    {
+                        string baseName = SheetBaseName(fileBase, (string)ws.Name, options.AllSheets);
+                        dynamic last = target.Sheets[target.Sheets.Count];
+                        ws.Copy(Type.Missing, last); // After: в конец итоговой книги
+                        dynamic copied = target.Sheets[target.Sheets.Count];
 
-                RaiseTrace("renamed: " + name);
-                fr.SheetName = name;
-                fr.Ok = true;
+                        string name = namer.Next(baseName);
+                        try
+                        {
+                            copied.Name = name;
+                        }
+                        catch (Exception)
+                        {
+                            try { copied.Delete(); } catch { }
+                            fr.Note = "не удалось назначить имя листа «" + name + "»";
+                            results.Add(fr);
+                            continue;
+                        }
 
-                // Лист-диаграмма не имеет ячеек: гиперссылка на A1 невозможна.
-                try { dynamic probe = copied.Range("A1"); fr.Linkable = true; }
-                catch { fr.Linkable = false; }
+                        RaiseTrace("renamed: " + name);
+                        fr.SheetName = name;
+                        fr.Ok = true;
 
-                if (options.ValuesOnly && fr.Linkable)
-                {
-                    try { ReplaceFormulasWithValues((object)copied); }
-                    catch (Exception) { AppendNote(fr, "формулы заменены не полностью"); }
+                        // Лист-диаграмма не имеет ячеек: гиперссылка на A1 невозможна.
+                        try { dynamic probe = copied.Range("A1"); fr.Linkable = true; }
+                        catch { fr.Linkable = false; }
+
+                        if (options.ValuesOnly && fr.Linkable)
+                        {
+                            try { ReplaceFormulasWithValues((object)copied); }
+                            catch (Exception) { AppendNote(fr, "формулы заменены не полностью"); }
+                        }
+
+                        if (fileNotesPending)
+                        {
+                            // Предупреждения уровня файла — на первом его листе.
+                            try
+                            {
+                                if ((bool)source.HasVBProject)
+                                    AppendNote(fr, "файл содержит макросы (не выполнялись)");
+                            }
+                            catch { }
+                            try
+                            {
+                                if ((bool)source.Date1904)
+                                    AppendNote(fr, "источник использует систему дат 1904 — проверьте даты");
+                            }
+                            catch { }
+                            fileNotesPending = false;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        fr.Ok = false;
+                        fr.Note = "лист не перенесён (" + ShortMessage(ex) + ")";
+                    }
+                    results.Add(fr);
                 }
-
-                try
-                {
-                    // Макросы не выполнялись (AutomationSecurity), но код листа
-                    // переносится копированием и сохранится, если свод — .xlsm/.xls.
-                    if ((bool)source.HasVBProject)
-                        AppendNote(fr, "файл содержит макросы (не выполнялись)");
-                }
-                catch { } // старые версии Excel без HasVBProject
-
-                try
-                {
-                    if ((bool)source.Date1904)
-                        AppendNote(fr, "источник использует систему дат 1904 — проверьте даты");
-                }
-                catch { }
-                return fr;
-            }
-            catch (Exception ex)
-            {
-                fr.Ok = false;
-                fr.Note = ClassifyError(ex);
-                return fr;
+                return results;
             }
             finally
             {
@@ -478,6 +548,15 @@ namespace ExcelMerger
                 }
                 RaiseTrace("closed source");
             }
+        }
+
+        private static FileResult Skipped(string fileName, string path, string note)
+        {
+            var fr = new FileResult();
+            fr.FileName = fileName;
+            fr.FullPath = path;
+            fr.Note = note;
+            return fr;
         }
 
         /// <summary>
@@ -558,17 +637,23 @@ namespace ExcelMerger
             }
         }
 
-        private static dynamic FindFirstVisibleSheet(dynamic workbook)
+        /// <summary>Видимые листы книги: все или только первый (в порядке книги).</summary>
+        private static List<object> VisibleSheets(dynamic workbook, bool all)
         {
+            var list = new List<object>();
             dynamic sheets = workbook.Sheets; // включая листы-диаграммы
             int count = (int)sheets.Count;
             for (int i = 1; i <= count; i++)
             {
                 dynamic s = sheets[i];
                 if ((int)s.Visible == -1) // xlSheetVisible
-                    return s;
+                {
+                    list.Add(s);
+                    if (!all)
+                        break;
+                }
             }
-            return null;
+            return list;
         }
 
         private static string ClassifyError(Exception ex)

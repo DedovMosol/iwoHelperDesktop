@@ -23,6 +23,7 @@ namespace ExcelMerger
         private CheckBox _chkToc;
         private CheckBox _chkValues;
         private ComboBox _cmbFormat;
+        private ComboBox _cmbScope;
         private ToolTip _tips;
         private Button _btnMerge;
         private Button _btnCancel;
@@ -70,6 +71,7 @@ namespace ExcelMerger
             // меняет содержимое свода и включается осознанно на каждый запуск.
             int formatIndex = Array.IndexOf(OutputFormats.Extensions, _settings.OutputExtension);
             _cmbFormat.SelectedIndex = formatIndex >= 0 ? formatIndex : 0;
+            _cmbScope.SelectedIndex = _settings.AllSheets ? 1 : 0;
             RefreshFileCount();
         }
 
@@ -87,8 +89,8 @@ namespace ExcelMerger
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(780, 755);
-            MinimumSize = new Size(700, 695);
+            ClientSize = new Size(780, 785);
+            MinimumSize = new Size(700, 725);
             AllowDrop = true;
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
@@ -137,18 +139,26 @@ namespace ExcelMerger
 
             // Параметры
             AddSectionLabel("ПАРАМЕТРЫ", 289);
-            _chkToc = AddCheckBox("Добавить лист «Содержание» с оглавлением и ссылками", 20, 309,
+            Ui.Label(this, "Листы:", 20, 312, Font, Theme.TextPrimary);
+            _cmbScope = new ComboBox();
+            _cmbScope.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cmbScope.Items.AddRange(new object[] { "Только первый лист", "Все листы" });
+            _cmbScope.SetBounds(75, 309, 200, 27);
+            Controls.Add(_cmbScope);
+            _tips.SetToolTip(_cmbScope, "Из каждого файла брать только первый видимый лист или все видимые");
+
+            _chkToc = AddCheckBox("Добавить лист «Содержание» с оглавлением и ссылками", 20, 345,
                 "Первым листом свода будет оглавление: гиперссылки на листы и статусы всех файлов");
-            _chkValues = AddCheckBox("Заменить формулы значениями", 20, 335,
+            _chkValues = AddCheckBox("Заменить формулы значениями", 20, 371,
                 "Свод не будет зависеть от исходных файлов: вместо формул — вычисленные значения");
 
             // Действия: основная слева, отмена — у правого края, подальше от основной
-            _btnMerge = AddButton("Объединить", true, 20, 371, 170, 40);
+            _btnMerge = AddButton("Объединить", true, 20, 407, 170, 40);
             _btnMerge.Click += OnMergeClick;
             AcceptButton = _btnMerge;
             _tips.SetToolTip(_btnMerge, "Собрать свод из файлов выбранной папки (Enter)");
 
-            _btnCancel = AddButton("Отменить", false, right - 130, 371, 130, 40);
+            _btnCancel = AddButton("Отменить", false, right - 130, 407, 130, 40);
             _btnCancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnCancel.Enabled = false;
             _btnCancel.Click += OnCancelClick;
@@ -156,17 +166,17 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnCancel, "Остановить после текущего файла (Esc)");
 
             _progress = new ProgressBar();
-            _progress.SetBounds(20, 429, right - 20, 8);
+            _progress.SetBounds(20, 465, right - 20, 8);
             _progress.Anchor = stretch;
             _progress.Visible = false; // пустая полоса в простое только путает
             Controls.Add(_progress);
 
-            _lblStatus = Ui.Label(this, "Выберите папку с исходными файлами.", 20, 447, Font, Theme.TextMuted);
+            _lblStatus = Ui.Label(this, "Выберите папку с исходными файлами.", 20, 483, Font, Theme.TextMuted);
 
             // Журнал: построчный результат по каждому файлу текущего прогона
-            AddSectionLabel("ЖУРНАЛ ОБРАБОТКИ", 472);
+            AddSectionLabel("ЖУРНАЛ ОБРАБОТКИ", 508);
             _list = new ListView();
-            _list.SetBounds(20, 492, right - 20, ClientSize.Height - 492 - 44);
+            _list.SetBounds(20, 528, right - 20, ClientSize.Height - 528 - 44);
             _list.Anchor = stretch | AnchorStyles.Bottom;
             _list.View = View.Details;
             _list.FullRowSelect = true;
@@ -540,12 +550,14 @@ namespace ExcelMerger
             _settings.LastInputFolder = folder;
             _settings.LastOutputFolder = outDir;
             _settings.AddToc = _chkToc.Checked;
+            _settings.AllSheets = _cmbScope.SelectedIndex == 1;
             _settings.OutputExtension = (string)_cmbFormat.SelectedItem;
             _settings.Save();
 
             var options = new MergeOptions();
             options.AddToc = _chkToc.Checked;
             options.ValuesOnly = _chkValues.Checked;
+            options.AllSheets = _cmbScope.SelectedIndex == 1;
             StartMerge(folder, outputPath, options);
         }
 
@@ -655,9 +667,9 @@ namespace ExcelMerger
                 item.ForeColor = !fr.Ok ? Theme.ErrRed : (fr.Note != null ? Theme.WarnOrange : Theme.OkGreen);
                 _list.Items.Add(item);
                 item.EnsureVisible();
-                if (_progress.Value < _progress.Maximum)
-                    _progress.Value++;
-                SyncTaskbar();
+                // Прогресс ведёт OnServiceProgress (по файлам); строк журнала
+                // может быть больше файлов (режим «все листы»), поэтому здесь
+                // счётчик не трогаем.
             });
         }
 
@@ -830,6 +842,7 @@ namespace ExcelMerger
             _chkToc.Enabled = !running;
             _chkValues.Enabled = !running;
             _cmbFormat.Enabled = !running;
+            _cmbScope.Enabled = !running;
             _btnMerge.Enabled = !running;
             _btnCancel.Enabled = running;
         }
@@ -869,6 +882,7 @@ namespace ExcelMerger
             if (Directory.Exists(outDir))
                 _settings.LastOutputFolder = outDir;
             _settings.AddToc = _chkToc.Checked;
+            _settings.AllSheets = _cmbScope.SelectedIndex == 1;
             _settings.OutputExtension = (string)_cmbFormat.SelectedItem;
             _settings.Save();
         }
