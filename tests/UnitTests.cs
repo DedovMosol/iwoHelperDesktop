@@ -39,6 +39,7 @@ namespace ExcelMerger.Tests
             Run("ReportWriter: содержимое полного отчёта", TestReportBuild);
             Run("ReportWriter: ротация хранит не более 3 отчётов", TestReportRotation);
             Run("ReportWriter: коллизия имён в одну секунду", TestReportNameCollision);
+            Run("ToolRegistry: открыт/закрыт, авто-удаление Disposed", TestToolRegistry);
             Run("HelpMenu: структура «Справка» и вставка доп. пунктов", TestHelpMenu);
             Run("ThumbZoom: кламп ширины плитки", TestThumbZoomClamp);
             Run("ThumbZoom: колесо меняет масштаб и упирается в границы", TestThumbZoomWheel);
@@ -320,6 +321,30 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        // ---------- ToolRegistry ----------
+
+        private static void TestToolRegistry()
+        {
+            var reg = new ToolRegistry();
+            System.Windows.Forms.Form f;
+            AssertTrue(!reg.TryGetOpen("a", out f), "пустой реестр — не открыт");
+
+            var form = new System.Windows.Forms.Form();
+            reg.Add("a", form);
+            AssertTrue(reg.TryGetOpen("a", out f) && ReferenceEquals(f, form), "добавленный — открыт");
+            AssertEqual(1, reg.OpenForms().Count, "одно живое окно");
+
+            form.Dispose();
+            AssertTrue(!reg.TryGetOpen("a", out f), "после Dispose — не открыт");
+            AssertEqual(0, reg.OpenForms().Count, "закрытые не считаются");
+
+            var f2 = new System.Windows.Forms.Form();
+            reg.Add("b", f2);
+            reg.Remove("b");
+            AssertTrue(!reg.TryGetOpen("b", out f), "после Remove — не открыт");
+            f2.Dispose();
         }
 
         // ---------- HelpMenu (общее меню «Справка») ----------

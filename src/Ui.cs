@@ -45,6 +45,15 @@ namespace ExcelMerger
             return l;
         }
 
+        /// <summary>Стилизованная кнопка «Назад в меню» (вызывает back по клику).</summary>
+        public static Button BackButton(Action back)
+        {
+            var b = new RoundedButton(false);
+            b.Text = "◀ Назад в меню";
+            b.Click += delegate { back(); };
+            return b;
+        }
+
         /// <summary>Акцентная полоса в верхней части окна.</summary>
         public static Panel AccentBar(Control parent, int y)
         {
