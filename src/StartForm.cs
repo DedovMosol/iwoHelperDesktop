@@ -15,7 +15,7 @@ namespace ExcelMerger
         public StartForm()
         {
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
-            Text = "Свод листов Excel " + version.ToString(2);
+            Text = "iwo Helper Desktop " + version.ToString(2);
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
             catch { }
             Font = new Font("Segoe UI", 9.75f);

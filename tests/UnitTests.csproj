@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Юнит-тесты: компилируются вместе с src (доступ к internal), свой мини-раннер
+       (StartupObject). PdfSharp кладётся рядом на случай резолва. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>UnitTests</AssemblyName>
+    <RootNamespace>ExcelMerger</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <StartupObject>ExcelMerger.Tests.UnitTests</StartupObject>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
+    <OutputPath>bin\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\src\**\*.cs" />
+    <Compile Include="UnitTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="PdfSharp">
+      <HintPath>..\build\PdfSharp.dll</HintPath>
+    </Reference>
+    <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.19041.1" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

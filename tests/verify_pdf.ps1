@@ -11,7 +11,7 @@ $fails = @()
 # нужна лишь тесту, чтобы СОЗДАТЬ входные PDF (наш AssemblyResolve срабатывает
 # только при вызове кода приложения).
 [void][System.Reflection.Assembly]::LoadFrom((Join-Path $root 'build\PdfSharp.dll'))
-[void][System.Reflection.Assembly]::LoadFrom((Join-Path $root 'dist\ExcelMerger.exe'))
+[void][System.Reflection.Assembly]::LoadFrom((Join-Path $root 'dist\iwoHelperDesktop.exe'))
 
 function New-Pdf([string]$path, [object[]]$pages) {
     # Размеры в пунктах (XUnit неявно принимает double): без enum-типов PdfSharp.

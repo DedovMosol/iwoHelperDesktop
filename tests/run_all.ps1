@@ -3,7 +3,7 @@
 # Требует установленный Excel. Код выхода 0 = всё прошло.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
-$exe = Join-Path $root 'dist\ExcelMerger.exe'
+$exe = Join-Path $root 'dist\iwoHelperDesktop.exe'
 
 function Invoke-Exe([string]$argLine) {
     # GUI-subsystem процесс: PowerShell без -Wait не дождался бы кода выхода.

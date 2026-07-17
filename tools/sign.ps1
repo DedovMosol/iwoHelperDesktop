@@ -1,11 +1,11 @@
-﻿# Подпись ExcelMerger.exe самоподписанным сертификатом (SHA256 + метка времени).
+﻿# Подпись iwoHelperDesktop.exe самоподписанным сертификатом (SHA256 + метка времени).
 # Всё встроено в Windows PowerShell 5.1 — внешних инструментов не требуется.
 # Сертификат создаётся один раз и переиспользуется (Cert:\CurrentUser\My).
 # Примечание: самоподписанная подпись даёт целостность и постоянного издателя
 # (репутация для антивирусов); «доверенной» для Windows она станет только после
 # добавления сертификата в доверенные корневые на целевой машине.
 param(
-    [string]$ExePath = (Join-Path (Split-Path $PSScriptRoot) 'dist\ExcelMerger.exe')
+    [string]$ExePath = (Join-Path (Split-Path $PSScriptRoot) 'dist\iwoHelperDesktop.exe')
 )
 $ErrorActionPreference = 'Stop'
 
