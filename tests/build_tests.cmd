@@ -10,6 +10,8 @@ if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
     /out:"%~dp0UnitTests.exe" ^
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll ^
     /r:System.Windows.Forms.dll /r:Microsoft.CSharp.dll ^
+    /r:"%~dp0..\build\PdfSharp.dll" ^
+    /resource:"%~dp0..\build\PdfSharp.dll",PdfSharp.dll ^
     "%~dp0..\src\*.cs" "%~dp0UnitTests.cs"
 if errorlevel 1 (
     echo TESTS BUILD FAILED
