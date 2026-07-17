@@ -72,18 +72,23 @@ namespace ExcelMerger
             DragDrop += OnFileDragDrop;
             _tips = new ToolTip();
 
-            Ui.AccentBar(this, 0);
-            Ui.Label(this, "Объединение PDF", 20, 16,
+            MenuStrip menu = HelpMenu.Create(this, ShowHelp);
+            MainMenuStrip = menu;
+            Controls.Add(menu);
+
+            int m = HelpMenu.Height; // содержимое ниже строки меню
+            Ui.AccentBar(this, m);
+            Ui.Label(this, "Объединение PDF", 20, m + 16,
                 new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             Ui.Label(this, "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.",
-                22, 46, Font, Theme.TextMuted);
+                22, m + 46, Font, Theme.TextMuted);
 
             int right = ClientSize.Width - 20;
 
             _thumbs = NewImageList(_tileWidth);
 
             _list = new ListView();
-            _list.SetBounds(20, 80, right - 20 - 150, ClientSize.Height - 80 - 112);
+            _list.SetBounds(20, m + 80, right - 20 - 150, ClientSize.Height - (m + 80) - 112);
             _list.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _list.View = View.LargeIcon;
             _list.LargeImageList = _thumbs;
@@ -103,14 +108,14 @@ namespace ExcelMerger
             Controls.Add(_list);
 
             int col = right - 130;
-            _btnAdd = AddButton("Добавить PDF…", col, 80, 130, 32);
+            _btnAdd = AddButton("Добавить PDF…", col, m + 80, 130, 32);
             _btnAdd.Click += OnAddClick;
             _tips.SetToolTip(_btnAdd, "Файлы также можно перетащить в окно");
-            _btnUp = AddButton("◀ Раньше", col, 124, 130, 30);
+            _btnUp = AddButton("◀ Раньше", col, m + 124, 130, 30);
             _btnUp.Click += delegate { MoveSelected(false); };
-            _btnDown = AddButton("Позже ▶", col, 160, 130, 30);
+            _btnDown = AddButton("Позже ▶", col, m + 160, 130, 30);
             _btnDown.Click += delegate { MoveSelected(true); };
-            _btnRemove = AddButton("Удалить", col, 204, 130, 30);
+            _btnRemove = AddButton("Удалить", col, m + 204, 130, 30);
             _btnRemove.Click += OnRemoveClick;
 
             // Масштаб миниатюр
@@ -146,6 +151,18 @@ namespace ExcelMerger
             _lblStatus = Ui.Label(this, "Добавьте PDF-файлы — кнопкой или перетащив их в окно.",
                 20, ClientSize.Height - 50, Font, Theme.TextMuted);
             _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+        }
+
+        private void ShowHelp()
+        {
+            Dialogs.Info(this, Title, "Как пользоваться",
+                "1. Добавьте PDF-файлы — кнопкой «Добавить PDF…» или перетащив их в окно.\n" +
+                "2. Появится сетка миниатюр страниц. Масштаб — ползунком внизу или Ctrl+колесо мыши.\n" +
+                "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Раньше» / «Позже ▶».\n" +
+                "   Лишние страницы удаляйте кнопкой «Удалить».\n" +
+                "4. «Сохранить PDF…» соберёт один документ в выбранном порядке.\n\n" +
+                "Страницы копируются как есть, без переконвертации — сканы, печати и подписи " +
+                "не искажаются. Битые и защищённые паролем файлы пропускаются с причиной.");
         }
 
         private ImageList NewImageList(int tileWidth)

@@ -39,6 +39,7 @@ namespace ExcelMerger.Tests
             Run("ReportWriter: содержимое полного отчёта", TestReportBuild);
             Run("ReportWriter: ротация хранит не более 3 отчётов", TestReportRotation);
             Run("ReportWriter: коллизия имён в одну секунду", TestReportNameCollision);
+            Run("HelpMenu: структура «Справка» и вставка доп. пунктов", TestHelpMenu);
             Run("ThumbZoom: кламп ширины плитки", TestThumbZoomClamp);
             Run("ThumbZoom: колесо меняет масштаб и упирается в границы", TestThumbZoomWheel);
             Run("ThumbZoom: высота плитки пропорциональна", TestThumbZoomTile);
@@ -318,6 +319,38 @@ namespace ExcelMerger.Tests
             finally
             {
                 Directory.Delete(dir, true);
+            }
+        }
+
+        // ---------- HelpMenu (общее меню «Справка») ----------
+
+        private static void TestHelpMenu()
+        {
+            var extra = new System.Windows.Forms.ToolStripMenuItem("Папка отчётов");
+            using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }, extra))
+            {
+                AssertEqual(1, menu.Items.Count, "один пункт строки меню");
+                var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
+                AssertEqual("Справка", help.Text, "название пункта");
+
+                var texts = new List<string>();
+                foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
+                    if (it is System.Windows.Forms.ToolStripMenuItem)
+                        texts.Add(it.Text);
+                AssertTrue(texts.Contains("Как пользоваться"), "есть «Как пользоваться»");
+                AssertTrue(texts.Contains("Папка отчётов"), "доп. пункт вставлен");
+                AssertTrue(texts.Contains("О программе"), "есть «О программе»");
+            }
+
+            // Без доп. пунктов — только «Как пользоваться» и «О программе».
+            using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }))
+            {
+                var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
+                int menuItems = 0;
+                foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
+                    if (it is System.Windows.Forms.ToolStripMenuItem)
+                        menuItems++;
+                AssertEqual(2, menuItems, "без extras — два пункта");
             }
         }
 

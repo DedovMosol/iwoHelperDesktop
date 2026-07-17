@@ -12,7 +12,7 @@ namespace ExcelMerger
     public class MainForm : Form
     {
         private const string AppTitle = "iwo Helper Desktop";
-        private const int MenuHeight = 28;
+        private const int MenuHeight = HelpMenu.Height;
 
         private TextBox _txtInput;
         private Button _btnBrowseInput;
@@ -223,39 +223,10 @@ namespace ExcelMerger
 
         private void BuildMenu()
         {
-            var menu = new MenuStrip();
-            menu.AutoSize = false;
-            menu.Height = MenuHeight;
-            menu.Dock = DockStyle.Top;
-            menu.BackColor = Color.White;
-            menu.Padding = new Padding(12, 4, 0, 0);
-
-            var help = new ToolStripMenuItem("Справка");
-
-            // По гайдлайнам Windows многоточие — только у команд, требующих
-            // дополнительного ввода; просмотр справки и «О программе» — без него.
-            var howTo = new ToolStripMenuItem("Как пользоваться");
-            howTo.ShortcutKeys = Keys.F1;
-            howTo.Click += delegate { ShowHelp(); };
-
             var reports = new ToolStripMenuItem("Папка отчётов");
             reports.Click += delegate { OpenReportsFolder(); };
 
-            var about = new ToolStripMenuItem("О программе");
-            about.Click += delegate
-            {
-                using (var form = new AboutForm())
-                    form.ShowDialog(this);
-            };
-
-            help.DropDownItems.Add(howTo);
-            help.DropDownItems.Add(new ToolStripSeparator());
-            help.DropDownItems.Add(reports);
-            help.DropDownItems.Add(new ToolStripSeparator());
-            help.DropDownItems.Add(about);
-
-            menu.Items.Add(help);
-
+            MenuStrip menu = HelpMenu.Create(this, ShowHelp, reports);
             MainMenuStrip = menu;
             Controls.Add(menu);
         }

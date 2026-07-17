@@ -20,7 +20,7 @@ namespace ExcelMerger
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(450, 258);
+            ClientSize = new Size(460, 306);
 
             Ui.AccentBar(this, 0);
 
@@ -46,13 +46,14 @@ namespace ExcelMerger
             Ui.Label(this, "Автор: DedovMosol", 24, 128, Font, Theme.TextPrimary);
             Ui.Label(this, "© 2026 · Лицензия MIT", 24, 152, Font, Theme.TextMuted);
 
-            Ui.UrlLink(this, "Telegram: t.me/i_wantout", 24, 184, "https://t.me/i_wantout");
-            Ui.UrlLink(this, "GitHub: github.com/DedovMosol/iwoHelperDesktop", 24, 208,
+            Ui.UrlLink(this, "Telegram: t.me/i_wantout", 24, 186, "https://t.me/i_wantout");
+            Ui.UrlLink(this, "GitHub: DedovMosol/iwoHelperDesktop", 24, 212,
                 "https://github.com/DedovMosol/iwoHelperDesktop");
 
+            // Кнопка OK — в самом низу, ниже ссылок (иначе длинная ссылка налезала).
             var ok = new RoundedButton(true);
             ok.Text = "OK";
-            ok.SetBounds(ClientSize.Width - 124, ClientSize.Height - 54, 100, 36);
+            ok.SetBounds(ClientSize.Width - 124, ClientSize.Height - 52, 100, 36);
             ok.Click += delegate { Close(); };
             Controls.Add(ok);
             AcceptButton = ok;

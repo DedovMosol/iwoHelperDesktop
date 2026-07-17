@@ -19,7 +19,8 @@ namespace ExcelMerger
     /// </summary>
     public class ChoiceCard : Control
     {
-        private static readonly Color PdfRed = Color.FromArgb(198, 40, 40);
+        private static readonly Color PdfRed = Color.FromArgb(211, 47, 47);      // #D32F2F
+        private static readonly Color PdfFold = Color.FromArgb(154, 34, 34);     // #9A2222
 
         private readonly CardGlyph _glyph;
         private readonly string _title;
@@ -125,7 +126,7 @@ namespace ExcelMerger
         {
             bool excel = _glyph == CardGlyph.Excel;
             Color main = excel ? Theme.Accent : PdfRed;
-            Color fold = excel ? Theme.AccentPressed : Color.FromArgb(150, 26, 26);
+            Color fold = excel ? Theme.AccentPressed : PdfFold;
 
             // Координаты из примера (viewBox 24) масштабируются в прямоугольник значка.
             float s = r.Width / 24f;
@@ -165,13 +166,26 @@ namespace ExcelMerger
             }
             else
             {
-                using (var f = new Font("Segoe UI", 8.5f * s, FontStyle.Bold))
+                // Векторные буквы «PDF» из file-pdf.svg — крупнее и чётче текста.
+                using (var pen = new Pen(Color.White, 1.5f * s))
                 {
-                    var textRect = new Rectangle(r.X, r.Y + (int)(6 * s), r.Width, (int)(16 * s));
-                    TextRenderer.DrawText(g, "PDF", f, textRect, Color.White,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    pen.LineJoin = LineJoin.Round;
+                    DrawPolyline(g, pen, p, new[] { new[] { 6.5f, 19f }, new[] { 6.5f, 11.5f }, new[] { 9f, 11.5f }, new[] { 9f, 15f }, new[] { 6.5f, 15f } });
+                    DrawPolyline(g, pen, p, new[] { new[] { 11f, 19f }, new[] { 11f, 11.5f }, new[] { 13f, 11.5f }, new[] { 14.5f, 13.5f }, new[] { 14.5f, 17f }, new[] { 13f, 19f }, new[] { 11f, 19f } });
+                    DrawPolyline(g, pen, p, new[] { new[] { 16.5f, 19f }, new[] { 16.5f, 11.5f }, new[] { 19.5f, 11.5f } });
+                    DrawPolyline(g, pen, p, new[] { new[] { 16.5f, 15f }, new[] { 19f, 15f } });
                 }
             }
+        }
+
+        private static void DrawPolyline(Graphics g, Pen pen, Func<float, float, PointF> map, float[][] pts)
+        {
+            var points = new PointF[pts.Length];
+            for (int i = 0; i < pts.Length; i++)
+                points[i] = map(pts[i][0], pts[i][1]);
+            g.DrawLines(pen, points);
         }
 
         private static GraphicsPath Rounded(RectangleF r, float radius)
