@@ -1,3 +1,4 @@
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -40,13 +41,33 @@ namespace ExcelMerger
             using (var pen = new Pen(Color.FromArgb(60, 0, 0, 0)))
                 e.Graphics.DrawLine(pen, 0, r.Height - 1, r.Width, r.Height - 1);
 
+            // Текст не должен заходить под дочерние контролы (кнопку «Назад в меню»):
+            // ограничиваем правую границу и обрезаем многоточием.
+            int leftmostChild = int.MaxValue;
+            foreach (Control c in Controls)
+                if (c.Visible && c.Left < leftmostChild)
+                    leftmostChild = c.Left;
+            int rightBound = TextRightBound(Width, leftmostChild);
+
             int subtitleY = Height - 28;
             int titleY = subtitleY - 30;
-            TextRenderer.DrawText(e.Graphics, _title, TitleFont, new Point(18, titleY),
-                Color.White, TextFormatFlags.NoPrefix);
+            const TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis |
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
+            TextRenderer.DrawText(e.Graphics, _title, TitleFont,
+                new Rectangle(18, titleY, rightBound - 18, 26), Color.White, flags);
             if (_subtitle.Length > 0)
-                TextRenderer.DrawText(e.Graphics, _subtitle, Font, new Point(20, subtitleY),
-                    SubtitleColor, TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(e.Graphics, _subtitle, Font,
+                    new Rectangle(20, subtitleY, rightBound - 20, 20), SubtitleColor, flags);
+        }
+
+        /// <summary>
+        /// Правая граница текста шапки: не заходить под левый край дочерних
+        /// контролов (кнопки «Назад»), но и не за правый край панели. Чистая — под тест.
+        /// </summary>
+        internal static int TextRightBound(int bandWidth, int leftmostChildLeft)
+        {
+            int bound = leftmostChildLeft < int.MaxValue ? leftmostChildLeft - 12 : bandWidth - 20;
+            return Math.Min(bound, bandWidth - 20);
         }
     }
 }

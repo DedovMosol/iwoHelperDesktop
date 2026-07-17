@@ -3,6 +3,28 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.10.4] — 2026-07-18
+
+### Fixed
+- **Header text no longer runs under the “Back to menu” button** on narrow
+  windows: the title and subtitle are clipped to the leftmost child control with
+  an ellipsis (`HeaderBand.TextRightBound`, unit-tested).
+- **Bottom links (“Word note”) no longer overlap the “Retry skipped” button**: the
+  Excel window's minimum width was widened so the two action areas can't collide.
+- **PDF Merge window now has the app icon** (previously the default WinForms icon)
+  and appears in the taskbar, consistent with the Excel window.
+
+### Changed
+- **Accessibility**: the start-screen tool cards report as buttons with a name and
+  description to screen readers (`AccessibleRole`/`AccessibleName`).
+- **Keyboard**: in the Excel “Files to merge” list, `Alt+↑`/`Alt+↓` reorder the
+  selected file; `Enter` in the list no longer triggers the merge.
+- The source-folder field is rescanned with a short debounce instead of on every
+  keystroke.
+- Tab order: the “Back to menu” button is visited last instead of early.
+- App-icon loading was de-duplicated into a single `Ui.AppIcon()` helper.
+- CLI usage line updated (correct exe name, `--allsheets`).
+
 ## [1.10.3] — 2026-07-18
 
 ### Changed

@@ -63,6 +63,9 @@ namespace ExcelMerger
         private void BuildUi()
         {
             Text = Title;
+            Icon pdfIcon = Ui.AppIcon();
+            if (pdfIcon != null)
+                Icon = pdfIcon;
             Font = new Font("Segoe UI", 9.75f);
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
@@ -70,7 +73,7 @@ namespace ExcelMerger
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(780, 620);
             MinimumSize = new Size(660, 500);
-            ShowInTaskbar = false;
+            ShowInTaskbar = true; // как у свода Excel — своя кнопка в панели задач
             WindowChrome.Enable(this, Theme.PdfRed); // красный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnFileDragEnter;
@@ -87,6 +90,7 @@ namespace ExcelMerger
                 Theme.PdfRed, Theme.PdfRedDark);
             header.SetBounds(0, m, ClientSize.Width, 76);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            header.TabIndex = 100; // «Назад в меню» — в конце обхода Tab
             Controls.Add(header);
             if (_backToMenu != null)
             {

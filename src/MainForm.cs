@@ -59,6 +59,7 @@ namespace ExcelMerger
         private Button _btnCheckAll;
         private Button _btnUncheckAll;
         private Panel _dropLine;   // индикатор вставки при перетаскивании
+        private System.Windows.Forms.Timer _inputDebounce; // отложенное сканирование папки
         private int _dragIndex = -1;
         private bool _populating;  // подавляет ItemChecked во время заполнения
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
@@ -84,7 +85,16 @@ namespace ExcelMerger
             int formatIndex = Array.IndexOf(OutputFormats.Extensions, _settings.OutputExtension);
             _cmbFormat.SelectedIndex = formatIndex >= 0 ? formatIndex : 0;
             _cmbScope.SelectedIndex = _settings.AllSheets ? 1 : 0;
+            if (_inputDebounce != null)
+                _inputDebounce.Stop(); // стартовая загрузка — сразу, без отложенного повтора
             RefreshFileList();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _inputDebounce != null)
+                _inputDebounce.Dispose();
+            base.Dispose(disposing);
         }
 
         // ---------- построение интерфейса ----------
@@ -93,16 +103,18 @@ namespace ExcelMerger
         {
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             Text = AppTitle + " " + version.ToString(2);
-            Icon icon = LoadAppIcon();
-            if (icon != null)
-                Icon = icon;
+            Icon appIcon = Ui.AppIcon();
+            if (appIcon != null)
+                Icon = appIcon;
             Font = new Font("Segoe UI", 9.75f);
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(780, 785);
-            MinimumSize = new Size(700, 725);
+            // Ширина минимума не даёт нижним ссылкам («Записка Word») перекрыться
+            // с правой кнопкой «Повторить пропущенные».
+            MinimumSize = new Size(760, 725);
             WindowChrome.Enable(this, Theme.Accent); // зелёный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnDragEnter;
@@ -118,13 +130,18 @@ namespace ExcelMerger
                 Theme.Accent, Theme.AccentPressed);
             header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            header.TabIndex = 100; // «Назад в меню» — в конце обхода Tab, а не в начале
             Controls.Add(header);
             AddBackButton(header);
 
             // Шаг 1: исходная папка
             AddSectionLabel("ПАПКА С ИСХОДНЫМИ ФАЙЛАМИ", 115);
             _txtInput = AddTextBox(20, 135, right - 20 - 110);
-            _txtInput.TextChanged += delegate { RefreshFileList(); };
+            // Дебаунс: набор пути вручную не сканирует папку на каждый символ.
+            _inputDebounce = new System.Windows.Forms.Timer();
+            _inputDebounce.Interval = 300;
+            _inputDebounce.Tick += delegate { _inputDebounce.Stop(); RefreshFileList(); };
+            _txtInput.TextChanged += delegate { _inputDebounce.Stop(); _inputDebounce.Start(); };
             _btnBrowseInput = AddButton("Обзор…", false, right - 100, 134, 100, 29);
             _btnBrowseInput.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseInput.Click += OnBrowseInput;
@@ -224,6 +241,24 @@ namespace ExcelMerger
                 {
                     CopySelectedRows();
                     e.Handled = true;
+                }
+                else if (e.Alt && e.KeyCode == Keys.Up)
+                {
+                    MoveSelectedFile(false); // перестановка выше без мыши
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+                else if (e.Alt && e.KeyCode == Keys.Down)
+                {
+                    MoveSelectedFile(true);
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+                else if (e.KeyCode == Keys.Enter)
+                {
+                    // Enter в списке не должен запускать слияние (AcceptButton).
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
                 }
             };
             Controls.Add(_list);
@@ -325,18 +360,6 @@ namespace ExcelMerger
             catch (Exception ex)
             {
                 Dialogs.Error(this, AppTitle, "Не удалось открыть папку отчётов", ex.Message);
-            }
-        }
-
-        private static Icon LoadAppIcon()
-        {
-            try
-            {
-                return Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            }
-            catch
-            {
-                return null; // без иконки, со стандартной системной
             }
         }
 

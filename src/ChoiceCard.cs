@@ -39,6 +39,10 @@ namespace ExcelMerger
             TabStop = true;
             Cursor = Cursors.Hand;
             BackColor = Color.White;
+            // Доступность: экранный диктор объявляет карточку как кнопку с названием.
+            AccessibleRole = AccessibleRole.PushButton;
+            AccessibleName = title;
+            AccessibleDescription = description;
         }
 
         protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }

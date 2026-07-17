@@ -26,7 +26,7 @@ namespace ExcelMerger
                 {
                     AttachConsole(-1);
                     WriteConsole("ERROR: " + parseError);
-                    WriteConsole("Использование: ExcelMerger.exe --cli <папка> <итоговый.xlsx> [--toc] [--values]");
+                    WriteConsole("Использование: iwoHelperDesktop.exe --cli <папка> <итоговый> [--toc] [--values] [--allsheets]");
                     return 1;
                 }
                 return RunCli(args[1], args[2], options);
