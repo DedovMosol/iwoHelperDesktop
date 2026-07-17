@@ -32,7 +32,7 @@ namespace ExcelMerger
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            Application.Run(new StartForm());
             return 0;
         }
 
@@ -81,6 +81,12 @@ namespace ExcelMerger
                 using (var pdf = new PdfMergeForm())
                 {
                     IntPtr handle = pdf.Handle;
+                    if (handle == IntPtr.Zero)
+                        return 3;
+                }
+                using (var start = new StartForm())
+                {
+                    IntPtr handle = start.Handle;
                     if (handle == IntPtr.Zero)
                         return 3;
                 }
