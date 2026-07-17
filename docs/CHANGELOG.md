@@ -3,6 +3,27 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.10.2] — 2026-07-17
+
+### Added
+- **Fault tolerance for the Excel merge**, in layers, following best practice:
+  - **Signature pre-check** (`FileSignature`): each source file's container is
+    detected by magic bytes before Excel touches it. A file that is neither a ZIP
+    (OOXML) nor an OLE2/CFB document — e.g. text renamed to `.xlsx` — is skipped
+    as corrupt; a `.xlsx`/`.xlsm`/`.xlsb` whose container is OLE2 is an encrypted
+    (password-protected) workbook and is skipped as such. This matters because
+    `Workbooks.Open` on a broken or encrypted file can wedge Excel so that every
+    following file fails to open too.
+  - **Self-healing restart**: if a file still wedges Excel (`Workbooks` stop
+    responding), the Excel instance is torn down and restarted without that file,
+    and the merge continues — no machine reboot, no loss of the other files
+    (bounded to a few restarts, then a clear error).
+  - **Pre-flight free-space check**: if the system, temp or output drive is nearly
+    full, the merge stops up front with a clear message (“almost no free space on
+    drive C: … Excel can't open files — free up space and retry”) instead of a
+    dozen cryptic “unable to get the Open property” failures.
+  - Unit tests: `FileSignature.Detect` (ZIP/OLE2/text/empty), `LowSpaceMessage`.
+
 ## [1.10.1] — 2026-07-17
 
 ### Added
