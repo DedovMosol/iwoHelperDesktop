@@ -35,6 +35,7 @@ namespace ExcelMerger
         private LinkLabel _lnkNote;
         private Button _btnRetry;
 
+        private readonly Action _backToMenu;
         private MergeService _service;
         private Thread _worker;
         private UserSettings _settings;
@@ -51,8 +52,11 @@ namespace ExcelMerger
         private bool _noteBusy;       // готовится записка Word (только UI-поток)
         private bool _closeRequested; // пользователь закрыл окно во время объединения
 
-        public MainForm()
+        public MainForm() : this(null) { }
+
+        public MainForm(Action backToMenu)
         {
+            _backToMenu = backToMenu;
             BuildUi();
 
             _settings = UserSettings.Load();
@@ -95,6 +99,7 @@ namespace ExcelMerger
 
             BuildMenu();
             Ui.AccentBar(this, MenuHeight);
+            AddBackButton(right);
 
             // Шапка
             Ui.Label(this, "Свод Excel", 20, 47,
@@ -219,6 +224,17 @@ namespace ExcelMerger
             Resize += delegate { AdjustNoteColumn(); };
             AdjustNoteColumn();
             UpdateReadiness();
+        }
+
+        private void AddBackButton(int right)
+        {
+            if (_backToMenu == null)
+                return; // запущено вне хаба (напр. автотест)
+            Button back = Ui.BackButton(_backToMenu);
+            back.SetBounds(right - 160, 44, 160, 30);
+            back.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(back, "Вернуть на передний план окно выбора инструмента");
+            Controls.Add(back);
         }
 
         private void BuildMenu()

@@ -21,6 +21,7 @@ namespace ExcelMerger
         private const string Title = "Объединение PDF";
         private const string PlaceholderKey = "__ph";
 
+        private readonly Action _backToMenu;
         private readonly PdfPageOrder _order = new PdfPageOrder();
         // Отрендеренные страницы (в ширину RenderWidth), из них пересобираются
         // плитки при зуме. Только UI-поток.
@@ -49,8 +50,11 @@ namespace ExcelMerger
         private Thread _thumbThread;
         private volatile bool _thumbStop;
 
-        public PdfMergeForm()
+        public PdfMergeForm() : this(null) { }
+
+        public PdfMergeForm(Action backToMenu)
         {
+            _backToMenu = backToMenu;
             BuildUi();
             StartThumbWorker();
             UpdateButtons();
@@ -78,6 +82,14 @@ namespace ExcelMerger
 
             int m = HelpMenu.Height; // содержимое ниже строки меню
             Ui.AccentBar(this, m);
+            if (_backToMenu != null)
+            {
+                Button back = Ui.BackButton(_backToMenu);
+                back.SetBounds(ClientSize.Width - 180, m + 12, 160, 30);
+                back.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                _tips.SetToolTip(back, "Вернуть на передний план окно выбора инструмента");
+                Controls.Add(back);
+            }
             Ui.Label(this, "Объединение PDF", 20, m + 16,
                 new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             Ui.Label(this, "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.",

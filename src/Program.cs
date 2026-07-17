@@ -72,7 +72,8 @@ namespace ExcelMerger
             {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                using (var form = new MainForm())
+                Action noop = delegate { };
+                using (var form = new MainForm(noop)) // с кнопкой «Назад в меню»
                 {
                     IntPtr handle = form.Handle; // форсирует создание окна без показа
                     if (handle == IntPtr.Zero)
@@ -84,7 +85,7 @@ namespace ExcelMerger
                     if (handle == IntPtr.Zero)
                         return 3;
                 }
-                using (var pdf = new PdfMergeForm())
+                using (var pdf = new PdfMergeForm(noop))
                 {
                     IntPtr handle = pdf.Handle;
                     if (handle == IntPtr.Zero)

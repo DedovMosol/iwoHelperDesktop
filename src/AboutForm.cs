@@ -46,8 +46,11 @@ namespace ExcelMerger
             Ui.Label(this, "Автор: DedovMosol", 24, 128, Font, Theme.TextPrimary);
             Ui.Label(this, "© 2026 · Лицензия MIT", 24, 152, Font, Theme.TextMuted);
 
-            Ui.UrlLink(this, "Telegram: t.me/i_wantout", 24, 186, "https://t.me/i_wantout");
-            Ui.UrlLink(this, "GitHub: DedovMosol/iwoHelperDesktop", 24, 212,
+            // Кликабельна только ссылка, подпись слева — обычный текст.
+            Label tg = Ui.Label(this, "Telegram:", 24, 186, Font, Theme.TextPrimary);
+            Ui.UrlLink(this, "t.me/i_wantout", tg.Right + 6, 186, "https://t.me/i_wantout");
+            Label gh = Ui.Label(this, "GitHub:", 24, 212, Font, Theme.TextPrimary);
+            Ui.UrlLink(this, "DedovMosol/iwoHelperDesktop", gh.Right + 6, 212,
                 "https://github.com/DedovMosol/iwoHelperDesktop");
 
             // Кнопка OK — в самом низу, ниже ссылок (иначе длинная ссылка налезала).

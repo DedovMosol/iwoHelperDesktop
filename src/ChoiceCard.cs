@@ -47,12 +47,9 @@ namespace ExcelMerger
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
-            bool wasPressed = _pressed;
             _pressed = false;
             Invalidate();
-            base.OnMouseUp(e);
-            if (wasPressed && ClientRectangle.Contains(e.Location) && e.Button == MouseButtons.Left)
-                OnClick(EventArgs.Empty);
+            base.OnMouseUp(e); // Click поднимает база (ControlStyles.StandardClick) — не дублируем
         }
 
         protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
