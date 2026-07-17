@@ -54,6 +54,13 @@ namespace ExcelMerger
             return b;
         }
 
+        /// <summary>Иконка приложения из exe (или null, если недоступна). Общая для всех окон.</summary>
+        public static Icon AppIcon()
+        {
+            try { return Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+            catch { return null; } // без иконки — со стандартной системной
+        }
+
         /// <summary>Акцентная полоса в верхней части окна.</summary>
         public static Panel AccentBar(Control parent, int y)
         {

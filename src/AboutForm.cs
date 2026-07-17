@@ -27,13 +27,9 @@ namespace ExcelMerger
             var iconBox = new PictureBox();
             iconBox.SetBounds(24, 26, 48, 48);
             iconBox.SizeMode = PictureBoxSizeMode.StretchImage;
-            try
-            {
-                Icon appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-                if (appIcon != null)
-                    iconBox.Image = appIcon.ToBitmap();
-            }
-            catch { } // без картинки, с одним текстом
+            Icon appIcon = Ui.AppIcon();
+            if (appIcon != null)
+                iconBox.Image = appIcon.ToBitmap();
             Controls.Add(iconBox);
 
             Ui.Label(this, "iwo Helper Desktop", 86, 26,

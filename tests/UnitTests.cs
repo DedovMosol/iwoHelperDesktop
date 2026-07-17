@@ -53,6 +53,7 @@ namespace ExcelMerger.Tests
             Run("LowSpaceMessage: мало места — понятная ошибка, иначе null", TestLowSpaceMessage);
             Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
             Run("HeaderBand: строится с заголовком, двойная буферизация", TestHeaderBand);
+            Run("HeaderBand.TextRightBound: текст не заходит под кнопку", TestHeaderTextBound);
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
             Run("PdfPageOrder: удаление набора строк", TestPdfOrderRemove);
@@ -543,6 +544,17 @@ namespace ExcelMerger.Tests
         }
 
         // ---------- WindowChrome / HeaderBand ----------
+
+        private static void TestHeaderTextBound()
+        {
+            // Нет дочерних контролов — граница у правого края с отступом.
+            AssertEqual(760, HeaderBand.TextRightBound(780, int.MaxValue), "без кнопки — правый край - 20");
+            // Кнопка слева от края — текст обрезается до её левой границы минус зазор.
+            AssertEqual(588, HeaderBand.TextRightBound(780, 600), "с кнопкой — левее её на 12");
+            AssertEqual(488, HeaderBand.TextRightBound(700, 500), "узкое окно — левее кнопки");
+            // Кнопка правее правого поля — не выходим за край панели.
+            AssertEqual(760, HeaderBand.TextRightBound(780, 900), "кнопка за краем — ограничены полем");
+        }
 
         private static void TestWindowChromeColorRef()
         {

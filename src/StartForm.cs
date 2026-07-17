@@ -22,8 +22,9 @@ namespace ExcelMerger
         {
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             Text = AppTitle + " " + version.ToString(2);
-            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
-            catch { }
+            Icon startIcon = Ui.AppIcon();
+            if (startIcon != null)
+                Icon = startIcon;
             Font = new Font("Segoe UI", 9.75f);
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
