@@ -1,11 +1,11 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-[assembly: AssemblyTitle("Свод листов Excel")]
-[assembly: AssemblyDescription("Объединение листов из нескольких файлов Excel в один итоговый файл")]
-[assembly: AssemblyCompany("Внутренний инструмент")]
-[assembly: AssemblyProduct("ExcelMerger")]
+[assembly: AssemblyTitle("iwo Helper Desktop")]
+[assembly: AssemblyDescription("iwo Helper Desktop — офисные инструменты: свод Excel и объединение PDF")]
+[assembly: AssemblyCompany("iwo")]
+[assembly: AssemblyProduct("iwo Helper Desktop")]
 [assembly: AssemblyCopyright("© 2026")]
-[assembly: AssemblyVersion("1.7.0.0")]
-[assembly: AssemblyFileVersion("1.7.0.0")]
+[assembly: AssemblyVersion("1.8.0.0")]
+[assembly: AssemblyFileVersion("1.8.0.0")]
 [assembly: ComVisible(false)]

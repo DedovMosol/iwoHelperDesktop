@@ -11,7 +11,7 @@ namespace ExcelMerger
 {
     public class MainForm : Form
     {
-        private const string AppTitle = "Свод листов Excel";
+        private const string AppTitle = "iwo Helper Desktop";
         private const int MenuHeight = 28;
 
         private TextBox _txtInput;
@@ -97,7 +97,7 @@ namespace ExcelMerger
             Ui.AccentBar(this, MenuHeight);
 
             // Шапка
-            Ui.Label(this, "Свод листов Excel", 20, 47,
+            Ui.Label(this, "Свод Excel", 20, 47,
                 new Font("Segoe UI", 15f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             Ui.Label(this, "Первый видимый лист каждого файла папки — в один итоговый файл .xlsx",
                 22, 79, Font, Theme.TextMuted);

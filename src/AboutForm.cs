@@ -36,12 +36,12 @@ namespace ExcelMerger
             catch { } // без картинки, с одним текстом
             Controls.Add(iconBox);
 
-            Ui.Label(this, "Свод листов Excel", 86, 26,
+            Ui.Label(this, "iwo Helper Desktop", 86, 26,
                 new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             Ui.Label(this, "Версия " + version.ToString(3), 88, 58, Font, Theme.TextMuted);
 
-            Ui.Label(this, "Слияние листов Excel-файлов в один свод без потери оформления.",
+            Ui.Label(this, "Офисные инструменты: свод листов Excel и объединение PDF.",
                 24, 96, Font, Theme.TextPrimary);
             Ui.Label(this, "Автор: DedovMosol", 24, 128, Font, Theme.TextPrimary);
             Ui.Label(this, "© 2026 · Лицензия MIT", 24, 152, Font, Theme.TextMuted);

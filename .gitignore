@@ -2,6 +2,12 @@
 dist/
 selftest.log
 
+# Промежуточные файлы dotnet/MSBuild
+obj/
+tests/bin/
+tests/obj/
+*.user
+
 # Тестовые артефакты (генерируются tests/make_testdata.ps1 и прогонами)
 tests/testdata/
 tests/out/
@@ -11,5 +17,4 @@ tests/icon_preview.png
 # Windows
 Thumbs.db
 desktop.ini
-tests/UnitTests.exe
 tests/retrydata/

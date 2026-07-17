@@ -26,7 +26,7 @@ namespace ExcelMerger
             MergeOptions options, DateTime startedAt)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Свод листов Excel — отчёт о слиянии");
+            sb.AppendLine("iwo Helper Desktop — отчёт о слиянии");
             sb.AppendLine("Дата:           " + startedAt.ToString("yyyy-MM-dd HH:mm:ss"));
             sb.AppendLine("Папка:          " + inputFolder);
             sb.AppendLine("Итоговый файл:  " + result.OutputPath);

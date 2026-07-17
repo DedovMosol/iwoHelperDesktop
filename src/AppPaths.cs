@@ -12,7 +12,7 @@ namespace ExcelMerger
             {
                 return Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "ExcelMerger");
+                    "iwo Helper Desktop");
             }
         }
 

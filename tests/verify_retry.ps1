@@ -5,7 +5,7 @@ $root = Split-Path $PSScriptRoot
 $fails = @()
 
 # Add-Type не принимает .exe — загружаем сборку напрямую.
-[void][System.Reflection.Assembly]::LoadFrom((Join-Path $root 'dist\ExcelMerger.exe'))
+[void][System.Reflection.Assembly]::LoadFrom((Join-Path $root 'dist\iwoHelperDesktop.exe'))
 
 # Отдельная копия корпуса: битый файл будем чинить, общий корпус не трогаем.
 $data = Join-Path $PSScriptRoot 'retrydata'

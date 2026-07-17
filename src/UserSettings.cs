@@ -3,7 +3,7 @@ using System.IO;
 
 namespace ExcelMerger
 {
-    /// <summary>Пользовательские настройки; хранятся в %APPDATA%\ExcelMerger\settings.txt.</summary>
+    /// <summary>Пользовательские настройки; хранятся в %APPDATA%\iwo Helper Desktop\settings.txt.</summary>
     public class UserSettings
     {
         public string LastInputFolder;

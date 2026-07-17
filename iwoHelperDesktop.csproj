@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Приложение .NET Framework 4.8 (на целевой машине уже есть, ничего не ставится).
+       WinRT (Windows.Data.Pdf для миниатюр PDF) даёт Microsoft.Windows.SDK.Contracts —
+       только на этапе компиляции; проекция в рантайме встроена в .NET Framework.
+       На выходе один exe в dist\; PdfSharp вшит ресурсом. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>iwoHelperDesktop</AssemblyName>
+    <RootNamespace>ExcelMerger</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <ApplicationIcon>build\app.ico</ApplicationIcon>
+    <ApplicationManifest>build\app.manifest</ApplicationManifest>
+    <Optimize>true</Optimize>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
+    <!-- Один exe в dist\ без вложенных net48\ и rid\ -->
+    <OutputPath>dist\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- dynamic (позднее связывание COM Excel/Word) -->
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- PdfSharp (MIT) вшивается ресурсом; наружу — один файл -->
+    <Reference Include="PdfSharp">
+      <HintPath>build\PdfSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <EmbeddedResource Include="build\PdfSharp.dll">
+      <LogicalName>PdfSharp.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WinRT-проекции для .NET Framework (только компиляция) -->
+    <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.19041.1" />
+    <!-- Референс-сборки net48, чтобы сборка не требовала установленного таргет-пака -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

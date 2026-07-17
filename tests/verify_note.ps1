@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $fails = @()
 
-[void][System.Reflection.Assembly]::LoadFrom((Join-Path $root 'dist\ExcelMerger.exe'))
+[void][System.Reflection.Assembly]::LoadFrom((Join-Path $root 'dist\iwoHelperDesktop.exe'))
 
 $result = New-Object ExcelMerger.MergeResult
 $result.OutputPath = Join-Path $PSScriptRoot 'out\Свод.xlsx'

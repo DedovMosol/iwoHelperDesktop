@@ -1,31 +1,17 @@
 @echo off
-rem Сборка dist\ExcelMerger.exe встроенным в Windows компилятором C# (.NET Framework 4.8).
-rem Никаких внешних инструментов и упаковщиков — минимальный риск триггера антивируса.
-rem Входы сборки — build\ (манифест, иконка), исходники — src\, результат — dist\.
+rem Сборка dist\iwoHelperDesktop.exe через dotnet SDK (.NET Framework 4.8, WinForms).
+rem На выходе один exe: PdfSharp вшит ресурсом, WinRT-проекции — только компиляция.
+rem На целевой машине ничего не ставится (нужен лишь .NET Framework 4.8, он есть).
 setlocal
-
-set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
-if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
-if not exist "%CSC%" (
-    echo ERROR: csc.exe not found. .NET Framework 4.x is required.
+where dotnet >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: не найден dotnet SDK. Установите .NET SDK 6+ для сборки.
     exit /b 1
 )
 
-if not exist "%~dp0dist" mkdir "%~dp0dist"
-
-rem PdfSharp.dll (MIT) вшивается ресурсом — наружу уходит один exe.
-"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 ^
-    /out:"%~dp0dist\ExcelMerger.exe" ^
-    /win32manifest:"%~dp0build\app.manifest" ^
-    /win32icon:"%~dp0build\app.ico" ^
-    /r:System.dll /r:System.Core.dll /r:System.Drawing.dll ^
-    /r:System.Windows.Forms.dll /r:Microsoft.CSharp.dll ^
-    /r:"%~dp0build\PdfSharp.dll" ^
-    /resource:"%~dp0build\PdfSharp.dll",PdfSharp.dll ^
-    "%~dp0src\*.cs"
-
+dotnet build "%~dp0iwoHelperDesktop.csproj" -c Release -v minimal --nologo
 if errorlevel 1 (
     echo BUILD FAILED
     exit /b 1
 )
-echo BUILD OK: %~dp0dist\ExcelMerger.exe
+echo BUILD OK: %~dp0dist\iwoHelperDesktop.exe

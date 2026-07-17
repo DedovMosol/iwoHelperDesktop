@@ -1,5 +1,5 @@
-# Сборка встроенным в Windows csc + юнит-тесты + смоук-тест GUI.
-# Интеграционные тесты (tests/verify*.ps1) требуют установленный Excel
+# Сборка через dotnet SDK (.NET Framework 4.8 target) + юнит-тесты + смоук GUI.
+# Интеграционные тесты (tests/verify*.ps1) требуют установленные Office/Excel/Word
 # и выполняются только локально: tests\run_all.cmd.
 name: CI
 
@@ -19,6 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Установка .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Сборка приложения
         shell: cmd
         run: call build.cmd
@@ -27,21 +32,27 @@ jobs:
         shell: cmd
         run: call tests\build_tests.cmd
 
-      - name: Смоук-тест GUI (создание окна без показа)
+      - name: Смоук-тест GUI (создание окон без показа)
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath .\dist\ExcelMerger.exe -ArgumentList '--selftest' -Wait -PassThru
+          $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--selftest' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode)"; exit 1 }
+
+      - name: Проверка вшитого PdfSharp
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--pdfcheck' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Host "pdfcheck exit=$($p.ExitCode)"; exit 1 }
 
       - name: Артефакт сборки
         uses: actions/upload-artifact@v4
         with:
-          name: ExcelMerger
-          path: dist/ExcelMerger.exe
+          name: iwoHelperDesktop
+          path: dist/iwoHelperDesktop.exe
 
       - name: Релиз (при пуше тега v*)
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME dist/ExcelMerger.exe --generate-notes
+        run: gh release create $env:GITHUB_REF_NAME dist/iwoHelperDesktop.exe --generate-notes
