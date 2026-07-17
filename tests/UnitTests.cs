@@ -39,6 +39,9 @@ namespace ExcelMerger.Tests
             Run("ReportWriter: содержимое полного отчёта", TestReportBuild);
             Run("ReportWriter: ротация хранит не более 3 отчётов", TestReportRotation);
             Run("ReportWriter: коллизия имён в одну секунду", TestReportNameCollision);
+            Run("ThumbZoom: кламп ширины плитки", TestThumbZoomClamp);
+            Run("ThumbZoom: колесо меняет масштаб и упирается в границы", TestThumbZoomWheel);
+            Run("ThumbZoom: высота плитки пропорциональна", TestThumbZoomTile);
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
             Run("PdfPageOrder: удаление набора строк", TestPdfOrderRemove);
@@ -316,6 +319,40 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        // ---------- ThumbZoom ----------
+
+        private static void TestThumbZoomClamp()
+        {
+            AssertEqual(ThumbZoom.MinWidth, ThumbZoom.Clamp(ThumbZoom.MinWidth - 50), "ниже минимума");
+            AssertEqual(ThumbZoom.MaxWidth, ThumbZoom.Clamp(ThumbZoom.MaxWidth + 50), "выше максимума");
+            AssertEqual(150, ThumbZoom.Clamp(150), "в диапазоне");
+        }
+
+        private static void TestThumbZoomWheel()
+        {
+            int up = ThumbZoom.StepFromWheel(132, 120);   // один щелчок вверх
+            int down = ThumbZoom.StepFromWheel(132, -120); // один щелчок вниз
+            AssertTrue(up > 132, "колесо вверх увеличивает: " + up);
+            AssertTrue(down < 132, "колесо вниз уменьшает: " + down);
+            AssertEqual(ThumbZoom.MaxWidth, ThumbZoom.StepFromWheel(ThumbZoom.MaxWidth, 1200), "не выше максимума");
+            AssertEqual(ThumbZoom.MinWidth, ThumbZoom.StepFromWheel(ThumbZoom.MinWidth, -1200), "не ниже минимума");
+        }
+
+        private static void TestThumbZoomTile()
+        {
+            System.Drawing.Size s = ThumbZoom.TileSize(160);
+            AssertEqual(160, s.Width, "ширина");
+            AssertTrue(s.Height > s.Width, "высота больше ширины (портрет): " + s.Height);
+
+            // Регрессия: плитка не должна превышать лимит ImageList (256×256)
+            // даже на максимуме масштаба — иначе WinForms бросает исключение.
+            System.Drawing.Size max = ThumbZoom.TileSize(ThumbZoom.MaxWidth);
+            AssertTrue(max.Width <= 256 && max.Height <= 256,
+                "плитка в пределах 256: " + max.Width + "x" + max.Height);
+            System.Drawing.Size over = ThumbZoom.TileSize(10000);
+            AssertTrue(over.Width <= 256 && over.Height <= 256, "кламп сверх лимита");
         }
 
         // ---------- PdfPageOrder ----------

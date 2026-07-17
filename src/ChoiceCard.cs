@@ -119,31 +119,58 @@ namespace ExcelMerger
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak);
         }
 
+        // Значок-документ с загнутым уголком (стиль file-excel): единое семейство
+        // для обоих инструментов, различаются цветом и содержимым внутри листа.
         private void DrawGlyph(Graphics g, Rectangle r)
         {
-            Color accent = _glyph == CardGlyph.Excel ? Theme.Accent : PdfRed;
-            using (GraphicsPath tile = Rounded(new RectangleF(r.X, r.Y, r.Width, r.Height), 10f))
-            using (var b = new SolidBrush(accent))
-                g.FillPath(b, tile);
+            bool excel = _glyph == CardGlyph.Excel;
+            Color main = excel ? Theme.Accent : PdfRed;
+            Color fold = excel ? Theme.AccentPressed : Color.FromArgb(150, 26, 26);
 
-            if (_glyph == CardGlyph.Excel)
+            // Координаты из примера (viewBox 24) масштабируются в прямоугольник значка.
+            float s = r.Width / 24f;
+            Func<float, float, PointF> p = delegate(float x, float y)
             {
-                using (var pen = new Pen(Color.White, 2.4f))
+                return new PointF(r.X + x * s, r.Y + y * s);
+            };
+
+            using (var body = new GraphicsPath())
+            {
+                body.AddPolygon(new[] { p(4, 2), p(14, 2), p(20, 8), p(20, 22), p(4, 22) });
+                using (var b = new SolidBrush(main))
+                    g.FillPath(b, body);
+            }
+            using (var foldPath = new GraphicsPath())
+            {
+                foldPath.AddPolygon(new[] { p(14, 2), p(14, 8), p(20, 8) });
+                using (var b = new SolidBrush(fold))
+                    g.FillPath(b, foldPath);
+            }
+
+            if (excel)
+            {
+                // Белая рамка «таблицы» с перекладиной — как в примере.
+                using (var pen = new Pen(Color.White, 1.8f * s))
                 {
                     pen.StartCap = LineCap.Round;
                     pen.EndCap = LineCap.Round;
-                    float x0 = r.X + 12, x1 = r.Right - 12;
-                    float y0 = r.Y + 14, y1 = r.Bottom - 14;
-                    g.DrawLine(pen, x0, r.Y + r.Height * 0.42f, x1, r.Y + r.Height * 0.42f);
-                    g.DrawLine(pen, x0, r.Y + r.Height * 0.66f, x1, r.Y + r.Height * 0.66f);
-                    g.DrawLine(pen, r.X + r.Width * 0.42f, y0, r.X + r.Width * 0.42f, y1);
+                    pen.LineJoin = LineJoin.Round;
+                    using (var bracket = new GraphicsPath())
+                    {
+                        bracket.AddLines(new[] { p(15, 11), p(9, 11), p(9, 19), p(15, 19) });
+                        g.DrawPath(pen, bracket);
+                    }
+                    g.DrawLine(pen, p(9, 15), p(14, 15));
                 }
             }
             else
             {
-                using (var f = new Font("Segoe UI", 12f, FontStyle.Bold))
-                    TextRenderer.DrawText(g, "PDF", f, r, Color.White,
+                using (var f = new Font("Segoe UI", 8.5f * s, FontStyle.Bold))
+                {
+                    var textRect = new Rectangle(r.X, r.Y + (int)(6 * s), r.Width, (int)(16 * s));
+                    TextRenderer.DrawText(g, "PDF", f, textRect, Color.White,
                         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                }
             }
         }
 
