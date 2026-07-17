@@ -103,7 +103,7 @@ namespace ExcelMerger
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(780, 785);
             MinimumSize = new Size(700, 725);
-            WindowChrome.Enable(this); // акцентный заголовок на Windows 11
+            WindowChrome.Enable(this, Theme.Accent); // зелёный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
@@ -114,7 +114,8 @@ namespace ExcelMerger
 
             BuildMenu();
             var header = new HeaderBand("Свод Excel",
-                "Первый видимый лист каждого файла папки — в один итоговый файл .xlsx");
+                "Первый видимый лист каждого файла папки — в один итоговый файл .xlsx",
+                Theme.Accent, Theme.AccentPressed);
             header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(header);

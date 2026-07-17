@@ -19,21 +19,21 @@ namespace ExcelMerger
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
-        /// <summary>Красит заголовок сразу и на каждое пересоздание хэндла окна.</summary>
-        public static void Enable(Form form)
+        /// <summary>Красит заголовок в заданный цвет сразу и на каждое пересоздание хэндла окна.</summary>
+        public static void Enable(Form form, Color captionColor)
         {
-            form.HandleCreated += delegate { Apply(form.Handle); };
+            form.HandleCreated += delegate { Apply(form.Handle, captionColor); };
             if (form.IsHandleCreated)
-                Apply(form.Handle);
+                Apply(form.Handle, captionColor);
         }
 
-        private static void Apply(IntPtr handle)
+        private static void Apply(IntPtr handle, Color captionColor)
         {
             if (handle == IntPtr.Zero)
                 return;
             try
             {
-                int caption = ColorRef(Theme.Accent);
+                int caption = ColorRef(captionColor);
                 int text = ColorRef(Color.White);
                 DwmSetWindowAttribute(handle, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
                 DwmSetWindowAttribute(handle, DWMWA_TEXT_COLOR, ref text, sizeof(int));

@@ -3,6 +3,14 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.10.3] — 2026-07-18
+
+### Changed
+- **Per-tool header colours**: the window header band is now colour-coded by tool —
+  green for “Excel Digest”, red for “PDF Merge” (matching its icon), blue for the
+  start screen. On Windows 11 the system title bar is tinted to match. The subtitle
+  is drawn in a neutral off-white so it stays legible on every background.
+
 ## [1.10.2] — 2026-07-17
 
 ### Added

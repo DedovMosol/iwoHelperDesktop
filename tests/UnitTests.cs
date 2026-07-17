@@ -556,14 +556,14 @@ namespace ExcelMerger.Tests
 
         private static void TestHeaderBand()
         {
-            using (var band = new HeaderBand("Заголовок", "подпись"))
+            using (var band = new HeaderBand("Заголовок", "подпись", Theme.Accent, Theme.AccentPressed))
             {
                 AssertTrue(band is System.Windows.Forms.Control, "это контрол");
                 band.Width = 400;
                 band.Height = 80;
                 AssertEqual(400, band.Width, "ширина применяется");
                 // Пустая подпись не должна ронять отрисовку логики (конструктор допускает null).
-                using (var noSub = new HeaderBand("Только заголовок", null))
+                using (var noSub = new HeaderBand("Только заголовок", null, Theme.PdfRed, Theme.PdfRedDark))
                     AssertTrue(noSub != null, "подпись null допустима");
             }
         }

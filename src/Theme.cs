@@ -9,6 +9,13 @@ namespace ExcelMerger
         public static readonly Color AccentHover = Color.FromArgb(14, 107, 56);   // #0E6B38
         public static readonly Color AccentPressed = Color.FromArgb(11, 86, 45);  // #0B562D
 
+        // Цвета шапок по инструментам: свод Excel — зелёная (Accent), объединение
+        // PDF — красная (в тон значку), стартовый выбор — синяя.
+        public static readonly Color PdfRed = Color.FromArgb(211, 47, 47);        // #D32F2F
+        public static readonly Color PdfRedDark = Color.FromArgb(154, 34, 34);    // #9A2222
+        public static readonly Color HubBlue = Color.FromArgb(15, 108, 189);      // #0F6CBD
+        public static readonly Color HubBlueDark = Color.FromArgb(10, 78, 134);   // #0A4E86
+
         public static readonly Color TextPrimary = Color.FromArgb(45, 45, 45);
         public static readonly Color TextMuted = Color.FromArgb(115, 115, 115);
 

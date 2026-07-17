@@ -71,7 +71,7 @@ namespace ExcelMerger
             ClientSize = new Size(780, 620);
             MinimumSize = new Size(660, 500);
             ShowInTaskbar = false;
-            WindowChrome.Enable(this); // акцентный заголовок на Windows 11
+            WindowChrome.Enable(this, Theme.PdfRed); // красный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
@@ -83,7 +83,8 @@ namespace ExcelMerger
 
             int m = HelpMenu.Height; // содержимое ниже строки меню
             var header = new HeaderBand(Title,
-                "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.");
+                "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.",
+                Theme.PdfRed, Theme.PdfRedDark);
             header.SetBounds(0, m, ClientSize.Width, 76);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(header);
