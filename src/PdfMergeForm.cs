@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Threading;
 using System.Windows.Forms;
@@ -8,15 +10,20 @@ using System.Windows.Forms;
 namespace ExcelMerger
 {
     /// <summary>
-    /// Инструмент «Объединение PDF»: список страниц выбранных документов,
+    /// Инструмент «Объединение PDF»: сетка миниатюр страниц выбранных документов,
     /// перестановка кнопками и перетаскиванием, удаление, сохранение в один PDF.
-    /// Страницы копируются без переконвертации (PDFsharp).
+    /// Страницы копируются без переконвертации (PDFsharp). Миниатюры рисует
+    /// системный движок Windows.Data.Pdf в фоне; если он недоступен —
+    /// показываются заглушки, инструмент работает как список.
     /// </summary>
     public class PdfMergeForm : Form
     {
         private const string Title = "Объединение PDF";
+        private const string PlaceholderKey = "__ph";
+        private static readonly Size TileSize = new Size(132, 172);
 
         private readonly PdfPageOrder _order = new PdfPageOrder();
+        private readonly ImageList _thumbs = new ImageList();
         private ListView _list;
         private Button _btnAdd;
         private Button _btnUp;
@@ -27,9 +34,18 @@ namespace ExcelMerger
         private ToolTip _tips;
         private bool _busy; // идёт сохранение (только UI-поток)
 
+        // Фоновый рендер миниатюр.
+        private readonly object _qLock = new object();
+        private readonly Queue<PdfPageRef> _thumbQueue = new Queue<PdfPageRef>();
+        private readonly HashSet<string> _thumbRequested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly ManualResetEventSlim _thumbSignal = new ManualResetEventSlim(false);
+        private Thread _thumbThread;
+        private volatile bool _thumbStop;
+
         public PdfMergeForm()
         {
             BuildUi();
+            StartThumbWorker();
             UpdateButtons();
         }
 
@@ -41,8 +57,8 @@ namespace ExcelMerger
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(720, 560);
-            MinimumSize = new Size(620, 460);
+            ClientSize = new Size(760, 600);
+            MinimumSize = new Size(640, 480);
             ShowInTaskbar = false;
             AllowDrop = true;
             DragEnter += OnFileDragEnter;
@@ -52,24 +68,26 @@ namespace ExcelMerger
             Ui.AccentBar(this, 0);
             Ui.Label(this, "Объединение PDF", 20, 16,
                 new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
-            Ui.Label(this, "Страницы копируются без изменений; порядок в итоговом файле — как в списке",
+            Ui.Label(this, "Перетаскивайте миниатюры, чтобы задать порядок; порядок в файле — как в сетке.",
                 22, 46, Font, Theme.TextMuted);
 
             int right = ClientSize.Width - 20;
 
+            _thumbs.ImageSize = TileSize;
+            _thumbs.ColorDepth = ColorDepth.Depth32Bit;
+            _thumbs.Images.Add(PlaceholderKey, MakePlaceholder(TileSize));
+
             _list = new ListView();
             _list.SetBounds(20, 80, right - 20 - 150, ClientSize.Height - 80 - 88);
             _list.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            _list.View = View.Details;
-            _list.FullRowSelect = true;
+            _list.View = View.LargeIcon;
+            _list.LargeImageList = _thumbs;
+            _list.MultiSelect = true;
             _list.HideSelection = false;
-            _list.HeaderStyle = ColumnHeaderStyle.Nonclickable; // порядок задаёт пользователь, не сортировка
+            _list.LabelWrap = true;
             _list.BorderStyle = BorderStyle.FixedSingle;
-            _list.Columns.Add("№", 44);
-            _list.Columns.Add("Файл", 340);
-            _list.Columns.Add("Страница", 90);
+            _list.BackColor = Color.FromArgb(250, 250, 250);
             _list.SelectedIndexChanged += delegate { UpdateButtons(); };
-            // Перетаскивание строк с системной меткой вставки.
             _list.AllowDrop = true;
             _list.ItemDrag += OnItemDrag;
             _list.DragOver += OnListDragOver;
@@ -82,9 +100,9 @@ namespace ExcelMerger
             _btnAdd = AddButton("Добавить PDF…", col, 80, 130, 32);
             _btnAdd.Click += OnAddClick;
             _tips.SetToolTip(_btnAdd, "Файлы также можно перетащить в окно");
-            _btnUp = AddButton("▲ Вверх", col, 124, 130, 30);
+            _btnUp = AddButton("◀ Раньше", col, 124, 130, 30);
             _btnUp.Click += delegate { MoveSelected(true); };
-            _btnDown = AddButton("▼ Вниз", col, 160, 130, 30);
+            _btnDown = AddButton("Позже ▶", col, 160, 130, 30);
             _btnDown.Click += delegate { MoveSelected(false); };
             _btnRemove = AddButton("Удалить", col, 204, 130, 30);
             _btnRemove.Click += OnRemoveClick;
@@ -155,7 +173,7 @@ namespace ExcelMerger
             var items = (string[])e.Data.GetData(DataFormats.FileDrop);
             if (items == null)
                 return new string[0];
-            var pdfs = new System.Collections.Generic.List<string>();
+            var pdfs = new List<string>();
             foreach (string item in items)
             {
                 if (File.Exists(item) &&
@@ -199,12 +217,12 @@ namespace ExcelMerger
 
         // ---------- перестановка и удаление ----------
 
-        private void MoveSelected(bool up)
+        private void MoveSelected(bool later)
         {
             if (_list.SelectedIndices.Count != 1)
                 return;
             int index = _list.SelectedIndices[0];
-            int moved = up ? _order.MoveUp(index) : _order.MoveDown(index);
+            int moved = later ? _order.MoveDown(index) : _order.MoveUp(index);
             if (moved == index)
                 return;
             RefreshList();
@@ -244,7 +262,8 @@ namespace ExcelMerger
             if (index >= 0)
             {
                 Rectangle bounds = _list.GetItemRect(index);
-                _list.InsertionMark.AppearsAfterItem = pt.Y > bounds.Top + bounds.Height / 2;
+                // LargeIcon: плитки идут слева направо — вставка по горизонтали.
+                _list.InsertionMark.AppearsAfterItem = pt.X > bounds.Left + bounds.Width / 2;
             }
             _list.InsertionMark.Index = index;
         }
@@ -276,13 +295,153 @@ namespace ExcelMerger
             for (int i = 0; i < _order.Count; i++)
             {
                 PdfPageRef page = _order[i];
-                var item = new ListViewItem((i + 1).ToString());
-                item.SubItems.Add(page.FileName);
-                item.SubItems.Add("стр. " + (page.PageIndex + 1));
-                item.ToolTipText = page.SourcePath;
+                string key = ThumbKey(page);
+                var item = new ListViewItem(MakeLabel(page));
+                item.Tag = page;
+                item.ToolTipText = page.SourcePath + " — стр. " + (page.PageIndex + 1);
+                item.ImageKey = _thumbs.Images.ContainsKey(key) ? key : PlaceholderKey;
                 _list.Items.Add(item);
+                EnqueueThumb(page);
             }
             _list.EndUpdate();
+        }
+
+        private static string MakeLabel(PdfPageRef page)
+        {
+            string name = Path.GetFileNameWithoutExtension(page.FileName);
+            if (name.Length > 18)
+                name = name.Substring(0, 17) + "…";
+            return name + "\nстр. " + (page.PageIndex + 1);
+        }
+
+        // ---------- фоновый рендер миниатюр ----------
+
+        private static string ThumbKey(PdfPageRef page)
+        {
+            return page.SourcePath.ToLowerInvariant() + "|" + page.PageIndex;
+        }
+
+        private void EnqueueThumb(PdfPageRef page)
+        {
+            string key = ThumbKey(page);
+            lock (_qLock)
+            {
+                if (!_thumbRequested.Add(key)) // уже в очереди или готова
+                    return;
+                _thumbQueue.Enqueue(page);
+            }
+            _thumbSignal.Set();
+        }
+
+        private void StartThumbWorker()
+        {
+            _thumbThread = new Thread(ThumbWorker);
+            _thumbThread.IsBackground = true;
+            _thumbThread.Name = "pdf-thumbs";
+            _thumbThread.Start();
+        }
+
+        private void ThumbWorker()
+        {
+            PdfThumbnailRenderer renderer;
+            try { renderer = new PdfThumbnailRenderer(); }
+            catch { return; } // WinRT недоступен — заглушки останутся, инструмент работает
+
+            try
+            {
+                while (!_thumbStop)
+                {
+                    PdfPageRef req = null;
+                    lock (_qLock)
+                    {
+                        if (_thumbQueue.Count > 0) req = _thumbQueue.Dequeue();
+                        else _thumbSignal.Reset();
+                    }
+                    if (req == null)
+                    {
+                        _thumbSignal.Wait();
+                        continue;
+                    }
+                    Bitmap page = renderer.Render(req.SourcePath, req.PageIndex, TileSize.Width - 12);
+                    if (page == null)
+                        continue;
+                    Bitmap tile = ComposeTile(page, TileSize);
+                    page.Dispose();
+                    PostThumb(req, tile);
+                }
+            }
+            finally
+            {
+                renderer.Dispose();
+            }
+        }
+
+        private void PostThumb(PdfPageRef req, Bitmap tile)
+        {
+            try
+            {
+                if (IsHandleCreated && !IsDisposed)
+                    BeginInvoke((MethodInvoker)delegate { ApplyThumb(req, tile); });
+                else
+                    tile.Dispose();
+            }
+            catch (InvalidOperationException)
+            {
+                tile.Dispose(); // окно уже разрушено
+            }
+        }
+
+        private void ApplyThumb(PdfPageRef req, Bitmap tile)
+        {
+            string key = ThumbKey(req);
+            if (!_thumbs.Images.ContainsKey(key))
+                _thumbs.Images.Add(key, tile);
+            tile.Dispose(); // ImageList хранит собственную копию
+
+            foreach (ListViewItem item in _list.Items)
+            {
+                var p = item.Tag as PdfPageRef;
+                if (p != null && item.ImageKey != key && ThumbKey(p) == key)
+                    item.ImageKey = key;
+            }
+        }
+
+        private static Bitmap ComposeTile(Bitmap page, Size tile)
+        {
+            var bmp = new Bitmap(tile.Width, tile.Height);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.FromArgb(250, 250, 250));
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                float scale = Math.Min((tile.Width - 12f) / page.Width, (tile.Height - 12f) / page.Height);
+                int w = Math.Max(1, (int)(page.Width * scale));
+                int h = Math.Max(1, (int)(page.Height * scale));
+                int x = (tile.Width - w) / 2;
+                int y = (tile.Height - h) / 2;
+                g.DrawImage(page, x, y, w, h);
+                using (var pen = new Pen(Color.FromArgb(200, 200, 200)))
+                    g.DrawRectangle(pen, x, y, w - 1, h - 1);
+            }
+            return bmp;
+        }
+
+        private static Bitmap MakePlaceholder(Size tile)
+        {
+            var bmp = new Bitmap(tile.Width, tile.Height);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.FromArgb(250, 250, 250));
+                int w = (int)((tile.Height - 24) * 0.72f);
+                int h = tile.Height - 24;
+                int x = (tile.Width - w) / 2;
+                int y = 12;
+                using (var b = new SolidBrush(Color.White))
+                    g.FillRectangle(b, x, y, w, h);
+                using (var pen = new Pen(Color.FromArgb(205, 205, 205)))
+                    g.DrawRectangle(pen, x, y, w, h);
+            }
+            return bmp;
         }
 
         // ---------- сохранение ----------
@@ -368,6 +527,8 @@ namespace ExcelMerger
                 e.Cancel = true;
                 return;
             }
+            _thumbStop = true;
+            _thumbSignal.Set(); // разбудить воркер, чтобы он вышел и освободил рендерер
             base.OnFormClosing(e);
         }
     }
