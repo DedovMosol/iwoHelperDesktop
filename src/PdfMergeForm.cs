@@ -11,20 +11,27 @@ namespace ExcelMerger
 {
     /// <summary>
     /// Инструмент «Объединение PDF»: сетка миниатюр страниц выбранных документов,
-    /// перестановка кнопками и перетаскиванием, удаление, сохранение в один PDF.
-    /// Страницы копируются без переконвертации (PDFsharp). Миниатюры рисует
-    /// системный движок Windows.Data.Pdf в фоне; если он недоступен —
-    /// показываются заглушки, инструмент работает как список.
+    /// масштаб (ползунок и Ctrl+колесо), перестановка кнопками и перетаскиванием,
+    /// удаление, сохранение в один PDF. Страницы копируются без переконвертации
+    /// (PDFsharp). Миниатюры рисует системный движок Windows.Data.Pdf в фоне;
+    /// если он недоступен — показываются заглушки, инструмент работает как список.
     /// </summary>
     public class PdfMergeForm : Form
     {
         private const string Title = "Объединение PDF";
         private const string PlaceholderKey = "__ph";
-        private static readonly Size TileSize = new Size(132, 172);
 
         private readonly PdfPageOrder _order = new PdfPageOrder();
-        private readonly ImageList _thumbs = new ImageList();
+        // Отрендеренные страницы (в ширину RenderWidth), из них пересобираются
+        // плитки при зуме. Только UI-поток.
+        private readonly Dictionary<string, Bitmap> _pageCache =
+            new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+        private ImageList _thumbs;
+        private int _tileWidth = ThumbZoom.DefaultWidth;
+
         private ListView _list;
+        private TrackBar _zoom;
+        private System.Windows.Forms.Timer _zoomTimer;
         private Button _btnAdd;
         private Button _btnUp;
         private Button _btnDown;
@@ -57,8 +64,8 @@ namespace ExcelMerger
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(760, 600);
-            MinimumSize = new Size(640, 480);
+            ClientSize = new Size(780, 620);
+            MinimumSize = new Size(660, 500);
             ShowInTaskbar = false;
             AllowDrop = true;
             DragEnter += OnFileDragEnter;
@@ -68,17 +75,15 @@ namespace ExcelMerger
             Ui.AccentBar(this, 0);
             Ui.Label(this, "Объединение PDF", 20, 16,
                 new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
-            Ui.Label(this, "Перетаскивайте миниатюры, чтобы задать порядок; порядок в файле — как в сетке.",
+            Ui.Label(this, "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.",
                 22, 46, Font, Theme.TextMuted);
 
             int right = ClientSize.Width - 20;
 
-            _thumbs.ImageSize = TileSize;
-            _thumbs.ColorDepth = ColorDepth.Depth32Bit;
-            _thumbs.Images.Add(PlaceholderKey, MakePlaceholder(TileSize));
+            _thumbs = NewImageList(_tileWidth);
 
             _list = new ListView();
-            _list.SetBounds(20, 80, right - 20 - 150, ClientSize.Height - 80 - 88);
+            _list.SetBounds(20, 80, right - 20 - 150, ClientSize.Height - 80 - 112);
             _list.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _list.View = View.LargeIcon;
             _list.LargeImageList = _thumbs;
@@ -93,6 +98,7 @@ namespace ExcelMerger
             _list.DragOver += OnListDragOver;
             _list.DragDrop += OnListDragDrop;
             _list.DragLeave += delegate { _list.InsertionMark.Index = -1; };
+            _list.MouseWheel += OnListMouseWheel; // Ctrl+колесо = зум
             EnableDoubleBuffer(_list);
             Controls.Add(_list);
 
@@ -101,11 +107,32 @@ namespace ExcelMerger
             _btnAdd.Click += OnAddClick;
             _tips.SetToolTip(_btnAdd, "Файлы также можно перетащить в окно");
             _btnUp = AddButton("◀ Раньше", col, 124, 130, 30);
-            _btnUp.Click += delegate { MoveSelected(true); };
+            _btnUp.Click += delegate { MoveSelected(false); };
             _btnDown = AddButton("Позже ▶", col, 160, 130, 30);
-            _btnDown.Click += delegate { MoveSelected(false); };
+            _btnDown.Click += delegate { MoveSelected(true); };
             _btnRemove = AddButton("Удалить", col, 204, 130, 30);
             _btnRemove.Click += OnRemoveClick;
+
+            // Масштаб миниатюр
+            Ui.Label(this, "Масштаб:", 20, ClientSize.Height - 104, Font, Theme.TextMuted)
+                .Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            _zoom = new TrackBar();
+            _zoom.SetBounds(85, ClientSize.Height - 108, 180, 30);
+            _zoom.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            _zoom.Minimum = ThumbZoom.MinWidth;
+            _zoom.Maximum = ThumbZoom.MaxWidth;
+            _zoom.Value = _tileWidth;
+            _zoom.TickFrequency = 32;
+            _zoom.SmallChange = 16;
+            _zoom.LargeChange = 32;
+            _zoom.ValueChanged += delegate { ScheduleZoom(); };
+            _tips.SetToolTip(_zoom, "Масштаб миниатюр (также Ctrl+колесо мыши)");
+            Controls.Add(_zoom);
+
+            // Троттлинг пересборки плиток при перетаскивании ползунка.
+            _zoomTimer = new System.Windows.Forms.Timer();
+            _zoomTimer.Interval = 60;
+            _zoomTimer.Tick += OnZoomTick;
 
             var save = new RoundedButton(true);
             save.Text = "Сохранить PDF…";
@@ -119,6 +146,15 @@ namespace ExcelMerger
             _lblStatus = Ui.Label(this, "Добавьте PDF-файлы — кнопкой или перетащив их в окно.",
                 20, ClientSize.Height - 50, Font, Theme.TextMuted);
             _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+        }
+
+        private ImageList NewImageList(int tileWidth)
+        {
+            var list = new ImageList();
+            list.ImageSize = ThumbZoom.TileSize(tileWidth);
+            list.ColorDepth = ColorDepth.Depth32Bit;
+            list.Images.Add(PlaceholderKey, MakePlaceholder(list.ImageSize));
+            return list;
         }
 
         private Button AddButton(string text, int x, int y, int w, int h)
@@ -314,6 +350,59 @@ namespace ExcelMerger
             return name + "\nстр. " + (page.PageIndex + 1);
         }
 
+        // ---------- масштаб ----------
+
+        private void OnListMouseWheel(object sender, MouseEventArgs e)
+        {
+            if ((ModifierKeys & Keys.Control) == 0)
+                return; // без Ctrl — обычная прокрутка списка
+            int newWidth = ThumbZoom.StepFromWheel(_zoom.Value, e.Delta);
+            var handled = e as HandledMouseEventArgs;
+            if (handled != null)
+                handled.Handled = true; // не прокручивать при зуме
+            if (newWidth != _zoom.Value)
+                _zoom.Value = newWidth; // -> ScheduleZoom
+        }
+
+        private void ScheduleZoom()
+        {
+            // Троттлинг: частые изменения (перетаскивание, серия щелчков колеса)
+            // сливаются в одну пересборку плиток.
+            _zoomTimer.Stop();
+            _zoomTimer.Start();
+        }
+
+        private void OnZoomTick(object sender, EventArgs e)
+        {
+            _zoomTimer.Stop();
+            if (_zoom.Value == _tileWidth)
+                return;
+            _tileWidth = _zoom.Value;
+            RebuildTiles();
+        }
+
+        /// <summary>Пересобирает плитки из кэша страниц под текущий масштаб (без WinRT).</summary>
+        private void RebuildTiles()
+        {
+            ImageList old = _thumbs;
+            var fresh = NewImageList(_tileWidth);
+            foreach (KeyValuePair<string, Bitmap> kv in _pageCache)
+                fresh.Images.Add(kv.Key, ComposeTile(kv.Value, fresh.ImageSize));
+
+            _list.BeginUpdate();
+            _thumbs = fresh;
+            _list.LargeImageList = fresh;
+            foreach (ListViewItem item in _list.Items)
+            {
+                var p = item.Tag as PdfPageRef;
+                string key = p != null ? ThumbKey(p) : null;
+                item.ImageKey = key != null && fresh.Images.ContainsKey(key) ? key : PlaceholderKey;
+            }
+            _list.EndUpdate();
+            if (old != null)
+                old.Dispose();
+        }
+
         // ---------- фоновый рендер миниатюр ----------
 
         private static string ThumbKey(PdfPageRef page)
@@ -362,12 +451,10 @@ namespace ExcelMerger
                         _thumbSignal.Wait();
                         continue;
                     }
-                    Bitmap page = renderer.Render(req.SourcePath, req.PageIndex, TileSize.Width - 12);
+                    Bitmap page = renderer.Render(req.SourcePath, req.PageIndex, ThumbZoom.RenderWidth);
                     if (page == null)
                         continue;
-                    Bitmap tile = ComposeTile(page, TileSize);
-                    page.Dispose();
-                    PostThumb(req, tile);
+                    PostPage(req, page);
                 }
             }
             finally
@@ -376,27 +463,33 @@ namespace ExcelMerger
             }
         }
 
-        private void PostThumb(PdfPageRef req, Bitmap tile)
+        private void PostPage(PdfPageRef req, Bitmap page)
         {
             try
             {
                 if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke((MethodInvoker)delegate { ApplyThumb(req, tile); });
+                    BeginInvoke((MethodInvoker)delegate { ApplyPage(req, page); });
                 else
-                    tile.Dispose();
+                    page.Dispose();
             }
             catch (InvalidOperationException)
             {
-                tile.Dispose(); // окно уже разрушено
+                page.Dispose(); // окно уже разрушено
             }
         }
 
-        private void ApplyThumb(PdfPageRef req, Bitmap tile)
+        private void ApplyPage(PdfPageRef req, Bitmap page)
         {
             string key = ThumbKey(req);
+            if (_pageCache.ContainsKey(key))
+            {
+                page.Dispose(); // уже есть (не должно, но защищаемся)
+                return;
+            }
+            _pageCache[key] = page; // кэш владеет исходным изображением страницы
+
             if (!_thumbs.Images.ContainsKey(key))
-                _thumbs.Images.Add(key, tile);
-            tile.Dispose(); // ImageList хранит собственную копию
+                _thumbs.Images.Add(key, ComposeTile(page, _thumbs.ImageSize));
 
             foreach (ListViewItem item in _list.Items)
             {
@@ -413,6 +506,7 @@ namespace ExcelMerger
             {
                 g.Clear(Color.FromArgb(250, 250, 250));
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                 float scale = Math.Min((tile.Width - 12f) / page.Width, (tile.Height - 12f) / page.Height);
                 int w = Math.Max(1, (int)(page.Width * scale));
                 int h = Math.Max(1, (int)(page.Height * scale));
@@ -530,6 +624,23 @@ namespace ExcelMerger
             _thumbStop = true;
             _thumbSignal.Set(); // разбудить воркер, чтобы он вышел и освободил рендерер
             base.OnFormClosing(e);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _thumbStop = true;
+                _thumbSignal.Set();
+                if (_zoomTimer != null)
+                    _zoomTimer.Dispose();
+                foreach (Bitmap page in _pageCache.Values)
+                    page.Dispose();
+                _pageCache.Clear();
+                if (_thumbs != null)
+                    _thumbs.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }
