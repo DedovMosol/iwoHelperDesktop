@@ -32,9 +32,10 @@ namespace ExcelMerger
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(600, 380);
-            WindowChrome.Enable(this); // акцентный заголовок на Windows 11
+            WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11
 
-            var header = new HeaderBand(AppTitle, "Выберите инструмент — свод Excel или объединение PDF");
+            var header = new HeaderBand(AppTitle, "Выберите инструмент — свод Excel или объединение PDF",
+                Theme.HubBlue, Theme.HubBlueDark);
             header.SetBounds(0, 0, ClientSize.Width, 78);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(header);

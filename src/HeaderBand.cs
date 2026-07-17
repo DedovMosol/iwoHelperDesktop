@@ -15,13 +15,17 @@ namespace ExcelMerger
     {
         private readonly string _title;
         private readonly string _subtitle;
+        private readonly Color _top;
+        private readonly Color _bottom;
         private static readonly Font TitleFont = new Font("Segoe UI", 15f, FontStyle.Bold);
-        private static readonly Color SubtitleColor = Color.FromArgb(214, 236, 224);
+        private static readonly Color SubtitleColor = Color.FromArgb(233, 238, 242); // нейтрально-белая: читаема на любом фоне
 
-        public HeaderBand(string title, string subtitle)
+        public HeaderBand(string title, string subtitle, Color top, Color bottom)
         {
             _title = title ?? string.Empty;
             _subtitle = subtitle ?? string.Empty;
+            _top = top;
+            _bottom = bottom;
             DoubleBuffered = true;
             SetStyle(ControlStyles.ResizeRedraw, true); // перерисовка градиента при растяжении
             ForeColor = Color.White;
@@ -30,7 +34,7 @@ namespace ExcelMerger
         protected override void OnPaint(PaintEventArgs e)
         {
             Rectangle r = ClientRectangle;
-            using (var brush = new LinearGradientBrush(r, Theme.Accent, Theme.AccentPressed, LinearGradientMode.Vertical))
+            using (var brush = new LinearGradientBrush(r, _top, _bottom, LinearGradientMode.Vertical))
                 e.Graphics.FillRectangle(brush, r);
             // Тонкая нижняя грань отделяет шапку от тела окна.
             using (var pen = new Pen(Color.FromArgb(60, 0, 0, 0)))
