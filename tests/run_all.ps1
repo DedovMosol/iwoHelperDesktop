@@ -46,6 +46,11 @@ Step 'Базовый прогон (корпус содержит битые фа
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Режим «все листы»' {
+    powershell -NoProfile -File "$PSScriptRoot\verify_allsheets.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
 Step 'Прогон с оглавлением и заменой формул' {
     $code = Invoke-Exe "--cli `"$PSScriptRoot\testdata`" `"$PSScriptRoot\out\Свод_toc.xlsx`" --toc --values"
     if ($code -ne 2) { Write-Host "TOC RUN exit=$code, ожидалось 2"; exit 1 }

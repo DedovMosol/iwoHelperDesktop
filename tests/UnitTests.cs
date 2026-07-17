@@ -50,6 +50,9 @@ namespace ExcelMerger.Tests
             Run("NoteText: период, счётчики, файл свода", TestNoteBasics);
             Run("NoteText: таблица пропущенных", TestNoteSkippedTable);
             Run("NoteText: без пропусков — «замечания отсутствуют»", TestNoteClean);
+            Run("SheetBaseName: первый лист vs все листы", TestSheetBaseName);
+            Run("MergeResult.FileCount: файлы, а не листы", TestFileCount);
+            Run("Retry: один пропущенный файл -> несколько листов", TestCombineRetryMultiSheet);
             Run("Retry: пропущенные заменяются свежими результатами", TestCombineRetryReplaces);
             Run("Retry: неудачный повтор обновляет причину", TestCombineRetryKeepsFailed);
             Run("Retry: порядок и успешные записи не меняются", TestCombineRetryOrder);
@@ -535,6 +538,43 @@ namespace ExcelMerger.Tests
             prev.OkCount = 1;
             prev.SkipCount = 2;
             return prev;
+        }
+
+        private static void TestSheetBaseName()
+        {
+            AssertEqual("Отчет", MergeService.SheetBaseName("Отчет", "Лист1", false), "только первый — имя файла");
+            AssertEqual("Отчет · Лист1", MergeService.SheetBaseName("Отчет", "Лист1", true), "все листы — файл · лист");
+        }
+
+        private static void TestFileCount()
+        {
+            var res = new MergeResult();
+            res.Files.Add(MakeResult(@"C:\in\А.xlsx", true, null)); // два листа из одного файла
+            res.Files.Add(MakeResult(@"C:\in\А.xlsx", true, null));
+            res.Files.Add(MakeResult(@"C:\in\Б.xlsx", true, null));
+            AssertEqual(3, res.Files.Count, "листов (строк) — три");
+            AssertEqual(2, res.FileCount, "файлов — два");
+        }
+
+        private static void TestCombineRetryMultiSheet()
+        {
+            // Прошлый прогон: А перенесён (1 лист), Б пропущен.
+            var prev = new MergeResult();
+            prev.OutputPath = @"C:\out\Свод.xlsx";
+            prev.Files.Add(MakeResult(@"C:\in\А.xlsx", true, null));
+            prev.Files.Add(MakeResult(@"C:\in\Б.xlsx", false, "битый"));
+            prev.OkCount = 1;
+            prev.SkipCount = 1;
+
+            // Повтор Б в режиме «все листы» дал два листа.
+            var b1 = MakeResult(@"C:\in\Б.xlsx", true, null);
+            var b2 = MakeResult(@"C:\in\Б.xlsx", true, null);
+            var combined = MergeService.CombineRetryResults(prev, new List<FileResult> { b1, b2 });
+
+            AssertEqual(3, combined.Files.Count, "А + два листа Б");
+            AssertEqual(3, combined.OkCount, "все перенесены");
+            AssertEqual(0, combined.SkipCount, "пропущенных нет");
+            AssertEqual(2, combined.FileCount, "файлов — два (А и Б)");
         }
 
         private static void TestCombineRetryReplaces()
