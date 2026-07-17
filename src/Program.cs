@@ -16,6 +16,8 @@ namespace ExcelMerger
                 return RunSelfTest();
             if (args.Length >= 1 && string.Equals(args[0], "--pdfcheck", StringComparison.OrdinalIgnoreCase))
                 return RunPdfCheck();
+            if (args.Length >= 1 && string.Equals(args[0], "--thumbcheck", StringComparison.OrdinalIgnoreCase))
+                return RunThumbCheck();
             if (args.Length >= 3 && string.Equals(args[0], "--cli", StringComparison.OrdinalIgnoreCase))
             {
                 MergeOptions options;
@@ -33,7 +35,11 @@ namespace ExcelMerger
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new StartForm());
-            return 0;
+            // Все окна закрыты, настройки/COM уже освобождены детерминированно.
+            // Форсируем выход, чтобы финализация WinRT (Windows.Data.Pdf, если
+            // открывали инструмент PDF) не уронила процесс при выгрузке CLR.
+            FastExit.Now(0);
+            return 0; // недостижимо
         }
 
         /// <summary>Флаги CLI после обязательных аргументов: --toc, --values. Неизвестный флаг — ошибка.</summary>
@@ -125,6 +131,39 @@ namespace ExcelMerger
                 WriteConsole("PDFCHECK FAIL: " + ex.GetType().Name + " — " + ex.Message);
                 return 1;
             }
+        }
+
+        /// <summary>
+        /// Проверка, что рендер миниатюр на фоновом MTA-потоке (как в приложении)
+        /// не роняет процесс при выходе. Само наличие рендера не требуется
+        /// (на Windows Server движка PDF может не быть — это штатный фолбэк);
+        /// проверяется только чистое завершение. 0 = процесс завершился нормально.
+        /// </summary>
+        private static int RunThumbCheck()
+        {
+            AttachConsole(-1);
+            bool rendered = false;
+            var worker = new System.Threading.Thread(delegate()
+            {
+                string pdf = Path.Combine(Path.GetTempPath(), "thumbchk_" + Guid.NewGuid().ToString("N") + ".pdf");
+                try
+                {
+                    PdfProbe.WriteOnePagePdf(pdf);
+                    using (var renderer = new PdfThumbnailRenderer())
+                    {
+                        using (System.Drawing.Bitmap bmp = renderer.Render(pdf, 0, 100))
+                            rendered = bmp != null;
+                    }
+                }
+                catch { }
+                finally { try { File.Delete(pdf); } catch { } }
+            });
+            worker.IsBackground = false; // дать потоку завершиться штатно
+            worker.Start();
+            worker.Join();
+            WriteConsole("THUMBCHECK OK (rendered=" + rendered + ")");
+            FastExit.Now(0); // избегаем сбоя WinRT-финализации при выгрузке
+            return 0;
         }
 
         /// <summary>

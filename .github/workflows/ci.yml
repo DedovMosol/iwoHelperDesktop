@@ -44,6 +44,12 @@ jobs:
           $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--pdfcheck' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "pdfcheck exit=$($p.ExitCode)"; exit 1 }
 
+      - name: Чистый выход после рендера миниатюр (WinRT)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--thumbcheck' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Host "thumbcheck exit=$($p.ExitCode)"; exit 1 }
+
       - name: Артефакт сборки
         uses: actions/upload-artifact@v4
         with:

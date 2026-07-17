@@ -75,6 +75,16 @@ Step 'Объединение PDF' {
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Миниатюры PDF (WinRT)' {
+    powershell -NoProfile -File "$PSScriptRoot\verify_thumb.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
+Step 'Чистый выход после рендера миниатюр' {
+    $code = Invoke-Exe '--thumbcheck'
+    if ($code -ne 0) { Write-Host "thumbcheck exit=$code"; exit 1 }
+}
+
 Step 'Записка Word' {
     powershell -NoProfile -File "$PSScriptRoot\verify_note.ps1"
     if ($LASTEXITCODE) { exit 1 }
