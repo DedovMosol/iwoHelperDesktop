@@ -10,6 +10,7 @@ tests/obj/
 
 # Тестовые артефакты (генерируются tests/make_testdata.ps1 и прогонами)
 tests/testdata/
+tests/allsheets_in/
 tests/out/
 tests/icon_preview.png
 *.report.txt

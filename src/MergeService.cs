@@ -157,18 +157,45 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Объединяет все файлы папки в новый итоговый файл.</summary>
-        public MergeResult Merge(string inputFolder, string outputPath, MergeOptions options)
+        /// <summary>
+        /// Объединяет заданные файлы (в указанном порядке) в новый итоговый файл.
+        /// Итоговый файл сам исключается из источников, дубликаты убираются.
+        /// </summary>
+        public MergeResult Merge(IList<string> files, string outputPath, MergeOptions options)
         {
             if (options == null)
                 throw new ArgumentNullException("options");
 
-            List<string> files = FindSourceFiles(inputFolder, outputPath);
-            if (files.Count == 0)
-                throw new MergeException("В папке нет файлов Excel (.xlsx, .xls, .xlsm, .xlsb).");
+            List<string> sources = PrepareSourceList(files, outputPath);
+            if (sources.Count == 0)
+                throw new MergeException("Не выбрано ни одного файла Excel для объединения.");
 
             ValidateOutput(outputPath);
-            return Run(outputPath, files, options, null);
+            return Run(outputPath, sources, options, null);
+        }
+
+        /// <summary>
+        /// Готовит список источников: убирает сам итоговый файл (по полному пути)
+        /// и дубликаты, сохраняя порядок. Чистая функция — покрыта тестами.
+        /// </summary>
+        public static List<string> PrepareSourceList(IList<string> files, string outputPath)
+        {
+            var result = new List<string>();
+            if (files == null)
+                return result;
+            string outputFull = outputPath != null ? Path.GetFullPath(outputPath) : null;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in files)
+            {
+                if (string.IsNullOrEmpty(path))
+                    continue;
+                string full = Path.GetFullPath(path);
+                if (outputFull != null && string.Equals(full, outputFull, StringComparison.OrdinalIgnoreCase))
+                    continue; // не сливать свод сам в себя
+                if (seen.Add(full))
+                    result.Add(path);
+            }
+            return result;
         }
 
         /// <summary>
@@ -282,6 +309,8 @@ namespace ExcelMerger
                 excel.EnableEvents = false;
                 try { excel.AskToUpdateLinks = false; } catch { }
                 try { excel.AutomationSecurity = 3; } catch { } // msoAutomationSecurityForceDisable: макросы источников не выполняются
+
+                WaitExcelReady((object)excel); // под нагрузкой Excel готов к Workbooks не сразу
 
                 if (intoExisting)
                 {
@@ -420,6 +449,29 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>
+        /// Ждёт готовности только что созданного Excel: свежий экземпляр под
+        /// нагрузкой отвечает на Workbooks не сразу, и первый вызов Open иначе
+        /// падает с «Невозможно получить свойство Open класса Workbooks».
+        /// </summary>
+        private static void WaitExcelReady(object excelObj)
+        {
+            dynamic excel = excelObj;
+            for (int i = 0; i < 60; i++) // до ~6 секунд
+            {
+                try
+                {
+                    int probe = (int)excel.Workbooks.Count;
+                    System.Threading.Thread.Sleep(300); // дать Excel окончательно инициализироваться
+                    return;
+                }
+                catch
+                {
+                    System.Threading.Thread.Sleep(100);
+                }
+            }
+        }
+
         private static void ReserveExistingSheetNames(object targetObj, SheetNamer namer)
         {
             dynamic target = targetObj;
@@ -446,14 +498,7 @@ namespace ExcelMerger
                 RaiseTrace("open: " + fileName);
                 try
                 {
-                    source = excel.Workbooks.Open(
-                        Filename: path,
-                        UpdateLinks: 0,
-                        ReadOnly: true,
-                        Password: WrongPassword,
-                        IgnoreReadOnlyRecommended: true,
-                        Notify: false,
-                        AddToMru: false);
+                    source = OpenSource(excel, path);
                 }
                 catch (Exception ex)
                 {
@@ -548,6 +593,41 @@ namespace ExcelMerger
                 }
                 RaiseTrace("closed source");
             }
+        }
+
+        /// <summary>
+        /// Открывает книгу-источник с повтором транзиентных сбоев COM (Excel занят
+        /// под нагрузкой). Реальные проблемы файла (формат, пароль, повреждение)
+        /// пробрасываются сразу, без бесполезных повторов.
+        /// </summary>
+        private static dynamic OpenSource(dynamic excel, string path)
+        {
+            Exception last = null;
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                try
+                {
+                    return excel.Workbooks.Open(
+                        Filename: path,
+                        UpdateLinks: 0,
+                        ReadOnly: true,
+                        Password: WrongPassword,
+                        IgnoreReadOnlyRecommended: true,
+                        Notify: false,
+                        AddToMru: false);
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                    string m = (Unwrap(ex).Message ?? "").ToLowerInvariant();
+                    // Проблема самого файла — повторять бессмысленно.
+                    if (m.Contains("парол") || m.Contains("password") ||
+                        m.Contains("недопустим") || m.Contains("format") || m.Contains("поврежд"))
+                        throw;
+                    System.Threading.Thread.Sleep(500); // транзиентный сбой — подождать и повторить
+                }
+            }
+            throw last;
         }
 
         private static FileResult Skipped(string fileName, string path, string note)

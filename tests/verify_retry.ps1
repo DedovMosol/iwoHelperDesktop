@@ -18,7 +18,8 @@ $options = New-Object ExcelMerger.MergeOptions
 $options.AddToc = $true
 
 $service = New-Object ExcelMerger.MergeService
-$first = $service.Merge($data, $out, $options)
+$files = [ExcelMerger.MergeService]::FindSourceFiles($data, $out)
+$first = $service.Merge($files, $out, $options)
 if ($first.OkCount -ne 10 -or $first.SkipCount -ne 2) {
     $fails += "первый прогон: ok=$($first.OkCount) skip=$($first.SkipCount), ожидалось 10/2"
 }

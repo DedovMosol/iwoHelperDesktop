@@ -192,7 +192,9 @@ namespace ExcelMerger
                     lines.Add(line);
                     WriteConsole(line);
                 };
-                MergeResult result = service.Merge(Path.GetFullPath(inputFolder), fullOutput, options);
+                // CLI берёт все файлы папки в естественном порядке.
+                List<string> files = MergeService.FindSourceFiles(Path.GetFullPath(inputFolder), fullOutput);
+                MergeResult result = service.Merge(files, fullOutput, options);
                 if (result.TocError != null)
                 {
                     lines.Add("WARN: " + result.TocError);

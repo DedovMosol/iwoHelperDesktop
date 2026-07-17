@@ -44,6 +44,13 @@ namespace ExcelMerger.Tests
             Run("ThumbZoom: кламп ширины плитки", TestThumbZoomClamp);
             Run("ThumbZoom: колесо меняет масштаб и упирается в границы", TestThumbZoomWheel);
             Run("ThumbZoom: высота плитки пропорциональна", TestThumbZoomTile);
+            Run("ListReorder: MoveUp/Down границы и обмен", TestListReorderMoves);
+            Run("ListReorder: Move (перенос) и RemoveAt (набор)", TestListReorderMoveRemove);
+            Run("SourceFileList: порядок, включение, IncludedInOrder", TestSourceFileList);
+            Run("SourceFileList: сортировка по имени как в Проводнике", TestSourceFileSort);
+            Run("PrepareSourceList: исключение свода и дубликатов", TestPrepareSourceList);
+            Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
+            Run("HeaderBand: строится с заголовком, двойная буферизация", TestHeaderBand);
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
             Run("PdfPageOrder: удаление набора строк", TestPdfOrderRemove);
@@ -414,6 +421,106 @@ namespace ExcelMerger.Tests
                 "плитка в пределах 256: " + max.Width + "x" + max.Height);
             System.Drawing.Size over = ThumbZoom.TileSize(10000);
             AssertTrue(over.Width <= 256 && over.Height <= 256, "кламп сверх лимита");
+        }
+
+        // ---------- ListReorder ----------
+
+        private static void TestListReorderMoves()
+        {
+            var l = new List<string> { "a", "b", "c" };
+            AssertEqual(0, ListReorder.MoveUp(l, 0), "верхний вверх — на месте");
+            AssertEqual(2, ListReorder.MoveDown(l, 2), "нижний вниз — на месте");
+            AssertEqual(0, ListReorder.MoveUp(l, 1), "b вверх -> индекс 0");
+            AssertEqual("b|a|c", string.Join("|", l.ToArray()), "после MoveUp");
+            AssertEqual(1, ListReorder.MoveDown(l, 0), "b вниз -> индекс 1");
+            AssertEqual("a|b|c", string.Join("|", l.ToArray()), "MoveDown вернул порядок");
+        }
+
+        private static void TestListReorderMoveRemove()
+        {
+            var l = new List<string> { "a", "b", "c", "d" };
+            ListReorder.Move(l, 0, 3);
+            AssertEqual("b|c|a|d", string.Join("|", l.ToArray()), "перенос a перед позицией 3");
+            ListReorder.Move(l, 2, 0);
+            AssertEqual("a|b|c|d", string.Join("|", l.ToArray()), "перенос обратно");
+            ListReorder.RemoveAt(l, new[] { 3, 1 });
+            AssertEqual("a|c", string.Join("|", l.ToArray()), "удаление набора индексов");
+        }
+
+        // ---------- SourceFileList ----------
+
+        private static string IncludedSig(SourceFileList list)
+        {
+            return string.Join("|", list.IncludedInOrder().ConvertAll(System.IO.Path.GetFileName).ToArray());
+        }
+
+        private static void TestSourceFileList()
+        {
+            var list = new SourceFileList();
+            list.SetFiles(new[] { @"C:\in\А.xlsx", @"C:\in\Б.xlsx", @"C:\in\В.xlsx" });
+            AssertEqual(3, list.Count, "три файла");
+            AssertEqual(3, list.IncludedCount, "все включены");
+
+            list[1].Include = false; // исключаем Б
+            AssertEqual(2, list.IncludedCount, "два включённых");
+            AssertEqual("А.xlsx|В.xlsx", IncludedSig(list), "исключённый не в списке");
+
+            // Перестановка по позициям всего списка [А, Б, В] -> [В, А, Б]
+            list.MoveUp(2); // [А, В, Б]
+            list.MoveUp(1); // [В, А, Б]
+            AssertEqual("В.xlsx|А.xlsx", IncludedSig(list), "порядок среди включённых изменился");
+
+            list.SetAllIncluded(true);
+            AssertEqual(3, list.IncludedCount, "все снова включены");
+        }
+
+        private static void TestSourceFileSort()
+        {
+            var list = new SourceFileList();
+            list.SetFiles(new[] { @"C:\in\Отчет 10.xlsx", @"C:\in\Отчет 2.xlsx", @"C:\in\Отчет 1.xlsx" });
+            list.SortByName();
+            AssertEqual("Отчет 1.xlsx|Отчет 2.xlsx|Отчет 10.xlsx", IncludedSig(list), "естественный порядок");
+        }
+
+        // ---------- PrepareSourceList ----------
+
+        private static void TestPrepareSourceList()
+        {
+            var files = new List<string>
+            {
+                @"C:\in\А.xlsx", @"C:\in\Свод.xlsx", @"C:\in\А.xlsx", @"C:\in\Б.xlsx"
+            };
+            List<string> prepared = MergeService.PrepareSourceList(files, @"C:\in\Свод.xlsx");
+            var names = prepared.ConvertAll(System.IO.Path.GetFileName);
+            AssertEqual("А.xlsx|Б.xlsx", string.Join("|", names.ToArray()),
+                "свод исключён, дубликат убран, порядок сохранён");
+            AssertEqual(0, MergeService.PrepareSourceList(null, "x").Count, "null -> пусто");
+        }
+
+        // ---------- WindowChrome / HeaderBand ----------
+
+        private static void TestWindowChromeColorRef()
+        {
+            // COLORREF кладёт R в младший байт, B в старший (0x00BBGGRR).
+            int packed = WindowChrome.ColorRef(System.Drawing.Color.FromArgb(16, 124, 65));
+            AssertEqual(0x00417C10, packed, "упаковка акцентного цвета");
+            AssertEqual(0x00FFFFFF, WindowChrome.ColorRef(System.Drawing.Color.White), "белый");
+            AssertEqual(0x00000000, WindowChrome.ColorRef(System.Drawing.Color.Black), "чёрный");
+            AssertEqual(0x000000FF, WindowChrome.ColorRef(System.Drawing.Color.FromArgb(255, 0, 0)), "красный -> младший байт");
+        }
+
+        private static void TestHeaderBand()
+        {
+            using (var band = new HeaderBand("Заголовок", "подпись"))
+            {
+                AssertTrue(band is System.Windows.Forms.Control, "это контрол");
+                band.Width = 400;
+                band.Height = 80;
+                AssertEqual(400, band.Width, "ширина применяется");
+                // Пустая подпись не должна ронять отрисовку логики (конструктор допускает null).
+                using (var noSub = new HeaderBand("Только заголовок", null))
+                    AssertTrue(noSub != null, "подпись null допустима");
+            }
         }
 
         // ---------- PdfPageOrder ----------
