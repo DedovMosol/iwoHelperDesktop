@@ -8,5 +8,8 @@ namespace ExcelMerger
 
         /// <summary>Заменить формулы вычисленными значениями — свод не будет зависеть от исходных файлов.</summary>
         public bool ValuesOnly;
+
+        /// <summary>Брать все видимые листы каждого файла (иначе — только первый видимый).</summary>
+        public bool AllSheets;
     }
 }

@@ -53,6 +53,8 @@ namespace ExcelMerger
                     options.AddToc = true;
                 else if (string.Equals(args[i], "--values", StringComparison.OrdinalIgnoreCase))
                     options.ValuesOnly = true;
+                else if (string.Equals(args[i], "--allsheets", StringComparison.OrdinalIgnoreCase))
+                    options.AllSheets = true;
                 else
                 {
                     error = "неизвестный параметр «" + args[i] + "»";

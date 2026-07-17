@@ -11,6 +11,7 @@ namespace ExcelMerger
         // «Заменить формулы значениями» сознательно НЕ запоминается: режим меняет
         // содержимое свода, включать его нужно осознанно на каждый запуск.
         public bool AddToc = true;              // «Содержание» по умолчанию включено
+        public bool AllSheets;                  // все листы (по умолчанию — только первый)
         public string OutputExtension = ".xlsx";
 
         private static string FilePath
@@ -36,6 +37,7 @@ namespace ExcelMerger
                     if (key == "lastInputFolder") s.LastInputFolder = value;
                     else if (key == "lastOutputFolder") s.LastOutputFolder = value;
                     else if (key == "addToc" && bool.TryParse(value, out flag)) s.AddToc = flag;
+                    else if (key == "allSheets" && bool.TryParse(value, out flag)) s.AllSheets = flag;
                     else if (key == "outputExtension" && OutputFormats.FileFormatFor("x" + value) != 0) s.OutputExtension = value;
                 }
             }
@@ -53,6 +55,7 @@ namespace ExcelMerger
                     "lastInputFolder=" + (LastInputFolder ?? ""),
                     "lastOutputFolder=" + (LastOutputFolder ?? ""),
                     "addToc=" + AddToc,
+                    "allSheets=" + AllSheets,
                     "outputExtension=" + (OutputExtension ?? ".xlsx")
                 });
             }
