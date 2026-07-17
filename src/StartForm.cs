@@ -32,11 +32,12 @@ namespace ExcelMerger
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(600, 380);
+            WindowChrome.Enable(this); // акцентный заголовок на Windows 11
 
-            Ui.AccentBar(this, 0);
-            Label title = Ui.Label(this, "Выберите инструмент", 0, 40,
-                new Font("Segoe UI", 15f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
-            title.Left = (ClientSize.Width - title.Width) / 2; // по центру (окно не меняет размер)
+            var header = new HeaderBand(AppTitle, "Выберите инструмент — свод Excel или объединение PDF");
+            header.SetBounds(0, 0, ClientSize.Width, 78);
+            header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(header);
 
             var excel = new ChoiceCard(CardGlyph.Excel, "Свод Excel",
                 "Объединить листы из нескольких файлов Excel в один свод: оглавление, замена формул значениями, сопроводительная записка Word.");

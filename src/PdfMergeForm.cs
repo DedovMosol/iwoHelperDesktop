@@ -71,6 +71,7 @@ namespace ExcelMerger
             ClientSize = new Size(780, 620);
             MinimumSize = new Size(660, 500);
             ShowInTaskbar = false;
+            WindowChrome.Enable(this); // акцентный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
@@ -81,19 +82,19 @@ namespace ExcelMerger
             Controls.Add(menu);
 
             int m = HelpMenu.Height; // содержимое ниже строки меню
-            Ui.AccentBar(this, m);
+            var header = new HeaderBand(Title,
+                "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.");
+            header.SetBounds(0, m, ClientSize.Width, 76);
+            header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(header);
             if (_backToMenu != null)
             {
                 Button back = Ui.BackButton(_backToMenu);
-                back.SetBounds(ClientSize.Width - 180, m + 12, 160, 30);
+                back.SetBounds(header.Width - 180, 22, 160, 30);
                 back.Anchor = AnchorStyles.Top | AnchorStyles.Right;
                 _tips.SetToolTip(back, "Вернуть на передний план окно выбора инструмента");
-                Controls.Add(back);
+                header.Controls.Add(back);
             }
-            Ui.Label(this, "Объединение PDF", 20, m + 16,
-                new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
-            Ui.Label(this, "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.",
-                22, m + 46, Font, Theme.TextMuted);
 
             int right = ClientSize.Width - 20;
 

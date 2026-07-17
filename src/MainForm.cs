@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -47,8 +48,19 @@ namespace ExcelMerger
         private MergeOptions _lastOptions;
         private DateTime _lastStartedAt;
         private MergeResult _lastResult;
-        private ListViewNaturalSorter _sorter;
-        private int _foundCount;
+
+        // Список файлов до слияния: порядок и включение.
+        private readonly SourceFileList _files = new SourceFileList();
+        private readonly Dictionary<string, ListViewItem> _rowByPath =
+            new Dictionary<string, ListViewItem>(StringComparer.OrdinalIgnoreCase);
+        private Button _btnUp;
+        private Button _btnDown;
+        private Button _btnSortName;
+        private Button _btnCheckAll;
+        private Button _btnUncheckAll;
+        private Panel _dropLine;   // индикатор вставки при перетаскивании
+        private int _dragIndex = -1;
+        private bool _populating;  // подавляет ItemChecked во время заполнения
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
         private bool _noteBusy;       // готовится записка Word (только UI-поток)
         private bool _closeRequested; // пользователь закрыл окно во время объединения
@@ -72,7 +84,7 @@ namespace ExcelMerger
             int formatIndex = Array.IndexOf(OutputFormats.Extensions, _settings.OutputExtension);
             _cmbFormat.SelectedIndex = formatIndex >= 0 ? formatIndex : 0;
             _cmbScope.SelectedIndex = _settings.AllSheets ? 1 : 0;
-            RefreshFileCount();
+            RefreshFileList();
         }
 
         // ---------- построение интерфейса ----------
@@ -91,6 +103,7 @@ namespace ExcelMerger
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(780, 785);
             MinimumSize = new Size(700, 725);
+            WindowChrome.Enable(this); // акцентный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
@@ -100,19 +113,17 @@ namespace ExcelMerger
             var stretch = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
             BuildMenu();
-            Ui.AccentBar(this, MenuHeight);
-            AddBackButton(right);
-
-            // Шапка
-            Ui.Label(this, "Свод Excel", 20, 47,
-                new Font("Segoe UI", 15f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
-            Ui.Label(this, "Первый видимый лист каждого файла папки — в один итоговый файл .xlsx",
-                22, 79, Font, Theme.TextMuted);
+            var header = new HeaderBand("Свод Excel",
+                "Первый видимый лист каждого файла папки — в один итоговый файл .xlsx");
+            header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
+            header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(header);
+            AddBackButton(header);
 
             // Шаг 1: исходная папка
             AddSectionLabel("ПАПКА С ИСХОДНЫМИ ФАЙЛАМИ", 115);
             _txtInput = AddTextBox(20, 135, right - 20 - 110);
-            _txtInput.TextChanged += delegate { RefreshFileCount(); };
+            _txtInput.TextChanged += delegate { RefreshFileList(); };
             _btnBrowseInput = AddButton("Обзор…", false, right - 100, 134, 100, 29);
             _btnBrowseInput.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseInput.Click += OnBrowseInput;
@@ -173,26 +184,32 @@ namespace ExcelMerger
 
             _lblStatus = Ui.Label(this, "Выберите папку с исходными файлами.", 20, 483, Font, Theme.TextMuted);
 
-            // Журнал: построчный результат по каждому файлу текущего прогона
-            AddSectionLabel("ЖУРНАЛ ОБРАБОТКИ", 508);
+            // Файлы: порядок и состав до слияния; после — результат в тех же строках
+            AddSectionLabel("ФАЙЛЫ ДЛЯ ОБЪЕДИНЕНИЯ", 508);
             _list = new ListView();
-            _list.SetBounds(20, 528, right - 20, ClientSize.Height - 528 - 44);
+            _list.SetBounds(20, 528, right - 20 - 150, ClientSize.Height - 528 - 44);
             _list.Anchor = stretch | AnchorStyles.Bottom;
             _list.View = View.Details;
             _list.FullRowSelect = true;
-            _list.HeaderStyle = ColumnHeaderStyle.Clickable; // клик по заголовку сортирует
+            _list.CheckBoxes = true; // снятая галочка исключает файл из свода
+            _list.HeaderStyle = ColumnHeaderStyle.Nonclickable; // порядок задаёт пользователь
             _list.BorderStyle = BorderStyle.FixedSingle;
-            _sorter = new ListViewNaturalSorter(_list);
-            _list.ColumnClick += delegate(object sender, ColumnClickEventArgs e)
-            {
-                if (!_running) // во время прогона строки идут в порядке обработки
-                    _sorter.SortBy(e.Column);
-            };
-            _list.Columns.Add("Файл", 270);
-            _list.Columns.Add("Лист", 170);
-            _list.Columns.Add("Результат", 110);
-            _list.Columns.Add("Примечание", 160);
+            _list.Columns.Add("Файл", 300);
+            _list.Columns.Add("Результат", 130);
+            _list.Columns.Add("Примечание", 180);
             EnableDoubleBuffer(_list);
+            _list.ItemChecked += OnItemChecked;
+            _list.ItemCheck += delegate(object s, ItemCheckEventArgs e)
+            {
+                if (_running) // во время прогона состав не меняем
+                    e.NewValue = e.CurrentValue;
+            };
+            _list.SelectedIndexChanged += delegate { UpdateListButtons(); };
+            _list.AllowDrop = true;
+            _list.ItemDrag += OnFileItemDrag;
+            _list.DragOver += OnFileDragOver;
+            _list.DragDrop += OnFileDragDrop;
+            _list.DragLeave += delegate { HideDropLine(); };
             var copyMenu = new ContextMenuStrip();
             var copyItem = new ToolStripMenuItem("Копировать");
             copyItem.ShortcutKeyDisplayString = "Ctrl+C";
@@ -209,6 +226,27 @@ namespace ExcelMerger
                 }
             };
             Controls.Add(_list);
+
+            // Кнопки управления списком (правая колонка на уровне списка)
+            int fcol = right - 140;
+            _btnUp = AddListButton("▲ Выше", fcol, 528);
+            _btnUp.Click += delegate { MoveSelectedFile(false); };
+            _btnDown = AddListButton("▼ Ниже", fcol, 562);
+            _btnDown.Click += delegate { MoveSelectedFile(true); };
+            _btnSortName = AddListButton("По имени", fcol, 604);
+            _btnSortName.Click += delegate { SortFilesByName(); };
+            _tips.SetToolTip(_btnSortName, "Вернуть естественный порядок по имени файла");
+            _btnCheckAll = AddListButton("Отметить все", fcol, 646);
+            _btnCheckAll.Click += delegate { SetAllChecked(true); };
+            _btnUncheckAll = AddListButton("Снять все", fcol, 680);
+            _btnUncheckAll.Click += delegate { SetAllChecked(false); };
+
+            _dropLine = new Panel();
+            _dropLine.Height = 2;
+            _dropLine.BackColor = Theme.Accent;
+            _dropLine.Visible = false;
+            Controls.Add(_dropLine);
+            _dropLine.BringToFront();
 
             _btnRetry = AddButton("Повторить пропущенные", false, right - 200, ClientSize.Height - 40, 200, 30);
             _btnRetry.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
@@ -236,15 +274,15 @@ namespace ExcelMerger
             UpdateReadiness();
         }
 
-        private void AddBackButton(int right)
+        private void AddBackButton(HeaderBand header)
         {
             if (_backToMenu == null)
                 return; // запущено вне хаба (напр. автотест)
             Button back = Ui.BackButton(_backToMenu);
-            back.SetBounds(right - 160, 44, 160, 30);
+            back.SetBounds(header.Width - 180, 24, 160, 30);
             back.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _tips.SetToolTip(back, "Вернуть на передний план окно выбора инструмента");
-            Controls.Add(back);
+            header.Controls.Add(back);
         }
 
         private void BuildMenu()
@@ -262,12 +300,17 @@ namespace ExcelMerger
             Dialogs.Info(this, AppTitle, "Как пользоваться",
                 "1. Укажите папку с исходными файлами — «Обзор…» или перетащите папку в окно.\n" +
                 "2. Задайте имя свода; папку сохранения можно сменить (пустая — папка с исходными).\n" +
-                "3. Нажмите «Объединить»: из каждого файла переносится первый видимый лист " +
-                "со всем оформлением, формулами и диаграммами.\n\n" +
+                "3. В списке «Файлы для объединения» задайте порядок и состав: перетаскиванием " +
+                "строк или кнопками «▲ Выше»/«▼ Ниже»; снимите галочку у ненужного файла. " +
+                "«По имени» вернёт естественный порядок, «Отметить все»/«Снять все» — быстрый выбор.\n" +
+                "4. Нажмите «Объединить»: из каждого выбранного файла переносится первый видимый " +
+                "лист со всем оформлением, формулами и диаграммами.\n\n" +
                 "Параметры:\n" +
+                "• «Листы» — только первый видимый лист каждого файла или все видимые,\n" +
                 "• лист «Содержание» — оглавление свода с гиперссылками и статусами файлов,\n" +
                 "• «Заменить формулы значениями» — свод не зависит от исходных файлов.\n\n" +
-                "Битые и запароленные файлы пропускаются, причина видна в списке и в отчёте.\n" +
+                "После слияния результат по каждому файлу виден в тех же строках. Битые " +
+                "и запароленные файлы пропускаются, причина видна в списке и в отчёте.\n" +
                 "Отчёты (три последних): Справка → «Папка отчётов».");
         }
 
@@ -339,7 +382,7 @@ namespace ExcelMerger
             return l;
         }
 
-        /// <summary>Выбранные строки журнала — в буфер обмена (формат как в отчёте).</summary>
+        /// <summary>Выбранные строки — в буфер: строки отчёта по листам, а до слияния — имена.</summary>
         private void CopySelectedRows()
         {
             if (_list.SelectedItems.Count == 0)
@@ -347,9 +390,12 @@ namespace ExcelMerger
             var sb = new StringBuilder();
             foreach (ListViewItem item in _list.SelectedItems)
             {
-                var fr = item.Tag as FileResult;
-                if (fr != null)
-                    sb.AppendLine(ReportWriter.FormatFileLine(fr));
+                var results = item.Tag as List<FileResult>;
+                if (results != null && results.Count > 0)
+                    foreach (FileResult fr in results)
+                        sb.AppendLine(ReportWriter.FormatFileLine(fr));
+                else
+                    sb.AppendLine(item.Text); // предпросмотр — имя файла
             }
             if (sb.Length == 0)
                 return;
@@ -366,17 +412,27 @@ namespace ExcelMerger
                 p.SetValue(list, true, null);
         }
 
-        // Доли колонок журнала: Файл / Лист / Результат / Примечание.
-        private static readonly float[] ColumnWeights = { 0.36f, 0.22f, 0.14f, 0.28f };
+        // Доли колонок: Файл / Результат / Примечание.
+        private static readonly float[] ColumnWeights = { 0.48f, 0.22f, 0.30f };
 
-        /// <summary>Колонки журнала делят ширину списка пропорционально.</summary>
+        /// <summary>Колонки списка делят ширину пропорционально.</summary>
         private void AdjustNoteColumn()
         {
             int width = _list.ClientSize.Width - 4;
-            if (width < 300)
+            if (width < 280)
                 return;
-            for (int i = 0; i < _list.Columns.Count; i++)
+            for (int i = 0; i < _list.Columns.Count && i < ColumnWeights.Length; i++)
                 _list.Columns[i].Width = (int)(width * ColumnWeights[i]);
+        }
+
+        private Button AddListButton(string text, int x, int y)
+        {
+            var b = new RoundedButton(false);
+            b.Text = text;
+            b.SetBounds(x, y, 130, 30);
+            b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            Controls.Add(b);
+            return b;
         }
 
         // ---------- выбор папок, drag&drop, живая валидация ----------
@@ -435,34 +491,61 @@ namespace ExcelMerger
             return null;
         }
 
-        private void RefreshFileCount()
+        /// <summary>Перечитывает папку в список файлов (все включены, естественный порядок).</summary>
+        private void RefreshFileList()
         {
+            if (_running)
+                return;
             string folder = _txtInput.Text.Trim();
-            _foundCount = 0;
+            List<string> paths = new List<string>();
             if (folder.Length == 0)
-            {
                 SetFoundLabel("Укажите папку или перетащите её в окно.", Theme.TextMuted);
-            }
             else if (!Directory.Exists(folder))
-            {
                 SetFoundLabel("Папка не найдена.", Theme.ErrRed);
-            }
             else
             {
-                try
-                {
-                    _foundCount = MergeService.FindSourceFiles(folder, null).Count;
-                    if (_foundCount > 0)
-                        SetFoundLabel("✓ Найдено файлов Excel: " + _foundCount, Theme.OkGreen);
-                    else
-                        SetFoundLabel("Файлы Excel (.xlsx, .xls, .xlsm, .xlsb) не найдены.", Theme.ErrRed);
-                }
-                catch (Exception ex)
-                {
-                    SetFoundLabel("Не удалось прочитать папку: " + ex.Message, Theme.ErrRed);
-                }
+                try { paths = MergeService.FindSourceFiles(folder, null); }
+                catch (Exception ex) { SetFoundLabel("Не удалось прочитать папку: " + ex.Message, Theme.ErrRed); }
             }
+            _files.SetFiles(paths);
+            RebuildFileRows();
+        }
+
+        private void RebuildFileRows()
+        {
+            _populating = true;
+            _list.BeginUpdate();
+            _list.Items.Clear();
+            _rowByPath.Clear();
+            for (int i = 0; i < _files.Count; i++)
+            {
+                SourceFile f = _files[i];
+                var item = new ListViewItem(f.FileName);
+                item.Checked = f.Include;
+                item.SubItems.Add("");   // Результат
+                item.SubItems.Add("");   // Примечание
+                item.Tag = new List<FileResult>(); // результаты по этому файлу
+                item.ToolTipText = f.Path;
+                _list.Items.Add(item);
+                _rowByPath[Path.GetFullPath(f.Path)] = item;
+            }
+            _list.EndUpdate();
+            _populating = false;
+            UpdateFoundLabel();
             UpdateReadiness();
+            UpdateListButtons();
+        }
+
+        private void UpdateFoundLabel()
+        {
+            if (_files.Count == 0)
+            {
+                if (_txtInput.Text.Trim().Length > 0 && Directory.Exists(_txtInput.Text.Trim()))
+                    SetFoundLabel("Файлы Excel (.xlsx, .xls, .xlsm, .xlsb) не найдены.", Theme.ErrRed);
+                return;
+            }
+            int inc = _files.IncludedCount;
+            SetFoundLabel("Найдено файлов: " + _files.Count + ", выбрано: " + inc, Theme.OkGreen);
         }
 
         private void SetFoundLabel(string text, Color color)
@@ -471,12 +554,147 @@ namespace ExcelMerger
             _lblFound.ForeColor = color;
         }
 
-        /// <summary>Кнопка «Объединить» активна только при валидных входных данных.</summary>
-        private void UpdateReadiness()
+        private void OnItemChecked(object sender, ItemCheckedEventArgs e)
+        {
+            if (_populating)
+                return;
+            int index = e.Item.Index;
+            if (index >= 0 && index < _files.Count)
+                _files[index].Include = e.Item.Checked;
+            UpdateFoundLabel();
+            UpdateReadiness();
+        }
+
+        // ---------- порядок и состав ----------
+
+        private void MoveSelectedFile(bool down)
+        {
+            if (_running || _list.SelectedIndices.Count != 1)
+                return;
+            int index = _list.SelectedIndices[0];
+            int moved = down ? _files.MoveDown(index) : _files.MoveUp(index);
+            if (moved == index)
+                return;
+            RebuildFileRows();
+            _list.Items[moved].Selected = true;
+            _list.Items[moved].EnsureVisible();
+            _list.Focus();
+        }
+
+        private void SortFilesByName()
         {
             if (_running)
                 return;
-            _btnMerge.Enabled = _foundCount > 0 && _txtName.Text.Trim().Length > 0;
+            _files.SortByName();
+            RebuildFileRows();
+        }
+
+        private void SetAllChecked(bool included)
+        {
+            if (_running)
+                return;
+            _files.SetAllIncluded(included);
+            _populating = true;
+            foreach (ListViewItem item in _list.Items)
+                item.Checked = included;
+            _populating = false;
+            UpdateFoundLabel();
+            UpdateReadiness();
+        }
+
+        private void UpdateListButtons()
+        {
+            bool one = !_running && _list.SelectedIndices.Count == 1;
+            _btnUp.Enabled = one;
+            _btnDown.Enabled = one;
+            _btnSortName.Enabled = !_running && _files.Count > 1;
+            _btnCheckAll.Enabled = !_running && _files.Count > 0;
+            _btnUncheckAll.Enabled = !_running && _files.Count > 0;
+        }
+
+        // ---------- перетаскивание строк ----------
+
+        private void OnFileItemDrag(object sender, ItemDragEventArgs e)
+        {
+            if (_running)
+                return;
+            var item = e.Item as ListViewItem;
+            if (item != null)
+            {
+                _dragIndex = item.Index;
+                _list.DoDragDrop(item, DragDropEffects.Move);
+            }
+        }
+
+        private void OnFileDragOver(object sender, DragEventArgs e)
+        {
+            if (_running || _dragIndex < 0)
+            {
+                e.Effect = DragDropEffects.None;
+                return;
+            }
+            e.Effect = DragDropEffects.Move;
+            int target = DropTargetIndex(e);
+            ShowDropLine(target);
+        }
+
+        private void OnFileDragDrop(object sender, DragEventArgs e)
+        {
+            HideDropLine();
+            if (_running || _dragIndex < 0)
+                return;
+            int target = DropTargetIndex(e);
+            int from = _dragIndex;
+            _dragIndex = -1;
+            _files.Move(from, target);
+            RebuildFileRows();
+            int landed = target > from ? target - 1 : target;
+            if (landed >= 0 && landed < _list.Items.Count)
+            {
+                _list.Items[landed].Selected = true;
+                _list.Items[landed].EnsureVisible();
+            }
+        }
+
+        /// <summary>Индекс вставки по позиции курсора (0..Count).</summary>
+        private int DropTargetIndex(DragEventArgs e)
+        {
+            Point pt = _list.PointToClient(new Point(e.X, e.Y));
+            ListViewItem over = _list.GetItemAt(pt.X, pt.Y);
+            if (over == null)
+                return _list.Items.Count; // ниже последней строки
+            Rectangle b = over.Bounds;
+            return pt.Y > b.Top + b.Height / 2 ? over.Index + 1 : over.Index;
+        }
+
+        private void ShowDropLine(int target)
+        {
+            // y — в координатах клиента списка; переносим в координаты формы (+_list.Top).
+            int y;
+            if (_list.Items.Count == 0)
+                y = 4;
+            else if (target >= _list.Items.Count)
+                y = _list.Items[_list.Items.Count - 1].Bounds.Bottom;
+            else
+                y = _list.Items[target].Bounds.Top;
+            _dropLine.SetBounds(_list.Left + 2, _list.Top + y - 1, _list.Width - 4, 2);
+            _dropLine.Visible = true;
+            _dropLine.BringToFront();
+        }
+
+        private void HideDropLine()
+        {
+            if (_dropLine != null)
+                _dropLine.Visible = false;
+        }
+
+        /// <summary>Кнопка «Объединить» активна при выбранных файлах и заданном имени.</summary>
+        private void UpdateReadiness()
+        {
+            UpdateListButtons();
+            if (_running)
+                return;
+            _btnMerge.Enabled = _files.IncludedCount > 0 && _txtName.Text.Trim().Length > 0;
         }
 
         // ---------- запуск объединения ----------
@@ -526,10 +744,11 @@ namespace ExcelMerger
 
             string outputPath = Path.Combine(outDir, name + (string)_cmbFormat.SelectedItem);
 
-            if (MergeService.FindSourceFiles(folder, outputPath).Count == 0)
+            List<string> files = _files.IncludedInOrder();
+            if (files.Count == 0)
             {
-                Dialogs.Error(this, AppTitle, "В папке нет файлов Excel",
-                    "Поддерживаются файлы .xlsx, .xls, .xlsm, .xlsb.");
+                Dialogs.Error(this, AppTitle, "Не выбрано ни одного файла",
+                    "Отметьте галочками файлы для объединения.");
                 return;
             }
 
@@ -558,13 +777,13 @@ namespace ExcelMerger
             options.AddToc = _chkToc.Checked;
             options.ValuesOnly = _chkValues.Checked;
             options.AllSheets = _cmbScope.SelectedIndex == 1;
-            StartMerge(folder, outputPath, options);
+            StartMerge(files, folder, outputPath, options);
         }
 
-        private void StartMerge(string folder, string outputPath, MergeOptions options)
+        private void StartMerge(List<string> files, string folder, string outputPath, MergeOptions options)
         {
-            PrepareRun(folder, outputPath, options);
-            StartWorker(delegate { return _service.Merge(folder, outputPath, options); });
+            PrepareRun(folder, outputPath, options, true); // свежий прогон — очистить результаты всех строк
+            StartWorker(delegate { return _service.Merge(files, outputPath, options); });
         }
 
         private void OnRetryClick(object sender, EventArgs e)
@@ -580,17 +799,33 @@ namespace ExcelMerger
                 return;
             }
             MergeOptions options = _lastOptions;
-            PrepareRun(_lastInputFolder, outputPath, options);
+            PrepareRun(_lastInputFolder, outputPath, options, false); // повтор — не трогаем успешные строки
+            // сбросить результат только у повторяемых (ранее пропущенных) файлов
+            foreach (FileResult fr in previous.Files)
+            {
+                ListViewItem row;
+                if (!fr.Ok && fr.FullPath != null && _rowByPath.TryGetValue(Path.GetFullPath(fr.FullPath), out row))
+                    ResetRow(row);
+            }
             StartWorker(delegate { return _service.RetrySkipped(outputPath, options, previous); });
         }
 
+        private void ResetRow(ListViewItem row)
+        {
+            ((List<FileResult>)row.Tag).Clear();
+            row.SubItems[1].Text = "";
+            row.SubItems[2].Text = "";
+            row.ForeColor = _list.ForeColor;
+        }
+
         /// <summary>Общий сброс интерфейса перед обычным и повторным слиянием.</summary>
-        private void PrepareRun(string folder, string outputPath, MergeOptions options)
+        private void PrepareRun(string folder, string outputPath, MergeOptions options, bool clearAllRows)
         {
             _running = true;
             SetRunning(true);
-            _sorter.Reset();
-            _list.Items.Clear();
+            if (clearAllRows)
+                foreach (ListViewItem row in _list.Items)
+                    ResetRow(row);
             _lnkOpenFile.Visible = false;
             _lnkOpenFolder.Visible = false;
             _lnkOpenReport.Visible = false;
@@ -659,18 +894,48 @@ namespace ExcelMerger
         {
             OnUi(delegate
             {
-                var item = new ListViewItem(fr.FileName);
-                item.Tag = fr; // для копирования строки в буфер
-                item.SubItems.Add(fr.SheetName ?? "—");
-                item.SubItems.Add(fr.Ok ? "✓ перенесён" : "✗ пропущен");
-                item.SubItems.Add(fr.Note ?? "");
-                item.ForeColor = !fr.Ok ? Theme.ErrRed : (fr.Note != null ? Theme.WarnOrange : Theme.OkGreen);
-                _list.Items.Add(item);
-                item.EnsureVisible();
-                // Прогресс ведёт OnServiceProgress (по файлам); строк журнала
-                // может быть больше файлов (режим «все листы»), поэтому здесь
-                // счётчик не трогаем.
+                ListViewItem row;
+                if (fr.FullPath == null || !_rowByPath.TryGetValue(Path.GetFullPath(fr.FullPath), out row))
+                    return; // результат по файлу вне списка (не должно случаться)
+                var results = (List<FileResult>)row.Tag;
+                results.Add(fr); // в режиме «все листы» на файл несколько результатов
+                UpdateRowDisplay(row, results);
+                row.EnsureVisible();
+                // Прогресс ведёт OnServiceProgress (по файлам).
             });
+        }
+
+        /// <summary>Свод результатов по файлу в его строку: статус, примечания, цвет.</summary>
+        private void UpdateRowDisplay(ListViewItem row, List<FileResult> results)
+        {
+            int ok = 0, fail = 0;
+            var notes = new List<string>();
+            foreach (FileResult fr in results)
+            {
+                if (fr.Ok) ok++; else fail++;
+                if (!string.IsNullOrEmpty(fr.Note) && !notes.Contains(fr.Note))
+                    notes.Add(fr.Note);
+            }
+            string status;
+            Color color;
+            if (ok == 0)
+            {
+                status = "✗ пропущен";
+                color = Theme.ErrRed;
+            }
+            else if (fail == 0)
+            {
+                status = ok == 1 ? "✓ перенесён" : "✓ листов: " + ok;
+                color = notes.Count > 0 ? Theme.WarnOrange : Theme.OkGreen;
+            }
+            else
+            {
+                status = "⚠ листов: " + ok + " из " + (ok + fail);
+                color = Theme.WarnOrange;
+            }
+            row.SubItems[1].Text = status;
+            row.SubItems[2].Text = string.Join("; ", notes.ToArray());
+            row.ForeColor = color;
         }
 
         private void OnMergeFinished(MergeResult result, Exception error)
@@ -845,6 +1110,7 @@ namespace ExcelMerger
             _cmbScope.Enabled = !running;
             _btnMerge.Enabled = !running;
             _btnCancel.Enabled = running;
+            UpdateListButtons(); // кнопки порядка/выбора блокируются во время прогона
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
