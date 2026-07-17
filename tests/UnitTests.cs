@@ -49,6 +49,8 @@ namespace ExcelMerger.Tests
             Run("SourceFileList: порядок, включение, IncludedInOrder", TestSourceFileList);
             Run("SourceFileList: сортировка по имени как в Проводнике", TestSourceFileSort);
             Run("PrepareSourceList: исключение свода и дубликатов", TestPrepareSourceList);
+            Run("FileSignature: ZIP/OLE2 — книга, текст/пусто — нет", TestFileSignature);
+            Run("LowSpaceMessage: мало места — понятная ошибка, иначе null", TestLowSpaceMessage);
             Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
             Run("HeaderBand: строится с заголовком, двойная буферизация", TestHeaderBand);
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
@@ -495,6 +497,49 @@ namespace ExcelMerger.Tests
             AssertEqual("А.xlsx|Б.xlsx", string.Join("|", names.ToArray()),
                 "свод исключён, дубликат убран, порядок сохранён");
             AssertEqual(0, MergeService.PrepareSourceList(null, "x").Count, "null -> пусто");
+        }
+
+        // ---------- FileSignature ----------
+
+        private static void TestFileSignature()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string txt = Path.Combine(dir, "битый.xlsx");
+                File.WriteAllText(txt, "this is not an excel file");
+                AssertEqual(ExcelContainer.NotExcel, FileSignature.Detect(txt), "текст с расширением .xlsx");
+
+                string empty = Path.Combine(dir, "пустой.xlsx");
+                File.WriteAllBytes(empty, new byte[0]);
+                AssertEqual(ExcelContainer.NotExcel, FileSignature.Detect(empty), "пустой файл");
+
+                string zip = Path.Combine(dir, "ooxml.xlsx");
+                File.WriteAllBytes(zip, new byte[] { 0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00 });
+                AssertEqual(ExcelContainer.Zip, FileSignature.Detect(zip), "ZIP-сигнатура PK — OOXML");
+
+                string ole = Path.Combine(dir, "запарол.xlsx");
+                File.WriteAllBytes(ole, new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 });
+                AssertEqual(ExcelContainer.Ole2, FileSignature.Detect(ole), "OLE2/CFB — xls или шифр");
+
+                AssertEqual(ExcelContainer.Unreadable, FileSignature.Detect(Path.Combine(dir, "нет.xlsx")),
+                    "отсутствующий файл — решает Excel");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void TestLowSpaceMessage()
+        {
+            AssertEqual(null, MergeService.LowSpaceMessage(@"C:\", 5L * 1024 * 1024 * 1024), "5 ГБ — достаточно");
+            AssertEqual(null, MergeService.LowSpaceMessage(@"C:\", 200L * 1024 * 1024), "ровно порог 200 МБ — достаточно");
+            string low = MergeService.LowSpaceMessage(@"C:\", 10L * 1024 * 1024);
+            AssertTrue(low != null && low.Contains(@"C:\") && low.Contains("10 МБ"), "мало места: " + low);
+            string zero = MergeService.LowSpaceMessage(@"C:\", 0);
+            AssertTrue(zero != null && zero.Contains("0 МБ"), "ноль байт: " + zero);
         }
 
         // ---------- WindowChrome / HeaderBand ----------

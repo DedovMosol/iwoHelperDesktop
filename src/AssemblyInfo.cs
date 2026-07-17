@@ -6,6 +6,6 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("iwo")]
 [assembly: AssemblyProduct("iwo Helper Desktop")]
 [assembly: AssemblyCopyright("© 2026")]
-[assembly: AssemblyVersion("1.10.1.0")]
-[assembly: AssemblyFileVersion("1.10.1.0")]
+[assembly: AssemblyVersion("1.10.2.0")]
+[assembly: AssemblyFileVersion("1.10.2.0")]
 [assembly: ComVisible(false)]

@@ -46,6 +46,16 @@ namespace ExcelMerger
     }
 
     /// <summary>
+    /// Файл подвесил Excel (Workbooks перестали отвечать) — внутренний сигнал
+    /// к перезапуску экземпляра без этого файла. Наружу не выходит.
+    /// </summary>
+    internal class ExcelWedgedException : Exception
+    {
+        public readonly string FilePath;
+        public ExcelWedgedException(string filePath) { FilePath = filePath; }
+    }
+
+    /// <summary>
     /// Объединяет первый видимый лист каждого Excel-файла папки в один итоговый
     /// файл через COM-автоматизацию установленного Excel (перенос без потерь:
     /// форматирование, диаграммы, сводные таблицы, картинки). Поддерживает
@@ -283,11 +293,92 @@ namespace ExcelMerger
                 throw new MergeException(lockError);
         }
 
+        private const int MaxWedgeRestarts = 3;
+        private const long MinFreeBytes = 200L * 1024 * 1024; // 200 МБ на рабочем диске
+
         /// <summary>
-        /// Движок слияния. previous == null — новый свод; иначе дослияние
-        /// в существующий файл с объединением результатов.
+        /// Сообщение о нехватке места (или null). Excel создаёт временные файлы на
+        /// системном/temp-диске; при почти полном диске любой Workbooks.Open падает
+        /// с невнятным «свойство Open» — понятнее сказать это заранее. Чистая, тестируемая.
+        /// </summary>
+        internal static string LowSpaceMessage(string root, long freeBytes)
+        {
+            if (freeBytes >= MinFreeBytes)
+                return null;
+            return "На диске " + root + " почти нет свободного места (" + (freeBytes / (1024 * 1024)) +
+                " МБ). Excel не сможет открыть файлы — освободите место и повторите.";
+        }
+
+        /// <summary>Предполётная проверка рабочих дисков (системный, temp, диск свода).</summary>
+        private static string CheckWorkingSpace(string outputPath)
+        {
+            var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string[] paths =
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                Path.GetTempPath(),
+                Path.GetDirectoryName(Path.GetFullPath(outputPath))
+            };
+            foreach (string p in paths)
+            {
+                if (string.IsNullOrEmpty(p))
+                    continue;
+                string root = Path.GetPathRoot(p);
+                if (string.IsNullOrEmpty(root) || !roots.Add(root))
+                    continue;
+                try
+                {
+                    var drive = new DriveInfo(root);
+                    if (drive.IsReady)
+                    {
+                        string msg = LowSpaceMessage(root, drive.AvailableFreeSpace);
+                        if (msg != null)
+                            return msg;
+                    }
+                }
+                catch { } // диск недоступен для оценки — не мешаем работе
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Движок слияния с самовосстановлением: если файл подвешивает Excel
+        /// (Workbooks перестают отвечать), экземпляр перезапускается, а виновный
+        /// файл исключается — без перезагрузки машины и без потери остальных.
+        /// previous == null — новый свод; иначе дослияние в существующий файл.
         /// </summary>
         private MergeResult Run(string outputPath, List<string> files, MergeOptions options, MergeResult previous)
+        {
+            string spaceError = CheckWorkingSpace(outputPath);
+            if (spaceError != null)
+                throw new MergeException(spaceError);
+
+            var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int restart = 0; ; restart++)
+            {
+                try
+                {
+                    return RunOnce(outputPath, files, options, previous, excluded);
+                }
+                catch (ExcelWedgedException wedge)
+                {
+                    // Виновный файл в чёрный список и перезапуск свежего Excel.
+                    // Add вернёт false, если файл уже исключён (защита от зацикливания).
+                    if (restart >= MaxWedgeRestarts || !excluded.Add(wedge.FilePath))
+                        throw new MergeException("Excel не удалось стабилизировать после файла «" +
+                            Path.GetFileName(wedge.FilePath) +
+                            "». Исключите этот файл из списка (снимите галочку) и повторите.");
+                    RaiseTrace("перезапуск Excel после зависания на " + Path.GetFileName(wedge.FilePath));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Один проход слияния в отдельном экземпляре Excel. Файлы из excluded
+        /// пропускаются без открытия (ранее подвесили Excel). Бросает
+        /// ExcelWedgedException, если очередной файл подвесил Workbooks.
+        /// </summary>
+        private MergeResult RunOnce(string outputPath, List<string> files, MergeOptions options, MergeResult previous, HashSet<string> excluded)
         {
             bool intoExisting = previous != null;
             var attempt = new MergeResult();
@@ -358,6 +449,17 @@ namespace ExcelMerger
                     index++;
                     RaiseProgress(index, files.Count, Path.GetFileName(path));
 
+                    if (excluded.Contains(Path.GetFullPath(path)))
+                    {
+                        // Файл ранее подвесил Excel — не открываем повторно.
+                        FileResult skip = Skipped(Path.GetFileName(path), path,
+                            "пропущен: вызывал зависание Excel");
+                        attempt.Files.Add(skip);
+                        attempt.SkipCount++;
+                        RaiseFileDone(skip);
+                        continue;
+                    }
+
                     List<FileResult> frs;
                     try
                     {
@@ -370,7 +472,6 @@ namespace ExcelMerger
                         fr.FileName = Path.GetFileName(path);
                         fr.FullPath = path;
                         fr.Note = "не удалось обработать (" + ShortMessage(ex) + ")";
-                        EnsureExcelAlive((object)excel, fr.FileName);
                         frs = new List<FileResult> { fr };
                     }
                     foreach (FileResult fr in frs)
@@ -379,6 +480,12 @@ namespace ExcelMerger
                         if (fr.Ok) attempt.OkCount++; else attempt.SkipCount++;
                         RaiseFileDone(fr);
                     }
+
+                    // Отказоустойчивость: если файл подвесил Excel (Workbooks не
+                    // отвечают), уходим на перезапуск экземпляра без него — иначе
+                    // все следующие файлы были бы ложно «пропущены».
+                    if (!IsExcelResponsive((object)excel))
+                        throw new ExcelWedgedException(Path.GetFullPath(path));
                 }
 
                 if (attempt.Cancelled)
@@ -491,6 +598,23 @@ namespace ExcelMerger
             string fileName = Path.GetFileName(path);
             string fileBase = Path.GetFileNameWithoutExtension(path);
             var results = new List<FileResult>();
+
+            // Отсекаем до Excel то, что подвешивает Workbooks.Open, а с ним и все
+            // следующие файлы: битый файл (не ZIP и не OLE2) и зашифрованную
+            // парольную книгу. Незашифрованный OOXML — всегда ZIP; контейнер OLE2
+            // у .xlsx/.xlsm/.xlsb означает, что книга зашифрована.
+            ExcelContainer container = FileSignature.Detect(path);
+            if (container == ExcelContainer.NotExcel)
+            {
+                results.Add(Skipped(fileName, path, "файл повреждён или не является книгой Excel"));
+                return results;
+            }
+            if (container == ExcelContainer.Ole2 &&
+                !string.Equals(Path.GetExtension(path), ".xls", StringComparison.OrdinalIgnoreCase))
+            {
+                results.Add(Skipped(fileName, path, "файл защищён паролем"));
+                return results;
+            }
 
             dynamic source = null;
             try
@@ -702,19 +826,28 @@ namespace ExcelMerger
             fr.Note = string.IsNullOrEmpty(fr.Note) ? note : fr.Note + "; " + note;
         }
 
-        /// <summary>Если Excel аварийно завершился, продолжать бессмысленно — падаем с понятной ошибкой.</summary>
-        private static void EnsureExcelAlive(object excelObj, string fileName)
+        /// <summary>
+        /// Отвечает ли Excel: обращение к Workbooks — именно оно виснет при
+        /// заклинивании после битого файла (и падает, если Excel аварийно вышел).
+        /// </summary>
+        private static bool IsExcelResponsive(object excelObj)
         {
             dynamic excel = excelObj;
-            try
+            // Несколько попыток: транзиентный COM-блип (занят) не должен ложно
+            // трактоваться как заклинивание и вызывать лишний перезапуск.
+            for (int i = 0; i < 3; i++)
             {
-                string probe = (string)excel.Name;
+                try
+                {
+                    int probe = (int)excel.Workbooks.Count;
+                    return true;
+                }
+                catch (Exception)
+                {
+                    System.Threading.Thread.Sleep(150);
+                }
             }
-            catch (Exception)
-            {
-                throw new MergeException("Excel аварийно завершился при обработке файла «" + fileName +
-                    "». Итоговый файл не создан. Запустите объединение повторно, при повторении — исключите этот файл.");
-            }
+            return false;
         }
 
         /// <summary>Видимые листы книги: все или только первый (в порядке книги).</summary>

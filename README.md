@@ -123,7 +123,13 @@ working. A single file is shipped; nothing is installed.
 ## Edge-case behaviour
 
 - a broken / password-protected / unreadable file is skipped, with the reason in
-  the list, the table of contents and the report;
+  the list, the table of contents and the report; corrupt and encrypted files are
+  detected by their signature and skipped **before** Excel opens them, so they
+  cannot wedge the shared Excel instance;
+- if a file still wedges Excel, the instance is restarted automatically without
+  that file and the merge continues (no machine reboot);
+- if the system, temp or output drive is nearly full, the merge stops up front
+  with a clear message instead of cryptic per-file COM errors;
 - hidden sheets are not transferred (the first **visible** sheet is taken);
 - name clashes (for example `Report.xls` and `Report.xlsx`) — the second sheet
   gets a `_2` suffix;
