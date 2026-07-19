@@ -37,7 +37,7 @@ namespace ExcelMerger
         private LinkLabel _lnkNote;
         private Button _btnRetry;
 
-        private readonly Action _backToMenu;
+        private readonly Action _showHub;
         private MergeService _service;
         private Thread _worker;
         private UserSettings _settings;
@@ -68,9 +68,9 @@ namespace ExcelMerger
 
         public MainForm() : this(null) { }
 
-        public MainForm(Action backToMenu)
+        public MainForm(Action showHub)
         {
-            _backToMenu = backToMenu;
+            _showHub = showHub;
             BuildUi();
 
             _settings = UserSettings.Load();
@@ -101,8 +101,7 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            Version version = Assembly.GetExecutingAssembly().GetName().Version;
-            Text = AppTitle + " " + version.ToString(2);
+            Text = "Свод Excel"; // имя окна = имя инструмента (как у «Объединение PDF»), не как у хаба
             Icon appIcon = Ui.AppIcon();
             if (appIcon != null)
                 Icon = appIcon;
@@ -130,9 +129,9 @@ namespace ExcelMerger
                 Theme.Accent, Theme.AccentPressed);
             header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            header.TabIndex = 100; // «Назад в меню» — в конце обхода Tab, а не в начале
+            header.TabIndex = 100; // «Главная» — в конце обхода Tab, а не в начале
             Controls.Add(header);
-            AddBackButton(header);
+            AddHomeButton(header);
 
             // Шаг 1: исходная папка
             AddSectionLabel("ПАПКА С ИСХОДНЫМИ ФАЙЛАМИ", 115);
@@ -242,24 +241,8 @@ namespace ExcelMerger
                     CopySelectedRows();
                     e.Handled = true;
                 }
-                else if (e.Alt && e.KeyCode == Keys.Up)
-                {
-                    MoveSelectedFile(false); // перестановка выше без мыши
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                }
-                else if (e.Alt && e.KeyCode == Keys.Down)
-                {
-                    MoveSelectedFile(true);
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                }
-                else if (e.KeyCode == Keys.Enter)
-                {
-                    // Enter в списке не должен запускать слияние (AcceptButton).
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                }
+                // Alt+↑/↓ и Enter обрабатываются в ProcessCmdKey: Enter как
+                // диалоговая клавиша (AcceptButton) перехватывается до KeyDown.
             };
             Controls.Add(_list);
 
@@ -310,15 +293,15 @@ namespace ExcelMerger
             UpdateReadiness();
         }
 
-        private void AddBackButton(HeaderBand header)
+        private void AddHomeButton(HeaderBand header)
         {
-            if (_backToMenu == null)
+            if (_showHub == null)
                 return; // запущено вне хаба (напр. автотест)
-            Button back = Ui.BackButton(_backToMenu);
-            back.SetBounds(header.Width - 180, 24, 160, 30);
-            back.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _tips.SetToolTip(back, "Вернуть на передний план окно выбора инструмента");
-            header.Controls.Add(back);
+            Button home = Ui.HomeButton(_showHub);
+            home.SetBounds(header.Width - 180, 24, 160, 30);
+            home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(home, "Открыть экран выбора инструмента");
+            header.Controls.Add(home);
         }
 
         private void BuildMenu()
@@ -590,6 +573,33 @@ namespace ExcelMerger
         }
 
         // ---------- порядок и состав ----------
+
+        /// <summary>Действие клавиатуры для сфокусированного файл-листа. Чистая — под тест.</summary>
+        internal enum ListKeyAction { None, MoveUp, MoveDown, Swallow }
+
+        internal static ListKeyAction ClassifyListKey(Keys keyData)
+        {
+            if (keyData == (Keys.Alt | Keys.Up)) return ListKeyAction.MoveUp;
+            if (keyData == (Keys.Alt | Keys.Down)) return ListKeyAction.MoveDown;
+            if (keyData == Keys.Enter) return ListKeyAction.Swallow; // не запускать слияние из списка
+            return ListKeyAction.None;
+        }
+
+        // ProcessCmdKey срабатывает раньше диалоговой обработки (AcceptButton),
+        // поэтому и подавление Enter, и Alt+↑/↓ здесь надёжны.
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (_list != null && _list.Focused && !_running)
+            {
+                switch (ClassifyListKey(keyData))
+                {
+                    case ListKeyAction.MoveUp: MoveSelectedFile(false); return true;
+                    case ListKeyAction.MoveDown: MoveSelectedFile(true); return true;
+                    case ListKeyAction.Swallow: return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
 
         private void MoveSelectedFile(bool down)
         {
@@ -867,6 +877,21 @@ namespace ExcelMerger
             _service = new MergeService();
             _service.Progress += OnServiceProgress;
             _service.FileDone += OnServiceFileDone;
+            _service.Restarting += OnServiceRestarting;
+        }
+
+        /// <summary>
+        /// Excel перезапускается из-за зависшего файла: прошлый проход отменён и
+        /// будет переотправлен, поэтому очищаем накопленные в строках результаты,
+        /// чтобы они не задвоились.
+        /// </summary>
+        private void OnServiceRestarting()
+        {
+            OnUi(delegate
+            {
+                foreach (ListViewItem row in _list.Items)
+                    ResetRow(row);
+            });
         }
 
         /// <summary>Запуск фонового STA-потока: исключения доставляются в UI, поток не падает.</summary>

@@ -45,12 +45,12 @@ namespace ExcelMerger
             return l;
         }
 
-        /// <summary>Стилизованная кнопка «Назад в меню» (вызывает back по клику).</summary>
-        public static Button BackButton(Action back)
+        /// <summary>Стилизованная кнопка «Главная» — показывает экран выбора инструмента.</summary>
+        public static Button HomeButton(Action showHub)
         {
             var b = new RoundedButton(false);
-            b.Text = "◀ Назад в меню";
-            b.Click += delegate { back(); };
+            b.Text = "⌂ Главная";
+            b.Click += delegate { showHub(); };
             return b;
         }
 
@@ -61,13 +61,13 @@ namespace ExcelMerger
             catch { return null; } // без иконки — со стандартной системной
         }
 
-        /// <summary>Акцентная полоса в верхней части окна.</summary>
-        public static Panel AccentBar(Control parent, int y)
+        /// <summary>Акцентная полоса заданного цвета в верхней части окна.</summary>
+        public static Panel AccentBar(Control parent, int y, Color color)
         {
             var bar = new Panel();
             bar.SetBounds(0, y, parent.ClientSize.Width, 3);
             bar.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            bar.BackColor = Theme.Accent;
+            bar.BackColor = color;
             parent.Controls.Add(bar);
             return bar;
         }

@@ -3,6 +3,33 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.10.5] — 2026-07-19
+
+### Fixed
+- **Excel window title.** The Excel tool window was titled like the hub
+  (“iwo Helper Desktop 1.10”); it is now “Свод Excel”, so it is distinct in the
+  title bar and Task Manager (the PDF tool was already correct).
+- **Keyboard handling in the file list now actually works.** `Enter` (the form's
+  default button) is a dialog key intercepted before `KeyDown`, so the previous
+  suppression never fired; and `Alt+↑/↓` were unreliable next to the menu. Both are
+  now handled in `ProcessCmdKey` (which runs first): `Enter` in the list no longer
+  starts the merge, `Alt+↑/↓` reorder reliably. Routing is unit-tested
+  (`ClassifyListKey`).
+- **Self-healing restart no longer double-counts results in the UI.** When a wedged
+  Excel instance is restarted, the previous pass is replayed; the merge service now
+  raises a `Restarting` event and the window clears the per-file rows so results
+  aren't accumulated twice.
+
+### Changed
+- **Tool windows are now independent of the hub.** Closing the start screen no
+  longer closes (or abruptly kills) the open Excel/PDF tools — they keep running,
+  and the process exits only when the last window is closed. Window lifetime is
+  owned by a new `ShellContext` (`ApplicationContext`).
+- The tool button “◀ Назад в меню” became **“⌂ Главная”** and now re-opens the tool
+  chooser (re-creating it if the hub was closed).
+- The **“About” window is now blue** (bar and, on Windows 11, the title bar) to
+  match the start screen.
+
 ## [1.10.4] — 2026-07-18
 
 ### Fixed

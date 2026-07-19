@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
@@ -8,18 +7,21 @@ namespace ExcelMerger
 {
     /// <summary>
     /// Стартовый экран — хаб выбора инструмента (свод Excel или объединение PDF).
-    /// Инструменты открываются немодально: можно держать открытыми несколько
-    /// разных одновременно; повторное открытие того же — с уведомлением и
-    /// переводом фокуса на уже открытое окно. Кнопка «Назад в меню» в каждом
-    /// инструменте возвращает фокус сюда.
+    /// Только представление: открытие инструментов, дедупликацию и жизненный цикл
+    /// окон ведёт <see cref="ShellContext"/>. Закрытие хаба не закрывает уже
+    /// открытые инструменты; кнопка «Главная» в инструменте снова покажет этот экран.
     /// </summary>
     public class StartForm : Form
     {
         private const string AppTitle = "iwo Helper Desktop";
-        private readonly ToolRegistry _tools = new ToolRegistry();
+        private readonly ShellContext _context;
 
-        public StartForm()
+        public StartForm() : this(null) { } // для смоук-теста; открытие инструментов недоступно
+
+        internal StartForm(ShellContext context)
         {
+            _context = context;
+
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             Text = AppTitle + " " + version.ToString(2);
             Icon startIcon = Ui.AppIcon();
@@ -46,7 +48,8 @@ namespace ExcelMerger
             excel.SetBounds(30, 96, 262, 250);
             excel.Click += delegate
             {
-                OpenTool("excel", "Свод Excel", delegate(Action back) { return new MainForm(back); });
+                if (_context != null)
+                    _context.OpenTool("excel", "Свод Excel", delegate(Action back) { return new MainForm(back); });
             };
             Controls.Add(excel);
 
@@ -55,61 +58,12 @@ namespace ExcelMerger
             pdf.SetBounds(308, 96, 262, 250);
             pdf.Click += delegate
             {
-                OpenTool("pdf", "Объединение PDF", delegate(Action back) { return new PdfMergeForm(back); });
+                if (_context != null)
+                    _context.OpenTool("pdf", "Объединение PDF", delegate(Action back) { return new PdfMergeForm(back); });
             };
             Controls.Add(pdf);
 
             AcceptButton = null; // Enter активирует карточку в фокусе
-        }
-
-        private void OpenTool(string key, string name, Func<Action, Form> factory)
-        {
-            Form existing;
-            if (_tools.TryGetOpen(key, out existing))
-            {
-                Dialogs.Info(this, AppTitle, "Инструмент уже открыт",
-                    "«" + name + "» уже запущен — открыто его окно.");
-                BringToFront(existing);
-                return;
-            }
-
-            Form tool = factory(BackToMenu);
-            _tools.Add(key, tool);
-            tool.FormClosed += delegate { _tools.Remove(key); };
-            tool.Show(); // немодально, без владельца — отдельное окно в панели задач
-            BringToFront(tool);
-        }
-
-        private void BackToMenu()
-        {
-            BringToFront(this);
-        }
-
-        private static void BringToFront(Form form)
-        {
-            if (form == null || form.IsDisposed)
-                return;
-            if (form.WindowState == FormWindowState.Minimized)
-                form.WindowState = FormWindowState.Normal;
-            form.Activate();
-            form.BringToFront();
-        }
-
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            // Закрытие хаба закрывает открытые инструменты. Если инструмент занят
-            // (идёт слияние) и отменяет своё закрытие — отменяем закрытие хаба.
-            foreach (Form tool in _tools.OpenForms())
-            {
-                tool.Close();
-                if (!tool.IsDisposed)
-                {
-                    BringToFront(tool);
-                    e.Cancel = true;
-                    return;
-                }
-            }
-            base.OnFormClosing(e);
         }
     }
 }

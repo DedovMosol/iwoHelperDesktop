@@ -51,8 +51,9 @@ and report history) — nothing for antivirus software to react to.
 On launch the program lets you choose a tool: **“Excel Digest”** (merging Excel
 sheets) or **“PDF Merge”**. After a tool is closed the chooser is shown again —
 you can switch to the other one without restarting. Both tools can be open at the
-same time as separate windows; each has a **“◀ Back to menu”** button that brings
-the chooser back to the front.
+same time as independent windows, and closing the start screen does not close
+them — the app exits only when the last window is closed. Each tool has a
+**“⌂ Home”** button that opens the tool chooser (re-creating it if it was closed).
 
 ### Excel Digest
 

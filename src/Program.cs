@@ -34,7 +34,7 @@ namespace ExcelMerger
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new StartForm());
+            Application.Run(new ShellContext()); // хаб + инструменты как независимые окна
             // Все окна закрыты, настройки/COM уже освобождены детерминированно.
             // Форсируем выход, чтобы финализация WinRT (Windows.Data.Pdf, если
             // открывали инструмент PDF) не уронила процесс при выгрузке CLR.
