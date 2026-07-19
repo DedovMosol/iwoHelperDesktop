@@ -67,6 +67,7 @@ namespace ExcelMerger
         public event Action<int, int, string> Progress; // номер файла, всего, имя файла
         public event Action<string> Trace;              // пошаговая диагностика (используется в --cli)
         public event Action<FileResult> FileDone;
+        public event Action Restarting;                 // экземпляр Excel перезапускается — прежние FileDone отменяются
 
         // Служебное имя листа-заглушки новой книги; резервируется в SheetNamer.
         private const string PlaceholderName = "zz_tmp_5f2a9c";
@@ -369,6 +370,9 @@ namespace ExcelMerger
                             Path.GetFileName(wedge.FilePath) +
                             "». Исключите этот файл из списка (снимите галочку) и повторите.");
                     RaiseTrace("перезапуск Excel после зависания на " + Path.GetFileName(wedge.FilePath));
+                    var restarting = Restarting;
+                    if (restarting != null)
+                        restarting(); // GUI очистит строки: прошлый проход отменён, будет переотправлен
                 }
             }
         }
