@@ -21,8 +21,9 @@ namespace ExcelMerger
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(460, 306);
+            WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11 — как на главной
 
-            Ui.AccentBar(this, 0);
+            Ui.AccentBar(this, 0, Theme.HubBlue); // синяя полоса, как на стартовом экране
 
             var iconBox = new PictureBox();
             iconBox.SetBounds(24, 26, 48, 48);

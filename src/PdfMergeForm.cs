@@ -21,7 +21,7 @@ namespace ExcelMerger
         private const string Title = "Объединение PDF";
         private const string PlaceholderKey = "__ph";
 
-        private readonly Action _backToMenu;
+        private readonly Action _showHub;
         private readonly PdfPageOrder _order = new PdfPageOrder();
         // Отрендеренные страницы (в ширину RenderWidth), из них пересобираются
         // плитки при зуме. Только UI-поток.
@@ -52,9 +52,9 @@ namespace ExcelMerger
 
         public PdfMergeForm() : this(null) { }
 
-        public PdfMergeForm(Action backToMenu)
+        public PdfMergeForm(Action showHub)
         {
-            _backToMenu = backToMenu;
+            _showHub = showHub;
             BuildUi();
             StartThumbWorker();
             UpdateButtons();
@@ -92,13 +92,13 @@ namespace ExcelMerger
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             header.TabIndex = 100; // «Назад в меню» — в конце обхода Tab
             Controls.Add(header);
-            if (_backToMenu != null)
+            if (_showHub != null)
             {
-                Button back = Ui.BackButton(_backToMenu);
-                back.SetBounds(header.Width - 180, 22, 160, 30);
-                back.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                _tips.SetToolTip(back, "Вернуть на передний план окно выбора инструмента");
-                header.Controls.Add(back);
+                Button home = Ui.HomeButton(_showHub);
+                home.SetBounds(header.Width - 180, 22, 160, 30);
+                home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                _tips.SetToolTip(home, "Открыть экран выбора инструмента");
+                header.Controls.Add(home);
             }
 
             int right = ClientSize.Width - 20;

@@ -54,6 +54,7 @@ namespace ExcelMerger.Tests
             Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
             Run("HeaderBand: строится с заголовком, двойная буферизация", TestHeaderBand);
             Run("HeaderBand.TextRightBound: текст не заходит под кнопку", TestHeaderTextBound);
+            Run("MainForm.ClassifyListKey: Alt+↑/↓ и Enter в списке", TestClassifyListKey);
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
             Run("PdfPageOrder: удаление набора строк", TestPdfOrderRemove);
@@ -554,6 +555,20 @@ namespace ExcelMerger.Tests
             AssertEqual(488, HeaderBand.TextRightBound(700, 500), "узкое окно — левее кнопки");
             // Кнопка правее правого поля — не выходим за край панели.
             AssertEqual(760, HeaderBand.TextRightBound(780, 900), "кнопка за краем — ограничены полем");
+        }
+
+        private static void TestClassifyListKey()
+        {
+            AssertEqual(MainForm.ListKeyAction.MoveUp,
+                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.Up), "Alt+Up");
+            AssertEqual(MainForm.ListKeyAction.MoveDown,
+                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.Down), "Alt+Down");
+            AssertEqual(MainForm.ListKeyAction.Swallow,
+                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Enter), "Enter — не сливать");
+            AssertEqual(MainForm.ListKeyAction.None,
+                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Up), "просто ↑ — навигация");
+            AssertEqual(MainForm.ListKeyAction.None,
+                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C), "Ctrl+C — копирование");
         }
 
         private static void TestWindowChromeColorRef()
