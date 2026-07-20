@@ -49,7 +49,7 @@ namespace ExcelMerger
             desc.Height = desc.GetPreferredHeight();
             Controls.Add(desc);
             int y = desc.Bottom + 14;
-            Ui.Label(this, "Автор: DedovMosol", 24, y, Font, Theme.TextPrimary); y += 24;
+            Ui.Label(this, "Автор: Dodonov Andrey (DedovMosol)", 24, y, Font, Theme.TextPrimary); y += 24;
             Ui.Label(this, "© 2026 · Лицензия MIT", 24, y, Font, Theme.TextMuted); y += 34;
 
             // Кликабельна только ссылка, подпись слева — обычный текст.

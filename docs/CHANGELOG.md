@@ -3,6 +3,20 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.2] — 2026-07-20
+
+### Fixed
+- **Installer no longer skipped the install-mode and folder pages on re-install.**
+  Inno Setup hides them on upgrade by default (`UsePreviousPrivileges=yes`,
+  `DisableDirPage=auto`). Set `UsePreviousPrivileges=no` (always ask all-users vs
+  current-user) and `DisableDirPage=no` (always show the destination folder, pre-filled
+  with the previous path via `UsePreviousAppDir=yes`). Verified against Inno Setup docs.
+
+### Changed
+- **Author is now credited** as **Dodonov Andrey (DedovMosol)** with the GitHub link:
+  in the installer license page and publisher/URL fields, the About dialog, and the
+  MIT `LICENSE`.
+
 ## [1.13.1] — 2026-07-20
 
 ### Added
