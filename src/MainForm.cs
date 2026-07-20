@@ -126,7 +126,7 @@ namespace ExcelMerger
 
             BuildMenu();
             var header = new HeaderBand("Свод Excel",
-                "Первый видимый лист каждого файла папки — в один итоговый файл .xlsx",
+                "Листы Excel-файлов из папки — в один итоговый файл",
                 Theme.Accent, Theme.AccentPressed);
             header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;

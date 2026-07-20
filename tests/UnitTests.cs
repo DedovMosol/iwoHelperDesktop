@@ -94,6 +94,7 @@ namespace ExcelMerger.Tests
             Run("Ghostscript.PickFirstExisting: первый существующий из кандидатов", TestGhostscriptPick);
             Run("PdfCompression (живой): крупный PDF сжимается, страницы целы", TestCompressLive);
             Run("JustifiedLabel.Wrap: перенос слов по ширине", TestJustifyWrap);
+            Run("AboutForm: пункты доната валидны (20 цифр, банк не пуст)", TestDonationRequisites);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -858,6 +859,14 @@ namespace ExcelMerger.Tests
             AssertEqual(0, JustifiedLabel.Wrap("aa", 0, m, sp).Count, "нулевая ширина — 0 строк");
             // Слово шире строки не роняет разбивку — становится отдельной строкой.
             AssertEqual(1, JustifiedLabel.Wrap("aaaaaaaa", 30, m, sp).Count, "длинное слово — своя строка");
+        }
+
+        private static void TestDonationRequisites()
+        {
+            AssertEqual(20, AboutForm.DonationAccount.Length, "счёт — 20 цифр");
+            foreach (char c in AboutForm.DonationAccount)
+                AssertTrue(c >= '0' && c <= '9', "в счёте только цифры");
+            AssertTrue(AboutForm.DonationBank.Length > 0, "банк не пуст");
         }
 
         private static void TestClampWindow()

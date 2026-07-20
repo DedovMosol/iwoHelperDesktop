@@ -3,6 +3,20 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.3] — 2026-07-20
+
+### Fixed
+- **Start‑screen window title showed only `1.13`** (two components) — now shows the full
+  `1.13.3` (`Version.ToString(3)`).
+- **Excel Digest header was hard‑coded to “first visible sheet”** even in the all‑sheets
+  mode — reworded to the neutral “Листы Excel‑файлов из папки — в один итоговый файл”.
+- **Compression dropdown truncated** “Нормально — минимальный размер” — the combo width
+  is now computed from the widest item, so every level fits.
+
+### Added
+- **About dialog: donation details** (account number + bank) as selectable, copyable
+  text, with a one‑click “копировать” for the account number and a copied‑confirmation.
+
 ## [1.13.2] — 2026-07-20
 
 ### Fixed

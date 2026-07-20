@@ -9,7 +9,7 @@
 [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D6?logo=windows&logoColor=white)
-![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)
+[![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet-framework/net48)
 
 **Free, offline office tools in a single Windows app — merge Excel sheets, merge and split PDFs, and compress PDFs at Acrobat‑level quality. No subscription, no admin rights, no network.**
 
