@@ -3,6 +3,16 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.10.6] — 2026-07-20
+
+### Added
+- **“Back to contents” button on every sheet** of the digest (when the “Table of
+  contents” option is on): a floating, designer-style rounded button — blue
+  gradient fill, white bold text — that links to the contents sheet. It is a
+  floating shape, so it never shifts or covers the transferred data, and it is
+  idempotent (re-generated cleanly when retrying skipped files). Colour packing
+  and the sheet-reference helper are unit-tested (`Theme.ToBgr`, `SheetRef`).
+
 ## [1.10.5] — 2026-07-19
 
 ### Fixed

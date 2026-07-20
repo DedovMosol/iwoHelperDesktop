@@ -516,6 +516,7 @@ namespace ExcelMerger
                     try
                     {
                         TocBuilder.Build((object)target, TocSheetName, final.Files);
+                        TocBuilder.AddReturnButtons((object)target, TocSheetName); // ссылка на оглавление на каждом листе
                     }
                     catch (Exception ex)
                     {

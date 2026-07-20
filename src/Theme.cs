@@ -29,5 +29,14 @@ namespace ExcelMerger
         public static readonly Color SecondaryPressed = Color.FromArgb(233, 234, 236);
         public static readonly Color DisabledFill = Color.FromArgb(228, 228, 228);
         public static readonly Color DisabledText = Color.FromArgb(155, 155, 155);
+
+        /// <summary>
+        /// Цвет в формате OLE/COLORREF (0x00BBGGRR) — как ждут Excel Range/Shape
+        /// «.RGB» и Win32/DWM. Единое место упаковки (DRY). Чистая — под тест.
+        /// </summary>
+        public static int ToBgr(Color c)
+        {
+            return c.R | (c.G << 8) | (c.B << 16);
+        }
     }
 }
