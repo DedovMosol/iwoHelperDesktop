@@ -15,20 +15,15 @@ namespace ExcelMerger
     /// диапазонам, каждые N страниц, по закладкам). Страницы копируются без
     /// переконвертации (PDFsharp); исходный файл не изменяется.
     /// </summary>
-    public class PdfSplitForm : Form
+    public class PdfSplitForm : PdfToolFormBase
     {
         private const string Title = "Разделение PDF";
         private const int ModeExtract = 0, ModeRanges = 1, ModeEveryN = 2, ModeBookmarks = 3;
 
-        private readonly Action _showHub;
+        // Сетка, зум, сжатие, статус, подсказки и флаг _busy — в базе PdfToolFormBase.
         private string _sourcePath;
         private int _pageCount;
-        private bool _busy;
 
-        private PdfPageGrid _grid;
-        private TrackBar _zoom;
-        private System.Windows.Forms.Timer _zoomTimer;
-        private ToolTip _tips;
         private Button _btnOpen;
         private ComboBox _cmbMode;
         private Label _lblRanges;
@@ -38,14 +33,11 @@ namespace ExcelMerger
         private CheckBox _chkCombine;
         private Label _lblHint;
         private Button _btnDo;
-        private CompressionPicker _compress;
-        private Label _lblStatus;
 
         public PdfSplitForm() : this(null) { }
 
-        public PdfSplitForm(Action showHub)
+        public PdfSplitForm(Action showHub) : base(showHub)
         {
-            _showHub = showHub;
             BuildUi();
             UpdateModeInputs();
             UpdateControls();
@@ -308,12 +300,6 @@ namespace ExcelMerger
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        private void ScheduleZoom()
-        {
-            _zoomTimer.Stop();
-            _zoomTimer.Start();
-        }
-
         // ---------- выполнение ----------
 
         private void OnDoClick(object sender, EventArgs e)
@@ -474,29 +460,5 @@ namespace ExcelMerger
             catch { } // нет ассоциации/проводника — файлы всё равно созданы
         }
 
-        private void SetStatus(string text, Color color)
-        {
-            _lblStatus.Text = text;
-            _lblStatus.ForeColor = color;
-        }
-
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            if (_busy)
-            {
-                SetStatus("Дождитесь завершения…", Theme.WarnOrange);
-                e.Cancel = true;
-                return;
-            }
-            _grid.StopRendering();
-            base.OnFormClosing(e);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && _zoomTimer != null)
-                _zoomTimer.Dispose();
-            base.Dispose(disposing);
-        }
     }
 }
