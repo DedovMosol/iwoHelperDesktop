@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using ExcelMerger;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.IO;
 
 namespace ExcelMerger.Tests
 {
@@ -51,6 +53,11 @@ namespace ExcelMerger.Tests
             Run("PrepareSourceList: исключение свода и дубликатов", TestPrepareSourceList);
             Run("FileSignature: ZIP/OLE2 — книга, текст/пусто — нет", TestFileSignature);
             Run("LowSpaceMessage: мало места — понятная ошибка, иначе null", TestLowSpaceMessage);
+            Run("PageRanges.Parse: диапазоны, пробелы, открытый конец", TestPageRangesParse);
+            Run("PageRanges.Parse: неверный ввод — ошибка", TestPageRangesParseErrors);
+            Run("PageRanges.EveryN: нарезка на равные части", TestPageRangesEveryN);
+            Run("PdfSplitService.Sanitize: недопустимые символы", TestSanitize);
+            Run("PdfSplit (живой): извлечение, диапазоны, каждые N, закладки", TestPdfSplitLive);
             Run("Theme.ToBgr: упаковка цвета 0x00BBGGRR", TestThemeToBgr);
             Run("TocBuilder.SheetRef: ссылка на A1, апострофы удвоены", TestSheetRef);
             Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
@@ -585,6 +592,110 @@ namespace ExcelMerger.Tests
             AssertEqual(PdfMergeForm.PageKeyAction.None, PdfMergeForm.ClassifyPageKey(System.Windows.Forms.Keys.Left), "просто ← — навигация");
         }
 
+        private static string RangeSig(System.Collections.Generic.List<PageRange> ranges)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            foreach (PageRange r in ranges)
+                parts.Add(r.Start + "-" + r.End);
+            return string.Join("|", parts.ToArray());
+        }
+
+        private static void TestPageRangesParse()
+        {
+            AssertEqual("0-2|4-4|7-9", RangeSig(PageRanges.Parse("1-3, 5, 8-", 10)), "1-3,5,8- при 10");
+            AssertEqual("1-1", RangeSig(PageRanges.Parse("2", 5)), "одна страница");
+            AssertEqual("0-2", RangeSig(PageRanges.Parse("-3", 10)), "открытое начало");
+            AssertEqual("0-1|3-3", RangeSig(PageRanges.Parse("  1 - 2 , 4 ", 5)), "пробелы");
+            AssertEqual("5-8", PageRanges.Parse("5-", 8)[0].Label, "открытый конец 5.. -> 5-8");
+            AssertEqual("8", PageRanges.Parse("8-", 8)[0].Label, "последняя страница -> метка 8");
+            AssertEqual("1-3", PageRanges.Parse("1-3", 3)[0].Label, "метка диапазона");
+        }
+
+        private static void TestPageRangesParseErrors()
+        {
+            AssertThrows("пусто", delegate { PageRanges.Parse("", 10); });
+            AssertThrows("0-3 (ниже 1)", delegate { PageRanges.Parse("0-3", 10); });
+            AssertThrows("5-2 (начало>конец)", delegate { PageRanges.Parse("5-2", 10); });
+            AssertThrows("3-99 (выше pageCount)", delegate { PageRanges.Parse("3-99", 10); });
+            AssertThrows("нечисло", delegate { PageRanges.Parse("abc", 10); });
+        }
+
+        private static void TestPageRangesEveryN()
+        {
+            AssertEqual("0-2|3-5|6-8|9-9", RangeSig(PageRanges.EveryN(10, 3)), "10 по 3");
+            AssertEqual("0-1|2-3|4-5", RangeSig(PageRanges.EveryN(6, 2)), "6 по 2");
+            AssertEqual("0-0|1-1|2-2", RangeSig(PageRanges.EveryN(3, 1)), "по одной");
+            AssertEqual("0-4", RangeSig(PageRanges.EveryN(5, 10)), "n больше всего");
+            AssertThrows("n<1", delegate { PageRanges.EveryN(5, 0); });
+        }
+
+        private static void TestSanitize()
+        {
+            AssertEqual("Глава 1", PdfSplitService.Sanitize("Глава 1"), "обычный заголовок");
+            AssertEqual("a_b_c", PdfSplitService.Sanitize("a/b:c"), "недопустимые символы");
+            AssertEqual("без_имени", PdfSplitService.Sanitize(""), "пустое имя");
+            AssertEqual("без_имени", PdfSplitService.Sanitize("   "), "только пробелы");
+        }
+
+        private static int PdfPageCount(string path)
+        {
+            using (PdfDocument d = PdfReader.Open(path, PdfDocumentOpenMode.Import))
+                return d.PageCount;
+        }
+
+        private static string PageCounts(List<string> files)
+        {
+            var parts = new List<string>();
+            foreach (string f in files)
+                parts.Add(PdfPageCount(f).ToString());
+            return string.Join(",", parts.ToArray());
+        }
+
+        private static void TestPdfSplitLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = Path.Combine(dir, "исходник.pdf");
+                using (var doc = new PdfDocument())
+                {
+                    for (int i = 0; i < 10; i++)
+                        doc.AddPage();
+                    doc.Outlines.Add("Раздел А", doc.Pages[0]);
+                    doc.Outlines.Add("Раздел Б", doc.Pages[4]);
+                    doc.Outlines.Add("Раздел В", doc.Pages[7]);
+                    doc.Save(src);
+                }
+
+                // Извлечь выбранные [0,2,4] → один файл, 3 страницы
+                string extract = Path.Combine(dir, "выбранные.pdf");
+                PdfSplitService.Extract(src, new List<int> { 0, 2, 4 }, extract);
+                AssertEqual(3, PdfPageCount(extract), "извлечено 3 страницы");
+
+                // По диапазонам 1-3,5,8- → 3 файла (3,1,3)
+                List<string> ranges = PdfSplitService.SplitByRanges(src, PageRanges.Parse("1-3,5,8-", 10), dir, "диап");
+                AssertEqual(3, ranges.Count, "диапазонов — 3 файла");
+                AssertEqual("3,1,3", PageCounts(ranges), "страниц по диапазонам");
+                AssertEqual("диап_1-3.pdf", Path.GetFileName(ranges[0]), "имя первого диапазона");
+
+                // Каждые 3 страницы → 4 файла (3,3,3,1)
+                List<string> everyN = PdfSplitService.SplitEveryN(src, 3, dir, "часть");
+                AssertEqual(4, everyN.Count, "каждые 3 — 4 файла");
+                AssertEqual("3,3,3,1", PageCounts(everyN), "страниц по частям");
+
+                // По закладкам → 3 файла (4,3,3), имена с заголовками
+                List<string> byMark = PdfSplitService.SplitByBookmarks(src, dir, "закл");
+                AssertEqual(3, byMark.Count, "закладок — 3 файла");
+                AssertEqual("4,3,3", PageCounts(byMark), "страниц по закладкам");
+                AssertTrue(Path.GetFileName(byMark[0]).Contains("Раздел А"), "имя по закладке: " + Path.GetFileName(byMark[0]));
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
         private static void TestThemeToBgr()
         {
             AssertEqual(12413967, Theme.ToBgr(System.Drawing.Color.FromArgb(15, 108, 189)), "HubBlue #0F6CBD");
@@ -916,6 +1027,19 @@ namespace ExcelMerger.Tests
         {
             if (!condition)
                 throw new Exception(what);
+        }
+
+        private static void AssertThrows(string what, Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (MergeException)
+            {
+                return; // ожидаемая ошибка ввода
+            }
+            throw new Exception(what + ": ожидалось исключение, но его не было");
         }
     }
 }
