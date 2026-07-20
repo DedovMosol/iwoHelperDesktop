@@ -56,6 +56,9 @@ namespace ExcelMerger.Tests
             Run("PageRanges.Parse: диапазоны, пробелы, открытый конец", TestPageRangesParse);
             Run("PageRanges.Parse: неверный ввод — ошибка", TestPageRangesParseErrors);
             Run("PageRanges.EveryN: нарезка на равные части", TestPageRangesEveryN);
+            Run("PageRanges.ToIndices: диапазоны -> индексы (порядок, повторы)", TestPageRangesToIndices);
+            Run("UpdateChecker: разбор тега и сравнение версий", TestUpdateChecker);
+            Run("UsageStats.ShouldAutoClear: период очистки", TestShouldAutoClear);
             Run("PdfSplitService.Sanitize: недопустимые символы", TestSanitize);
             Run("PdfSplit (живой): извлечение, диапазоны, каждые N, закладки", TestPdfSplitLive);
             Run("PdfPageGrid.ClampWindow: окно видимых с буфером", TestClampWindow);
@@ -388,11 +391,13 @@ namespace ExcelMerger.Tests
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         texts.Add(it.Text);
                 AssertTrue(texts.Contains("Как пользоваться"), "есть «Как пользоваться»");
+                AssertTrue(texts.Contains("Статистика"), "есть «Статистика»");
+                AssertTrue(texts.Contains("Проверить обновления"), "есть «Проверить обновления»");
                 AssertTrue(texts.Contains("Папка отчётов"), "доп. пункт вставлен");
                 AssertTrue(texts.Contains("О программе"), "есть «О программе»");
             }
 
-            // Без доп. пунктов — только «Как пользоваться» и «О программе».
+            // Без доп. пунктов: «Как пользоваться», «Статистика», «Проверить обновления», «О программе».
             using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }))
             {
                 var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
@@ -400,7 +405,7 @@ namespace ExcelMerger.Tests
                 foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         menuItems++;
-                AssertEqual(2, menuItems, "без extras — два пункта");
+                AssertEqual(4, menuItems, "без extras — четыре пункта");
             }
         }
 
@@ -628,6 +633,37 @@ namespace ExcelMerger.Tests
             AssertEqual("0-0|1-1|2-2", RangeSig(PageRanges.EveryN(3, 1)), "по одной");
             AssertEqual("0-4", RangeSig(PageRanges.EveryN(5, 10)), "n больше всего");
             AssertThrows("n<1", delegate { PageRanges.EveryN(5, 0); });
+        }
+
+        private static void TestPageRangesToIndices()
+        {
+            var idx = PageRanges.ToIndices(PageRanges.Parse("1-3, 5, 8-", 10)); // 0-2,4,7-9
+            AssertEqual("0,1,2,4,7,8,9", string.Join(",", idx.ConvertAll(i => i.ToString()).ToArray()), "порядок");
+            // Повторы и обратный смысл ввода сохраняются: «1-4, 1» -> ...,0
+            var dup = PageRanges.ToIndices(PageRanges.Parse("1-4, 1", 10));
+            AssertEqual("0,1,2,3,0", string.Join(",", dup.ConvertAll(i => i.ToString()).ToArray()), "повторы сохраняются");
+        }
+
+        private static void TestUpdateChecker()
+        {
+            AssertEqual(new Version(1, 11, 2), UpdateChecker.ParseTag("v1.11.2"), "тег с v");
+            AssertEqual(new Version(1, 12, 0), UpdateChecker.ParseTag("1.12.0"), "тег без v");
+            AssertEqual(null, UpdateChecker.ParseTag("release"), "мусор -> null");
+            AssertTrue(UpdateChecker.IsNewer(new Version(1, 12, 0), new Version(1, 11, 2)), "1.12.0 новее 1.11.2");
+            AssertTrue(!UpdateChecker.IsNewer(new Version(1, 11, 2), new Version(1, 11, 2)), "равные — не новее");
+            AssertTrue(!UpdateChecker.IsNewer(new Version(1, 11, 0), new Version(1, 11, 2)), "старее — не новее");
+            AssertTrue(!UpdateChecker.IsNewer(null, new Version(1, 0, 0)), "null latest — не новее");
+        }
+
+        private static void TestShouldAutoClear()
+        {
+            var now = new DateTime(2026, 7, 20, 12, 0, 0, DateTimeKind.Utc);
+            AssertTrue(!UsageStats.ShouldAutoClear(now.AddDays(-3), now, 0), "период 0 — никогда");
+            AssertTrue(!UsageStats.ShouldAutoClear(now.AddHours(-5), now, 1), "меньше суток — рано");
+            AssertTrue(UsageStats.ShouldAutoClear(now.AddDays(-1), now, 1), "сутки прошли — пора");
+            AssertTrue(!UsageStats.ShouldAutoClear(now.AddDays(-6), now, 7), "6 из 7 дней — рано");
+            AssertTrue(UsageStats.ShouldAutoClear(now.AddDays(-8), now, 7), "8 дней при периоде 7 — пора");
+            AssertTrue(UsageStats.ShouldAutoClear(now.AddDays(-31), now, 30), "31 день при 30 — пора");
         }
 
         private static void TestSanitize()

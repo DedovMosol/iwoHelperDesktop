@@ -25,5 +25,10 @@ namespace ExcelMerger
         {
             get { return Path.Combine(Root, "reports"); }
         }
+
+        public static string StatsFile
+        {
+            get { return Path.Combine(Root, "stats.txt"); }
+        }
     }
 }

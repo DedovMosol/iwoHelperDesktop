@@ -30,6 +30,14 @@ namespace ExcelMerger
             howTo.Click += delegate { showHowTo(); };
             help.DropDownItems.Add(howTo);
 
+            var stats = new ToolStripMenuItem("Статистика");
+            stats.Click += delegate { using (var form = new StatsForm()) form.ShowDialog(owner); };
+            help.DropDownItems.Add(stats);
+
+            var update = new ToolStripMenuItem("Проверить обновления");
+            update.Click += delegate { UpdateUi.Check(owner); };
+            help.DropDownItems.Add(update);
+
             if (extras != null && extras.Length > 0)
             {
                 help.DropDownItems.Add(new ToolStripSeparator());

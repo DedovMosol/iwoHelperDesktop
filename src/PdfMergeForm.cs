@@ -351,6 +351,7 @@ namespace ExcelMerger
                 Dialogs.Error(this, Title, "PDF не сохранён", error.Message);
                 return;
             }
+            UsageStats.RecordPdfMerge();
             SetStatus("✓ Сохранено страниц: " + pageCount + ".", Theme.OkGreen);
             try { Process.Start(outputPath); }
             catch { } // нет ассоциации PDF — файл всё равно сохранён
