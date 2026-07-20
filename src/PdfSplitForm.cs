@@ -93,7 +93,6 @@ namespace ExcelMerger
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _grid.SelectionChanged += delegate { UpdateControls(); };
-            _grid.ZoomChanged += delegate(int w) { _zoom.Value = w; };
             Controls.Add(_grid);
 
             int px = right - panelW + 10; // левый край панели режима
@@ -156,34 +155,8 @@ namespace ExcelMerger
             _btnDo.Click += OnDoClick;
             Controls.Add(_btnDo);
 
-            // Масштаб миниатюр (как в «Объединении»).
-            Ui.Label(this, "Масштаб:", 20, ClientSize.Height - 104, Font, Theme.TextMuted)
-                .Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            _zoom = new TrackBar();
-            _zoom.SetBounds(85, ClientSize.Height - 108, 180, 30);
-            _zoom.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            _zoom.Minimum = ThumbZoom.MinWidth;
-            _zoom.Maximum = ThumbZoom.MaxWidth;
-            _zoom.Value = _grid.TileWidth;
-            _zoom.TickFrequency = 32;
-            _zoom.SmallChange = 16;
-            _zoom.LargeChange = 32;
-            _zoom.ValueChanged += delegate { ScheduleZoom(); };
-            _tips.SetToolTip(_zoom, "Масштаб миниатюр (также Ctrl+колесо мыши)");
-            Controls.Add(_zoom);
-
-            _zoomTimer = new System.Windows.Forms.Timer();
-            _zoomTimer.Interval = 60;
-            _zoomTimer.Tick += delegate { _zoomTimer.Stop(); _grid.SetTileWidth(_zoom.Value); };
-
-            _compress = new CompressionPicker();
-            _compress.Location = new Point(right - _compress.Width, ClientSize.Height - 106);
-            _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            Controls.Add(_compress);
-
-            _lblStatus = Ui.Label(this, "Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.",
-                20, ClientSize.Height - 50, Font, Theme.TextMuted);
-            _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
+            BuildBottomStrip(right, "Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.");
         }
 
         private void ShowHelp()
