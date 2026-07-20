@@ -1,8 +1,8 @@
-﻿# Генерирует фирменные картинки мастера установки Inno Setup из логотипа img\Logo.jpeg:
-#   installer\wizard.bmp        (164x314) — большая, на страницах приветствия/финиша;
-#   installer\wizard_small.bmp  (55x55)   — маленькая, вверху остальных страниц.
-# Фон — фирменный синий градиент (Theme.HubBlue -> HubBlueDark), по центру — логотип,
-# на большой под ним — подпись «iwo / Helper Desktop». 24-битный BMP (формат для Inno).
+# Generates the branded Inno Setup wizard images from the logo img\Logo.jpeg:
+#   installer\wizard.bmp        (164x314) - large, on the welcome/finish pages;
+#   installer\wizard_small.bmp  (55x55)   - small, at the top of the other pages.
+# Background is the brand blue gradient (Theme.HubBlue -> HubBlueDark), the logo centered,
+# and on the large one a caption "iwo / Helper Desktop" below it. 24-bit BMP (Inno format).
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
@@ -26,7 +26,7 @@ function New-WizardBmp([int]$w, [int]$h, [string]$path, [int]$logoBox, [bool]$sh
     $br = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $blue, $blueDark, 90.0)
     $g.FillRectangle($br, $rect)
 
-    # Вписываем логотип в квадрат logoBox С СОХРАНЕНИЕМ ПРОПОРЦИЙ (без искажений), по центру.
+    # Fit the logo into a logoBox square PRESERVING ASPECT RATIO (no distortion), centered.
     $scale = [Math]::Min($logoBox / $logoImg.Width, $logoBox / $logoImg.Height)
     $dw = [int]($logoImg.Width * $scale)
     $dh = [int]($logoImg.Height * $scale)
@@ -49,7 +49,7 @@ function New-WizardBmp([int]$w, [int]$h, [string]$path, [int]$logoBox, [bool]$sh
     $g.Dispose()
     $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp)
     $bmp.Dispose(); $br.Dispose()
-    Write-Host ("Создано: " + $path + " (" + $w + "x" + $h + ")")
+    Write-Host ("Created: " + $path + " (" + $w + "x" + $h + ")")
 }
 
 New-WizardBmp 164 314 (Join-Path $outDir 'wizard.bmp') 120 $true

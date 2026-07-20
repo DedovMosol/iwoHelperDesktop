@@ -1,8 +1,8 @@
-﻿# Копирует минимальный рантайм Ghostscript в installer\gs\ для вшивания в установщик.
-# Нужны: bin\gsdll64.dll (движок) + bin\gswin64c.exe (загрузчик) + lib\ + Resource\ +
-# iccprofiles\ (без gsdll64.lib — это import-lib, в рантайме не нужна). Источник —
-# установленный GS (Program Files\gs\gs* или %USERPROFILE%\gs*); можно задать -Source.
-# installer\gs\ в .gitignore (крупные бинарники в репозиторий не кладём).
+# Copies a minimal Ghostscript runtime into installer\gs\ for bundling in the installer.
+# Needed: bin\gsdll64.dll (engine) + bin\gswin64c.exe (loader) + lib\ + Resource\ +
+# iccprofiles\ (no gsdll64.lib - that is an import lib, not needed at runtime). Source is
+# an installed GS (Program Files\gs\gs* or %USERPROFILE%\gs*); can be set via -Source.
+# installer\gs\ is in .gitignore (large binaries are not committed to the repo).
 param(
     [string]$Source,
     [string]$Dest = (Join-Path (Split-Path $PSScriptRoot) 'installer\gs')
@@ -22,25 +22,25 @@ function Find-GsRoot {
             }
         }
     }
-    # Самая свежая версия (сортировка по имени: gs10.07 > gs10.05 > gs9.56).
+    # Newest version (sort by name: gs10.07 > gs10.05 > gs9.56).
     return ($roots | Sort-Object -Descending | Select-Object -First 1)
 }
 
 if (-not $Source) { $Source = Find-GsRoot }
 if (-not $Source -or -not (Test-Path $Source)) {
-    Write-Host 'Ghostscript не найден. Установите его: https://ghostscript.com/releases/gsdnld.html'
-    Write-Host 'или задайте -Source <корень gs, напр. C:\Program Files\gs\gs10.07>.'
+    Write-Host 'Ghostscript not found. Install it: https://ghostscript.com/releases/gsdnld.html'
+    Write-Host 'or pass -Source <gs root, e.g. C:\Program Files\gs\gs10.07>.'
     exit 1
 }
 
 $dll = Join-Path $Source 'bin\gsdll64.dll'
 $exe = Join-Path $Source 'bin\gswin64c.exe'
 if (-not (Test-Path $dll) -or -not (Test-Path $exe)) {
-    Write-Host "В источнике нет bin\gsdll64.dll / bin\gswin64c.exe: $Source"
+    Write-Host "Source has no bin\gsdll64.dll / bin\gswin64c.exe: $Source"
     exit 1
 }
 
-Write-Host "Источник Ghostscript: $Source"
+Write-Host "Ghostscript source: $Source"
 if (Test-Path $Dest) { Remove-Item $Dest -Recurse -Force }
 New-Item -ItemType Directory -Path (Join-Path $Dest 'bin') -Force | Out-Null
 
@@ -51,16 +51,16 @@ foreach ($sub in @('lib', 'Resource', 'iccprofiles')) {
     if (Test-Path $s) {
         Copy-Item $s (Join-Path $Dest $sub) -Recurse -Force
     } elseif ($sub -ne 'iccprofiles') {
-        Write-Host "ВНИМАНИЕ: нет обязательного каталога '$sub' в $Source"
+        Write-Host "WARNING: required directory '$sub' is missing in $Source"
         exit 1
     }
 }
-# Лицензия GS (AGPL) — для комплаенса кладём рядом.
+# GS license (AGPL) - bundled alongside for compliance.
 foreach ($lic in @('LICENSE', 'doc\COPYING', 'COPYING')) {
     $lp = Join-Path $Source $lic
     if (Test-Path $lp) { Copy-Item $lp (Join-Path $Dest 'LICENSE') -Force; break }
 }
 
 $size = [math]::Round(((Get-ChildItem $Dest -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
-Write-Host "Ghostscript подготовлен в $Dest ($size МБ)."
+Write-Host "Ghostscript staged in $Dest ($size MB)."
 exit 0
