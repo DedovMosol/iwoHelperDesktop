@@ -38,6 +38,7 @@ namespace ExcelMerger
         private CheckBox _chkCombine;
         private Label _lblHint;
         private Button _btnDo;
+        private CompressionPicker _compress;
         private Label _lblStatus;
 
         public PdfSplitForm() : this(null) { }
@@ -183,6 +184,11 @@ namespace ExcelMerger
             _zoomTimer.Interval = 60;
             _zoomTimer.Tick += delegate { _zoomTimer.Stop(); _grid.SetTileWidth(_zoom.Value); };
 
+            _compress = new CompressionPicker();
+            _compress.Location = new Point(right - _compress.Width, ClientSize.Height - 106);
+            _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            Controls.Add(_compress);
+
             _lblStatus = Ui.Label(this, "Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.",
                 20, ClientSize.Height - 50, Font, Theme.TextMuted);
             _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
@@ -197,10 +203,15 @@ namespace ExcelMerger
                 "   • «По диапазонам» — «1-3, 5, 8-»: каждый диапазон → отдельный файл;\n" +
                 "   • «Каждые N страниц» — равные части (1 — каждая страница отдельно);\n" +
                 "   • «По закладкам» — по одному файлу на закладку верхнего уровня, имена из заголовков.\n" +
-                "3. Нажмите «Извлечь…»/«Разделить…» и укажите имя и папку для результата " +
+                "3. При необходимости выберите «Сжатие» (по умолчанию «Отлично» — без сжатия): " +
+                "«Хорошо»/«Нормально» уменьшают размер за счёт понижения разрешения изображений " +
+                "(как в Acrobat), текст сохраняется. Требуется Ghostscript.\n" +
+                "4. Нажмите «Извлечь…»/«Разделить…» и укажите имя и папку для результата " +
                 "(при разбиении к имени добавятся номера или метки).\n\n" +
                 "Страницы копируются как есть, без переконвертации. Исходный файл не изменяется; " +
-                "имена не перезаписываются (при совпадении добавляется номер).");
+                "имена не перезаписываются (при совпадении добавляется номер).\n" +
+                "Сжатие меняет содержимое файла, поэтому у подписанных PDF подпись станет " +
+                "недействительной (как и при сжатии в Acrobat) — сжимайте до подписания.");
         }
 
         // ---------- открытие исходника ----------
@@ -277,6 +288,7 @@ namespace ExcelMerger
         private void UpdateControls()
         {
             bool loaded = _sourcePath != null;
+            _compress.Enabled = !_busy;
             _btnOpen.Enabled = !_busy;
             _cmbMode.Enabled = !_busy && loaded;
             _txtRanges.Enabled = !_busy && loaded;
@@ -311,6 +323,7 @@ namespace ExcelMerger
             int mode = _cmbMode.SelectedIndex;
             bool combine = mode == ModeRanges && _chkCombine.Checked;
             string src = _sourcePath;
+            CompressionLevel level = _compress.Level; // с UI-потока до старта воркера
 
             // Один файл: «Извлечь выбранные» ИЛИ «По диапазонам» + объединить.
             if (mode == ModeExtract || combine)
@@ -342,8 +355,8 @@ namespace ExcelMerger
                         return;
                     outPath = dialog.FileName;
                 }
-                RunSplit(delegate { PdfSplitService.Extract(src, indices, outPath); return 1; },
-                    outPath, false, UsageStats.RecordPdfExtract);
+                RunSplit(delegate { PdfSplitService.Extract(src, indices, outPath); return new List<string> { outPath }; },
+                    level, outPath, false, UsageStats.RecordPdfExtract);
                 return;
             }
 
@@ -377,30 +390,33 @@ namespace ExcelMerger
                     baseName = Path.GetFileNameWithoutExtension(src);
             }
 
-            Func<int> work;
+            Func<List<string>> work;
             Action record;
             switch (mode)
             {
                 case ModeRanges:
-                    work = delegate { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName).Count; };
+                    work = delegate { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName); };
                     record = UsageStats.RecordPdfSplitRanges;
                     break;
                 case ModeEveryN:
-                    work = delegate { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName).Count; };
+                    work = delegate { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName); };
                     record = UsageStats.RecordPdfSplitEveryN;
                     break;
                 case ModeBookmarks:
-                    work = delegate { return PdfSplitService.SplitByBookmarks(src, dir, baseName).Count; };
+                    work = delegate { return PdfSplitService.SplitByBookmarks(src, dir, baseName); };
                     record = UsageStats.RecordPdfSplitBookmarks;
                     break;
                 default:
                     return;
             }
-            RunSplit(work, dir, true, record);
+            RunSplit(work, level, dir, true, record);
         }
 
-        /// <summary>Выполнить работу в фоне; по завершении — статус, счётчик, открытие результата.</summary>
-        private void RunSplit(Func<int> work, string openTarget, bool openAsFolder, Action record)
+        /// <summary>
+        /// Выполнить работу в фоне; сжать полученные файлы (на этом же воркере, до
+        /// открытия результата); по завершении — статус, счётчик, открытие результата.
+        /// </summary>
+        private void RunSplit(Func<List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record)
         {
             _busy = true;
             UpdateControls();
@@ -408,14 +424,21 @@ namespace ExcelMerger
             var thread = new Thread(delegate()
             {
                 Exception error = null;
-                int count = 0;
-                try { count = work(); }
+                int count = 0, compressed = 0;
+                try
+                {
+                    List<string> files = work();
+                    count = files.Count;
+                    foreach (string f in files)
+                        if (PdfCompression.Compress(f, level))
+                            compressed++;
+                }
                 catch (Exception ex) { error = ex; }
-                int result = count;
+                int resultCount = count, resultCompressed = compressed;
                 try
                 {
                     if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { OnSplitFinished(error, result, openTarget, openAsFolder, record); });
+                        BeginInvoke((MethodInvoker)delegate { OnSplitFinished(error, resultCount, resultCompressed, openTarget, openAsFolder, record); });
                 }
                 catch (InvalidOperationException) { }
             });
@@ -423,7 +446,7 @@ namespace ExcelMerger
             thread.Start();
         }
 
-        private void OnSplitFinished(Exception error, int count, string openTarget, bool openAsFolder, Action record)
+        private void OnSplitFinished(Exception error, int count, int compressed, string openTarget, bool openAsFolder, Action record)
         {
             _busy = false;
             UpdateControls();
@@ -436,7 +459,11 @@ namespace ExcelMerger
             }
             if (record != null)
                 record(); // успех — учитываем в статистике
-            SetStatus(openAsFolder ? ("✓ Создано файлов: " + count + ".") : "✓ Готово.", Theme.OkGreen);
+            if (compressed > 0)
+                UsageStats.RecordPdfCompress(compressed);
+            string suffix = compressed > 0 ? " · сжато: " + compressed : "";
+            SetStatus(openAsFolder ? ("✓ Создано файлов: " + count + "." + suffix)
+                : ("✓ Готово." + suffix), Theme.OkGreen);
             try
             {
                 if (openAsFolder)

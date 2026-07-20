@@ -17,6 +17,10 @@ A set of office tools in a single application:
   **combined into one file**), every N pages, or by top-level bookmarks. Pages are
   copied as-is; the source is untouched.
 
+Both PDF tools have a **“Compression”** dropdown (Acrobat-level): the default keeps
+the file untouched; the other levels downsample images while preserving text and
+vectors (see [PDF compression](#pdf-compression)).
+
 On launch the program lets you choose a tool; the start screen also has a
 **“Check for updates”** button (compares with GitHub Releases and opens the download
 page — nothing is downloaded or replaced automatically). Each tool's **Help** menu has
@@ -24,16 +28,21 @@ page — nothing is downloaded or replaced automatically). Each tool's **Help** 
 
 ## Requirements
 
-- Windows 10/11 (needs .NET Framework 4.8 — bundled with Windows 10 1903+);
+- Windows 10/11 x64 (needs .NET Framework 4.8 — bundled with Windows 10 1903+);
 - Microsoft Excel installed (2007–2024); Microsoft Word for the cover note;
-- administrator rights and network are **not required**.
+- **Ghostscript** is required only for PDF compression — the installer bundles it;
+  the portable exe uses a system-installed Ghostscript if present (otherwise the
+  compression option shows a download link and stays a no-op);
+- administrator rights and network are **not required** (a per-user install and the
+  portable exe both work without admin).
 
 ## Repository layout
 
 ```
-src/     application sources           tools/   exe signing
-tests/   unit and integration tests    build/   build inputs (manifest, icons, PdfSharp.dll)
-dist/    build output (not in git)     docs/    changelog and documentation
+src/       application sources           tools/     exe signing, installer scripts
+tests/     unit and integration tests    build/     build inputs (manifest, icons, PdfSharp.dll)
+dist/      build output (not in git)     docs/      changelog and documentation
+installer/ Inno Setup script + license (bundled Ghostscript staged into installer/gs, not in git)
 ```
 
 Built with the `dotnet` SDK. The only shipped dependency is `build/PdfSharp.dll`
@@ -44,14 +53,48 @@ projections come from the NuGet package `Microsoft.Windows.SDK.Contracts`
 
 ## Deployment
 
-Copy the single `iwoHelperDesktop.exe` to the target machine — either from
-[Releases](https://github.com/DedovMosol/iwoHelperDesktop/releases) or built
-locally (`dist\iwoHelperDesktop.exe`). That's all.
+Two options, both from [Releases](https://github.com/DedovMosol/iwoHelperDesktop/releases):
 
-The program is not packed or obfuscated (an ordinary .NET assembly, ~0.7 MB —
+1. **Portable exe** — copy the single `iwoHelperDesktop.exe` to the target machine.
+   That's all. PDF compression works if Ghostscript is installed on the machine
+   (otherwise it is a no-op with a download hint).
+2. **Installer** (`iwoHelperDesktop-setup-*.exe`) — installs the app **and bundles
+   Ghostscript**, so compression works out of the box. Installs **per-user without
+   admin** by default (`%LOCALAPPDATA%`), with an option to install for all users
+   (Program Files, requires admin).
+
+The portable exe is not packed or obfuscated (an ordinary .NET assembly, ~0.7 MB —
 including the resource-embedded PdfSharp), makes no network calls, and writes
 only to user-selected folders and to `%APPDATA%\iwo Helper Desktop` (settings
 and report history) — nothing for antivirus software to react to.
+
+## PDF compression
+
+Both PDF tools offer a **“Compression”** dropdown, applied as a post-processing step
+to the produced PDF:
+
+- **Отлично** — no compression (default): the file is byte-for-byte the merge/extract
+  output; fidelity and any digital signatures are preserved.
+- **Хорошо** — Ghostscript `/ebook` (~150 DPI): good balance of size and quality.
+- **Нормально** — Ghostscript `/screen` (~72 DPI): smallest size.
+
+The compressing levels **downsample images while keeping text and vectors** (the file
+stays searchable) — the same approach as Adobe Acrobat / Foxit “Reduce File Size”,
+**not** rasterization. Compression is done by **Ghostscript** as a separate process;
+the result is validated (correct PDF, strictly smaller) before it replaces the
+original — an already-optimized file is left untouched. The output is PDF 1.4, so a
+compressed file can still be re-merged or re-split by the app.
+
+Caveat on signatures: any real compression changes the file's bytes, so a **signed**
+PDF's signature becomes invalid afterwards (this is true of Acrobat too). Compress
+**unsigned** documents, or compress **before** signing. The default level never
+touches the file.
+
+Ghostscript is bundled by the installer; the portable exe looks for a system-installed
+Ghostscript and, if absent, the compression option opens the official
+[download page](https://ghostscript.com/releases/gsdnld.html). Ghostscript is used
+under its own AGPL license (invoked as a separate process — mere aggregation; this
+app stays MIT).
 
 ## Usage (GUI)
 
@@ -188,11 +231,32 @@ exe (SHA256, with a timestamp when the network is available). This gives file
 integrity and a persistent publisher; the signature becomes “trusted” for Windows
 only after the certificate is added to the trusted roots on the target machine.
 
+Building the installer (locally; needs [Inno Setup 6](https://jrsoftware.org/isdl.php)
+and Ghostscript installed):
+
+```
+powershell -NoProfile -File tools\make_installer.ps1
+```
+
+It builds and signs the exe, stages the bundled Ghostscript (`tools\stage_gs.ps1`
+copies the needed subset into `installer\gs`), compiles `installer\iwoHelperDesktop.iss`
+with Inno Setup, and signs the resulting `dist\iwoHelperDesktop-setup-<version>.exe`.
+The branded wizard images (`installer\wizard.bmp`, `wizard_small.bmp`) are generated by
+`tools\make_wizard_images.ps1` from `build\app.ico`. CI validates the `.iss` on every
+push (unsigned artifact); the **signed** installer is produced locally, because the
+self-signed certificate lives only on the maintainer's machine.
+
+Cutting a GitHub release (portable exe + installer + CHANGELOG notes) is scripted in
+`tools\make_release.ps1` — see [docs/RELEASING.md](docs/RELEASING.md).
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`): on every push — build, unit tests,
-GUI smoke test, artifact `iwoHelperDesktop.exe`; on a `v*` tag — the exe is
-published to Releases. Integration tests require Office and run locally only.
+GUI smoke test, a Ghostscript compression round-trip (`--gscheck`), and an installer
+compile check (Inno Setup + staged Ghostscript, unsigned artifact); artifacts
+`iwoHelperDesktop.exe` and `iwoHelperDesktop-setup-*.exe`. On a `v*` tag — the exe is
+published to Releases (the signed exe and signed installer are uploaded from the
+maintainer's machine). Integration tests require Office and run locally only.
 
 ## Tests
 
@@ -207,7 +271,8 @@ with table of contents and formula replacement → run to `.xlsb` → retry of
 skipped files → embedded PdfSharp → PDF merge → PDF thumbnails → Word note →
 Excel zombie-process check.
 
-Separately — unit tests (no Office or external frameworks, a custom mini-runner):
+Separately — unit tests (no Office, a custom mini-runner; a live compression test
+uses Ghostscript when it is installed, otherwise it verifies the graceful no-op):
 
 ```
 tests\build_tests.cmd    # build and run; exit code 0 = all passed
