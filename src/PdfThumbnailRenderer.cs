@@ -1,8 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
-using System.Runtime.InteropServices;
 using Windows.Data.Pdf;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -15,12 +13,19 @@ namespace ExcelMerger
     /// защищённый/битый файл, недоступный API) даёт null — вызывающий код
     /// показывает страницу без картинки, приложение не падает.
     /// Экземпляр не потокобезопасен: вызывать из одного (фонового) потока;
-    /// открытые документы кэшируются и освобождаются в Dispose.
+    /// открытые документы держатся в ограниченном LRU-кэше (снимает рост памяти и
+    /// файловых хэндлов при переборе файлов) и освобождаются при вытеснении и в Dispose.
     /// </summary>
     public sealed class PdfThumbnailRenderer : IDisposable
     {
-        private readonly Dictionary<string, PdfDocument> _docs =
-            new Dictionary<string, PdfDocument>(StringComparer.OrdinalIgnoreCase);
+        // WinRT PdfDocument держит файл и нативные буферы. Инструменты открывают
+        // документы последовательно (в «Разделении» — по одному; в «Объединении»
+        // видимое окно охватывает обычно 1–2 файла), поэтому небольшой LRU не вызывает
+        // перерендера, но ограничивает память и число открытых файлов.
+        private const int MaxCachedDocuments = 6;
+
+        private readonly LruCache<PdfDocument> _docs =
+            new LruCache<PdfDocument>(MaxCachedDocuments, ComSafe.Release);
         private bool _disposed;
 
         /// <summary>
@@ -55,30 +60,22 @@ namespace ExcelMerger
 
         private PdfDocument GetDocument(string path)
         {
-            PdfDocument doc;
             string key = Path.GetFullPath(path);
-            if (_docs.TryGetValue(key, out doc))
+            PdfDocument doc;
+            if (_docs.TryGet(key, out doc))
                 return doc;
             StorageFile file = StorageFile.GetFileFromPathAsync(key).AsTask().GetAwaiter().GetResult();
             doc = PdfDocument.LoadFromFileAsync(file).AsTask().GetAwaiter().GetResult();
-            _docs[key] = doc;
+            _docs.Add(key, doc); // при переполнении самый несвежий документ будет освобождён (ComSafe.Release)
             return doc;
         }
 
         public void Dispose()
         {
             _disposed = true;
-            // Детерминированно освобождаем COM-обёртки WinRT, не полагаясь на
-            // финализатор (иначе возможен сбой при выгрузке процесса).
-            foreach (PdfDocument doc in _docs.Values)
-            {
-                try
-                {
-                    if (doc != null && Marshal.IsComObject(doc))
-                        Marshal.FinalReleaseComObject(doc);
-                }
-                catch { }
-            }
+            // Детерминированно освобождаем COM-обёртки WinRT, не полагаясь на финализатор
+            // (иначе возможен сбой при выгрузке процесса). Тот же поток/апартамент, где
+            // документы создавались (см. PdfPageGrid.ThumbWorker).
             _docs.Clear();
         }
     }

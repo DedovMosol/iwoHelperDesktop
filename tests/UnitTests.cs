@@ -95,6 +95,14 @@ namespace ExcelMerger.Tests
             Run("PdfCompression (живой): крупный PDF сжимается, страницы целы", TestCompressLive);
             Run("JustifiedLabel.Wrap: перенос слов по ширине", TestJustifyWrap);
             Run("AboutForm: реквизиты доната валидны (20 цифр, банк не пуст)", TestDonationRequisites);
+            Run("LruCache: вытеснение самого несвежего, Count, порядок", TestLruEviction);
+            Run("LruCache: touch через TryGet переносит вытеснение", TestLruTouchOnGet);
+            Run("LruCache: замена ключа не растит размер и не вытесняет", TestLruReplace);
+            Run("LruCache: ключи регистронезависимы (пути файлов)", TestLruCaseInsensitive);
+            Run("LruCache: Clear освобождает все элементы", TestLruClear);
+            Run("LruCache: ёмкость < 1 запрещена", TestLruCapacityGuard);
+            Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
+            Run("PdfPageGrid.StaleKeys: вытесняются только отсутствующие в keep", TestGridStaleKeys);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -1240,6 +1248,107 @@ namespace ExcelMerger.Tests
         }
 
         // ---------- мини-раннер ----------
+
+        // ---------- LruCache ----------
+
+        private static void TestLruEviction()
+        {
+            var evicted = new List<string>();
+            var cache = new LruCache<string>(2, delegate(string v) { evicted.Add(v); });
+            cache.Add("a", "a");
+            cache.Add("b", "b");
+            AssertEqual(2, cache.Count, "две записи в пределах ёмкости");
+            cache.Add("c", "c"); // переполнение: вытесняется самый несвежий — «a»
+            AssertEqual(2, cache.Count, "ёмкость соблюдена");
+            AssertEqual(1, evicted.Count, "ровно одно вытеснение");
+            AssertEqual("a", evicted[0], "вытеснен наименее недавно использованный");
+            string val;
+            AssertTrue(!cache.TryGet("a", out val), "a вытеснен");
+            AssertTrue(cache.TryGet("b", out val) && val == "b", "b остался");
+            AssertTrue(cache.TryGet("c", out val) && val == "c", "c добавлен");
+        }
+
+        private static void TestLruTouchOnGet()
+        {
+            var evicted = new List<string>();
+            var cache = new LruCache<string>(2, delegate(string v) { evicted.Add(v); });
+            cache.Add("a", "a");
+            cache.Add("b", "b");
+            string val;
+            AssertTrue(cache.TryGet("a", out val), "обращение к a делает его свежим");
+            cache.Add("c", "c"); // теперь несвежий — «b»
+            AssertEqual("b", evicted[0], "touch через TryGet сместил вытеснение на b");
+            AssertTrue(cache.TryGet("a", out val), "a сохранён");
+        }
+
+        private static void TestLruReplace()
+        {
+            var evicted = new List<string>();
+            var cache = new LruCache<string>(2, delegate(string v) { evicted.Add(v); });
+            cache.Add("x", "x1");
+            cache.Add("x", "x2"); // тот же ключ — замена, не рост
+            AssertEqual(1, cache.Count, "замена ключа не увеличивает размер");
+            AssertEqual(0, evicted.Count, "замена ничего не вытесняет");
+            string val;
+            AssertTrue(cache.TryGet("x", out val) && val == "x2", "значение обновлено");
+        }
+
+        private static void TestLruCaseInsensitive()
+        {
+            var cache = new LruCache<string>(2, null);
+            cache.Add(@"C:\A.pdf", "doc");
+            string val;
+            AssertTrue(cache.TryGet(@"c:\a.pdf", out val) && val == "doc", "ключи-пути сравниваются без регистра");
+            AssertEqual(1, cache.Count, "разный регистр — тот же ключ");
+        }
+
+        private static void TestLruClear()
+        {
+            var evicted = new List<string>();
+            var cache = new LruCache<string>(3, delegate(string v) { evicted.Add(v); });
+            cache.Add("a", "a");
+            cache.Add("b", "b");
+            cache.Clear();
+            AssertEqual(0, cache.Count, "после Clear пусто");
+            AssertEqual(2, evicted.Count, "Clear освобождает все оставшиеся элементы");
+        }
+
+        private static void TestLruCapacityGuard()
+        {
+            bool threw = false;
+            try { new LruCache<string>(0, null); }
+            catch (ArgumentOutOfRangeException) { threw = true; }
+            AssertTrue(threw, "ёмкость < 1 должна отвергаться");
+        }
+
+        // ---------- PdfPageGrid: набор ключей и вытеснение кэша ----------
+
+        private static void TestGridBuildKeySet()
+        {
+            var pages = new List<PdfPageRef>
+            {
+                new PdfPageRef { SourcePath = @"C:\a.pdf", PageIndex = 0 },
+                new PdfPageRef { SourcePath = @"C:\a.pdf", PageIndex = 1 },
+                new PdfPageRef { SourcePath = @"C:\a.pdf", PageIndex = 0 }, // дубль
+            };
+            HashSet<string> keys = PdfPageGrid.BuildKeySet(pages);
+            AssertEqual(2, keys.Count, "дубли схлопываются");
+            AssertTrue(keys.Contains(PdfPageGrid.ThumbKey(pages[0])), "ключ страницы 0 присутствует");
+            AssertEqual(0, PdfPageGrid.BuildKeySet(null).Count, "null -> пустой набор");
+        }
+
+        private static void TestGridStaleKeys()
+        {
+            var cached = new List<string> { "a|0", "a|1", "b|0" };
+            var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a|0", "b|0", "c|0" };
+            List<string> stale = PdfPageGrid.StaleKeys(cached, keep);
+            AssertEqual(1, stale.Count, "один устаревший ключ");
+            AssertEqual("a|1", stale[0], "вытесняется отсутствующий в keep");
+
+            // Тот же набор -> ничего не устаревает (переупорядочивание не роняет кэш).
+            var same = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a|0", "a|1", "b|0" };
+            AssertEqual(0, PdfPageGrid.StaleKeys(cached, same).Count, "полное совпадение — без вытеснения");
+        }
 
         private static void Run(string name, Action test)
         {
