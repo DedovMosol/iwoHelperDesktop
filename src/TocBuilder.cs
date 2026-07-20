@@ -51,9 +51,7 @@ namespace ExcelMerger
                 int row = i + 2;
                 if (fr.Ok && fr.Linkable)
                 {
-                    // Апострофы в имени листа в адресе ссылки удваиваются.
-                    string subAddress = "'" + fr.SheetName.Replace("'", "''") + "'!A1";
-                    toc.Hyperlinks.Add(toc.Cells[row, 2], "", subAddress, Type.Missing, fr.SheetName);
+                    toc.Hyperlinks.Add(toc.Cells[row, 2], "", SheetRef(fr.SheetName), Type.Missing, fr.SheetName);
                 }
                 else if (!fr.Ok)
                 {
@@ -75,6 +73,81 @@ namespace ExcelMerger
                 window.FreezePanes = true;
             }
             catch { } // закрепление — украшение, не причина ронять слияние
+        }
+
+        /// <summary>Ссылка на ячейку A1 листа для гиперссылки (апострофы в имени удваиваются).</summary>
+        internal static string SheetRef(string sheetName)
+        {
+            return "'" + (sheetName ?? "").Replace("'", "''") + "'!A1";
+        }
+
+        // Имя нашей фигуры-кнопки: чтобы находить и заменять её при дослиянии.
+        private const string ReturnShapeName = "iwoTocLink";
+
+        /// <summary>
+        /// На каждый лист свода (кроме самого оглавления) — заметную кнопку-ссылку
+        /// «К оглавлению»: плавающая фигура (данные не сдвигаются), синий градиент,
+        /// белый текст. Идемпотентно: прежняя такая кнопка сначала удаляется —
+        /// корректно при повторном дослиянии пропущенных.
+        /// </summary>
+        public static void AddReturnButtons(object targetObj, string tocName)
+        {
+            dynamic target = targetObj;
+            dynamic sheets = target.Sheets;
+            int count = (int)sheets.Count;
+            string sub = SheetRef(tocName);
+            int blue = Theme.ToBgr(Theme.HubBlue);
+            int blueDark = Theme.ToBgr(Theme.HubBlueDark);
+            for (int i = 1; i <= count; i++)
+            {
+                dynamic sheet = sheets[i];
+                if (string.Equals((string)sheet.Name, tocName, StringComparison.Ordinal))
+                    continue; // на самом оглавлении ссылка на оглавление не нужна
+                try { AddReturnButton(sheet, sub, blue, blueDark); }
+                catch { } // лист-диаграмма или иная особенность — без кнопки, свод не роняем
+            }
+        }
+
+        private static void AddReturnButton(dynamic sheet, string subAddress, int blue, int blueDark)
+        {
+            try { sheet.Shapes(ReturnShapeName).Delete(); } catch { } // прежняя кнопка (дослияние)
+
+            dynamic used = sheet.UsedRange; // на листе-диаграмме бросит — поймает вызывающий
+            double top = (double)used.Top;
+            double left = (double)used.Left + (double)used.Width + 8; // справа от данных, не перекрывая их
+
+            dynamic btn = sheet.Shapes.AddShape(5, left, top, 160, 28); // 5 = скруглённый прямоугольник
+            try
+            {
+                btn.Name = ReturnShapeName;
+                // TextFrame2 — чистые свойства (в отличие от TextFrame.Characters);
+                // проверено прямым COM-вызовом на живом Excel.
+                dynamic tr = btn.TextFrame2.TextRange;
+                tr.Text = "☰  К оглавлению";
+                try
+                {
+                    dynamic fill = btn.Fill;
+                    fill.TwoColorGradient(2, 1);     // 2 = msoGradientVertical
+                    fill.ForeColor.RGB = blue;
+                    fill.BackColor.RGB = blueDark;
+                    btn.Line.Visible = 0;            // без рамки (msoFalse)
+                    btn.Shadow.Visible = -1;         // мягкая тень (msoTrue) — дизайнерский вид
+                    dynamic font = tr.Font;
+                    font.Bold = -1;                  // msoTrue
+                    font.Size = 11;
+                    font.Name = "Segoe UI";
+                    font.Fill.ForeColor.RGB = White;
+                    tr.ParagraphFormat.Alignment = 2;   // msoAlignCenter
+                    btn.TextFrame2.VerticalAnchor = 3;  // msoAnchorMiddle
+                }
+                catch { } // оформление — по возможности; сама ссылка важнее
+
+                sheet.Hyperlinks.Add(btn, "", subAddress, "Перейти к оглавлению");
+            }
+            catch
+            {
+                try { btn.Delete(); } catch { } // без рабочей ссылки мёртвую кнопку не оставляем
+            }
         }
     }
 }

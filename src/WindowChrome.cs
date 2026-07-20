@@ -44,7 +44,7 @@ namespace ExcelMerger
         /// <summary>COLORREF (0x00BBGGRR), как ждёт DWM. internal — под юнит-тест упаковки.</summary>
         internal static int ColorRef(Color c)
         {
-            return c.R | (c.G << 8) | (c.B << 16);
+            return Theme.ToBgr(c); // единая упаковка цвета (DRY)
         }
     }
 }

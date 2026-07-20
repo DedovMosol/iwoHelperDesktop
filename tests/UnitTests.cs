@@ -51,6 +51,8 @@ namespace ExcelMerger.Tests
             Run("PrepareSourceList: исключение свода и дубликатов", TestPrepareSourceList);
             Run("FileSignature: ZIP/OLE2 — книга, текст/пусто — нет", TestFileSignature);
             Run("LowSpaceMessage: мало места — понятная ошибка, иначе null", TestLowSpaceMessage);
+            Run("Theme.ToBgr: упаковка цвета 0x00BBGGRR", TestThemeToBgr);
+            Run("TocBuilder.SheetRef: ссылка на A1, апострофы удвоены", TestSheetRef);
             Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
             Run("HeaderBand: строится с заголовком, двойная буферизация", TestHeaderBand);
             Run("HeaderBand.TextRightBound: текст не заходит под кнопку", TestHeaderTextBound);
@@ -569,6 +571,21 @@ namespace ExcelMerger.Tests
                 MainForm.ClassifyListKey(System.Windows.Forms.Keys.Up), "просто ↑ — навигация");
             AssertEqual(MainForm.ListKeyAction.None,
                 MainForm.ClassifyListKey(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C), "Ctrl+C — копирование");
+        }
+
+        private static void TestThemeToBgr()
+        {
+            AssertEqual(12413967, Theme.ToBgr(System.Drawing.Color.FromArgb(15, 108, 189)), "HubBlue #0F6CBD");
+            AssertEqual(4291600, Theme.ToBgr(System.Drawing.Color.FromArgb(16, 124, 65)), "Accent #107C41");
+            AssertEqual(16777215, Theme.ToBgr(System.Drawing.Color.White), "белый");
+            AssertEqual(255, Theme.ToBgr(System.Drawing.Color.FromArgb(255, 0, 0)), "красный — младший байт");
+        }
+
+        private static void TestSheetRef()
+        {
+            AssertEqual("'Отчет'!A1", TocBuilder.SheetRef("Отчет"), "обычное имя");
+            AssertEqual("'it''s'!A1", TocBuilder.SheetRef("it's"), "апостроф удваивается");
+            AssertEqual("''!A1", TocBuilder.SheetRef(null), "null — пустое имя");
         }
 
         private static void TestWindowChromeColorRef()

@@ -53,6 +53,18 @@ try {
     if (-not $wsA.Range("A1").Font.Bold) { $fails += "A1 потеряла жирный шрифт" }
     if ($wsA.Range("A2").Interior.Color -ne 65535) { $fails += "A2 потеряла заливку" }
 
+    # Кнопка-ссылка «К оглавлению» на листе данных: наша фигура с гиперссылкой на «Содержание»
+    $hasBtn = $false
+    foreach ($shp in $wsA.Shapes) { if ($shp.Name -eq 'iwoTocLink') { $hasBtn = $true; break } }
+    if (-not $hasBtn) { $fails += "на листе данных нет кнопки-ссылки на оглавление (iwoTocLink)" }
+    $backOk = $false
+    foreach ($lnk in $wsA.Hyperlinks) { if ($lnk.SubAddress -like "*Содержание*") { $backOk = $true; break } }
+    if (-not $backOk) { $fails += "кнопка на листе данных не ссылается на «Содержание»" }
+    # На самом оглавлении обратной кнопки быть не должно
+    $tocHasBtn = $false
+    foreach ($shp in $toc.Shapes) { if ($shp.Name -eq 'iwoTocLink') { $tocHasBtn = $true; break } }
+    if ($tocHasBtn) { $fails += "на листе «Содержание» лишняя кнопка-ссылка на само себя" }
+
     $wb.Close($false)
 }
 finally {
