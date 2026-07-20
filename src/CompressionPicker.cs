@@ -36,7 +36,11 @@ namespace ExcelMerger
             _combo.DropDownStyle = ComboBoxStyle.DropDownList;
             _combo.Items.AddRange(PdfCompression.LevelLabels);
             _combo.SelectedIndex = (int)CompressionLevel.None; // «Отлично — без сжатия»
-            _combo.SetBounds(caption.Right + 8, 1, 210, 27);
+            // Ширина — под самый длинный пункт (иначе «Нормально — минимальный размер» обрезается).
+            int widest = 0;
+            foreach (string lbl in PdfCompression.LevelLabels)
+                widest = Math.Max(widest, TextRenderer.MeasureText(lbl, Font).Width);
+            _combo.SetBounds(caption.Right + 8, 1, widest + 40, 27); // +кнопка списка и отступы
             _combo.SelectedIndexChanged += OnSelectedIndexChanged;
             Controls.Add(_combo);
 

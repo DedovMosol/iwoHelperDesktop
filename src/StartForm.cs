@@ -23,7 +23,7 @@ namespace ExcelMerger
             _context = context;
 
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
-            Text = AppTitle + " " + version.ToString(2);
+            Text = AppTitle + " " + version.ToString(3);
             Icon startIcon = Ui.AppIcon();
             if (startIcon != null)
                 Icon = startIcon;
