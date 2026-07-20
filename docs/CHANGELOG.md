@@ -3,6 +3,23 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.11.0] — 2026-07-20
+
+### Added
+- **New tool: “PDF Split”** (third start-screen card), complementing “PDF Merge”.
+  Open one PDF, see its pages as thumbnails, and either extract or split — following
+  the modes of leading offline tools (PDFsam, Acrobat):
+  - **Extract selected** — pick pages in the grid (Ctrl+A = all) → one new PDF;
+  - **By ranges** — “1-3, 5, 8-”: each range → its own file;
+  - **Every N pages** — equal chunks (N=1 → one file per page);
+  - **By bookmarks** — one file per top-level bookmark, named from the titles.
+  Pages are copied as-is (no re-conversion); the source is never modified; output
+  names are never overwritten (a number is appended). The engine (`PdfSplitService`,
+  `PageRanges`) is unit-tested and validated live on real PDFs, including bookmarks.
+- The PDF page-thumbnail grid was extracted into a reusable `PdfPageGrid` control
+  and is now shared by both PDF tools (DRY); the Merge tool was refactored onto it
+  with no behaviour change.
+
 ## [1.10.7] — 2026-07-20
 
 ### Added

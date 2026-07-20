@@ -12,6 +12,9 @@ A set of office tools in a single application:
   formula-to-value conversion and a Word cover note.
 - **PDF Merge** — builds a single PDF from several files: pick the pages you need
   and their order, no re-conversion.
+- **PDF Split** — the reverse: open one PDF and either extract the selected pages
+  into a new file or split the document into several — by page ranges, every N
+  pages, or by top-level bookmarks. Pages are copied as-is; the source is untouched.
 
 On launch the program lets you choose a tool.
 
