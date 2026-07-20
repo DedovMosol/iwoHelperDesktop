@@ -31,6 +31,13 @@ A small, self‑contained Windows application that bundles the office tasks peop
 - 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing); local operation counters with manual/auto clear.
 - 🔒 **Safe by design** — no network, no admin, not packed/obfuscated; writes only to user‑selected folders and `%APPDATA%`.
 
+## 📸 Screenshots
+
+|  |  |
+|:--:|:--:|
+| <img src="https://raw.githubusercontent.com/DedovMosol/iwoHelperDesktop/assets/hub.png" width="400" alt="Start screen"><br>**Start screen** — pick a tool | <img src="https://raw.githubusercontent.com/DedovMosol/iwoHelperDesktop/assets/excel.png" width="400" alt="Excel Digest"><br>**Excel Digest** |
+| <img src="https://raw.githubusercontent.com/DedovMosol/iwoHelperDesktop/assets/pdf-merge.png" width="400" alt="PDF Merge"><br>**PDF Merge** — thumbnails & compression | <img src="https://raw.githubusercontent.com/DedovMosol/iwoHelperDesktop/assets/pdf-split.png" width="400" alt="PDF Split"><br>**PDF Split** — modes & compression |
+
 ## ⬇️ Download
 
 | OS | Download |
