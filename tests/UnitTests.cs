@@ -103,6 +103,8 @@ namespace ExcelMerger.Tests
             Run("LruCache: ёмкость < 1 запрещена", TestLruCapacityGuard);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
             Run("PdfPageGrid.StaleKeys: вытесняются только отсутствующие в keep", TestGridStaleKeys);
+            Run("PdfPageGrid.LowerBound: бинарный поиск по монотонному предикату", TestLowerBound);
+            Run("PdfPageGrid.VisibleRange: видимый диапазон по Top/Bottom", TestVisibleRange);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -1348,6 +1350,37 @@ namespace ExcelMerger.Tests
             // Тот же набор -> ничего не устаревает (переупорядочивание не роняет кэш).
             var same = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a|0", "a|1", "b|0" };
             AssertEqual(0, PdfPageGrid.StaleKeys(cached, same).Count, "полное совпадение — без вытеснения");
+        }
+
+        private static void TestLowerBound()
+        {
+            AssertEqual(3, PdfPageGrid.LowerBound(5, delegate(int i) { return i >= 3; }), "первый индекс >= 3");
+            AssertEqual(0, PdfPageGrid.LowerBound(5, delegate(int i) { return true; }), "все истинны -> 0");
+            AssertEqual(5, PdfPageGrid.LowerBound(5, delegate(int i) { return false; }), "все ложны -> count");
+            AssertEqual(0, PdfPageGrid.LowerBound(0, delegate(int i) { return true; }), "пустой -> 0");
+            AssertEqual(1, PdfPageGrid.LowerBound(4, delegate(int i) { return i >= 1; }), "граница у начала");
+        }
+
+        private static void TestVisibleRange()
+        {
+            // 8 плиток высотой 10, один столбец, прокрутка вверх на 25; низ вьюпорта = 30.
+            // Top[i]=i*10-25, Bottom[i]=Top+10 -> видимы i=2..5.
+            Func<int, int> topOf = delegate(int i) { return i * 10 - 25; };
+            Func<int, int> bottomOf = delegate(int i) { return i * 10 - 25 + 10; };
+            int first, last;
+            PdfPageGrid.VisibleRange(8, topOf, bottomOf, 30, out first, out last);
+            AssertEqual(2, first, "первый видимый (Bottom >= 0)");
+            AssertEqual(5, last, "последний видимый (Top <= 30)");
+
+            // Всё выше вьюпорта -> ничего целиком не видно (first > last).
+            Func<int, int> topHi = delegate(int i) { return i * 10 - 1000; };
+            Func<int, int> botHi = delegate(int i) { return i * 10 - 1000 + 10; };
+            PdfPageGrid.VisibleRange(8, topHi, botHi, 30, out first, out last);
+            AssertTrue(first > last, "всё выше вьюпорта -> пусто");
+
+            // Пустой список.
+            PdfPageGrid.VisibleRange(0, topOf, bottomOf, 30, out first, out last);
+            AssertTrue(first > last, "нет элементов -> пусто");
         }
 
         private static void Run(string name, Action test)

@@ -43,6 +43,10 @@ namespace ExcelMerger
         // Ключи страниц, показываемых сейчас (обновляется в SetPages, только UI-поток).
         // Поздний результат рендера уже снятой страницы отбрасывается по этому набору.
         private HashSet<string> _currentKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Элементы списка по ключу плитки: готовый рендер проставляется адресно, без
+        // прохода по всем элементам (иначе рендер всего документа — O(n²)). Только UI-поток.
+        private readonly Dictionary<string, List<ListViewItem>> _itemsByKey =
+            new Dictionary<string, List<ListViewItem>>(StringComparer.OrdinalIgnoreCase);
         private ImageList _thumbs;
         private int _tileWidth = ThumbZoom.DefaultWidth;
 
@@ -112,6 +116,7 @@ namespace ExcelMerger
 
             _list.BeginUpdate();
             _list.Items.Clear();         // после очистки ни один элемент не ссылается на плитки
+            _itemsByKey.Clear();
             PruneCache(_currentKeys);    // освободить bitmap и плитку страниц вне набора
             if (pages != null)
             {
@@ -123,6 +128,7 @@ namespace ExcelMerger
                     item.ToolTipText = page.SourcePath + " — стр. " + (page.PageIndex + 1);
                     item.ImageKey = _thumbs.Images.ContainsKey(key) ? key : PlaceholderKey;
                     _list.Items.Add(item);
+                    IndexItem(key, item);
                 }
             }
             _list.EndUpdate();
@@ -161,6 +167,18 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>Регистрирует элемент под ключом плитки (один ключ — несколько элементов при повторах страницы).</summary>
+        private void IndexItem(string key, ListViewItem item)
+        {
+            List<ListViewItem> items;
+            if (!_itemsByKey.TryGetValue(key, out items))
+            {
+                items = new List<ListViewItem>();
+                _itemsByKey[key] = items;
+            }
+            items.Add(item);
+        }
+
         // ---------- ленивый рендер видимых ----------
 
         private void ScheduleVisibleUpdate()
@@ -177,22 +195,17 @@ namespace ExcelMerger
             int count = _list.Items.Count;
             if (count == 0)
                 return;
-            // ListView.TopItem в LargeIcon бросает исключение — видимый диапазон
-            // определяем по Bounds (они монотонны по индексу: раскладка сверху вниз).
+            // Раскладка LargeIcon монотонна сверху вниз (Bounds.Top/Bottom не убывают
+            // по индексу): видимый диапазон ищем бинарным поиском — O(log n) обращений
+            // к Bounds вместо линейного скана от начала на каждый тик прокрутки.
+            // (ListView.TopItem в LargeIcon бросает исключение, поэтому по Bounds.)
             int bottom = _list.ClientSize.Height;
-            int first = -1, last = -1;
-            for (int i = 0; i < count; i++)
-            {
-                Rectangle b = _list.Items[i].Bounds;
-                if (b.Bottom < 0)
-                    continue;      // выше видимой области
-                if (b.Top > bottom)
-                    break;         // ниже видимой — дальше все ниже
-                if (first < 0)
-                    first = i;
-                last = i;
-            }
-            if (first < 0)
+            int first, last;
+            VisibleRange(count,
+                delegate(int i) { return _list.Items[i].Bounds.Top; },
+                delegate(int i) { return _list.Items[i].Bounds.Bottom; },
+                bottom, out first, out last);
+            if (first > last)
             {
                 first = 0;
                 last = Math.Min(count - 1, EnqueueBuffer);
@@ -216,6 +229,33 @@ namespace ExcelMerger
             hi = last + buffer;
             if (hi > count - 1)
                 hi = count - 1;
+        }
+
+        /// <summary>
+        /// Наименьший индекс в [0,count), для которого pred истинно; count, если такого
+        /// нет. pred монотонен (false…false, затем true…true). Чистая — под тест.
+        /// </summary>
+        internal static int LowerBound(int count, Predicate<int> pred)
+        {
+            int lo = 0, hi = count;
+            while (lo < hi)
+            {
+                int mid = lo + (hi - lo) / 2;
+                if (pred(mid)) hi = mid;
+                else lo = mid + 1;
+            }
+            return lo;
+        }
+
+        /// <summary>
+        /// Видимый диапазон [first,last] по монотонным Top/Bottom (координаты клиента):
+        /// first — первый элемент с Bottom ≥ 0, last — последний с Top ≤ viewportBottom.
+        /// first &gt; last — ничего целиком не видно. Чистая — под тест.
+        /// </summary>
+        internal static void VisibleRange(int count, Func<int, int> topOf, Func<int, int> bottomOf, int viewportBottom, out int first, out int last)
+        {
+            first = LowerBound(count, delegate(int i) { return bottomOf(i) >= 0; });
+            last = LowerBound(count, delegate(int i) { return topOf(i) > viewportBottom; }) - 1;
         }
 
         public int Count { get { return _list.Items.Count; } }
@@ -437,12 +477,13 @@ namespace ExcelMerger
             if (!_thumbs.Images.ContainsKey(key))
                 _thumbs.Images.Add(key, ComposeTile(page, _thumbs.ImageSize));
 
-            foreach (ListViewItem item in _list.Items)
-            {
-                var p = item.Tag as PdfPageRef;
-                if (p != null && item.ImageKey != key && ThumbKey(p) == key)
-                    item.ImageKey = key;
-            }
+            // Адресно по ключу, а не проходом по всем элементам (рендер всего
+            // документа иначе O(n²)).
+            List<ListViewItem> items;
+            if (_itemsByKey.TryGetValue(key, out items))
+                foreach (ListViewItem item in items)
+                    if (item.ImageKey != key)
+                        item.ImageKey = key;
         }
 
         private ImageList NewImageList(int tileWidth)
@@ -450,6 +491,9 @@ namespace ExcelMerger
             var list = new ImageList();
             list.ImageSize = ThumbZoom.TileSize(tileWidth);
             list.ColorDepth = ColorDepth.Depth32Bit;
+            // Изображение НЕ освобождаем: ImageList удерживает ссылку на оригинал для
+            // пересоздания нативного handle (смена DPI/темы/ColorDepth) — досрочный
+            // Dispose дал бы «красный крест». Освобождение — задача самого ImageList.
             list.Images.Add(PlaceholderKey, MakePlaceholder(list.ImageSize));
             return list;
         }
