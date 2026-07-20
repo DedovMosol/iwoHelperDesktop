@@ -26,19 +26,22 @@ function New-WizardBmp([int]$w, [int]$h, [string]$path, [int]$logoBox, [bool]$sh
     $br = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $blue, $blueDark, 90.0)
     $g.FillRectangle($br, $rect)
 
-    # Логотип квадратный — вписываем в квадрат logoBox без искажений, по центру.
-    $lx = [int](($w - $logoBox) / 2)
-    $ly = if ($showText) { [int]($h * 0.15) } else { [int](($h - $logoBox) / 2) }
-    $g.DrawImage($logoImg, $lx, $ly, $logoBox, $logoBox)
+    # Вписываем логотип в квадрат logoBox С СОХРАНЕНИЕМ ПРОПОРЦИЙ (без искажений), по центру.
+    $scale = [Math]::Min($logoBox / $logoImg.Width, $logoBox / $logoImg.Height)
+    $dw = [int]($logoImg.Width * $scale)
+    $dh = [int]($logoImg.Height * $scale)
+    $lx = [int](($w - $dw) / 2)
+    $ly = if ($showText) { [int]($h * 0.15) } else { [int](($h - $dh) / 2) }
+    $g.DrawImage($logoImg, $lx, $ly, $dw, $dh)
 
     if ($showText) {
         $sf = New-Object System.Drawing.StringFormat
         $sf.Alignment = [System.Drawing.StringAlignment]::Center
         $f1 = New-Object System.Drawing.Font('Segoe UI', 30.0, [System.Drawing.FontStyle]::Bold)
         $f2 = New-Object System.Drawing.Font('Segoe UI', 12.5, [System.Drawing.FontStyle]::Regular)
-        $r1 = New-Object System.Drawing.RectangleF(0, ($ly + $logoBox + 18), $w, 50)
+        $r1 = New-Object System.Drawing.RectangleF(0, ($ly + $dh + 18), $w, 50)
         $g.DrawString('iwo', $f1, [System.Drawing.Brushes]::White, $r1, $sf)
-        $r2 = New-Object System.Drawing.RectangleF(0, ($ly + $logoBox + 66), $w, 26)
+        $r2 = New-Object System.Drawing.RectangleF(0, ($ly + $dh + 66), $w, 26)
         $g.DrawString('Helper Desktop', $f2, [System.Drawing.Brushes]::White, $r2, $sf)
         $f1.Dispose(); $f2.Dispose(); $sf.Dispose()
     }
