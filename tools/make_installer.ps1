@@ -1,9 +1,9 @@
-﻿# Локальная сборка ПОДПИСАННОГО установщика iwo Helper Desktop с вшитым Ghostscript.
-# Шаги: build.cmd -> подпись exe -> stage_gs.ps1 -> ISCC -> подпись setup.exe.
-# Подпись — самоподписанным сертификатом (tools\sign.ps1), только локально (сертификат
-# в Cert:\CurrentUser\My, на CI его нет). Требуется установленный Inno Setup 6 (ISCC.exe)
-# и Ghostscript (для stage). Дочерние .ps1 зовём отдельным процессом: их `exit` иначе
-# завершил бы этот скрипт.
+# Local build of the SIGNED iwo Helper Desktop installer with bundled Ghostscript.
+# Steps: build.cmd -> sign the exe -> stage_gs.ps1 -> ISCC -> sign setup.exe.
+# Signing uses a self-signed certificate (tools\sign.ps1), locally only (the cert lives
+# in Cert:\CurrentUser\My and is not on CI). Requires an installed Inno Setup 6 (ISCC.exe)
+# and Ghostscript (for staging). Child .ps1 scripts run in a separate process, otherwise
+# their `exit` would terminate this script too.
 param(
     [switch]$SkipBuild,
     [string]$Iscc
@@ -11,17 +11,17 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $exe = Join-Path $root 'dist\iwoHelperDesktop.exe'
-$ps = (Get-Process -Id $PID).Path  # текущий хост PowerShell
+$ps = (Get-Process -Id $PID).Path  # current PowerShell host
 
 function Invoke-Child([string]$script, [string[]]$scriptArgs) {
     & $ps -NoProfile -ExecutionPolicy Bypass -File $script @scriptArgs
-    if ($LASTEXITCODE -ne 0) { throw "Ошибка: $script (код $LASTEXITCODE)" }
+    if ($LASTEXITCODE -ne 0) { throw "Error: $script (code $LASTEXITCODE)" }
 }
 
 function Find-Iscc {
-    # Любая версия Inno Setup (6/7/…) и любой диск установки. Порядок: реестр
-    # (InstallLocation — надёжнее всего, не зависит от %ProgramFiles%) -> glob по
-    # Program Files -> PATH. Выбираем свежайшую версию.
+    # Any Inno Setup version (6/7/...) on any drive. Order: registry
+    # (InstallLocation - most reliable, independent of %ProgramFiles%) -> glob under
+    # Program Files -> PATH. Pick the newest version.
     $found = @()
 
     $unins = @(
@@ -53,36 +53,36 @@ function Find-Iscc {
     return $null
 }
 
-# 1. Сборка приложения
+# 1. Build the application
 if (-not $SkipBuild) {
     & (Join-Path $root 'build.cmd')
     if ($LASTEXITCODE -ne 0) { throw 'build.cmd failed' }
 }
-if (-not (Test-Path $exe)) { throw "нет $exe (сначала сборка)" }
+if (-not (Test-Path $exe)) { throw "missing $exe (build first)" }
 
-# 2. Подпись exe (установщик вшивает уже подписанный файл)
+# 2. Sign the exe (the installer embeds the already-signed file)
 Invoke-Child (Join-Path $PSScriptRoot 'sign.ps1') @('-ExePath', $exe)
 
-# 3. Подготовка вшиваемого Ghostscript
+# 3. Stage the bundled Ghostscript
 Invoke-Child (Join-Path $PSScriptRoot 'stage_gs.ps1') @()
 
-# 4. Версия (3 компонента) из версии exe — единый источник истины
-$ver = (Get-Item $exe).VersionInfo.FileVersion   # напр. 1.13.0.0
+# 4. Version (3 components) from the exe version - single source of truth
+$ver = (Get-Item $exe).VersionInfo.FileVersion   # e.g. 1.13.0.0
 $ver3 = ($ver -split '\.')[0..2] -join '.'
 
-# 5. Компиляция установщика
+# 5. Compile the installer
 if (-not $Iscc) { $Iscc = Find-Iscc }
 if (-not $Iscc) {
-    Write-Host 'Не найден ISCC.exe (Inno Setup). Установите: https://jrsoftware.org/isdl.php'
+    Write-Host 'ISCC.exe (Inno Setup) not found. Install it: https://jrsoftware.org/isdl.php'
     exit 1
 }
 & $Iscc "/DAppVersion=$ver3" (Join-Path $root 'installer\iwoHelperDesktop.iss')
 if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }
 
 $setup = Join-Path $root ("dist\iwoHelperDesktop-setup-$ver3.exe")
-if (-not (Test-Path $setup)) { throw "установщик не создан: $setup" }
+if (-not (Test-Path $setup)) { throw "installer was not created: $setup" }
 
-# 6. Подпись установщика
+# 6. Sign the installer
 Invoke-Child (Join-Path $PSScriptRoot 'sign.ps1') @('-ExePath', $setup)
 
 Write-Host ""
