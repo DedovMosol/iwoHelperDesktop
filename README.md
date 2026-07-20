@@ -17,10 +17,10 @@ A set of office tools in a single application:
   **combined into one file**), every N pages, or by top-level bookmarks. Pages are
   copied as-is; the source is untouched.
 
-On launch the program lets you choose a tool. Each tool's **Help** menu also has
-**“Statistics”** (local operation counters, with manual and optional auto-clear) and
-**“Check for updates”** (compares with GitHub Releases and opens the download page —
-nothing is downloaded or replaced automatically).
+On launch the program lets you choose a tool; the start screen also has a
+**“Check for updates”** button (compares with GitHub Releases and opens the download
+page — nothing is downloaded or replaced automatically). Each tool's **Help** menu has
+**“Statistics”** (local operation counters, with manual and optional auto-clear).
 
 ## Requirements
 

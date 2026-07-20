@@ -59,6 +59,7 @@ namespace ExcelMerger.Tests
             Run("PageRanges.ToIndices: диапазоны -> индексы (порядок, повторы)", TestPageRangesToIndices);
             Run("UpdateChecker: разбор тега и сравнение версий", TestUpdateChecker);
             Run("UsageStats.ShouldAutoClear: период очистки", TestShouldAutoClear);
+            Run("MessageForm.ButtonX: одна по центру, две по краям", TestMessageButtonX);
             Run("PdfSplitService.Sanitize: недопустимые символы", TestSanitize);
             Run("PdfSplit (живой): извлечение, диапазоны, каждые N, закладки", TestPdfSplitLive);
             Run("PdfPageGrid.ClampWindow: окно видимых с буфером", TestClampWindow);
@@ -392,12 +393,11 @@ namespace ExcelMerger.Tests
                         texts.Add(it.Text);
                 AssertTrue(texts.Contains("Как пользоваться"), "есть «Как пользоваться»");
                 AssertTrue(texts.Contains("Статистика"), "есть «Статистика»");
-                AssertTrue(texts.Contains("Проверить обновления"), "есть «Проверить обновления»");
                 AssertTrue(texts.Contains("Папка отчётов"), "доп. пункт вставлен");
                 AssertTrue(texts.Contains("О программе"), "есть «О программе»");
             }
 
-            // Без доп. пунктов: «Как пользоваться», «Статистика», «Проверить обновления», «О программе».
+            // Без доп. пунктов: «Как пользоваться», «Статистика», «О программе».
             using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }))
             {
                 var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
@@ -405,7 +405,7 @@ namespace ExcelMerger.Tests
                 foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         menuItems++;
-                AssertEqual(4, menuItems, "без extras — четыре пункта");
+                AssertEqual(3, menuItems, "без extras — три пункта");
             }
         }
 
@@ -664,6 +664,13 @@ namespace ExcelMerger.Tests
             AssertTrue(!UsageStats.ShouldAutoClear(now.AddDays(-6), now, 7), "6 из 7 дней — рано");
             AssertTrue(UsageStats.ShouldAutoClear(now.AddDays(-8), now, 7), "8 дней при периоде 7 — пора");
             AssertTrue(UsageStats.ShouldAutoClear(now.AddDays(-31), now, 30), "31 день при 30 — пора");
+        }
+
+        private static void TestMessageButtonX()
+        {
+            AssertEqual(164, MessageForm.ButtonX(0, 1, 440, 112, 20), "одна кнопка — по центру");
+            AssertEqual(20, MessageForm.ButtonX(0, 2, 440, 112, 20), "две: первая слева");
+            AssertEqual(308, MessageForm.ButtonX(1, 2, 440, 112, 20), "две: вторая справа");
         }
 
         private static void TestSanitize()
