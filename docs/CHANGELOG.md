@@ -3,6 +3,19 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.4] — 2026-07-20
+
+### Fixed
+- **PDF thumbnail render thread now shuts down cleanly.** When a PDF tool window closes,
+  the background render thread is joined (with a timeout) and its `ManualResetEventSlim`
+  is disposed instead of being left to the finalizer — no leaked wait‑handle or lingering
+  thread (correct `IDisposable` teardown, CA2213). The signal is released only once the
+  thread has provably exited, so a slow in‑flight render can never fault on a disposed handle.
+
+### Internal
+- `.gitignore` now excludes the local `screenshots/` scratch folder (reference images),
+  so it can’t be committed by an accidental `git add .`.
+
 ## [1.13.3] — 2026-07-20
 
 ### Fixed
