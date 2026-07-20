@@ -39,6 +39,7 @@ namespace ExcelMerger
 
             var header = new HeaderBand(AppTitle, "Выберите инструмент — свод Excel, объединение или разделение PDF",
                 Theme.HubBlue, Theme.HubBlueDark);
+            header.Centered = true; // на стартовом экране заголовок и подпись по центру
             header.SetBounds(0, 0, ClientSize.Width, 78);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(header);
@@ -63,7 +64,7 @@ namespace ExcelMerger
             };
             Controls.Add(pdf);
 
-            var split = new ChoiceCard(CardGlyph.Pdf, "Разделение PDF",
+            var split = new ChoiceCard(CardGlyph.PdfSplit, "Разделение PDF",
                 "Извлечь выбранные страницы в один PDF или разбить документ на несколько: по диапазонам, каждые N страниц или по закладкам.");
             split.SetBounds(540, 96, 240, 250);
             split.Click += delegate

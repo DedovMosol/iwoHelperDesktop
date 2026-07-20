@@ -3,6 +3,22 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.11.1] — 2026-07-20
+
+### Changed
+- **Start-screen header is centred** (title and subtitle), since the hub has no
+  window buttons (`HeaderBand.Centered`).
+- **“PDF Split” now has its own icon** — scissors — so it is clearly distinct from
+  “PDF Merge” at a glance.
+- **Lazy thumbnail rendering** in the PDF page grid: only the visible pages (plus a
+  small buffer) are rendered in the background instead of every page up front —
+  markedly less CPU and memory for large documents (hundreds of pages), so the UI
+  stays responsive. Visible-range windowing (`ClampWindow`) is unit-tested; the
+  no-crash + lazy behaviour was verified in a real message loop (22/60 pages
+  rendered for a 60-page file).
+- Drag-and-drop path extraction for the PDF tools was de-duplicated into a shared
+  `PdfDrop` helper (DRY).
+
 ## [1.11.0] — 2026-07-20
 
 ### Added

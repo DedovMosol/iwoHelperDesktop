@@ -180,7 +180,7 @@ namespace ExcelMerger
 
         private void OnFileDragEnter(object sender, DragEventArgs e)
         {
-            e.Effect = !_busy && ExtractPdfPaths(e).Length > 0
+            e.Effect = !_busy && PdfDrop.ExtractPaths(e).Length > 0
                 ? DragDropEffects.Copy
                 : DragDropEffects.None;
         }
@@ -188,24 +188,7 @@ namespace ExcelMerger
         private void OnFileDragDrop(object sender, DragEventArgs e)
         {
             if (!_busy)
-                AddFiles(ExtractPdfPaths(e));
-        }
-
-        private static string[] ExtractPdfPaths(DragEventArgs e)
-        {
-            if (!e.Data.GetDataPresent(DataFormats.FileDrop))
-                return new string[0];
-            var items = (string[])e.Data.GetData(DataFormats.FileDrop);
-            if (items == null)
-                return new string[0];
-            var pdfs = new System.Collections.Generic.List<string>();
-            foreach (string item in items)
-            {
-                if (File.Exists(item) &&
-                    string.Equals(Path.GetExtension(item), ".pdf", StringComparison.OrdinalIgnoreCase))
-                    pdfs.Add(item);
-            }
-            return pdfs.ToArray();
+                AddFiles(PdfDrop.ExtractPaths(e));
         }
 
         private void AddFiles(string[] paths)

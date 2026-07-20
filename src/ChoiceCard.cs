@@ -9,7 +9,8 @@ namespace ExcelMerger
     public enum CardGlyph
     {
         Excel,
-        Pdf
+        Pdf,
+        PdfSplit
     }
 
     /// <summary>
@@ -163,6 +164,19 @@ namespace ExcelMerger
                         g.DrawPath(pen, bracket);
                     }
                     g.DrawLine(pen, p(9, 15), p(14, 15));
+                }
+            }
+            else if (_glyph == CardGlyph.PdfSplit)
+            {
+                // Ножницы — универсальный знак «разрезать/разделить».
+                using (var pen = new Pen(Color.White, 1.4f * s))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    g.DrawLine(pen, p(9f, 16.5f), p(17f, 6.5f));   // лезвие
+                    g.DrawLine(pen, p(15f, 16.5f), p(7f, 6.5f));   // лезвие
+                    g.DrawEllipse(pen, p(7f, 15.5f).X, p(7f, 15.5f).Y, 3.4f * s, 3.4f * s);   // кольцо
+                    g.DrawEllipse(pen, p(13.6f, 15.5f).X, p(13.6f, 15.5f).Y, 3.4f * s, 3.4f * s); // кольцо
                 }
             }
             else
