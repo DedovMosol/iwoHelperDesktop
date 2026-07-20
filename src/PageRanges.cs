@@ -82,6 +82,18 @@ namespace ExcelMerger
             return result;
         }
 
+        /// <summary>Разворачивает диапазоны в список 0-базных индексов (порядок и повторы сохраняются).</summary>
+        public static List<int> ToIndices(IList<PageRange> ranges)
+        {
+            var list = new List<int>();
+            if (ranges == null)
+                return list;
+            foreach (PageRange r in ranges)
+                for (int i = r.Start; i <= r.End; i++)
+                    list.Add(i);
+            return list;
+        }
+
         private static int ParseNumber(string s, string token)
         {
             int value;

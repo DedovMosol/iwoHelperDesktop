@@ -35,6 +35,7 @@ namespace ExcelMerger
         private TextBox _txtRanges;
         private Label _lblN;
         private NumericUpDown _numN;
+        private CheckBox _chkCombine;
         private Label _lblHint;
         private Button _btnDo;
         private Label _lblStatus;
@@ -146,8 +147,18 @@ namespace ExcelMerger
             _lblHint.MaximumSize = new Size(pw, 0);
             _lblHint.AutoSize = true;
 
+            // Только для «По диапазонам»: собрать все страницы в один файл.
+            _chkCombine = new AccentCheckBox();
+            _chkCombine.Text = "Объединить в один файл";
+            _chkCombine.SetBounds(px, m + 244, pw, 22);
+            _chkCombine.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _chkCombine.ForeColor = Theme.TextPrimary;
+            _tips.SetToolTip(_chkCombine, "Все указанные страницы — в один PDF, а не по файлу на диапазон");
+            _chkCombine.CheckedChanged += delegate { UpdateModeInputs(); };
+            Controls.Add(_chkCombine);
+
             _btnDo = new RoundedButton(true);
-            _btnDo.SetBounds(px, m + 250, pw, 38);
+            _btnDo.SetBounds(px, m + 284, pw, 38);
             _btnDo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnDo.Click += OnDoClick;
             Controls.Add(_btnDo);
@@ -252,12 +263,15 @@ namespace ExcelMerger
             int mode = _cmbMode.SelectedIndex;
             _lblRanges.Visible = _txtRanges.Visible = mode == ModeRanges;
             _lblN.Visible = _numN.Visible = mode == ModeEveryN;
+            _chkCombine.Visible = mode == ModeRanges;
             _lblHint.Visible = mode == ModeExtract || mode == ModeBookmarks;
             if (mode == ModeExtract)
                 _lblHint.Text = "Выделите нужные страницы в сетке (Ctrl+A — все).";
             else if (mode == ModeBookmarks)
                 _lblHint.Text = "По одному файлу на закладку верхнего уровня.";
-            _btnDo.Text = mode == ModeExtract ? "Извлечь…" : "Разделить…";
+            // Извлечение (в т.ч. диапазоны+объединить) даёт один файл; иначе — несколько.
+            bool oneFile = mode == ModeExtract || (mode == ModeRanges && _chkCombine.Checked);
+            _btnDo.Text = oneFile ? "Извлечь…" : "Разделить…";
         }
 
         private void UpdateControls()
@@ -295,31 +309,45 @@ namespace ExcelMerger
             if (_busy || _sourcePath == null)
                 return;
             int mode = _cmbMode.SelectedIndex;
+            bool combine = mode == ModeRanges && _chkCombine.Checked;
+            string src = _sourcePath;
 
-            if (mode == ModeExtract)
+            // Один файл: «Извлечь выбранные» ИЛИ «По диапазонам» + объединить.
+            if (mode == ModeExtract || combine)
             {
-                int[] indices = _grid.GetSelectedIndices();
-                if (indices.Length == 0)
+                List<int> indices;
+                if (mode == ModeExtract)
                 {
-                    Dialogs.Error(this, Title, "Не выбраны страницы", "Выделите страницы в сетке (Ctrl+A — все).");
-                    return;
+                    int[] sel = _grid.GetSelectedIndices();
+                    if (sel.Length == 0)
+                    {
+                        Dialogs.Error(this, Title, "Не выбраны страницы", "Выделите страницы в сетке (Ctrl+A — все).");
+                        return;
+                    }
+                    indices = new List<int>(sel);
+                }
+                else
+                {
+                    try { indices = PageRanges.ToIndices(PageRanges.Parse(_txtRanges.Text, _pageCount)); }
+                    catch (MergeException ex) { Dialogs.Error(this, Title, "Диапазоны заданы неверно", ex.Message); return; }
                 }
                 string outPath;
                 using (var dialog = new SaveFileDialog())
                 {
                     dialog.Filter = "Документ PDF (*.pdf)|*.pdf";
-                    dialog.FileName = Path.GetFileNameWithoutExtension(_sourcePath) + "_выбранные.pdf";
-                    dialog.InitialDirectory = Path.GetDirectoryName(_sourcePath);
+                    dialog.FileName = Path.GetFileNameWithoutExtension(src) +
+                        (mode == ModeExtract ? "_выбранные.pdf" : "_объединённые.pdf");
+                    dialog.InitialDirectory = Path.GetDirectoryName(src);
                     if (dialog.ShowDialog(this) != DialogResult.OK)
                         return;
                     outPath = dialog.FileName;
                 }
-                var idxCopy = new List<int>(indices);
-                RunSplit(delegate { PdfSplitService.Extract(_sourcePath, idxCopy, outPath); return 1; }, outPath, false);
+                RunSplit(delegate { PdfSplitService.Extract(src, indices, outPath); return 1; },
+                    outPath, false, UsageStats.RecordPdfExtract);
                 return;
             }
 
-            // Разбиение на несколько файлов — заранее проверяем ввод, затем папка.
+            // Несколько файлов: диапазоны (без объединения) / каждые N / закладки.
             IList<PageRange> ranges = null;
             int everyN = 0;
             if (mode == ModeRanges)
@@ -332,38 +360,47 @@ namespace ExcelMerger
                 everyN = (int)_numN.Value;
             }
 
-            // Даём выбрать и папку, и базовое имя: к нему добавятся номера/метки
-            // (base_1-3.pdf, base_часть_1.pdf, base_Глава.pdf).
+            // Даём выбрать и папку, и базовое имя: к нему добавятся номера/метки.
             string dir, baseName;
             using (var dialog = new SaveFileDialog())
             {
                 dialog.Filter = "Документ PDF (*.pdf)|*.pdf";
                 dialog.Title = "Базовое имя и папка для частей (к имени добавятся номера)";
-                dialog.FileName = Path.GetFileNameWithoutExtension(_sourcePath) + ".pdf";
-                dialog.InitialDirectory = Path.GetDirectoryName(_sourcePath);
+                dialog.FileName = Path.GetFileNameWithoutExtension(src) + ".pdf";
+                dialog.InitialDirectory = Path.GetDirectoryName(src);
                 dialog.OverwritePrompt = false; // создаются base_1.pdf и т.п., а не сам base.pdf
                 if (dialog.ShowDialog(this) != DialogResult.OK)
                     return;
                 dir = Path.GetDirectoryName(dialog.FileName);
                 baseName = Path.GetFileNameWithoutExtension(dialog.FileName);
                 if (string.IsNullOrWhiteSpace(baseName))
-                    baseName = Path.GetFileNameWithoutExtension(_sourcePath);
+                    baseName = Path.GetFileNameWithoutExtension(src);
             }
-            string src = _sourcePath;
-            RunSplit(delegate
+
+            Func<int> work;
+            Action record;
+            switch (mode)
             {
-                switch (mode)
-                {
-                    case ModeRanges: return PdfSplitService.SplitByRanges(src, ranges, dir, baseName).Count;
-                    case ModeEveryN: return PdfSplitService.SplitEveryN(src, everyN, dir, baseName).Count;
-                    case ModeBookmarks: return PdfSplitService.SplitByBookmarks(src, dir, baseName).Count;
-                    default: return 0;
-                }
-            }, dir, true);
+                case ModeRanges:
+                    work = delegate { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName).Count; };
+                    record = UsageStats.RecordPdfSplitRanges;
+                    break;
+                case ModeEveryN:
+                    work = delegate { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName).Count; };
+                    record = UsageStats.RecordPdfSplitEveryN;
+                    break;
+                case ModeBookmarks:
+                    work = delegate { return PdfSplitService.SplitByBookmarks(src, dir, baseName).Count; };
+                    record = UsageStats.RecordPdfSplitBookmarks;
+                    break;
+                default:
+                    return;
+            }
+            RunSplit(work, dir, true, record);
         }
 
-        /// <summary>Выполнить работу разбиения в фоне; по завершении — статус и открытие результата.</summary>
-        private void RunSplit(Func<int> work, string openTarget, bool openAsFolder)
+        /// <summary>Выполнить работу в фоне; по завершении — статус, счётчик, открытие результата.</summary>
+        private void RunSplit(Func<int> work, string openTarget, bool openAsFolder, Action record)
         {
             _busy = true;
             UpdateControls();
@@ -378,7 +415,7 @@ namespace ExcelMerger
                 try
                 {
                     if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { OnSplitFinished(error, result, openTarget, openAsFolder); });
+                        BeginInvoke((MethodInvoker)delegate { OnSplitFinished(error, result, openTarget, openAsFolder, record); });
                 }
                 catch (InvalidOperationException) { }
             });
@@ -386,7 +423,7 @@ namespace ExcelMerger
             thread.Start();
         }
 
-        private void OnSplitFinished(Exception error, int count, string openTarget, bool openAsFolder)
+        private void OnSplitFinished(Exception error, int count, string openTarget, bool openAsFolder, Action record)
         {
             _busy = false;
             UpdateControls();
@@ -394,9 +431,11 @@ namespace ExcelMerger
             {
                 SetStatus("Не выполнено.", Theme.ErrRed);
                 Dialogs.Error(this, Title, openAsFolder ? "Разделение не выполнено" : "Извлечение не выполнено",
-                    (error is MergeException) ? error.Message : error.Message);
+                    error.Message);
                 return;
             }
+            if (record != null)
+                record(); // успех — учитываем в статистике
             SetStatus(openAsFolder ? ("✓ Создано файлов: " + count + ".") : "✓ Готово.", Theme.OkGreen);
             try
             {
