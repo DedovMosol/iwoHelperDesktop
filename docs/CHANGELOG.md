@@ -3,6 +3,26 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.5] — 2026-07-20
+
+### Fixed
+- **PDF thumbnail memory no longer grows across documents.** The page‑bitmap/tile cache
+  is now pruned to the pages currently shown: switching the document in *Split* or
+  removing pages in *Merge* frees the bitmaps and image‑list tiles of pages that are no
+  longer displayed, while reordering (same page set) keeps everything cached — no
+  re‑render. Late render results for pages that were removed meanwhile are discarded
+  instead of being cached.
+- **Open PDF documents (and their file handles) are now bounded.** `PdfThumbnailRenderer`
+  keeps at most a few WinRT `PdfDocument`s in a least‑recently‑used cache instead of one
+  per file opened for the window’s lifetime, so paging through many files no longer
+  accumulates native buffers or keeps every source file locked.
+
+### Internal
+- New reusable, unit‑tested `LruCache<T>` (bounded least‑recently‑used cache); the
+  renderer’s document eviction reuses `ComSafe.Release`, removing the duplicated WinRT
+  COM‑release code. 8 new unit tests (LRU eviction/touch/replace/case/clear/guard,
+  grid key‑set and stale‑key computation).
+
 ## [1.13.4] — 2026-07-20
 
 ### Fixed
