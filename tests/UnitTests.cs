@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using ExcelMerger;
+using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
@@ -87,6 +88,12 @@ namespace ExcelMerger.Tests
             Run("CheckOutputWritable: занятый файл распознан", TestOutputLocked);
             Run("CheckOutputWritable: свободный и новый файлы", TestOutputWritable);
             Run("CheckOutputWritable: несуществующая папка", TestOutputBadFolder);
+            Run("PdfCompression.Preset: уровень -> пресет Ghostscript", TestCompressionPreset);
+            Run("PdfCompression.BuildArguments: кавычки, пресет, -I для бандла", TestCompressionArgs);
+            Run("PdfCompression.ShouldReplace: только валидный и строго меньше", TestCompressionShouldReplace);
+            Run("Ghostscript.PickFirstExisting: первый существующий из кандидатов", TestGhostscriptPick);
+            Run("PdfCompression (живой): крупный PDF сжимается, страницы целы", TestCompressLive);
+            Run("JustifiedLabel.Wrap: перенос слов по ширине", TestJustifyWrap);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -394,10 +401,11 @@ namespace ExcelMerger.Tests
                 AssertTrue(texts.Contains("Как пользоваться"), "есть «Как пользоваться»");
                 AssertTrue(texts.Contains("Статистика"), "есть «Статистика»");
                 AssertTrue(texts.Contains("Папка отчётов"), "доп. пункт вставлен");
-                AssertTrue(texts.Contains("О программе"), "есть «О программе»");
+                // «О программе» перенесена на стартовый экран — в меню её быть не должно.
+                AssertTrue(!texts.Contains("О программе"), "«О программе» убрана из меню");
             }
 
-            // Без доп. пунктов: «Как пользоваться», «Статистика», «О программе».
+            // Без доп. пунктов: «Как пользоваться», «Статистика».
             using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }))
             {
                 var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
@@ -405,7 +413,7 @@ namespace ExcelMerger.Tests
                 foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         menuItems++;
-                AssertEqual(3, menuItems, "без extras — три пункта");
+                AssertEqual(2, menuItems, "без extras — два пункта");
             }
         }
 
@@ -740,6 +748,118 @@ namespace ExcelMerger.Tests
             }
         }
 
+        private static void TestCompressLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = Path.Combine(dir, "крупный.pdf");
+                MakeImagePdf(src, 2);
+                long before = new FileInfo(src).Length;
+                int pagesBefore = PdfPageCount(src);
+                AssertTrue(before > 300 * 1024, "исходник с изображением должен быть крупным: " + before);
+
+                if (Ghostscript.Available)
+                {
+                    // «Нормально» (/screen, 72 DPI) — понижает разрешение изображения → размер падает.
+                    bool applied = PdfCompression.Compress(src, CompressionLevel.Small);
+                    long after = new FileInfo(src).Length;
+                    AssertTrue(applied, "сжатие применено (GS есть)");
+                    AssertTrue(after < before, "размер уменьшился: " + before + " -> " + after);
+                    AssertTrue(PdfCompression.LooksLikePdf(src), "результат — валидный PDF");
+                    // Страницы сохранены (это НЕ растр всего документа, а downsampling — структура цела).
+                    AssertEqual(pagesBefore, PdfPageCount(src), "число страниц сохранено");
+                }
+                else
+                {
+                    // Без Ghostscript сжатие — безопасный no-op: файл не тронут.
+                    bool applied = PdfCompression.Compress(src, CompressionLevel.Small);
+                    AssertTrue(!applied, "без Ghostscript — без изменений");
+                    AssertEqual(before, new FileInfo(src).Length, "файл не тронут без GS");
+                }
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        /// <summary>PDF с крупным «шумовым» изображением (плохо сжимается) и текстом на каждой странице.</summary>
+        private static void MakeImagePdf(string path, int pages)
+        {
+            string jpg = Path.Combine(Path.GetDirectoryName(path), "noise.jpg");
+            const int side = 1800; // ~245 DPI на A4 → /screen (72) заведомо понизит
+            using (var bmp = new System.Drawing.Bitmap(side, side, System.Drawing.Imaging.PixelFormat.Format24bppRgb))
+            {
+                System.Drawing.Imaging.BitmapData bd = bmp.LockBits(
+                    new System.Drawing.Rectangle(0, 0, side, side),
+                    System.Drawing.Imaging.ImageLockMode.WriteOnly,
+                    System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                int total = Math.Abs(bd.Stride) * side;
+                var buf = new byte[total];
+                new Random(12345).NextBytes(buf); // шум — JPEG почти не сжимает, исходник тяжёлый
+                System.Runtime.InteropServices.Marshal.Copy(buf, 0, bd.Scan0, total);
+                bmp.UnlockBits(bd);
+                bmp.Save(jpg, JpegEncoder(), JpegQuality(90));
+            }
+            try
+            {
+                using (var doc = new PdfDocument())
+                using (XImage img = XImage.FromFile(jpg))
+                {
+                    var font = new XFont("Arial", 14);
+                    for (int i = 0; i < pages; i++)
+                    {
+                        PdfPage page = doc.AddPage();
+                        page.Width = 595;
+                        page.Height = 842;
+                        using (XGraphics gfx = XGraphics.FromPdfPage(page))
+                        {
+                            gfx.DrawImage(img, 0, 0, page.Width, page.Height);
+                            gfx.DrawString("Страница " + (i + 1) + " — текст должен сохраниться.",
+                                font, XBrushes.White, new XPoint(30, 30));
+                        }
+                    }
+                    doc.Save(path);
+                }
+            }
+            finally
+            {
+                try { File.Delete(jpg); } catch { }
+            }
+        }
+
+        private static System.Drawing.Imaging.ImageCodecInfo JpegEncoder()
+        {
+            foreach (System.Drawing.Imaging.ImageCodecInfo c in System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders())
+                if (c.FormatID == System.Drawing.Imaging.ImageFormat.Jpeg.Guid)
+                    return c;
+            return null;
+        }
+
+        private static System.Drawing.Imaging.EncoderParameters JpegQuality(long quality)
+        {
+            var p = new System.Drawing.Imaging.EncoderParameters(1);
+            p.Param[0] = new System.Drawing.Imaging.EncoderParameter(
+                System.Drawing.Imaging.Encoder.Quality, quality);
+            return p;
+        }
+
+        private static void TestJustifyWrap()
+        {
+            Func<string, int> m = delegate(string s) { return s.Length * 10; }; // 10px/символ
+            const int sp = 5;
+            var lines = JustifiedLabel.Wrap("aa bb cc dd", 60, m, sp);
+            AssertEqual(2, lines.Count, "две строки");
+            AssertEqual("aa bb", string.Join(" ", lines[0].ToArray()), "строка 1");
+            AssertEqual("cc dd", string.Join(" ", lines[1].ToArray()), "строка 2");
+            AssertEqual(0, JustifiedLabel.Wrap("", 100, m, sp).Count, "пустой текст — 0 строк");
+            AssertEqual(0, JustifiedLabel.Wrap("aa", 0, m, sp).Count, "нулевая ширина — 0 строк");
+            // Слово шире строки не роняет разбивку — становится отдельной строкой.
+            AssertEqual(1, JustifiedLabel.Wrap("aaaaaaaa", 30, m, sp).Count, "длинное слово — своя строка");
+        }
+
         private static void TestClampWindow()
         {
             int lo, hi;
@@ -1055,6 +1175,59 @@ namespace ExcelMerger.Tests
                 "ExcelMergerTests_нет_такой_" + Guid.NewGuid().ToString("N"), "Свод.xlsx");
             string error = MergeService.CheckOutputWritable(path);
             AssertTrue(error != null && error.Contains("не существует"), "папка не существует: " + error);
+        }
+
+        // ---------- PDF-сжатие (Ghostscript) ----------
+
+        private static void TestCompressionPreset()
+        {
+            AssertEqual("/ebook", PdfCompression.Preset(CompressionLevel.Good), "Хорошо -> /ebook");
+            AssertEqual("/screen", PdfCompression.Preset(CompressionLevel.Small), "Нормально -> /screen");
+            AssertEqual(null, PdfCompression.Preset(CompressionLevel.None), "Отлично -> без пресета");
+        }
+
+        private static void TestCompressionArgs()
+        {
+            // Путь с пробелами обязан быть в кавычках, иначе GS примет его за два аргумента.
+            string args = PdfCompression.BuildArguments(
+                @"C:\Users\aid MINFIN\вход.pdf", @"C:\Users\aid MINFIN\выход.pdf",
+                CompressionLevel.Good, null);
+            AssertTrue(args.Contains("-sDEVICE=pdfwrite"), "устройство pdfwrite");
+            AssertTrue(args.Contains("-dCompatibilityLevel=1.4"), "1.4 — читаемо старым PdfSharp");
+            AssertTrue(args.Contains("-dPDFSETTINGS=/ebook"), "пресет /ebook");
+            AssertTrue(args.Contains("-dSAFER"), "SAFER включён");
+            AssertTrue(!args.Contains("-dNOSAFER"), "NOSAFER не должен передаваться");
+            AssertTrue(args.Contains("\"C:\\Users\\aid MINFIN\\вход.pdf\""), "вход в кавычках");
+            AssertTrue(args.Contains("-sOutputFile=\"C:\\Users\\aid MINFIN\\выход.pdf\""), "выход в кавычках");
+            AssertTrue(!args.Contains(" -I "), "системный GS — без -I");
+
+            // Вшитый GS: добавляется -I на lib и Resource\Init.
+            string bundled = PdfCompression.BuildArguments("in.pdf", "out.pdf", CompressionLevel.Small, @"C:\app\gs");
+            AssertTrue(bundled.Contains("-dPDFSETTINGS=/screen"), "пресет /screen");
+            AssertTrue(bundled.Contains("-I \"C:\\app\\gs\\lib\""), "-I lib для бандла");
+            AssertTrue(bundled.Contains("-I \"C:\\app\\gs\\Resource\\Init\""), "-I Resource\\Init для бандла");
+        }
+
+        private static void TestCompressionShouldReplace()
+        {
+            AssertTrue(PdfCompression.ShouldReplace(1000, 400, true), "валидный и меньше — заменяем");
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 1000, true), "равный размер — оставляем оригинал");
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 1500, true), "больше — оставляем оригинал");
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 400, false), "невалидный вывод — не заменяем");
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 0, true), "пустой вывод — не заменяем");
+        }
+
+        private static void TestGhostscriptPick()
+        {
+            var candidates = new List<string> { null, "", @"C:\нет\gs.exe", @"C:\есть\gs.exe", @"C:\тоже\gs.exe" };
+            string picked = Ghostscript.PickFirstExisting(candidates,
+                delegate(string p) { return p == @"C:\есть\gs.exe" || p == @"C:\тоже\gs.exe"; });
+            AssertEqual(@"C:\есть\gs.exe", picked, "первый существующий, пустые пропущены");
+            AssertEqual(null, Ghostscript.PickFirstExisting(candidates, delegate { return false; }), "ни одного — null");
+            // Бросающий предикат не должен ронять выбор.
+            string safe = Ghostscript.PickFirstExisting(new[] { @"C:\a", @"C:\b" },
+                delegate(string p) { if (p == @"C:\a") throw new Exception("bad"); return true; });
+            AssertEqual(@"C:\b", safe, "исключение в предикате -> пропуск кандидата");
         }
 
         // ---------- мини-раннер ----------

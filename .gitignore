@@ -2,6 +2,10 @@
 dist/
 selftest.log
 
+# Ghostscript, подготовленный tools\stage_gs.ps1 для установщика
+# (крупные бинарники ~40 МБ — в репозиторий не кладём)
+installer/gs/
+
 # Промежуточные файлы dotnet/MSBuild
 obj/
 tests/bin/

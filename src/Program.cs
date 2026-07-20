@@ -18,6 +18,8 @@ namespace ExcelMerger
                 return RunPdfCheck();
             if (args.Length >= 1 && string.Equals(args[0], "--thumbcheck", StringComparison.OrdinalIgnoreCase))
                 return RunThumbCheck();
+            if (args.Length >= 1 && string.Equals(args[0], "--gscheck", StringComparison.OrdinalIgnoreCase))
+                return RunGsCheck();
             if (args.Length >= 3 && string.Equals(args[0], "--cli", StringComparison.OrdinalIgnoreCase))
             {
                 MergeOptions options;
@@ -179,6 +181,47 @@ namespace ExcelMerger
             WriteConsole("THUMBCHECK OK (rendered=" + rendered + ")");
             FastExit.Now(0); // избегаем сбоя WinRT-финализации при выгрузке
             return 0;
+        }
+
+        /// <summary>
+        /// Проверка движка сжатия (Ghostscript). Фича опциональна: если GS не найден —
+        /// это не ошибка (exit 0). Если найден — реальный round-trip через наши
+        /// аргументы: создаём 1-страничный PDF, сжимаем в temp, проверяем код выхода
+        /// и заголовок %PDF-. 0 = либо GS нет, либо сжатие отработало.
+        /// </summary>
+        private static int RunGsCheck()
+        {
+            AttachConsole(-1);
+            if (!Ghostscript.Available)
+            {
+                WriteConsole("GSCHECK OK (Ghostscript не установлен — сжатие опционально)");
+                return 0;
+            }
+            string dir = Path.Combine(Path.GetTempPath(), "gschk_" + Guid.NewGuid().ToString("N"));
+            string src = Path.Combine(dir, "in.pdf");
+            string outp = Path.Combine(dir, "out.pdf");
+            try
+            {
+                Directory.CreateDirectory(dir);
+                PdfProbe.WriteOnePagePdf(src);
+                string args2 = PdfCompression.BuildArguments(src, outp, CompressionLevel.Good, Ghostscript.BundledRoot);
+                string stderr;
+                int exit = Ghostscript.Run(args2, 60000, out stderr);
+                bool ok = exit == 0 && File.Exists(outp) && PdfCompression.LooksLikePdf(outp);
+                WriteConsole(ok
+                    ? "GSCHECK OK (exe=" + Ghostscript.Exe + ")"
+                    : "GSCHECK FAIL: exit=" + exit + " stderr=" + stderr);
+                return ok ? 0 : 1;
+            }
+            catch (Exception ex)
+            {
+                WriteConsole("GSCHECK FAIL: " + ex.GetType().Name + " — " + ex.Message);
+                return 1;
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { }
+            }
         }
 
         /// <summary>

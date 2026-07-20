@@ -24,17 +24,26 @@ namespace ExcelMerger
 
         public static void ShowMessage(IWin32Window owner, Kind kind, string title, string header, string body)
         {
-            using (var f = new MessageForm(kind, title, header, body, false))
+            using (var f = new MessageForm(kind, title, header, body, false, null, null))
+                f.ShowDialog(owner);
+        }
+
+        /// <summary>Сообщение с кликабельной ссылкой под текстом (например, страница загрузки).</summary>
+        public static void ShowMessage(IWin32Window owner, Kind kind, string title, string header, string body,
+            string linkText, string linkUrl)
+        {
+            using (var f = new MessageForm(kind, title, header, body, false, linkText, linkUrl))
                 f.ShowDialog(owner);
         }
 
         public static bool ShowConfirm(IWin32Window owner, string title, string header, string body)
         {
-            using (var f = new MessageForm(Kind.Warning, title, header, body, true))
+            using (var f = new MessageForm(Kind.Warning, title, header, body, true, null, null))
                 return f.ShowDialog(owner) == DialogResult.Yes;
         }
 
-        private MessageForm(Kind kind, string title, string header, string body, bool confirm)
+        private MessageForm(Kind kind, string title, string header, string body, bool confirm,
+            string linkText, string linkUrl)
         {
             Text = title ?? "iwo Helper Desktop";
             Font = new Font("Segoe UI", 9.75f);
@@ -79,6 +88,14 @@ namespace ExcelMerger
                 text.Location = new Point(textLeft, y + 8);
                 Controls.Add(text);
                 y = text.Bottom;
+            }
+
+            // Кликабельная ссылка (например, страница загрузки Ghostscript). Высота
+            // учитывается в y ДО расчёта кнопок/ClientSize — иначе ссылка легла бы на кнопки.
+            if (!string.IsNullOrEmpty(linkText) && !string.IsNullOrEmpty(linkUrl))
+            {
+                LinkLabel link = Ui.UrlLink(this, linkText, textLeft, y + 10, linkUrl);
+                y = link.Bottom;
             }
 
             int textBottom = Math.Max(y, Pad + IconSize);

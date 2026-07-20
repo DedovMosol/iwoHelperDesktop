@@ -6,9 +6,9 @@ namespace ExcelMerger
 {
     /// <summary>
     /// Единое меню «Справка» для окон инструментов: «Как пользоваться» (F1),
-    /// произвольные дополнительные пункты и «О программе». По гайдлайнам Windows
-    /// «Справка» — последний пункт строки меню; многоточия у команд нет (окна
-    /// не требуют дополнительного ввода).
+    /// «Статистика» и произвольные дополнительные пункты. «О программе» вынесена
+    /// на стартовый экран. По гайдлайнам Windows «Справка» — последний пункт строки
+    /// меню; многоточия у команд нет (окна не требуют дополнительного ввода).
     /// </summary>
     internal static class HelpMenu
     {
@@ -41,15 +41,7 @@ namespace ExcelMerger
                     help.DropDownItems.Add(item);
             }
 
-            help.DropDownItems.Add(new ToolStripSeparator());
-            var about = new ToolStripMenuItem("О программе");
-            about.Click += delegate
-            {
-                using (var form = new AboutForm())
-                    form.ShowDialog(owner);
-            };
-            help.DropDownItems.Add(about);
-
+            // «О программе» перенесена на стартовый экран (кнопка на главной).
             menu.Items.Add(help);
             return menu;
         }

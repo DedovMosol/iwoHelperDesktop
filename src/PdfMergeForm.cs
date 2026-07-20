@@ -28,6 +28,7 @@ namespace ExcelMerger
         private Button _btnDown;
         private Button _btnRemove;
         private Button _btnSave;
+        private CompressionPicker _compress;
         private Label _lblStatus;
         private ToolTip _tips;
         private bool _busy; // идёт сохранение (только UI-поток)
@@ -126,6 +127,11 @@ namespace ExcelMerger
             _zoomTimer.Interval = 60; // троттлинг пересборки плиток при перетаскивании ползунка
             _zoomTimer.Tick += delegate { _zoomTimer.Stop(); _grid.SetTileWidth(_zoom.Value); };
 
+            _compress = new CompressionPicker();
+            _compress.Location = new Point(right - _compress.Width, ClientSize.Height - 106);
+            _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            Controls.Add(_compress);
+
             var save = new RoundedButton(true);
             save.Text = "Сохранить PDF…";
             save.SetBounds(right - 190, ClientSize.Height - 58, 190, 38);
@@ -147,11 +153,16 @@ namespace ExcelMerger
                 "2. Появится сетка миниатюр страниц. Масштаб — ползунком внизу или Ctrl+колесо мыши.\n" +
                 "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Раньше» / «Позже ▶».\n" +
                 "   Лишние страницы удаляйте кнопкой «Удалить».\n" +
-                "4. «Сохранить PDF…» соберёт один документ в выбранном порядке.\n\n" +
+                "4. При необходимости выберите «Сжатие» (по умолчанию «Отлично» — без сжатия). " +
+                "«Хорошо»/«Нормально» уменьшают размер за счёт понижения разрешения изображений " +
+                "(как в Acrobat); текст сохраняется. Требуется Ghostscript.\n" +
+                "5. «Сохранить PDF…» соберёт один документ в выбранном порядке.\n\n" +
                 "Горячие клавиши: Delete — удалить выбранные, Alt+←/→ — порядок, " +
                 "Ctrl+A — выделить всё, Ctrl+колесо — масштаб.\n" +
                 "Страницы копируются как есть, без переконвертации — сканы, печати и подписи " +
-                "не искажаются. Битые и защищённые паролем файлы пропускаются с причиной.");
+                "не искажаются. Битые и защищённые паролем файлы пропускаются с причиной.\n" +
+                "Сжатие меняет содержимое файла, поэтому у подписанных PDF подпись станет " +
+                "недействительной (как и при сжатии в Acrobat) — сжимайте до подписания.");
         }
 
         private Button AddButton(string text, int x, int y, int w, int h)
@@ -315,6 +326,7 @@ namespace ExcelMerger
             }
 
             var pages = _order.ToList();
+            CompressionLevel level = _compress.Level; // читаем с UI-потока до старта воркера
             _busy = true;
             UpdateButtons();
             SetStatus("Сохранение…", Theme.TextMuted);
@@ -322,6 +334,7 @@ namespace ExcelMerger
             var thread = new Thread(delegate()
             {
                 Exception error = null;
+                bool compressed = false;
                 try
                 {
                     PdfMergeService.Merge(pages, outputPath);
@@ -330,10 +343,14 @@ namespace ExcelMerger
                 {
                     error = ex;
                 }
+                // Сжатие — на этом же воркере и ДО открытия файла (иначе замену
+                // заблокирует вьюер). Ошибки сжатия не срывают сохранение.
+                if (error == null)
+                    compressed = PdfCompression.Compress(outputPath, level);
                 try
                 {
                     if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { OnSaveFinished(error, outputPath, pages.Count); });
+                        BeginInvoke((MethodInvoker)delegate { OnSaveFinished(error, outputPath, pages.Count, compressed); });
                 }
                 catch (InvalidOperationException) { }
             });
@@ -341,7 +358,7 @@ namespace ExcelMerger
             thread.Start();
         }
 
-        private void OnSaveFinished(Exception error, string outputPath, int pageCount)
+        private void OnSaveFinished(Exception error, string outputPath, int pageCount, bool compressed)
         {
             _busy = false;
             UpdateButtons();
@@ -352,7 +369,9 @@ namespace ExcelMerger
                 return;
             }
             UsageStats.RecordPdfMerge();
-            SetStatus("✓ Сохранено страниц: " + pageCount + ".", Theme.OkGreen);
+            if (compressed)
+                UsageStats.RecordPdfCompress();
+            SetStatus("✓ Сохранено страниц: " + pageCount + (compressed ? " · сжато." : "."), Theme.OkGreen);
             try { Process.Start(outputPath); }
             catch { } // нет ассоциации PDF — файл всё равно сохранён
         }
@@ -360,6 +379,7 @@ namespace ExcelMerger
         private void UpdateButtons()
         {
             bool one = !_busy && _grid.SelectedCount == 1;
+            _compress.Enabled = !_busy;
             _btnAdd.Enabled = !_busy;
             _btnUp.Enabled = one;
             _btnDown.Enabled = one;

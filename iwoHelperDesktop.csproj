@@ -7,6 +7,11 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
+    <!-- Явно x64: процесс должен быть 64-битным, чтобы грузить вшитый инсталлятором
+         64-битный Ghostscript (gsdll64.dll). AnyCPU+Prefer32Bit мог бы дать 32-битный
+         процесс и тихий отказ сжатия в поле. -->
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
     <UseWindowsForms>true</UseWindowsForms>
     <LangVersion>7.3</LangVersion>
     <Nullable>disable</Nullable>

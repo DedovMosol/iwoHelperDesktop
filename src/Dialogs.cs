@@ -23,5 +23,12 @@ namespace ExcelMerger
         {
             MessageForm.ShowMessage(owner, MessageForm.Kind.Error, title, instruction, content);
         }
+
+        /// <summary>Информационный диалог с кликабельной ссылкой под текстом.</summary>
+        public static void InfoWithLink(IWin32Window owner, string title, string instruction, string content,
+            string linkText, string url)
+        {
+            MessageForm.ShowMessage(owner, MessageForm.Kind.Info, title, instruction, content, linkText, url);
+        }
     }
 }

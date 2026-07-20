@@ -74,13 +74,20 @@ namespace ExcelMerger
             };
             Controls.Add(split);
 
-            // Нижний ряд: версия слева, проверка обновлений справа.
-            Ui.Label(this, "Версия " + version.ToString(3), 26, 384, Font, Theme.TextMuted);
+            // Нижний ряд: «Проверить обновления» слева (на месте версии), «О программе»
+            // справа. Чуть выше и крупнее — аккуратный ряд под карточками.
+            const int rowY = 360, rowH = 36;
             var update = new RoundedButton(false);
             update.Text = "⟳ Проверить обновления";
-            update.SetBounds(ClientSize.Width - 26 - 210, 378, 210, 32);
+            update.SetBounds(24, rowY, 224, rowH);
             update.Click += delegate { UpdateUi.Check(this); };
             Controls.Add(update);
+
+            var about = new RoundedButton(false);
+            about.Text = "О программе";
+            about.SetBounds(ClientSize.Width - 24 - 168, rowY, 168, rowH);
+            about.Click += delegate { using (var f = new AboutForm()) f.ShowDialog(this); };
+            Controls.Add(about);
 
             AcceptButton = null; // Enter активирует карточку в фокусе
         }
