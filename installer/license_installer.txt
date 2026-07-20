@@ -1,6 +1,9 @@
 ﻿iwo Helper Desktop
 ==================
 
+Автор / Author: Dodonov Andrey (DedovMosol)
+https://github.com/DedovMosol/iwoHelperDesktop
+
 Приложение распространяется по лицензии MIT (ниже). В состав установщика также
 входит Ghostscript — он используется только для сжатия PDF и распространяется по
 своей собственной лицензии (AGPL v3), см. раздел «Ghostscript» в конце.
@@ -13,7 +16,7 @@ bundles Ghostscript, used solely for PDF compression, under its own license
 MIT License
 -----------
 
-Copyright (c) 2026 DedovMosol
+Copyright (c) 2026 Dodonov Andrey (DedovMosol)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
