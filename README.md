@@ -117,10 +117,12 @@ Needs the `dotnet` SDK (6+); builds `iwoHelperDesktop.csproj` (target .NET Frame
 
 ## 🧩 Built with
 
-- [PdfSharp](https://github.com/empira/PDFsharp) (MIT) — PDF merge/split
-- [Ghostscript](https://ghostscript.com/) (AGPL) — PDF compression
-- [Inno Setup](https://jrsoftware.org/isinfo.php) — installer
-- `Windows.Data.Pdf` (WinRT) — page thumbnails
+Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open projects:
+
+[![PdfSharp](https://img.shields.io/badge/PdfSharp-MIT-1f6feb?style=for-the-badge)](https://github.com/empira/PDFsharp)
+[![Ghostscript](https://img.shields.io/badge/Ghostscript-AGPL-d32f2f?style=for-the-badge)](https://ghostscript.com/)
+[![Inno Setup](https://img.shields.io/badge/Inno%20Setup-installer-107C41?style=for-the-badge)](https://jrsoftware.org/isinfo.php)
+[![Windows.Data.Pdf](https://img.shields.io/badge/Windows.Data.Pdf-WinRT-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://learn.microsoft.com/uwp/api/windows.data.pdf)
 
 ## ⚖️ License
 
