@@ -3,6 +3,19 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.6] — 2026-07-20
+
+### Performance
+- **Scrolling large PDFs is O(log n), not O(n).** The visible‑thumbnail range is found by
+  binary search over the (monotonic) item bounds instead of scanning from the top on every
+  scroll tick — no more hundreds of `LVM_GETITEMRECT` calls per tick on long documents.
+- **Applying a rendered page is O(1) in the item count.** A `key → items` index replaces
+  the linear scan of all list items in the render callback, so rendering a whole document
+  is O(n) overall instead of O(n²).
+
+### Internal
+- 2 new unit tests (`LowerBound` binary search, `VisibleRange` visible‑window computation).
+
 ## [1.13.5] — 2026-07-20
 
 ### Fixed
