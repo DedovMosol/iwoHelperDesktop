@@ -56,7 +56,8 @@ namespace ExcelMerger.Tests
             Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
             Run("HeaderBand: строится с заголовком, двойная буферизация", TestHeaderBand);
             Run("HeaderBand.TextRightBound: текст не заходит под кнопку", TestHeaderTextBound);
-            Run("MainForm.ClassifyListKey: Alt+↑/↓ и Enter в списке", TestClassifyListKey);
+            Run("MainForm.ClassifyListKey: Alt+↑/↓, Ctrl+C/A, Delete, Enter", TestClassifyListKey);
+            Run("PdfMergeForm.ClassifyPageKey: Delete, Alt+←/→, Ctrl+A, Enter", TestClassifyPageKey);
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
             Run("PdfPageOrder: удаление набора строк", TestPdfOrderRemove);
@@ -561,16 +562,27 @@ namespace ExcelMerger.Tests
 
         private static void TestClassifyListKey()
         {
-            AssertEqual(MainForm.ListKeyAction.MoveUp,
-                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.Up), "Alt+Up");
-            AssertEqual(MainForm.ListKeyAction.MoveDown,
-                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.Down), "Alt+Down");
-            AssertEqual(MainForm.ListKeyAction.Swallow,
-                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Enter), "Enter — не сливать");
-            AssertEqual(MainForm.ListKeyAction.None,
-                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Up), "просто ↑ — навигация");
-            AssertEqual(MainForm.ListKeyAction.None,
-                MainForm.ClassifyListKey(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C), "Ctrl+C — копирование");
+            var Alt = System.Windows.Forms.Keys.Alt;
+            var Ctrl = System.Windows.Forms.Keys.Control;
+            AssertEqual(MainForm.ListKeyAction.MoveUp, MainForm.ClassifyListKey(Alt | System.Windows.Forms.Keys.Up), "Alt+Up");
+            AssertEqual(MainForm.ListKeyAction.MoveDown, MainForm.ClassifyListKey(Alt | System.Windows.Forms.Keys.Down), "Alt+Down");
+            AssertEqual(MainForm.ListKeyAction.Copy, MainForm.ClassifyListKey(Ctrl | System.Windows.Forms.Keys.C), "Ctrl+C — копировать");
+            AssertEqual(MainForm.ListKeyAction.SelectAll, MainForm.ClassifyListKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
+            AssertEqual(MainForm.ListKeyAction.Exclude, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Delete), "Delete — исключить");
+            AssertEqual(MainForm.ListKeyAction.Swallow, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Enter), "Enter — не сливать");
+            AssertEqual(MainForm.ListKeyAction.None, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Up), "просто ↑ — навигация");
+        }
+
+        private static void TestClassifyPageKey()
+        {
+            var Alt = System.Windows.Forms.Keys.Alt;
+            var Ctrl = System.Windows.Forms.Keys.Control;
+            AssertEqual(PdfMergeForm.PageKeyAction.Remove, PdfMergeForm.ClassifyPageKey(System.Windows.Forms.Keys.Delete), "Delete — удалить");
+            AssertEqual(PdfMergeForm.PageKeyAction.MoveEarlier, PdfMergeForm.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Left), "Alt+← — раньше");
+            AssertEqual(PdfMergeForm.PageKeyAction.MoveLater, PdfMergeForm.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Right), "Alt+→ — позже");
+            AssertEqual(PdfMergeForm.PageKeyAction.SelectAll, PdfMergeForm.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
+            AssertEqual(PdfMergeForm.PageKeyAction.Swallow, PdfMergeForm.ClassifyPageKey(System.Windows.Forms.Keys.Enter), "Enter — не сохранять");
+            AssertEqual(PdfMergeForm.PageKeyAction.None, PdfMergeForm.ClassifyPageKey(System.Windows.Forms.Keys.Left), "просто ← — навигация");
         }
 
         private static void TestThemeToBgr()

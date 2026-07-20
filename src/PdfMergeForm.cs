@@ -131,10 +131,13 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnAdd, "Файлы также можно перетащить в окно");
             _btnUp = AddButton("◀ Раньше", col, m + 124, 130, 30);
             _btnUp.Click += delegate { MoveSelected(false); };
+            _tips.SetToolTip(_btnUp, "Переместить страницу раньше (Alt+←)");
             _btnDown = AddButton("Позже ▶", col, m + 160, 130, 30);
             _btnDown.Click += delegate { MoveSelected(true); };
+            _tips.SetToolTip(_btnDown, "Переместить страницу позже (Alt+→)");
             _btnRemove = AddButton("Удалить", col, m + 204, 130, 30);
             _btnRemove.Click += OnRemoveClick;
+            _tips.SetToolTip(_btnRemove, "Удалить выбранные страницы (Delete)");
 
             // Масштаб миниатюр
             Ui.Label(this, "Масштаб:", 20, ClientSize.Height - 104, Font, Theme.TextMuted)
@@ -179,6 +182,8 @@ namespace ExcelMerger
                 "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Раньше» / «Позже ▶».\n" +
                 "   Лишние страницы удаляйте кнопкой «Удалить».\n" +
                 "4. «Сохранить PDF…» соберёт один документ в выбранном порядке.\n\n" +
+                "Горячие клавиши: Delete — удалить выбранные, Alt+←/→ — порядок, " +
+                "Ctrl+A — выделить всё, Ctrl+колесо — масштаб.\n" +
                 "Страницы копируются как есть, без переконвертации — сканы, печати и подписи " +
                 "не искажаются. Битые и защищённые паролем файлы пропускаются с причиной.");
         }
@@ -290,7 +295,7 @@ namespace ExcelMerger
 
         private void MoveSelected(bool later)
         {
-            if (_list.SelectedIndices.Count != 1)
+            if (_busy || _list.SelectedIndices.Count != 1)
                 return;
             int index = _list.SelectedIndices[0];
             int moved = later ? _order.MoveDown(index) : _order.MoveUp(index);
@@ -304,13 +309,55 @@ namespace ExcelMerger
 
         private void OnRemoveClick(object sender, EventArgs e)
         {
-            if (_list.SelectedIndices.Count == 0)
+            if (_busy || _list.SelectedIndices.Count == 0)
                 return;
             var indices = new int[_list.SelectedIndices.Count];
             _list.SelectedIndices.CopyTo(indices, 0);
             _order.RemoveAt(indices);
             RefreshList();
             SetStatus("Страниц в списке: " + _order.Count + ".", Theme.TextMuted);
+            UpdateButtons();
+        }
+
+        /// <summary>Действие клавиатуры для сетки страниц. Чистая — под тест.</summary>
+        internal enum PageKeyAction { None, Remove, MoveEarlier, MoveLater, SelectAll, Swallow }
+
+        internal static PageKeyAction ClassifyPageKey(Keys keyData)
+        {
+            if (keyData == Keys.Delete) return PageKeyAction.Remove;
+            if (keyData == (Keys.Alt | Keys.Left)) return PageKeyAction.MoveEarlier;
+            if (keyData == (Keys.Alt | Keys.Right)) return PageKeyAction.MoveLater;
+            if (keyData == (Keys.Control | Keys.A)) return PageKeyAction.SelectAll;
+            if (keyData == Keys.Enter) return PageKeyAction.Swallow; // не сохранять из списка
+            return PageKeyAction.None;
+        }
+
+        // ProcessCmdKey — раньше диалоговой обработки (AcceptButton=«Сохранить»).
+        // Методы удаления/перестановки сами не выполняются во время сохранения.
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (_list != null && _list.Focused)
+            {
+                switch (ClassifyPageKey(keyData))
+                {
+                    case PageKeyAction.Remove: OnRemoveClick(this, EventArgs.Empty); return true;
+                    case PageKeyAction.MoveEarlier: MoveSelected(false); return true;
+                    case PageKeyAction.MoveLater: MoveSelected(true); return true;
+                    case PageKeyAction.SelectAll: SelectAllPages(); return true;
+                    case PageKeyAction.Swallow: return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private void SelectAllPages()
+        {
+            if (_list.Items.Count == 0)
+                return;
+            _list.BeginUpdate();
+            foreach (ListViewItem item in _list.Items)
+                item.Selected = true;
+            _list.EndUpdate();
             UpdateButtons();
         }
 
