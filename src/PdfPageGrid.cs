@@ -40,6 +40,9 @@ namespace ExcelMerger
         private System.Windows.Forms.Timer _visibleTimer;
         private readonly Dictionary<string, Bitmap> _pageCache =
             new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+        // Ключи страниц, показываемых сейчас (обновляется в SetPages, только UI-поток).
+        // Поздний результат рендера уже снятой страницы отбрасывается по этому набору.
+        private HashSet<string> _currentKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private ImageList _thumbs;
         private int _tileWidth = ThumbZoom.DefaultWidth;
 
@@ -96,8 +99,20 @@ namespace ExcelMerger
         /// <summary>Заменить содержимое сетки списком страниц (в этом порядке).</summary>
         public void SetPages(IList<PdfPageRef> pages)
         {
+            // Набор ключей нового содержимого. Кэш, плитки и очередь чистятся до тех,
+            // что остались: смена документа («Разделение») или удаление страниц
+            // («Объединение») освобождают память сразу; переупорядочивание — тот же
+            // набор, поэтому ничего не вытесняется и не перерисовывается.
+            _currentKeys = BuildKeySet(pages);
+            lock (_qLock)
+            {
+                _thumbQueue.Clear();     // снятые заявки на рендер отсутствующих страниц
+                _thumbRequested.Clear(); // дедуп сбрасывается; кэш-проверка в EnqueueThumb не даёт перерендер
+            }
+
             _list.BeginUpdate();
-            _list.Items.Clear();
+            _list.Items.Clear();         // после очистки ни один элемент не ссылается на плитки
+            PruneCache(_currentKeys);    // освободить bitmap и плитку страниц вне набора
             if (pages != null)
             {
                 foreach (PdfPageRef page in pages)
@@ -112,6 +127,38 @@ namespace ExcelMerger
             }
             _list.EndUpdate();
             ScheduleVisibleUpdate(); // рендерим только видимые страницы, а не все сразу
+        }
+
+        /// <summary>Множество ключей плиток для набора страниц (без дублей). Чистая — под тест.</summary>
+        internal static HashSet<string> BuildKeySet(IList<PdfPageRef> pages)
+        {
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (pages != null)
+                foreach (PdfPageRef page in pages)
+                    keys.Add(ThumbKey(page));
+            return keys;
+        }
+
+        /// <summary>Ключи кэша, отсутствующие в наборе keep (их плитки пора вытеснить). Чистая — под тест.</summary>
+        internal static List<string> StaleKeys(IEnumerable<string> cachedKeys, ICollection<string> keepKeys)
+        {
+            var stale = new List<string>();
+            foreach (string key in cachedKeys)
+                if (!keepKeys.Contains(key))
+                    stale.Add(key);
+            return stale;
+        }
+
+        /// <summary>Освобождает bitmap и плитку страниц, которых больше нет в наборе keep.</summary>
+        private void PruneCache(ICollection<string> keepKeys)
+        {
+            foreach (string key in StaleKeys(_pageCache.Keys, keepKeys))
+            {
+                _pageCache[key].Dispose();
+                _pageCache.Remove(key);
+                if (_thumbs.Images.ContainsKey(key))
+                    _thumbs.Images.RemoveByKey(key);
+            }
         }
 
         // ---------- ленивый рендер видимых ----------
@@ -297,7 +344,7 @@ namespace ExcelMerger
 
         // ---------- фоновый рендер ----------
 
-        private static string ThumbKey(PdfPageRef page)
+        internal static string ThumbKey(PdfPageRef page)
         {
             return page.SourcePath.ToLowerInvariant() + "|" + page.PageIndex;
         }
@@ -305,6 +352,8 @@ namespace ExcelMerger
         private void EnqueueThumb(PdfPageRef page)
         {
             string key = ThumbKey(page);
+            if (_pageCache.ContainsKey(key))
+                return; // уже отрендерено — не тревожим воркер и не переоткрываем документ
             lock (_qLock)
             {
                 if (!_thumbRequested.Add(key))
@@ -373,6 +422,11 @@ namespace ExcelMerger
         private void ApplyPage(PdfPageRef req, Bitmap page)
         {
             string key = ThumbKey(req);
+            if (!_currentKeys.Contains(key))
+            {
+                page.Dispose(); // страница уже снята из набора — поздний результат рендера отбрасываем
+                return;
+            }
             if (_pageCache.ContainsKey(key))
             {
                 page.Dispose();
