@@ -13,10 +13,14 @@ A set of office tools in a single application:
 - **PDF Merge** — builds a single PDF from several files: pick the pages you need
   and their order, no re-conversion.
 - **PDF Split** — the reverse: open one PDF and either extract the selected pages
-  into a new file or split the document into several — by page ranges, every N
-  pages, or by top-level bookmarks. Pages are copied as-is; the source is untouched.
+  into a new file or split the document into several — by page ranges (optionally
+  **combined into one file**), every N pages, or by top-level bookmarks. Pages are
+  copied as-is; the source is untouched.
 
-On launch the program lets you choose a tool.
+On launch the program lets you choose a tool. Each tool's **Help** menu also has
+**“Statistics”** (local operation counters, with manual and optional auto-clear) and
+**“Check for updates”** (compares with GitHub Releases and opens the download page —
+nothing is downloaded or replaced automatically).
 
 ## Requirements
 

@@ -87,6 +87,12 @@ namespace ExcelMerger
                     if (handle == IntPtr.Zero)
                         return 3;
                 }
+                using (var stats = new StatsForm())
+                {
+                    IntPtr handle = stats.Handle;
+                    if (handle == IntPtr.Zero)
+                        return 3;
+                }
                 using (var pdf = new PdfMergeForm(noop))
                 {
                     IntPtr handle = pdf.Handle;

@@ -65,6 +65,7 @@ namespace ExcelMerger
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
         private bool _noteBusy;       // готовится записка Word (только UI-поток)
         private bool _closeRequested; // пользователь закрыл окно во время объединения
+        private bool _isFreshRun;     // прогон — новый свод (не дослияние), для счётчика статистики
 
         public MainForm() : this(null) { }
 
@@ -889,6 +890,7 @@ namespace ExcelMerger
         private void PrepareRun(string folder, string outputPath, MergeOptions options, bool clearAllRows)
         {
             _running = true;
+            _isFreshRun = clearAllRows; // clearAllRows=false — это дослияние пропущенных
             SetRunning(true);
             if (clearAllRows)
                 foreach (ListViewItem row in _list.Items)
@@ -1059,6 +1061,9 @@ namespace ExcelMerger
                 SetStatus("Отменено — итоговый файл не создан.", Theme.WarnOrange);
                 return;
             }
+
+            if (_isFreshRun)
+                UsageStats.RecordExcelDigest(); // успешный новый свод (дослияние не считаем)
 
             _progress.Value = _progress.Maximum;
             string text;

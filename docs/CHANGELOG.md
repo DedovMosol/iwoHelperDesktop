@@ -3,6 +3,23 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.12.0] — 2026-07-20
+
+### Added
+- **PDF Split → “Combine into one file”** checkbox in the ranges mode: pages from
+  all ranges are written into a single PDF (in the given order, duplicates kept),
+  instead of one file per range. Reuses the tested extract core (`PageRanges.ToIndices`).
+- **“Check for updates”** in the Help menu: reads the latest version from GitHub
+  Releases (HTTPS) and, if newer, offers to open the download page in the browser.
+  No self-download or self-replacement — the safest fit for a portable, self-signed,
+  offline-friendly app (self-updating exes are widely flagged by antivirus). Tag
+  parsing and version comparison are unit-tested; the network call runs off the UI thread.
+- **“Statistics”** in the Help menu: local counters (no telemetry) of operations —
+  Excel digests, PDF merges, page extractions, and splits by mode. Manual **Clear**
+  and optional **auto-clear** (daily / every 7 / every 30 days). Counters use
+  read-modify-write so concurrent windows can't lose increments; the auto-clear
+  period logic (`ShouldAutoClear`) is unit-tested.
+
 ## [1.11.2] — 2026-07-20
 
 ### Changed
