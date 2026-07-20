@@ -1,306 +1,127 @@
-# iwo Helper Desktop
+<div align="center">
 
-![CI](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml/badge.svg)
+<img src="docs/screenshots/banner.png" width="720" alt="iwo Helper Desktop">
 
-Version history — see [docs/CHANGELOG.md](docs/CHANGELOG.md).
+<br>
 
-A set of office tools in a single application:
+[![CI](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml/badge.svg)](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/DedovMosol/iwoHelperDesktop?label=release&color=0F6CBD)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D6?logo=windows&logoColor=white)](#-download)
+[![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#)
 
-- **Excel Digest** — merges the first visible sheet of every Excel file in a folder
-  into one combined workbook (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) without losing any
-  formatting (styles, formulas, charts, pivot tables), with a table of contents,
-  formula-to-value conversion and a Word cover note.
-- **PDF Merge** — builds a single PDF from several files: pick the pages you need
-  and their order, no re-conversion.
-- **PDF Split** — the reverse: open one PDF and either extract the selected pages
-  into a new file or split the document into several — by page ranges (optionally
-  **combined into one file**), every N pages, or by top-level bookmarks. Pages are
-  copied as-is; the source is untouched.
+**Free, offline office tools in a single Windows app — merge Excel sheets, merge and split PDFs, and compress PDFs at Acrobat‑level quality. No subscription, no admin rights, no network.**
 
-Both PDF tools have a **“Compression”** dropdown (Acrobat-level): the default keeps
-the file untouched; the other levels downsample images while preserving text and
-vectors (see [PDF compression](#pdf-compression)).
+[![Installer](https://img.shields.io/badge/Download-Installer%20x64-0F6CBD?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
+[![Portable](https://img.shields.io/badge/Download-Portable%20x64-107C41?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
 
-On launch the program lets you choose a tool; the start screen also has a
-**“Check for updates”** button (compares with GitHub Releases and opens the download
-page — nothing is downloaded or replaced automatically). Each tool's **Help** menu has
-**“Statistics”** (local operation counters, with manual and optional auto-clear).
+</div>
 
-## Requirements
+## What is iwo Helper Desktop?
 
-- Windows 10/11 x64 (needs .NET Framework 4.8 — bundled with Windows 10 1903+);
-- Microsoft Excel installed (2007–2024); Microsoft Word for the cover note;
-- **Ghostscript** is required only for PDF compression — the installer bundles it;
-  the portable exe uses a system-installed Ghostscript if present (otherwise the
-  compression option shows a download link and stays a no-op);
-- administrator rights and network are **not required** (a per-user install and the
-  portable exe both work without admin).
+A small, self‑contained Windows application that bundles the office tasks people do every day with `.xlsx` and `.pdf` files — without a paid suite. It runs **offline**, needs **no administrator rights**, makes **no network calls**, and ships either as a single portable `.exe` or a per‑user installer.
 
-## Repository layout
+## 🚀 Features
 
-```
-src/       application sources           tools/     exe signing, installer scripts
-tests/     unit and integration tests    build/     build inputs (manifest, icons, PdfSharp.dll)
-dist/      build output (not in git)     docs/      changelog and documentation
-installer/ Inno Setup script + license (bundled Ghostscript staged into installer/gs, not in git)
-```
+- 📊 **Excel Digest** — merges the first visible sheet of every workbook in a folder into one file (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`), keeping all formatting (styles, formulas, charts, pivots); adds a table of contents, optional formula→value conversion, and a Word cover note (GOST R 7.0.97‑2016).
+- 📄 **PDF Merge** — build one PDF from several: a grid of page thumbnails, drag to reorder, delete extras. Pages are copied **as‑is** — scans, stamps and signatures are not distorted.
+- ✂️ **PDF Split** — extract selected pages into one file, or split by page ranges, every N pages, or top‑level bookmarks. The source is never modified.
+- 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size”: downsamples images while keeping text and vectors (not rasterization), via bundled **Ghostscript**. Default level leaves the file untouched.
+- 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing); local operation counters with manual/auto clear.
+- 🔒 **Safe by design** — no network, no admin, not packed/obfuscated; writes only to user‑selected folders and `%APPDATA%`.
 
-Built with the `dotnet` SDK. The only shipped dependency is `build/PdfSharp.dll`
-(MIT); it is embedded into the exe as a resource, so a single file goes out.
-PDF thumbnails use the system `Windows.Data.Pdf` (WinRT); the compile-time
-projections come from the NuGet package `Microsoft.Windows.SDK.Contracts`
-(build only, not shipped).
+## ⬇️ Download
 
-## Deployment
+| OS | Download |
+|----|----------|
+| **Windows 10 / 11 (x64)** | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) |
 
-Two options, both from [Releases](https://github.com/DedovMosol/iwoHelperDesktop/releases):
+- **Installer** *(recommended)* — bundles Ghostscript, so PDF compression works out of the box. Installs **per‑user without admin** by default (choose “for all users” for a machine‑wide install).
+- **Portable** — a single `iwoHelperDesktop.exe`; just run it. PDF compression works if Ghostscript is installed on the machine.
 
-1. **Portable exe** — copy the single `iwoHelperDesktop.exe` to the target machine.
-   That's all. PDF compression works if Ghostscript is installed on the machine
-   (otherwise it is a no-op with a download hint).
-2. **Installer** (`iwoHelperDesktop-setup-*.exe`) — installs the app **and bundles
-   Ghostscript**, so compression works out of the box. Installs **per-user without
-   admin** by default (`%LOCALAPPDATA%`), with an option to install for all users
-   (Program Files, requires admin).
+> Requirements: Windows 10/11 x64 (with .NET Framework 4.8, bundled since Windows 10 1903). Microsoft Excel/Word are needed only for the **Excel Digest** tool.
 
-The portable exe is not packed or obfuscated (an ordinary .NET assembly, ~0.7 MB —
-including the resource-embedded PdfSharp), makes no network calls, and writes
-only to user-selected folders and to `%APPDATA%\iwo Helper Desktop` (settings
-and report history) — nothing for antivirus software to react to.
+## 🖥️ Usage
 
-## PDF compression
+Launch the app and pick a tool from the start screen. Tools open as independent windows; a **⌂ Home** button returns to the chooser. Long tasks run in the background with progress on the list and the taskbar, and can be cancelled.
 
-Both PDF tools offer a **“Compression”** dropdown, applied as a post-processing step
-to the produced PDF:
+- **Excel Digest** — pick the source folder, set the output name/format, arrange/exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
+- **PDF Merge / Split** — add PDFs (button or drag‑and‑drop), reorder/select pages on the thumbnail grid, choose a **Compression** level if desired, and save.
 
-- **Отлично** — no compression (default): the file is byte-for-byte the merge/extract
-  output; fidelity and any digital signatures are preserved.
-- **Хорошо** — Ghostscript `/ebook` (~150 DPI): good balance of size and quality.
-- **Нормально** — Ghostscript `/screen` (~72 DPI): smallest size.
+<details>
+<summary><b>Full Excel Digest guide, options and edge cases</b></summary>
 
-The compressing levels **downsample images while keeping text and vectors** (the file
-stays searchable) — the same approach as Adobe Acrobat / Foxit “Reduce File Size”,
-**not** rasterization. Compression is done by **Ghostscript** as a separate process;
-the result is validated (correct PDF, strictly smaller) before it replaces the
-original — an already-optimized file is left untouched. The output is PDF 1.4, so a
-compressed file can still be re-merged or re-split by the app.
-
-Caveat on signatures: any real compression changes the file's bytes, so a **signed**
-PDF's signature becomes invalid afterwards (this is true of Acrobat too). Compress
-**unsigned** documents, or compress **before** signing. The default level never
-touches the file.
-
-Ghostscript is bundled by the installer; the portable exe looks for a system-installed
-Ghostscript and, if absent, the compression option opens the official
-[download page](https://ghostscript.com/releases/gsdnld.html). Ghostscript is used
-under its own AGPL license (invoked as a separate process — mere aggregation; this
-app stays MIT).
-
-## Usage (GUI)
-
-On launch the program lets you choose a tool: **“Excel Digest”** (merging Excel
-sheets) or **“PDF Merge”**. After a tool is closed the chooser is shown again —
-you can switch to the other one without restarting. Both tools can be open at the
-same time as independent windows, and closing the start screen does not close
-them — the app exits only when the last window is closed. Each tool has a
-**“⌂ Home”** button that opens the tool chooser (re-creating it if it was closed).
-
-### Excel Digest
-
-1. Select the folder with the source files (the “Browse…” button or drop the
-   folder onto the window). The program immediately shows how many Excel files
-   were found.
-2. Set the output file name and format (`.xlsx` / `.xlsm` / `.xlsb` / `.xls`).
-   Under Options, “Sheets” lets you take only the first sheet of each file or all
-   of them.
+1. Select the source folder (Browse… or drop it onto the window); the file count is shown immediately.
+2. Set the output name and format (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`); “Sheets” takes the first sheet of each file or all of them.
 3. Change the output folder if needed (defaults to the source folder).
-4. **Arrange the files** in the “Files to merge” list: reorder them by dragging
-   rows or with the “▲ Up” / “▼ Down” buttons, and **exclude** any file by
-   clearing its checkbox. “By name” restores the natural order; “Check all” /
-   “Uncheck all” select the whole set quickly.
-5. Click “Merge”. Progress is shown in the list and on the taskbar button; when
-   the window is inactive the button flashes on completion.
-6. If the output file already exists, the program asks whether to overwrite it;
-   a busy file (open in Excel) is detected up front, before any processing.
+4. Arrange the **Files to merge** list — reorder by dragging or ▲/▼, exclude via checkboxes; “By name” restores natural order.
+5. Click **Merge** — progress on the list and taskbar; the button flashes on completion when the window is inactive.
+6. Existing output prompts to overwrite; a file open in Excel is detected up front.
 
-**Files to merge** is a single list that serves two purposes. Before the merge it
-shows the source files with their order and inclusion state. During and after the
-merge each row is filled in with the per-file result: the sheet name in the
-digest, a status, and the reason a file was skipped or a warning (for example,
-“file contains macros”). Rows can be copied to the clipboard with Ctrl+C or the
-context menu — handy for forwarding the reason to a file's owner.
+**Files to merge** is one list with two roles: before the merge it shows order/inclusion; during/after it fills in the per‑file result (sheet name, status, skip reason / warning such as “file contains macros”). Rows copy to the clipboard (Ctrl+C).
 
-After the merge the following become available: “Open file”, “Open folder”,
-“Open report” (a text history kept in `%APPDATA%\iwo Helper Desktop\reports`, at
-most the three latest; also reachable via Help → “Reports folder”) and
-**“Word note”** — a `.docx` cover note next to the digest: period, counters, a
-table of skipped files with reasons, formatted per GOST R 7.0.97-2016 (margins
-30/15/20/20 mm, Times New Roman 14, first-line indent, 1.5 line spacing).
+After the merge: **Open file / folder / report** (a text history in `%APPDATA%\iwo Helper Desktop\reports`, three latest) and **Word note** — a `.docx` cover note (period, counters, a table of skipped files), formatted per GOST R 7.0.97‑2016. If files were skipped, **Retry skipped** appends fixed files without a full rebuild.
 
-If some files were skipped, a **“Retry skipped”** button appears — fixed files
-are appended to the existing digest without a full rebuild (the table of contents
-is regenerated; the order and the already-merged sheets are left untouched).
+Options (format and “Table of contents” are remembered; “Replace formulas with values” starts off each run):
+- **Table of contents** (on by default) — the first sheet becomes a TOC with hyperlinks and per‑file status; header row frozen.
+- **Replace formulas with values** — the digest no longer depends on the sources.
 
-Supported source formats: `.xlsx`, `.xls`, `.xlsm`, `.xlsb`. By default the files
-follow the natural order of their names, as in Explorer: “Report 2” before
-“Report 10” — and you can override it in the list.
+Edge cases handled: broken/password‑protected files are detected by signature and skipped **before** Excel opens them (so they can’t wedge the shared instance); if Excel still wedges, it is restarted automatically; low disk space stops the run up front; hidden sheets are skipped; name clashes get a `_2` suffix; names > 31 chars are truncated and `: \ / ? * [ ]` become `_`; `~$` temp files are ignored; macros are never executed (VBA files are flagged).
 
-Options (the format and “Table of contents” are remembered; “Replace formulas
-with values” starts off on every run — the mode is enabled deliberately):
+</details>
 
-- **“Table of contents” sheet** (on by default) — the first sheet of the digest
-  becomes a table of contents: hyperlinks to every sheet and the status of every
-  file, including skipped ones with reasons. The header row is frozen.
-- **Replace formulas with values** — the digest no longer depends on the source
-  files: computed values are stored instead of formulas (formatting and merged
-  cells are left intact).
+<details>
+<summary><b>PDF compression details & signature caveat</b></summary>
 
-Help is in the menu (F1): “How to use”, “Reports folder”, “About”.
+Both PDF tools have a **Compression** dropdown applied to the produced PDF:
+- **Отлично** — no compression (default): byte‑for‑byte the merge/extract output; fidelity and signatures preserved.
+- **Хорошо** — Ghostscript `/ebook` (~150 DPI).
+- **Нормально** — Ghostscript `/screen` (~72 DPI).
 
-## PDF Merge
+The compressing levels downsample images while keeping text and vectors (the same idea as Adobe Acrobat / Foxit “Reduce File Size”), done by **Ghostscript** as a separate process. The result is validated (valid PDF, strictly smaller) before replacing the original; an already‑optimized file is left untouched. Output is PDF 1.4, so a compressed file can still be re‑merged/split by the app.
 
-The **“PDF Merge”** tool from the start screen is a separate window for stitching
-PDFs. You pick documents (with the button or by drag-and-drop), get a **grid of
-page thumbnails**, reorder them by dragging or with the buttons, delete the extra
-ones, and save to a single PDF. Pages are copied **as-is**, without
-re-conversion — scans, stamps and signatures are not distorted. Broken and
-password-protected PDFs are skipped with a clear reason.
+**Signatures:** any real compression changes the file’s bytes, so a **signed** PDF’s signature becomes invalid afterwards (true of Acrobat too). Compress unsigned documents, or before signing. Ghostscript is used under its own AGPL license (invoked as a separate process — the app stays MIT); the portable exe opens the official [download page](https://ghostscript.com/releases/gsdnld.html) if it is absent.
 
-Stitching is done with PdfSharp (MIT, embedded into the exe as a resource).
-Thumbnails are drawn by the system Windows.Data.Pdf engine; if it is unavailable
-(for example, on Windows Server) placeholders are shown and the tool keeps
-working. A single file is shipped; nothing is installed.
+</details>
 
-## Edge-case behaviour
-
-- a broken / password-protected / unreadable file is skipped, with the reason in
-  the list, the table of contents and the report; corrupt and encrypted files are
-  detected by their signature and skipped **before** Excel opens them, so they
-  cannot wedge the shared Excel instance;
-- if a file still wedges Excel, the instance is restarted automatically without
-  that file and the merge continues (no machine reboot);
-- if the system, temp or output drive is nearly full, the merge stops up front
-  with a clear message instead of cryptic per-file COM errors;
-- hidden sheets are not transferred (the first **visible** sheet is taken);
-- name clashes (for example `Report.xls` and `Report.xlsx`) — the second sheet
-  gets a `_2` suffix;
-- a name longer than 31 characters is truncated; the characters `: \ / ? * [ ]`
-  are replaced with `_`;
-- Excel temporary files (`~$…`) are ignored;
-- source macros are **not executed**; files with VBA are flagged with a note.
-  Sheet code does not reach an `.xlsx` digest (Excel drops it); in `.xlsm`/`.xls`
-  it is transferred together with the sheet;
-- if no sheet could be transferred or the merge was cancelled, the digest file is
-  not created (and on a retry of skipped files it is left unchanged).
-
-## Command-line mode (for tests and scripts)
+<details>
+<summary><b>Command‑line mode (Excel Digest, for scripts)</b></summary>
 
 ```
 iwoHelperDesktop.exe --cli <source_folder> <digest_path> [--toc] [--values] [--allsheets]
 ```
+Format is derived from the path extension. `--toc` adds a table of contents, `--values` replaces formulas with values, `--allsheets` takes every visible sheet. The report is written to `<digest>.report.txt`. Exit codes: `0` all transferred, `2` some skipped, `1` error.
 
-The digest format is derived from the path extension (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`).
-`--toc` adds a “Table of contents” sheet, `--values` replaces formulas with
-values, `--allsheets` takes every visible sheet (otherwise only the first). In
-the CLI the options default to off and are enabled explicitly. The report is
-written to `<digest>.report.txt`. Exit codes: `0` — all files transferred,
-`2` — some were skipped, `1` — error (the digest file was not created).
+</details>
 
-## Building from source
+## 🛠️ Build from source
 
 ```
 build.cmd
 ```
+Needs the `dotnet` SDK (6+); builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`. The only shipped dependency, `build/PdfSharp.dll` (MIT), is embedded as a resource. PDF thumbnails use the system `Windows.Data.Pdf` (WinRT).
 
-Requires the `dotnet` SDK (6+); builds the SDK project `iwoHelperDesktop.csproj`
-(target framework .NET Framework 4.8). The result is `dist\iwoHelperDesktop.exe`,
-a single file. Nothing is installed on the target machine (only .NET Framework
-4.8 is needed, which ships with Windows 10).
+<details>
+<summary><b>Signing, installer, release, CI and tests</b></summary>
 
-The application icon is `build/app.ico` (multi-size, from `build/logo.ico`).
-The interface palette is `src/Theme.cs`.
+- **Sign the exe:** `powershell -NoProfile -File tools\sign.ps1` — self‑signed cert in `Cert:\CurrentUser\My` (SHA256 + timestamp).
+- **Installer:** `powershell -NoProfile -File tools\make_installer.ps1` — builds/signs the exe, stages bundled Ghostscript (`tools\stage_gs.ps1`), compiles `installer\iwoHelperDesktop.iss` (Inno Setup), signs the setup. Wizard images come from `tools\make_wizard_images.ps1`.
+- **Release:** `powershell -NoProfile -File tools\make_release.ps1 -Publish` — builds/signs both artifacts, notes from the CHANGELOG, creates the GitHub release. See [docs/RELEASING.md](docs/RELEASING.md).
+- **CI** (`.github/workflows/ci.yml`): on every push — build, unit tests, GUI smoke, a Ghostscript round‑trip (`--gscheck`), and an installer compile check. Releases are cut locally (self‑signed cert lives only on the maintainer’s machine).
+- **Tests:** `tests\build_tests.cmd` (unit, no Office); `tests\run_all.cmd` (full pyramid, needs Excel/Word). Repository layout, corpus and maintainer notes are in [docs/](docs/).
 
-Signing the exe (an optional step before deployment):
+**Maintainer note:** Office COM is used through late binding (`dynamic`). Never perform dynamic operations on a closed COM object (store the reference in an `object` before `Close`/`Quit`) — a dynamic bind on a dead object crashes with `COMException 0x80010114`. Text into Excel cells must go through `CellText.EscapeValues`.
 
-```
-powershell -NoProfile -File tools\sign.ps1
-```
+</details>
 
-Creates (once) a self-signed certificate in `Cert:\CurrentUser\My` and signs the
-exe (SHA256, with a timestamp when the network is available). This gives file
-integrity and a persistent publisher; the signature becomes “trusted” for Windows
-only after the certificate is added to the trusted roots on the target machine.
+## 🙏 Built with
 
-Building the installer (locally; needs [Inno Setup 6](https://jrsoftware.org/isdl.php)
-and Ghostscript installed):
+- [PdfSharp](https://github.com/empira/PDFsharp) (MIT) — PDF merge/split
+- [Ghostscript](https://ghostscript.com/) (AGPL) — PDF compression
+- [Inno Setup](https://jrsoftware.org/isinfo.php) — installer
+- `Windows.Data.Pdf` (WinRT) — page thumbnails
 
-```
-powershell -NoProfile -File tools\make_installer.ps1
-```
+## 📄 License
 
-It builds and signs the exe, stages the bundled Ghostscript (`tools\stage_gs.ps1`
-copies the needed subset into `installer\gs`), compiles `installer\iwoHelperDesktop.iss`
-with Inno Setup, and signs the resulting `dist\iwoHelperDesktop-setup-<version>.exe`.
-The branded wizard images (`installer\wizard.bmp`, `wizard_small.bmp`) are generated by
-`tools\make_wizard_images.ps1` from `build\app.ico`. CI validates the `.iss` on every
-push (unsigned artifact); the **signed** installer is produced locally, because the
-self-signed certificate lives only on the maintainer's machine.
-
-Cutting a GitHub release (portable exe + installer + CHANGELOG notes) is scripted in
-`tools\make_release.ps1` — see [docs/RELEASING.md](docs/RELEASING.md).
-
-## CI
-
-GitHub Actions (`.github/workflows/ci.yml`): on every push — build, unit tests,
-GUI smoke test, a Ghostscript compression round-trip (`--gscheck`), and an installer
-compile check (Inno Setup + staged Ghostscript, unsigned artifact); artifacts
-`iwoHelperDesktop.exe` and `iwoHelperDesktop-setup-*.exe`. On a `v*` tag — the exe is
-published to Releases (the signed exe and signed installer are uploaded from the
-maintainer's machine). Integration tests require Office and run locally only.
-
-## Tests
-
-The whole pyramid in one run (needs Excel and Word installed):
-
-```
-tests\run_all.cmd
-```
-
-Sequence: build → unit tests → GUI smoke → corpus generation → base run → run
-with table of contents and formula replacement → run to `.xlsb` → retry of
-skipped files → embedded PdfSharp → PDF merge → PDF thumbnails → Word note →
-Excel zombie-process check.
-
-Separately — unit tests (no Office, a custom mini-runner; a live compression test
-uses Ghostscript when it is installed, otherwise it verifies the graceful no-op):
-
-```
-tests\build_tests.cmd    # build and run; exit code 0 = all passed
-```
-
-Integration checks: `tests\verify.ps1` (base behaviour), `verify_toc.ps1` (table
-of contents and formula replacement), `verify_format.ps1` (digest to `.xlsb`),
-`verify_retry.ps1` (retry of skipped files), `verify_pdf.ps1` (PDF merge),
-`verify_thumb.ps1` (WinRT thumbnail rendering), `verify_note.ps1` (Word note,
-including GOST margins and font).
-
-The corpus covers: formatting/formulas/merged cells (including a formula inside a
-merged cell and formulas with string results), an empty file, `.xls`/`.xlsm`/`.xlsb`,
-a duplicate base name, a hidden first sheet, a name longer than 31 characters,
-brackets in the file name, natural order (“Report 2” before “Report 10”), a
-password-protected file, a broken file, a temporary `~$` file.
-
-## License
-
-[MIT](LICENSE)
-
-## Important for maintainers
-
-Office COM is used through late binding (`dynamic`) — there is no dependency on
-the Office version. The rule: **never perform dynamic operations on a closed COM
-object** (store the `dynamic` reference in an `object` variable before
-`Close`/`Quit`) — a dynamic bind on a dead object crashes the process with
-`COMException 0x80010114` before the method is even entered, bypassing any
-try/catch (details are in the comment next to `ComSafe.Release`). Text written
-into Excel cells must go through `CellText.EscapeValues` — otherwise a string
-like “=x” turns into a formula.
+[MIT](LICENSE) © 2026 **Dodonov Andrey** ([DedovMosol](https://github.com/DedovMosol)) · full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
