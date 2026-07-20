@@ -467,6 +467,12 @@ namespace ExcelMerger
             if (disposing)
             {
                 StopRendering();
+                // Дождаться выхода фонового рендера, прежде чем освобождать сигнал,
+                // которого он касается (_thumbSignal.Wait/Reset): иначе поток упал бы
+                // ObjectDisposedException. Таймаут — на случай долгого Render; сам
+                // сигнал освобождаем только если поток гарантированно завершился,
+                // поэтому медленный рендер «в полёте» не роняет процесс на диспоузе.
+                bool stopped = _thumbThread == null || _thumbThread.Join(2000);
                 if (_visibleTimer != null)
                     _visibleTimer.Dispose();
                 foreach (Bitmap page in _pageCache.Values)
@@ -474,6 +480,8 @@ namespace ExcelMerger
                 _pageCache.Clear();
                 if (_thumbs != null)
                     _thumbs.Dispose();
+                if (stopped)
+                    _thumbSignal.Dispose();
             }
             base.Dispose(disposing);
         }
