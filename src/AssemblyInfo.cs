@@ -6,6 +6,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("iwo")]
 [assembly: AssemblyProduct("iwo Helper Desktop")]
 [assembly: AssemblyCopyright("© 2026")]
-[assembly: AssemblyVersion("1.13.5.0")]
-[assembly: AssemblyFileVersion("1.13.5.0")]
+// Версия — ровно «1.13.5» (без хвостового .0): приложение показывает её через
+// ToString(3), а метаданные exe (File/Product version) читаются как «1.13.5».
+[assembly: AssemblyVersion("1.13.5")]
+[assembly: AssemblyFileVersion("1.13.5")]
+[assembly: AssemblyInformationalVersion("1.13.5")]
 [assembly: ComVisible(false)]

@@ -22,6 +22,9 @@ versions follow [SemVer](https://semver.org/).
   renderer’s document eviction reuses `ComSafe.Release`, removing the duplicated WinRT
   COM‑release code. 8 new unit tests (LRU eviction/touch/replace/case/clear/guard,
   grid key‑set and stale‑key computation).
+- Assembly version attributes trimmed to `1.13.5` (was `1.13.5.0`): the exe’s File and
+  Product version now read exactly `1.13.5`, matching the in‑app title/About and the
+  installer/tag (`ToString(3)` unchanged, so the update check is unaffected).
 
 ## [1.13.4] — 2026-07-20
 
