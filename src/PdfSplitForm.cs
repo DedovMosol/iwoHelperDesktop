@@ -186,7 +186,8 @@ namespace ExcelMerger
                 "   • «По диапазонам» — «1-3, 5, 8-»: каждый диапазон → отдельный файл;\n" +
                 "   • «Каждые N страниц» — равные части (1 — каждая страница отдельно);\n" +
                 "   • «По закладкам» — по одному файлу на закладку верхнего уровня, имена из заголовков.\n" +
-                "3. Нажмите «Извлечь…»/«Разделить…» и укажите файл или папку.\n\n" +
+                "3. Нажмите «Извлечь…»/«Разделить…» и укажите имя и папку для результата " +
+                "(при разбиении к имени добавятся номера или метки).\n\n" +
                 "Страницы копируются как есть, без переконвертации. Исходный файл не изменяется; " +
                 "имена не перезаписываются (при совпадении добавляется номер).");
         }
@@ -331,10 +332,23 @@ namespace ExcelMerger
                 everyN = (int)_numN.Value;
             }
 
-            string dir = FolderPicker.Show(this, "Папка для файлов частей", Path.GetDirectoryName(_sourcePath));
-            if (dir == null)
-                return;
-            string baseName = Path.GetFileNameWithoutExtension(_sourcePath);
+            // Даём выбрать и папку, и базовое имя: к нему добавятся номера/метки
+            // (base_1-3.pdf, base_часть_1.pdf, base_Глава.pdf).
+            string dir, baseName;
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Filter = "Документ PDF (*.pdf)|*.pdf";
+                dialog.Title = "Базовое имя и папка для частей (к имени добавятся номера)";
+                dialog.FileName = Path.GetFileNameWithoutExtension(_sourcePath) + ".pdf";
+                dialog.InitialDirectory = Path.GetDirectoryName(_sourcePath);
+                dialog.OverwritePrompt = false; // создаются base_1.pdf и т.п., а не сам base.pdf
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                dir = Path.GetDirectoryName(dialog.FileName);
+                baseName = Path.GetFileNameWithoutExtension(dialog.FileName);
+                if (string.IsNullOrWhiteSpace(baseName))
+                    baseName = Path.GetFileNameWithoutExtension(_sourcePath);
+            }
             string src = _sourcePath;
             RunSplit(delegate
             {

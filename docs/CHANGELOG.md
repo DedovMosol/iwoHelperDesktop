@@ -3,6 +3,16 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.11.2] — 2026-07-20
+
+### Changed
+- **PDF Split — you can now choose the output name in every mode.** The
+  split-into-many modes (ranges, every N pages, bookmarks) previously only let you
+  pick the folder and reused the source file name; now a save dialog lets you set
+  both the folder and the base name, to which the numbers/labels are appended
+  (`base_1-3.pdf`, `base_часть_1.pdf`, `base_Глава.pdf`). Extract, PDF Merge and
+  the Excel digest already allowed choosing the name.
+
 ## [1.11.1] — 2026-07-20
 
 ### Changed
