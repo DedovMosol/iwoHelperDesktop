@@ -34,7 +34,7 @@ namespace ExcelMerger
             MaximizeBox = false;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(804, 380);
+            ClientSize = new Size(804, 416);
             WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11
 
             var header = new HeaderBand(AppTitle, "Выберите инструмент — свод Excel, объединение или разделение PDF",
@@ -73,6 +73,14 @@ namespace ExcelMerger
                     _context.OpenTool("split", "Разделение PDF", delegate(Action back) { return new PdfSplitForm(back); });
             };
             Controls.Add(split);
+
+            // Нижний ряд: версия слева, проверка обновлений справа.
+            Ui.Label(this, "Версия " + version.ToString(3), 26, 384, Font, Theme.TextMuted);
+            var update = new RoundedButton(false);
+            update.Text = "⟳ Проверить обновления";
+            update.SetBounds(ClientSize.Width - 26 - 210, 378, 210, 32);
+            update.Click += delegate { UpdateUi.Check(this); };
+            Controls.Add(update);
 
             AcceptButton = null; // Enter активирует карточку в фокусе
         }

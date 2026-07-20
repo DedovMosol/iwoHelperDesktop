@@ -3,6 +3,17 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.12.1] — 2026-07-20
+
+### Changed
+- **Branded message dialogs** replace the native ones everywhere (info, error,
+  confirm): a coloured icon by severity, the app's rounded buttons — a single button
+  is centred, two are placed at opposite sides (e.g. the “clear statistics” confirm).
+  All calls still go through the `Dialogs` facade (`MessageForm`); button placement
+  is unit-tested (`ButtonX`).
+- **“Check for updates” moved to the start screen** as a dedicated button (with the
+  current version shown), instead of repeating in every tool's Help menu.
+
 ## [1.12.0] — 2026-07-20
 
 ### Added
