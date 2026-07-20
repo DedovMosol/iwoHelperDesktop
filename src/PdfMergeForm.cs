@@ -13,33 +13,31 @@ namespace ExcelMerger
     /// перетаскиванием, удаление, сохранение в один PDF. Страницы копируются без
     /// переконвертации (PDFsharp).
     /// </summary>
-    public class PdfMergeForm : Form
+    public class PdfMergeForm : PdfToolFormBase
     {
         private const string Title = "Объединение PDF";
 
-        private readonly Action _showHub;
         private readonly PdfPageOrder _order = new PdfPageOrder();
 
-        private PdfPageGrid _grid;
-        private TrackBar _zoom;
-        private System.Windows.Forms.Timer _zoomTimer;
+        // Сетка, зум, сжатие, статус, подсказки и флаг _busy — в базе PdfToolFormBase.
         private Button _btnAdd;
         private Button _btnUp;
         private Button _btnDown;
         private Button _btnRemove;
         private Button _btnSave;
-        private CompressionPicker _compress;
-        private Label _lblStatus;
-        private ToolTip _tips;
-        private bool _busy; // идёт сохранение (только UI-поток)
 
         public PdfMergeForm() : this(null) { }
 
-        public PdfMergeForm(Action showHub)
+        public PdfMergeForm(Action showHub) : base(showHub)
         {
-            _showHub = showHub;
             BuildUi();
             UpdateButtons();
+        }
+
+        /// <summary>Во время сохранения окно не закрывается — иначе остался бы зомби-процесс.</summary>
+        protected override string BusyMessage
+        {
+            get { return "Дождитесь завершения сохранения…"; }
         }
 
         private void BuildUi()
@@ -300,14 +298,6 @@ namespace ExcelMerger
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        // ---------- масштаб ----------
-
-        private void ScheduleZoom()
-        {
-            _zoomTimer.Stop();
-            _zoomTimer.Start();
-        }
-
         // ---------- сохранение ----------
 
         private void OnSaveClick(object sender, EventArgs e)
@@ -387,29 +377,5 @@ namespace ExcelMerger
             _btnSave.Enabled = !_busy && _order.Count > 0;
         }
 
-        private void SetStatus(string text, Color color)
-        {
-            _lblStatus.Text = text;
-            _lblStatus.ForeColor = color;
-        }
-
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            if (_busy)
-            {
-                SetStatus("Дождитесь завершения сохранения…", Theme.WarnOrange);
-                e.Cancel = true;
-                return;
-            }
-            _grid.StopRendering(); // разбудить и остановить фоновый рендер
-            base.OnFormClosing(e);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && _zoomTimer != null)
-                _zoomTimer.Dispose();
-            base.Dispose(disposing); // _grid освобождается как дочерний контрол
-        }
     }
 }

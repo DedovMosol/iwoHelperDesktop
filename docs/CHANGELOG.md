@@ -3,6 +3,15 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.7] — 2026-07-21
+
+### Internal
+- **Shared `PdfToolFormBase` for the two PDF tools (DRY).** The Merge and Split forms now
+  inherit common state and behaviour — thumbnail grid, zoom slider + throttle timer,
+  compression picker, status line, tooltips, the busy‑aware close guard and deterministic
+  teardown — instead of duplicating them. No layout change. As a side‑fix, each window’s
+  `ToolTip` (a component, not a child control) is now disposed on teardown.
+
 ## [1.13.6] — 2026-07-20
 
 ### Performance
