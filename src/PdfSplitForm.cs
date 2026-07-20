@@ -206,29 +206,16 @@ namespace ExcelMerger
 
         private void OnFileDragEnter(object sender, DragEventArgs e)
         {
-            e.Effect = !_busy && FirstPdf(e) != null ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Effect = !_busy && PdfDrop.ExtractPaths(e).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
         }
 
         private void OnFileDragDrop(object sender, DragEventArgs e)
         {
             if (_busy)
                 return;
-            string path = FirstPdf(e);
-            if (path != null)
-                LoadSource(path);
-        }
-
-        private static string FirstPdf(DragEventArgs e)
-        {
-            if (!e.Data.GetDataPresent(DataFormats.FileDrop))
-                return null;
-            var items = (string[])e.Data.GetData(DataFormats.FileDrop);
-            if (items == null)
-                return null;
-            foreach (string item in items)
-                if (File.Exists(item) && string.Equals(Path.GetExtension(item), ".pdf", StringComparison.OrdinalIgnoreCase))
-                    return item;
-            return null;
+            string[] paths = PdfDrop.ExtractPaths(e);
+            if (paths.Length > 0)
+                LoadSource(paths[0]); // разделение работает с одним документом
         }
 
         private void LoadSource(string path)

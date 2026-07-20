@@ -18,8 +18,26 @@ namespace ExcelMerger
     public class PdfPageGrid : UserControl
     {
         private const string PlaceholderKey = "__ph";
+        private const int EnqueueBuffer = 16; // докачивать миниатюры чуть за пределами видимого
 
-        private readonly ListView _list = new ListView();
+        /// <summary>ListView, извещающий о прокрутке — для ленивого рендера видимых страниц.</summary>
+        private sealed class ScrollList : ListView
+        {
+            public event EventHandler Scrolled;
+            protected override void WndProc(ref Message m)
+            {
+                base.WndProc(ref m);
+                const int WM_VSCROLL = 0x115, WM_MOUSEWHEEL = 0x20A, WM_KEYUP = 0x101;
+                if (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL || m.Msg == WM_KEYUP)
+                {
+                    EventHandler h = Scrolled;
+                    if (h != null) h(this, EventArgs.Empty);
+                }
+            }
+        }
+
+        private readonly ScrollList _list = new ScrollList();
+        private System.Windows.Forms.Timer _visibleTimer;
         private readonly Dictionary<string, Bitmap> _pageCache =
             new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
         private ImageList _thumbs;
@@ -59,8 +77,17 @@ namespace ExcelMerger
             _list.DragDrop += OnListDragDrop;
             _list.DragLeave += delegate { _list.InsertionMark.Index = -1; };
             _list.MouseWheel += OnListMouseWheel;
+            _list.Scrolled += delegate { ScheduleVisibleUpdate(); };
+            _list.Resize += delegate { ScheduleVisibleUpdate(); };
+            _list.SelectedIndexChanged += delegate { ScheduleVisibleUpdate(); }; // навигация клавишами
             EnableDoubleBuffer(_list);
             Controls.Add(_list);
+
+            // Троттлинг: события прокрутки сливаются в одно обновление видимых миниатюр.
+            _visibleTimer = new System.Windows.Forms.Timer();
+            _visibleTimer.Interval = 100;
+            _visibleTimer.Tick += delegate { _visibleTimer.Stop(); UpdateVisibleThumbs(); };
+
             StartThumbWorker();
         }
 
@@ -81,10 +108,67 @@ namespace ExcelMerger
                     item.ToolTipText = page.SourcePath + " — стр. " + (page.PageIndex + 1);
                     item.ImageKey = _thumbs.Images.ContainsKey(key) ? key : PlaceholderKey;
                     _list.Items.Add(item);
-                    EnqueueThumb(page);
                 }
             }
             _list.EndUpdate();
+            ScheduleVisibleUpdate(); // рендерим только видимые страницы, а не все сразу
+        }
+
+        // ---------- ленивый рендер видимых ----------
+
+        private void ScheduleVisibleUpdate()
+        {
+            if (_visibleTimer == null)
+                return;
+            _visibleTimer.Stop();
+            _visibleTimer.Start();
+        }
+
+        /// <summary>Ставит в очередь рендера только видимые страницы (плюс небольшой буфер).</summary>
+        private void UpdateVisibleThumbs()
+        {
+            int count = _list.Items.Count;
+            if (count == 0)
+                return;
+            // ListView.TopItem в LargeIcon бросает исключение — видимый диапазон
+            // определяем по Bounds (они монотонны по индексу: раскладка сверху вниз).
+            int bottom = _list.ClientSize.Height;
+            int first = -1, last = -1;
+            for (int i = 0; i < count; i++)
+            {
+                Rectangle b = _list.Items[i].Bounds;
+                if (b.Bottom < 0)
+                    continue;      // выше видимой области
+                if (b.Top > bottom)
+                    break;         // ниже видимой — дальше все ниже
+                if (first < 0)
+                    first = i;
+                last = i;
+            }
+            if (first < 0)
+            {
+                first = 0;
+                last = Math.Min(count - 1, EnqueueBuffer);
+            }
+            int lo, hi;
+            ClampWindow(first, last, count, EnqueueBuffer, out lo, out hi);
+            for (int i = lo; i <= hi; i++)
+            {
+                var page = _list.Items[i].Tag as PdfPageRef;
+                if (page != null)
+                    EnqueueThumb(page);
+            }
+        }
+
+        /// <summary>Окно докачки [lo..hi] вокруг видимого диапазона. Чистая — под тест.</summary>
+        internal static void ClampWindow(int first, int last, int count, int buffer, out int lo, out int hi)
+        {
+            lo = first - buffer;
+            if (lo < 0)
+                lo = 0;
+            hi = last + buffer;
+            if (hi > count - 1)
+                hi = count - 1;
         }
 
         public int Count { get { return _list.Items.Count; } }
@@ -383,6 +467,8 @@ namespace ExcelMerger
             if (disposing)
             {
                 StopRendering();
+                if (_visibleTimer != null)
+                    _visibleTimer.Dispose();
                 foreach (Bitmap page in _pageCache.Values)
                     page.Dispose();
                 _pageCache.Clear();

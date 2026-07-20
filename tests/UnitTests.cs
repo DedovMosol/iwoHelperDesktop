@@ -58,6 +58,7 @@ namespace ExcelMerger.Tests
             Run("PageRanges.EveryN: нарезка на равные части", TestPageRangesEveryN);
             Run("PdfSplitService.Sanitize: недопустимые символы", TestSanitize);
             Run("PdfSplit (живой): извлечение, диапазоны, каждые N, закладки", TestPdfSplitLive);
+            Run("PdfPageGrid.ClampWindow: окно видимых с буфером", TestClampWindow);
             Run("Theme.ToBgr: упаковка цвета 0x00BBGGRR", TestThemeToBgr);
             Run("TocBuilder.SheetRef: ссылка на A1, апострофы удвоены", TestSheetRef);
             Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
@@ -694,6 +695,19 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        private static void TestClampWindow()
+        {
+            int lo, hi;
+            PdfPageGrid.ClampWindow(0, 10, 100, 16, out lo, out hi);
+            AssertEqual("0,26", lo + "," + hi, "у начала — не ниже 0");
+            PdfPageGrid.ClampWindow(50, 60, 100, 16, out lo, out hi);
+            AssertEqual("34,76", lo + "," + hi, "в середине — буфер с обеих сторон");
+            PdfPageGrid.ClampWindow(90, 99, 100, 16, out lo, out hi);
+            AssertEqual("74,99", lo + "," + hi, "у конца — не выше count-1");
+            PdfPageGrid.ClampWindow(0, 5, 6, 16, out lo, out hi);
+            AssertEqual("0,5", lo + "," + hi, "мало элементов — весь список");
         }
 
         private static void TestThemeToBgr()

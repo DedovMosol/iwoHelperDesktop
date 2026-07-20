@@ -21,6 +21,9 @@ namespace ExcelMerger
         private static readonly Font TitleFont = new Font("Segoe UI", 15f, FontStyle.Bold);
         private static readonly Color SubtitleColor = Color.FromArgb(233, 238, 242); // нейтрально-белая: читаема на любом фоне
 
+        /// <summary>Центрировать заголовок и подпись по ширине (для стартового экрана без кнопок).</summary>
+        public bool Centered { get; set; }
+
         public HeaderBand(string title, string subtitle, Color top, Color bottom)
         {
             _title = title ?? string.Empty;
@@ -41,18 +44,28 @@ namespace ExcelMerger
             using (var pen = new Pen(Color.FromArgb(60, 0, 0, 0)))
                 e.Graphics.DrawLine(pen, 0, r.Height - 1, r.Width, r.Height - 1);
 
-            // Текст не должен заходить под дочерние контролы (кнопку «Назад в меню»):
-            // ограничиваем правую границу и обрезаем многоточием.
+            int subtitleY = Height - 28;
+            int titleY = subtitleY - 30;
+            TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis |
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
+
+            if (Centered)
+            {
+                flags |= TextFormatFlags.HorizontalCenter;
+                TextRenderer.DrawText(e.Graphics, _title, TitleFont,
+                    new Rectangle(10, titleY, Width - 20, 26), Color.White, flags);
+                if (_subtitle.Length > 0)
+                    TextRenderer.DrawText(e.Graphics, _subtitle, Font,
+                        new Rectangle(10, subtitleY, Width - 20, 20), SubtitleColor, flags);
+                return;
+            }
+
+            // Слева, не заходя под дочерние контролы (кнопку «Главная»): обрезаем многоточием.
             int leftmostChild = int.MaxValue;
             foreach (Control c in Controls)
                 if (c.Visible && c.Left < leftmostChild)
                     leftmostChild = c.Left;
             int rightBound = TextRightBound(Width, leftmostChild);
-
-            int subtitleY = Height - 28;
-            int titleY = subtitleY - 30;
-            const TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis |
-                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
             TextRenderer.DrawText(e.Graphics, _title, TitleFont,
                 new Rectangle(18, titleY, rightBound - 18, 26), Color.White, flags);
             if (_subtitle.Length > 0)
