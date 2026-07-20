@@ -8,8 +8,8 @@
 [![Release](https://img.shields.io/github/v/release/DedovMosol/iwoHelperDesktop?label=release&color=0F6CBD)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D6?logo=windows&logoColor=white)](#-download)
-[![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#)
+![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D6?logo=windows&logoColor=white)
+![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)
 
 **Free, offline office tools in a single Windows app — merge Excel sheets, merge and split PDFs, and compress PDFs at Acrobat‑level quality. No subscription, no admin rights, no network.**
 
@@ -115,13 +115,13 @@ Needs the `dotnet` SDK (6+); builds `iwoHelperDesktop.csproj` (target .NET Frame
 
 </details>
 
-## 🙏 Built with
+## 🧩 Built with
 
 - [PdfSharp](https://github.com/empira/PDFsharp) (MIT) — PDF merge/split
 - [Ghostscript](https://ghostscript.com/) (AGPL) — PDF compression
 - [Inno Setup](https://jrsoftware.org/isinfo.php) — installer
 - `Windows.Data.Pdf` (WinRT) — page thumbnails
 
-## 📄 License
+## ⚖️ License
 
 [MIT](LICENSE) © 2026 **Dodonov Andrey** ([DedovMosol](https://github.com/DedovMosol)) · full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
