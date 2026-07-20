@@ -8,6 +8,7 @@
 [![Release](https://img.shields.io/github/v/release/DedovMosol/iwoHelperDesktop?label=release&color=0F6CBD)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Privacy: offline‑only](https://img.shields.io/badge/Privacy-offline--only-107C41)](docs/PRIVACY.md)
 ![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D6?logo=windows&logoColor=white)
 [![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet-framework/net48)
 
@@ -131,6 +132,10 @@ Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open pro
 [![Inno Setup](https://img.shields.io/badge/Inno%20Setup-installer-107C41?style=for-the-badge)](https://jrsoftware.org/isinfo.php)
 [![Windows.Data.Pdf](https://img.shields.io/badge/Windows.Data.Pdf-WinRT-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://learn.microsoft.com/uwp/api/windows.data.pdf)
 
+## 🔒 Privacy
+
+**Your files never leave your computer.** No telemetry, no analytics, no accounts, no background network calls. All processing (Excel, PDF merge/split/compress) runs locally; the only network request is the **manual** update check, which reads the latest version tag from GitHub and sends no file contents or personal data. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
+
 ## ⚖️ License
 
-[MIT](LICENSE) © 2026 **Dodonov Andrey** ([DedovMosol](https://github.com/DedovMosol)) · full history in [docs/CHANGELOG.md](docs/CHANGELOG.md)
+[MIT](LICENSE) © 2026 **Dodonov Andrey** ([DedovMosol](https://github.com/DedovMosol)) · full history in [docs/CHANGELOG.md](docs/CHANGELOG.md) · [Privacy Policy](docs/PRIVACY.md)
