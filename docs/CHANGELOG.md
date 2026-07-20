@@ -11,6 +11,9 @@ versions follow [SemVer](https://semver.org/).
   compression picker, status line, tooltips, the busy‑aware close guard and deterministic
   teardown — instead of duplicating them. No layout change. As a side‑fix, each window’s
   `ToolTip` (a component, not a child control) is now disposed on teardown.
+- **Shared bottom‑strip builder.** The zoom slider (+ throttle timer), compression picker
+  and status line — previously built identically in both forms — are now created by a single
+  `BuildBottomStrip(...)` in the base. Control order, tab order and layout are unchanged.
 
 ## [1.13.6] — 2026-07-20
 

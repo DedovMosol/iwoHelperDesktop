@@ -89,7 +89,6 @@ namespace ExcelMerger
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _grid.SelectionChanged += delegate { UpdateButtons(); };
             _grid.ReorderRequested += OnReorder;
-            _grid.ZoomChanged += delegate(int w) { _zoom.Value = w; };
             Controls.Add(_grid);
 
             int col = right - 130;
@@ -106,29 +105,7 @@ namespace ExcelMerger
             _btnRemove.Click += OnRemoveClick;
             _tips.SetToolTip(_btnRemove, "Удалить выбранные страницы (Delete)");
 
-            Ui.Label(this, "Масштаб:", 20, ClientSize.Height - 104, Font, Theme.TextMuted)
-                .Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            _zoom = new TrackBar();
-            _zoom.SetBounds(85, ClientSize.Height - 108, 180, 30);
-            _zoom.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            _zoom.Minimum = ThumbZoom.MinWidth;
-            _zoom.Maximum = ThumbZoom.MaxWidth;
-            _zoom.Value = _grid.TileWidth;
-            _zoom.TickFrequency = 32;
-            _zoom.SmallChange = 16;
-            _zoom.LargeChange = 32;
-            _zoom.ValueChanged += delegate { ScheduleZoom(); };
-            _tips.SetToolTip(_zoom, "Масштаб миниатюр (также Ctrl+колесо мыши)");
-            Controls.Add(_zoom);
-
-            _zoomTimer = new System.Windows.Forms.Timer();
-            _zoomTimer.Interval = 60; // троттлинг пересборки плиток при перетаскивании ползунка
-            _zoomTimer.Tick += delegate { _zoomTimer.Stop(); _grid.SetTileWidth(_zoom.Value); };
-
-            _compress = new CompressionPicker();
-            _compress.Location = new Point(right - _compress.Width, ClientSize.Height - 106);
-            _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            Controls.Add(_compress);
+            BuildBottomStrip(right, "Добавьте PDF-файлы — кнопкой или перетащив их в окно.");
 
             var save = new RoundedButton(true);
             save.Text = "Сохранить PDF…";
@@ -138,10 +115,6 @@ namespace ExcelMerger
             Controls.Add(save);
             _btnSave = save;
             AcceptButton = save;
-
-            _lblStatus = Ui.Label(this, "Добавьте PDF-файлы — кнопкой или перетащив их в окно.",
-                20, ClientSize.Height - 50, Font, Theme.TextMuted);
-            _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
         }
 
         private void ShowHelp()
