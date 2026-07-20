@@ -10,19 +10,30 @@
 #endif
 #define AppName "iwo Helper Desktop"
 #define AppExe "iwoHelperDesktop.exe"
-#define Publisher "iwo"
+#define Publisher "Dodonov Andrey (DedovMosol)"
+#define AppUrl "https://github.com/DedovMosol/iwoHelperDesktop"
 
 [Setup]
 AppId={{8F3A1B62-9D4E-4C7A-B0E5-2A6F1C93D7E4}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#Publisher}
+AppPublisherURL={#AppUrl}
+AppSupportURL={#AppUrl}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 ; По умолчанию — без админа (per-user); пользователь может выбрать «для всех».
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+; ВСЕГДА спрашивать режим (для текущего пользователя / для всех) и путь установки —
+; даже при повторной установке. По умолчанию Inno при обновлении их скрывает:
+;   UsePreviousPrivileges=no  -> возвращает вопрос режима (иначе берёт прошлый);
+;   DisableDirPage=no         -> всегда показывать выбор папки (дефолт auto прячет);
+;   UsePreviousAppDir=yes     -> при этом прошлый путь подставляется как значение по умолчанию.
+UsePreviousPrivileges=no
+DisableDirPage=no
+UsePreviousAppDir=yes
 ; Показать страницу приветствия — на ней явно предупреждаем про установку
 ; только для текущего пользователя (см. [Messages] WelcomeLabel2).
 DisableWelcomePage=no
