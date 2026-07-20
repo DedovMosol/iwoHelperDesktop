@@ -234,24 +234,19 @@ namespace ExcelMerger
             copyMenu.Items.Add(copyItem);
             copyMenu.Opening += delegate { copyItem.Enabled = _list.SelectedItems.Count > 0; };
             _list.ContextMenuStrip = copyMenu;
-            _list.KeyDown += delegate(object sender, KeyEventArgs e)
-            {
-                if (e.Control && e.KeyCode == Keys.C)
-                {
-                    CopySelectedRows();
-                    e.Handled = true;
-                }
-                // Alt+↑/↓ и Enter обрабатываются в ProcessCmdKey: Enter как
-                // диалоговая клавиша (AcceptButton) перехватывается до KeyDown.
-            };
+            // Все горячие клавиши списка — в ProcessCmdKey (см. ниже): Enter как
+            // диалоговая клавиша AcceptButton перехватывается до KeyDown, поэтому
+            // KeyDown для неё бесполезен; заодно единое место для остальных.
             Controls.Add(_list);
 
             // Кнопки управления списком (правая колонка на уровне списка)
             int fcol = right - 140;
             _btnUp = AddListButton("▲ Выше", fcol, 528);
             _btnUp.Click += delegate { MoveSelectedFile(false); };
+            _tips.SetToolTip(_btnUp, "Переместить выбранный файл выше (Alt+↑)");
             _btnDown = AddListButton("▼ Ниже", fcol, 562);
             _btnDown.Click += delegate { MoveSelectedFile(true); };
+            _tips.SetToolTip(_btnDown, "Переместить выбранный файл ниже (Alt+↓)");
             _btnSortName = AddListButton("По имени", fcol, 604);
             _btnSortName.Click += delegate { SortFilesByName(); };
             _tips.SetToolTip(_btnSortName, "Вернуть естественный порядок по имени файла");
@@ -329,7 +324,9 @@ namespace ExcelMerger
                 "• лист «Содержание» — оглавление свода с гиперссылками и статусами файлов,\n" +
                 "• «Заменить формулы значениями» — свод не зависит от исходных файлов.\n\n" +
                 "После слияния результат по каждому файлу виден в тех же строках. Битые " +
-                "и запароленные файлы пропускаются, причина видна в списке и в отчёте.\n" +
+                "и запароленные файлы пропускаются, причина видна в списке и в отчёте.\n\n" +
+                "Горячие клавиши в списке: Alt+↑/↓ — порядок, Delete — исключить, " +
+                "Ctrl+A — выделить всё, Ctrl+C — копировать.\n" +
                 "Отчёты (три последних): Справка → «Папка отчётов».");
         }
 
@@ -575,30 +572,66 @@ namespace ExcelMerger
         // ---------- порядок и состав ----------
 
         /// <summary>Действие клавиатуры для сфокусированного файл-листа. Чистая — под тест.</summary>
-        internal enum ListKeyAction { None, MoveUp, MoveDown, Swallow }
+        internal enum ListKeyAction { None, MoveUp, MoveDown, Copy, SelectAll, Exclude, Swallow }
 
         internal static ListKeyAction ClassifyListKey(Keys keyData)
         {
             if (keyData == (Keys.Alt | Keys.Up)) return ListKeyAction.MoveUp;
             if (keyData == (Keys.Alt | Keys.Down)) return ListKeyAction.MoveDown;
-            if (keyData == Keys.Enter) return ListKeyAction.Swallow; // не запускать слияние из списка
+            if (keyData == (Keys.Control | Keys.C)) return ListKeyAction.Copy;
+            if (keyData == (Keys.Control | Keys.A)) return ListKeyAction.SelectAll;
+            if (keyData == Keys.Delete) return ListKeyAction.Exclude; // снять галочку у выбранных
+            if (keyData == Keys.Enter) return ListKeyAction.Swallow;  // не запускать слияние из списка
             return ListKeyAction.None;
         }
 
         // ProcessCmdKey срабатывает раньше диалоговой обработки (AcceptButton),
-        // поэтому и подавление Enter, и Alt+↑/↓ здесь надёжны.
+        // поэтому и подавление Enter, и модификаторные сочетания здесь надёжны.
+        // Copy/SelectAll допустимы всегда; перестановка и исключение — методы
+        // сами не выполняются во время прогона.
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            if (_list != null && _list.Focused && !_running)
+            if (_list != null && _list.Focused)
             {
                 switch (ClassifyListKey(keyData))
                 {
+                    case ListKeyAction.Copy: CopySelectedRows(); return true;
+                    case ListKeyAction.SelectAll: SelectAllRows(); return true;
+                    case ListKeyAction.Swallow: return true;
                     case ListKeyAction.MoveUp: MoveSelectedFile(false); return true;
                     case ListKeyAction.MoveDown: MoveSelectedFile(true); return true;
-                    case ListKeyAction.Swallow: return true;
+                    case ListKeyAction.Exclude: ExcludeSelectedRows(); return true;
                 }
             }
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private void SelectAllRows()
+        {
+            if (_list.Items.Count == 0)
+                return;
+            _list.BeginUpdate();
+            foreach (ListViewItem item in _list.Items)
+                item.Selected = true;
+            _list.EndUpdate();
+        }
+
+        /// <summary>Delete в списке — снять галочку (исключить) у выбранных файлов.</summary>
+        private void ExcludeSelectedRows()
+        {
+            if (_running || _list.SelectedItems.Count == 0)
+                return;
+            _populating = true;
+            foreach (ListViewItem item in _list.SelectedItems)
+            {
+                item.Checked = false;
+                int idx = item.Index;
+                if (idx >= 0 && idx < _files.Count)
+                    _files[idx].Include = false;
+            }
+            _populating = false;
+            UpdateFoundLabel();
+            UpdateReadiness();
         }
 
         private void MoveSelectedFile(bool down)

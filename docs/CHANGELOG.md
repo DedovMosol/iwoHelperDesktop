@@ -3,6 +3,23 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.10.7] — 2026-07-20
+
+### Added
+- **Keyboard shortcuts in both tools' lists**, handled in `ProcessCmdKey` so they
+  are reliable (before dialog-key/menu handling), unit-tested via pure classifiers:
+  - **PDF Merge**: `Delete` removes the selected pages, `Alt+←/→` reorder,
+    `Ctrl+A` selects all, `Enter` no longer triggers a save from the list.
+  - **Excel Digest**: added `Ctrl+A` (select all) and `Delete` (exclude/uncheck
+    selected); existing `Alt+↑/↓` (reorder), `Ctrl+C` (copy) and `Enter`-suppression
+    consolidated into `ProcessCmdKey` (copy/select-all now also work during a run).
+  - Shortcut hints added to button tooltips and the “How to use” help.
+
+### Fixed
+- PDF reorder/remove could run from the keyboard **during a save** (the buttons
+  were disabled but the methods weren't guarded); `MoveSelected`/`OnRemoveClick`
+  now no-op while busy.
+
 ## [1.10.6] — 2026-07-20
 
 ### Added
