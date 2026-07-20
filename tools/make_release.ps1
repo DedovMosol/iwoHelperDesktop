@@ -61,22 +61,30 @@ if (-not $Publish) {
     exit 0
 }
 
-# Тег
-& git -C $root rev-parse --verify --quiet "refs/tags/$tag" | Out-Null
+# git/gh пишут в stderr при штатных «не найдено» — под ErrorActionPreference=Stop это
+# уронило бы скрипт. Временно переключаемся на Continue и решаем по коду выхода.
+$eap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+
+# Тег (создать и запушить, если ещё нет)
+& git -C $root rev-parse --verify --quiet "refs/tags/$tag" 1>$null 2>$null
 if ($LASTEXITCODE -ne 0) {
     & git -C $root tag $tag
     & git -C $root push origin $tag
-    if ($LASTEXITCODE -ne 0) { throw "не удалось запушить тег $tag" }
+    if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = $eap; throw "не удалось запушить тег $tag" }
 }
 
-# Релиз (создать или обновить), оба подписанных артефакта
-& gh release view $tag *> $null
-if ($LASTEXITCODE -ne 0) {
+# Релиз: создать, если нет; иначе обновить артефакты и заметки.
+& gh release view $tag 1>$null 2>$null
+$releaseExists = ($LASTEXITCODE -eq 0)
+if (-not $releaseExists) {
     & gh release create $tag $exe $installer --title $tag --notes-file $notes
 } else {
     & gh release upload $tag $exe $installer --clobber
     & gh release edit $tag --notes-file $notes
 }
-if ($LASTEXITCODE -ne 0) { throw 'gh release failed' }
+$rc = $LASTEXITCODE
+$ErrorActionPreference = $eap
+if ($rc -ne 0) { throw 'gh release failed' }
 Write-Host "OK: релиз $tag опубликован (portable + установщик)."
 exit 0
