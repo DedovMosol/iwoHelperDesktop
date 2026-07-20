@@ -5,6 +5,11 @@ versions follow [SemVer](https://semver.org/).
 
 ## [1.13.7] — 2026-07-21
 
+### Added
+- **Privacy Policy** ([docs/PRIVACY.md](PRIVACY.md)) making explicit that the app is
+  offline‑only — no telemetry, and your files never leave your computer. Linked from the
+  README and from the **About** dialog.
+
 ### Internal
 - **Shared `PdfToolFormBase` for the two PDF tools (DRY).** The Merge and Split forms now
   inherit common state and behaviour — thumbnail grid, zoom slider + throttle timer,

@@ -61,7 +61,10 @@ namespace ExcelMerger
             Ui.UrlLink(this, "t.me/i_wantout", tg.Right + 6, y, "https://t.me/i_wantout"); y += 24;
             Label gh = Ui.Label(this, "GitHub:", 24, y, Font, Theme.TextPrimary);
             Ui.UrlLink(this, "DedovMosol/iwoHelperDesktop", gh.Right + 6, y,
-                "https://github.com/DedovMosol/iwoHelperDesktop"); y += 34;
+                "https://github.com/DedovMosol/iwoHelperDesktop"); y += 24;
+            Label pp = Ui.Label(this, "Конфиденциальность:", 24, y, Font, Theme.TextPrimary);
+            Ui.UrlLink(this, "политика (данные не покидают ваш ПК)", pp.Right + 6, y,
+                "https://github.com/DedovMosol/iwoHelperDesktop/blob/main/docs/PRIVACY.md"); y += 34;
 
             // --- Донаты: реквизиты можно выделить и скопировать (read-only TextBox) ---
             Ui.Label(this, "Поддержать проект (донаты):", 24, y,
