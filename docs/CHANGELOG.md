@@ -3,6 +3,43 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.9] — 2026-07-21
+
+### Added
+- **New tool: “PDF → Word”** (fourth start‑screen card) — extracts the text layer of a
+  **born‑digital** PDF (saved from Word, “Microsoft Print to PDF”, exported from a browser)
+  into an editable `.docx`. Text is read with **PdfPig** (Apache 2.0, embedded), the `.docx`
+  is written through Word COM. Scanned documents (image pages with no text layer) are not
+  supported yet — a clear message is shown and the file is untouched. `PdfToWordService`,
+  `PdfTextExtract`, `OcrLayout`, `FontNames` and `WordDocxWriter` are unit‑tested;
+  `verify_pdfword.ps1` is an end‑to‑end round‑trip through Word.
+- **Reading‑order layout** for PDF → Word — words with their boxes become lines (by vertical
+  overlap, so thin punctuation such as an em‑dash stays on its line), lines become paragraphs
+  split by any of three signals: a larger vertical gap, a first‑line indent, or a short last
+  line in justified text. Line wraps are joined and hyphen‑wraps de‑hyphenated.
+- **Formatting inherited from the source**, per run: font family (normalised from the PDF
+  font name, no longer hard‑coded Times New Roman), size, bold, italic, colour, and
+  super/subscript. Per paragraph: alignment (left / justify / centre — a centred line such as
+  a page number is centred, not stretched) and the first‑line indent (красная строка), applied
+  only when most paragraphs use one so a flush‑left document is left alone.
+- **Page geometry inherited** — the document page size and margins are taken from the source
+  (page media box and the text bounding box), clamped to sane limits.
+- **Images** — each page’s raster images are extracted (PdfPig `GetImages` → PNG) and placed
+  inline in reading order, sized to their PDF bounds. Formats that do not decode to PNG are
+  skipped; a broken image never derails the document.
+- **Hyperlinks** — link annotations (`GetHyperlinks`) are carried through to real Word
+  hyperlinks over the matching text.
+- **Usage statistics** — a “PDF → Word” counter (with a row in the Statistics window).
+
+### Changed
+- **Action buttons moved to the bottom‑right** in “PDF → Word” (“Convert to Word…”) and
+  “PDF Split” (“Extract…/Split…”), matching “Save PDF…” in “PDF Merge”.
+
+### Notes
+- **Underline is not inherited** — in PDF an underline is a drawn line, not a text attribute,
+  so it cannot be read from the text layer. Tables, multi‑column layouts and bullet/number
+  lists are linearised as plain paragraphs.
+
 ## [1.13.8] — 2026-07-21
 
 ### Added

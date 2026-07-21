@@ -14,18 +14,22 @@ GitHub — no file contents or personal data are ever sent.
 
 ## What the app does with your files
 
-The tools (Excel Digest, PDF Merge, PDF Split, PDF Compression) read the files you
-choose and write results to the folders you choose. This processing runs entirely on
-your machine using local components:
+The tools (Excel Digest, PDF Merge, PDF Split, PDF Compression, PDF → Word) read the
+files you choose and write results to the folders you choose. This processing runs
+entirely on your machine using local components:
 
 - Microsoft Excel / Word automation (COM) for the Excel Digest and its Word cover note,
+  and for writing the `.docx` in PDF → Word,
 - the embedded PdfSharp library for reading and writing PDFs,
+- the embedded PdfPig library for extracting the text layer of born‑digital PDFs (PDF → Word),
 - Ghostscript, run as a separate local process, for optional PDF compression,
 - the built‑in Windows PDF engine (`Windows.Data.Pdf`) for rendering page thumbnails.
 
 **Your documents are never uploaded, copied off your device, or transmitted anywhere.**
 The app does not modify your source files except where you explicitly ask it to write
-output, PDF split never changes the source.
+output; PDF split and PDF → Word never change the source. When converting a PDF to Word,
+any images found in the PDF are written to a temporary folder under your system temp
+directory and deleted as soon as the `.docx` is saved.
 
 ## Data the app stores on your computer
 
