@@ -68,6 +68,7 @@ namespace ExcelMerger
                             double size = 0;
                             bool bold = false, italic = false;
                             int color = 0;
+                            string family = null;
                             if (w.Letters != null && w.Letters.Count > 0)
                             {
                                 UglyToad.PdfPig.Content.Letter first = w.Letters[0];
@@ -77,6 +78,7 @@ namespace ExcelMerger
                                 italic = fn.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0
                                       || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0;
                                 color = ColorArgb(first.Color);
+                                family = FontNames.Clean(fn);
                             }
                             words.Add(new PdfWord
                             {
@@ -88,7 +90,8 @@ namespace ExcelMerger
                                 FontSizePt = size,
                                 Bold = bold,
                                 Italic = italic,
-                                ColorArgb = color
+                                ColorArgb = color,
+                                FontName = family
                             });
                         }
                         OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);

@@ -14,6 +14,7 @@ namespace ExcelMerger
         private const int WdAlignCenter = 1;
         private const int WdAlignJustify = 3;
         private const int WdPageBreak = 7;
+        private const string DefaultFontName = "Times New Roman";
         private const double DefaultFontSize = 12;
         private const double MinFontSize = 5;   // защита от мусорного кегля из PDF
         private const double MaxFontSize = 72;
@@ -33,7 +34,6 @@ namespace ExcelMerger
                 dynamic word = wordObj;
                 ApplyPageSetup(docObj, pages); // размер страницы и поля из источника
                 dynamic sel = word.Selection;
-                sel.Font.Name = "Times New Roman";
 
                 for (int p = 0; p < pages.Count; p++)
                 {
@@ -58,6 +58,7 @@ namespace ExcelMerger
                         // Формат пословно (ран за раном): кегль, полужирный, курсив, цвет.
                         foreach (OcrRun run in paragraph.Runs)
                         {
+                            sel.Font.Name = string.IsNullOrEmpty(run.FontName) ? DefaultFontName : run.FontName;
                             sel.Font.Size = FontSize(run.FontSizePt);
                             sel.Font.Bold = run.Bold ? 1 : 0;
                             sel.Font.Italic = run.Italic ? 1 : 0;

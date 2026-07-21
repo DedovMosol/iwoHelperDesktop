@@ -16,6 +16,7 @@ namespace ExcelMerger
         public bool Bold;
         public bool Italic;
         public int ColorArgb;     // 0xRRGGBB цвет текста; 0 — чёрный
+        public string FontName;   // семейство шрифта; null — по умолчанию
 
         public double MidY { get { return (Top + Bottom) / 2; } }
         public double Height { get { return Top - Bottom; } }
@@ -32,6 +33,7 @@ namespace ExcelMerger
         public bool Bold;
         public bool Italic;
         public int ColorArgb;     // 0xRRGGBB; 0 — чёрный
+        public string FontName;   // семейство шрифта; null — по умолчанию
     }
 
     /// <summary>Абзац: раны с форматом + выравнивание. Text — склейка ранов (единый источник).</summary>
@@ -252,7 +254,8 @@ namespace ExcelMerger
                         FontSizePt = fmts[i].FontSizePt,
                         Bold = fmts[i].Bold,
                         Italic = fmts[i].Italic,
-                        ColorArgb = fmts[i].ColorArgb
+                        ColorArgb = fmts[i].ColorArgb,
+                        FontName = fmts[i].FontName
                     });
                     runFmt = fmts[i];
                 }
@@ -271,7 +274,8 @@ namespace ExcelMerger
         private static bool SameFormat(PdfWord a, PdfWord b)
         {
             return a.FontSizePt == b.FontSizePt && a.Bold == b.Bold
-                && a.Italic == b.Italic && a.ColorArgb == b.ColorArgb;
+                && a.Italic == b.Italic && a.ColorArgb == b.ColorArgb
+                && a.FontName == b.FontName;
         }
 
         /// <summary>
