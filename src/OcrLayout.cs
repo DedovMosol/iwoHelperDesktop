@@ -30,8 +30,24 @@ namespace ExcelMerger
         private const double SameLineFactor = 0.5;
         // Новый абзац — если вертикальный зазор между строками заметно больше обычного.
         private const double ParagraphGapFactor = 1.6;
+        // Отступ первой строки (красная строка) — сигнал нового абзаца: строка начинается
+        // правее общего левого поля больше чем на IndentFactor кегля (или IndentWidthFraction ширины).
+        private const double IndentFactor = 0.75;
+        private const double IndentWidthFraction = 0.03;
+        // Выключка по ширине (justified): если столько строк достаёт до правого поля — считаем
+        // абзац законченным после «короткой» строки (не дотянувшей до поля на ShortLineFraction ширины).
+        private const double JustifiedShare = 0.6;
+        private const double ShortLineFraction = 0.15;
 
-        /// <summary>Слова (в любом порядке) → абзацы в порядке чтения. Чистая — под тест.</summary>
+        /// <summary>
+        /// Слова (в любом порядке) → абзацы в порядке чтения. Чистая — под тест.
+        /// Граница абзаца определяется тремя независимыми сигналами (любой срабатывает):
+        ///  • вертикальный зазор заметно больше обычного (абзацы разделены пустым местом);
+        ///  • красная строка — текущая строка начата правее общего левого поля (отступ);
+        ///  • в justified-тексте предыдущая строка «короткая» (не дотянулась до правого поля —
+        ///    значит была последней в абзаце). Это ключ для Word-экспортов, где абзацы
+        ///    разделены НЕ зазором, а отступом первой строки при равном межстрочном интервале.
+        /// </summary>
         public static List<string> ToParagraphs(IList<PdfWord> words)
         {
             List<Line> lines = ToLines(words);
@@ -39,14 +55,42 @@ namespace ExcelMerger
             if (lines.Count == 0)
                 return paragraphs;
 
+            // Геометрия страницы: левое/правое поле, типичный кегль, признак выключки.
+            double bodyLeft = double.MaxValue, bodyRight = double.MinValue;
+            var heights = new List<double>(lines.Count);
+            foreach (Line ln in lines)
+            {
+                if (ln.Left < bodyLeft) bodyLeft = ln.Left;
+                if (ln.Right > bodyRight) bodyRight = ln.Right;
+                heights.Add(ln.Height);
+            }
+            double em = Median(heights);
+            if (em <= 0) em = 1;
+            double width = bodyRight - bodyLeft;
+            if (width <= 0) width = 1;
+
+            int reaching = 0; // строк, достающих до правого поля (полные строки justified-текста)
+            foreach (Line ln in lines)
+                if (ln.Right >= bodyRight - 0.5 * em) reaching++;
+            bool justified = reaching >= (int)Math.Ceiling(lines.Count * JustifiedShare);
+
             double gapThreshold = ParagraphThreshold(lines);
+            double indentTol = Math.Max(IndentFactor * em, IndentWidthFraction * width);
+            double shortTol = ShortLineFraction * width;
+
             var current = new List<Line>();
             for (int i = 0; i < lines.Count; i++)
             {
-                if (i > 0 && lines[i - 1].MidY - lines[i].MidY > gapThreshold) // зазор вниз
+                if (i > 0)
                 {
-                    paragraphs.Add(JoinLines(current));
-                    current = new List<Line>();
+                    bool gapBreak = lines[i - 1].MidY - lines[i].MidY > gapThreshold;
+                    bool indentBreak = lines[i].Left - bodyLeft > indentTol;
+                    bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
+                    if (gapBreak || indentBreak || shortBreak)
+                    {
+                        paragraphs.Add(JoinLines(current));
+                        current = new List<Line>();
+                    }
                 }
                 current.Add(lines[i]);
             }
@@ -54,10 +98,46 @@ namespace ExcelMerger
             return paragraphs;
         }
 
+        /// <summary>Медиана (нижняя при чётном числе). Чистая.</summary>
+        private static double Median(List<double> values)
+        {
+            if (values.Count == 0)
+                return 0;
+            var copy = new List<double>(values);
+            copy.Sort();
+            return copy[(copy.Count - 1) / 2];
+        }
+
         private sealed class Line
         {
             public readonly List<PdfWord> Words = new List<PdfWord>();
             public double MidY; // центр строки — по слову-затравке (самому верхнему)
+
+            // Геометрия строки. Валидна после сортировки слов слева направо в ToLines:
+            // Words[0] — самое левое; строка всегда непуста.
+            public double Left { get { return Words[0].Left; } }
+
+            public double Right
+            {
+                get
+                {
+                    double r = double.MinValue;
+                    for (int i = 0; i < Words.Count; i++)
+                        if (Words[i].Right > r) r = Words[i].Right;
+                    return r;
+                }
+            }
+
+            public double Height // кегль строки (высота самого крупного слова)
+            {
+                get
+                {
+                    double h = 0;
+                    for (int i = 0; i < Words.Count; i++)
+                        if (Words[i].Height > h) h = Words[i].Height;
+                    return h;
+                }
+            }
         }
 
         private static List<Line> ToLines(IList<PdfWord> words)

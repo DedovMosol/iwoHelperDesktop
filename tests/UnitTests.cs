@@ -109,6 +109,7 @@ namespace ExcelMerger.Tests
             Run("PdfSplitForm.ShouldSuggestCompression: без сжатия и ≥90% исходника", TestSuggestCompression);
             Run("OcrLayout: порядок чтения (сверху вниз, слева направо)", TestOcrReadingOrder);
             Run("OcrLayout: разрыв абзаца по вертикальному зазору", TestOcrParagraphs);
+            Run("OcrLayout: разрыв абзаца по красной строке (justified)", TestOcrParagraphsIndent);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
 
@@ -1454,6 +1455,26 @@ namespace ExcelMerger.Tests
             AssertEqual(2, p.Count, "разрыв абзаца по большому зазору");
             AssertEqual("Aaa Bbb Ccc", p[0], "первый абзац");
             AssertEqual("Ddd", p[1], "второй абзац");
+        }
+
+        private static void TestOcrParagraphsIndent()
+        {
+            // Justified-документ (строки достают до правого поля 100), абзацы разделены
+            // ТОЛЬКО красной строкой (первая строка с отступом) при равном интервале —
+            // как в Word-экспорте. Зазор одинаков всюду, поэтому делить должны отступ и
+            // «короткая» последняя строка, а не зазор.
+            var words = new List<PdfWord>
+            {
+                W("A1a", 15, 180, 85, 10), // абзац A, 1-я строка с отступом, до правого поля (Right 100)
+                W("A2", 0, 168, 100, 10),  // продолжение у левого поля, полная строка
+                W("A3", 0, 156, 40, 10),   // короткая последняя строка абзаца
+                W("B1", 15, 140, 85, 10),  // абзац B, красная строка (отступ) -> новый абзац
+                W("B2", 0, 128, 30, 10)    // короткая последняя строка
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(2, p.Count, "красная строка + короткая строка делят абзацы без зазора");
+            AssertEqual("A1a A2 A3", p[0], "первый абзац");
+            AssertEqual("B1 B2", p[1], "второй абзац");
         }
 
         private static void TestOcrHyphenation()
