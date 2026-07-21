@@ -110,6 +110,8 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: порядок чтения (сверху вниз, слева направо)", TestOcrReadingOrder);
             Run("OcrLayout: разрыв абзаца по вертикальному зазору", TestOcrParagraphs);
             Run("OcrLayout: разрыв абзаца по красной строке (justified)", TestOcrParagraphsIndent);
+            Run("OcrLayout: измерен отступ красной строки", TestOcrIndentDetected);
+            Run("OcrLayout: без отступов -> красная строка не навязывается", TestOcrNoIndentReported);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
 
@@ -1475,6 +1477,37 @@ namespace ExcelMerger.Tests
             AssertEqual(2, p.Count, "красная строка + короткая строка делят абзацы без зазора");
             AssertEqual("A1a A2 A3", p[0], "первый абзац");
             AssertEqual("B1 B2", p[1], "второй абзац");
+        }
+
+        private static void TestOcrIndentDetected()
+        {
+            // Тот же justified-документ с красной строкой: отступ первых строк 15 pt
+            // должен быть измерен (большинство абзацев с отступом).
+            var words = new List<PdfWord>
+            {
+                W("A1a", 15, 180, 85, 10),
+                W("A2", 0, 168, 100, 10),
+                W("A3", 0, 156, 40, 10),
+                W("B1", 15, 140, 85, 10),
+                W("B2", 0, 128, 30, 10)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEqual(2, layout.Paragraphs.Count, "два абзаца");
+            AssertEqual(15.0, layout.FirstLineIndentPt, "измерен отступ красной строки (медиана 15 pt)");
+        }
+
+        private static void TestOcrNoIndentReported()
+        {
+            // Документ без отступов (все строки у левого поля) -> красная строка не навязывается.
+            var words = new List<PdfWord>
+            {
+                W("Aaa", 0, 100, 20, 10),
+                W("Bbb", 0, 88, 20, 10),
+                W("Ccc", 0, 76, 20, 10),
+                W("Ddd", 0, 50, 20, 10)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEqual(0.0, layout.FirstLineIndentPt, "без отступов -> 0 (не портим документ)");
         }
 
         private static void TestOcrHyphenation()
