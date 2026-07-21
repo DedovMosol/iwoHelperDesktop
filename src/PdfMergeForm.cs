@@ -42,45 +42,14 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            Text = Title;
-            Icon pdfIcon = Ui.AppIcon();
-            if (pdfIcon != null)
-                Icon = pdfIcon;
-            Font = new Font("Segoe UI", 9.75f);
-            BackColor = Color.White;
-            StartPosition = FormStartPosition.CenterScreen;
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(780, 620);
-            MinimumSize = new Size(660, 500);
-            ShowInTaskbar = true;
-            WindowChrome.Enable(this, Theme.PdfRed); // красный заголовок на Windows 11
-            AllowDrop = true;
+            InitShell(Title, new Size(780, 620), new Size(660, 500), Theme.PdfRed);
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
-            _tips = new ToolTip();
-
-            MenuStrip menu = HelpMenu.Create(this, ShowHelp);
-            MainMenuStrip = menu;
-            Controls.Add(menu);
+            BuildHeaderWithHome(Title,
+                "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.",
+                Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
 
             int m = HelpMenu.Height;
-            var header = new HeaderBand(Title,
-                "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.",
-                Theme.PdfRed, Theme.PdfRedDark);
-            header.SetBounds(0, m, ClientSize.Width, 76);
-            header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            header.TabIndex = 100;
-            Controls.Add(header);
-            if (_showHub != null)
-            {
-                Button home = Ui.HomeButton(_showHub);
-                home.SetBounds(header.Width - 180, 22, 160, 30);
-                home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                _tips.SetToolTip(home, "Открыть экран выбора инструмента");
-                header.Controls.Add(home);
-            }
-
             int right = ClientSize.Width - 20;
 
             _grid = new PdfPageGrid();
