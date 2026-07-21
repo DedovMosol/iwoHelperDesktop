@@ -112,6 +112,8 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: разрыв абзаца по красной строке (justified)", TestOcrParagraphsIndent);
             Run("OcrLayout: измерен отступ красной строки", TestOcrIndentDetected);
             Run("OcrLayout: без отступов -> красная строка не навязывается", TestOcrNoIndentReported);
+            Run("FontNames.Clean: нормализация имени шрифта", TestFontNames);
+            Run("OcrLayout: смена шрифта -> раны", TestOcrRunsFontFamily);
             Run("OcrLayout: стиль рана (курсив, кегль)", TestOcrParagraphStyle);
             Run("OcrLayout: смешанный формат -> раны", TestOcrRunsMixedFormat);
             Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
@@ -1514,6 +1516,33 @@ namespace ExcelMerger.Tests
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
             AssertEqual(0.0, layout.FirstLineIndentPt, "без отступов -> 0 (не портим документ)");
+        }
+
+        private static void TestFontNames()
+        {
+            AssertEqual("Times New Roman", FontNames.Clean("UBWKNX+Times New Roman,Italic"), "subset + курсив-суффикс");
+            AssertEqual("Arial", FontNames.Clean("ABCDEF+Arial-BoldMT"), "subset + -BoldMT");
+            AssertEqual("Times New Roman", FontNames.Clean("TimesNewRomanPSMT"), "PSMT + слитное имя");
+            AssertEqual("Times New Roman", FontNames.Clean("TimesNewRomanPS-BoldMT"), "PS + -BoldMT");
+            AssertEqual("Courier New", FontNames.Clean("CourierNewPS-BoldMT"), "Courier New");
+            AssertEqual("Arial", FontNames.Clean("ArialMT"), "ArialMT");
+            AssertEqual("Calibri", FontNames.Clean("Calibri"), "уже чистое");
+            AssertTrue(FontNames.Clean(null) == null, "null -> null");
+            AssertTrue(FontNames.Clean("  ") == null, "пусто -> null");
+        }
+
+        private static void TestOcrRunsFontFamily()
+        {
+            // Разные семейства -> разные раны.
+            var words = new List<PdfWord>
+            {
+                new PdfWord { Text = "Ариал", Left = 0, Right = 40, Bottom = 0, Top = 8, FontSizePt = 12, FontName = "Arial" },
+                new PdfWord { Text = "Таймс", Left = 45, Right = 85, Bottom = 0, Top = 8, FontSizePt = 12, FontName = "Times New Roman" }
+            };
+            List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
+            AssertEqual(2, runs.Count, "смена шрифта -> новый ран");
+            AssertEqual("Arial", runs[0].FontName, "первый ран — Arial");
+            AssertEqual("Times New Roman", runs[1].FontName, "второй ран — Times New Roman");
         }
 
         private static void TestOcrParagraphStyle()
