@@ -9,13 +9,22 @@ namespace ExcelMerger
     public class PdfPageText
     {
         public int PageIndex;                              // с нуля
-        public List<string> Paragraphs = new List<string>();
+        public List<OcrParagraph> Paragraphs = new List<OcrParagraph>();
         public double FirstLineIndentPt;                   // отступ красной строки (pt); 0 — без отступов
         public double WidthPt;
         public double HeightPt;
 
         /// <summary>Весь текст страницы: абзацы через пустую строку.</summary>
-        public string Text { get { return string.Join("\n\n", Paragraphs); } }
+        public string Text
+        {
+            get
+            {
+                var parts = new List<string>(Paragraphs.Count);
+                foreach (OcrParagraph p in Paragraphs)
+                    parts.Add(p.Text);
+                return string.Join("\n\n", parts);
+            }
+        }
     }
 
     /// <summary>
@@ -51,13 +60,27 @@ namespace ExcelMerger
                         foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
                         {
                             UglyToad.PdfPig.Core.PdfRectangle bb = w.BoundingBox;
+                            double size = 0;
+                            bool bold = false, italic = false;
+                            if (w.Letters != null && w.Letters.Count > 0)
+                            {
+                                UglyToad.PdfPig.Content.Letter first = w.Letters[0];
+                                size = first.PointSize;
+                                string fn = first.FontName ?? "";
+                                bold = fn.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0;
+                                italic = fn.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0
+                                      || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0;
+                            }
                             words.Add(new PdfWord
                             {
                                 Text = w.Text,
                                 Left = bb.Left,
                                 Right = bb.Right,
                                 Bottom = bb.Bottom,
-                                Top = bb.Top
+                                Top = bb.Top,
+                                FontSizePt = size,
+                                Bold = bold,
+                                Italic = italic
                             });
                         }
                         OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);

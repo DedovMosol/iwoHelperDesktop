@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ExcelMerger
 {
-    /// <summary>Слово с рамкой (координаты PDF, ось Y направлена вверх).</summary>
+    /// <summary>Слово с рамкой (координаты PDF, ось Y направлена вверх) и форматом.</summary>
     internal class PdfWord
     {
         public string Text;
@@ -12,9 +12,21 @@ namespace ExcelMerger
         public double Right;
         public double Bottom;
         public double Top;
+        public double FontSizePt; // кегль (pt); 0 — неизвестно
+        public bool Bold;
+        public bool Italic;
 
         public double MidY { get { return (Top + Bottom) / 2; } }
         public double Height { get { return Top - Bottom; } }
+    }
+
+    /// <summary>Абзац: текст и преобладающее форматирование (кегль, полужирный, курсив).</summary>
+    public class OcrParagraph
+    {
+        public string Text;
+        public double FontSizePt; // 0 — неизвестно, писать кеглем по умолчанию
+        public bool Bold;
+        public bool Italic;
     }
 
     /// <summary>
@@ -25,8 +37,10 @@ namespace ExcelMerger
     /// </summary>
     internal static class OcrLayout
     {
-        // Слово в той же строке, если его вертикальный центр ближе половины высоты к
-        // центру строки (при одинаковом кегле центры строки совпадают).
+        // Слово в той же строке, если рамки перекрываются по вертикали не меньше чем на эту
+        // долю меньшей высоты. Через перекрытие рамок (а не расстояние центров) — чтобы тонкая
+        // пунктуация (тире «—», дефис) с крошечной высотой и смещённым центром не отрывалась
+        // в отдельную строку.
         private const double SameLineFactor = 0.5;
         // Новый абзац — если вертикальный зазор между строками заметно больше обычного.
         private const double ParagraphGapFactor = 1.6;
@@ -47,14 +61,18 @@ namespace ExcelMerger
         /// <summary>Итог разбора страницы: абзацы и измеренный отступ первой строки (0 — без красной строки).</summary>
         internal sealed class OcrPageLayout
         {
-            public List<string> Paragraphs = new List<string>();
+            public List<OcrParagraph> Paragraphs = new List<OcrParagraph>();
             public double FirstLineIndentPt; // pt (PDF = pt), 0 если документ без отступов
         }
 
         /// <summary>Слова (в любом порядке) → абзацы в порядке чтения (только текст). Чистая — под тест.</summary>
         public static List<string> ToParagraphs(IList<PdfWord> words)
         {
-            return Analyze(words).Paragraphs;
+            List<OcrParagraph> paras = Analyze(words).Paragraphs;
+            var texts = new List<string>(paras.Count);
+            foreach (OcrParagraph p in paras)
+                texts.Add(p.Text);
+            return texts;
         }
 
         /// <summary>
@@ -123,7 +141,9 @@ namespace ExcelMerger
             var indents = new List<double>();
             foreach (List<Line> g in groups)
             {
-                result.Paragraphs.Add(JoinLines(g));
+                var para = new OcrParagraph { Text = JoinLines(g) };
+                ApplyDominantStyle(g, para);
+                result.Paragraphs.Add(para);
                 double ind = g[0].Left - bodyLeft;
                 if (ind > indentTol && ind <= maxIndent)
                     indents.Add(ind);
@@ -142,6 +162,28 @@ namespace ExcelMerger
             var copy = new List<double>(values);
             copy.Sort();
             return copy[(copy.Count - 1) / 2];
+        }
+
+        /// <summary>
+        /// Преобладающий стиль абзаца: кегль — медиана по словам; полужирный/курсив —
+        /// если так набрано большинство слов. Пословный формат (редкое смешение) сводим к
+        /// абзацному — это покрывает типовые Word-экспорты (курсивные строки, единый кегль).
+        /// </summary>
+        private static void ApplyDominantStyle(List<Line> group, OcrParagraph para)
+        {
+            var sizes = new List<double>();
+            int bold = 0, italic = 0, n = 0;
+            foreach (Line ln in group)
+                foreach (PdfWord w in ln.Words)
+                {
+                    n++;
+                    if (w.FontSizePt > 0) sizes.Add(w.FontSizePt);
+                    if (w.Bold) bold++;
+                    if (w.Italic) italic++;
+                }
+            para.FontSizePt = sizes.Count > 0 ? Median(sizes) : 0;
+            para.Bold = n > 0 && bold * 2 > n;
+            para.Italic = n > 0 && italic * 2 > n;
         }
 
         private sealed class Line
@@ -174,6 +216,41 @@ namespace ExcelMerger
                     return h;
                 }
             }
+
+            public double Top // верх строки (максимум по словам)
+            {
+                get
+                {
+                    double t = double.MinValue;
+                    for (int i = 0; i < Words.Count; i++)
+                        if (Words[i].Top > t) t = Words[i].Top;
+                    return t;
+                }
+            }
+
+            public double Bottom // низ строки (минимум по словам)
+            {
+                get
+                {
+                    double b = double.MaxValue;
+                    for (int i = 0; i < Words.Count; i++)
+                        if (Words[i].Bottom < b) b = Words[i].Bottom;
+                    return b;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Принадлежит ли слово строке: рамки перекрываются по вертикали не меньше чем на
+        /// половину меньшей высоты. Устойчиво к тонкой пунктуации (её маленькая рамка целиком
+        /// лежит внутри рамки текста, поэтому перекрытие большое относительно её высоты).
+        /// </summary>
+        private static bool SameLine(Line line, PdfWord w)
+        {
+            double overlap = Math.Min(line.Top, w.Top) - Math.Max(line.Bottom, w.Bottom);
+            double minH = Math.Min(line.Height, w.Height);
+            if (minH <= 0) minH = 1;
+            return overlap >= SameLineFactor * minH;
         }
 
         private static List<Line> ToLines(IList<PdfWord> words)
@@ -196,8 +273,7 @@ namespace ExcelMerger
             Line line = null;
             foreach (PdfWord w in sorted)
             {
-                double tol = SameLineFactor * Math.Max(w.Height, 1.0);
-                if (line != null && Math.Abs(w.MidY - line.MidY) <= tol)
+                if (line != null && SameLine(line, w))
                 {
                     line.Words.Add(w);
                 }
