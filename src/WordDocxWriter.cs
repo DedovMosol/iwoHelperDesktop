@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace ExcelMerger
 {
     /// <summary>
-    /// Запись извлечённого текста born-digital PDF в .docx через COM Word: абзацы в
-    /// порядке чтения, разрыв страницы между страницами PDF. Каркас Word (открытие/
-    /// сохранение/закрытие) — общий <see cref="WordCom"/> (DRY). Вызывать в STA-потоке.
+    /// Запись извлечённого born-digital PDF в .docx через COM Word: абзацы и изображения в
+    /// порядке чтения (сверху вниз), разрыв страницы между страницами PDF. Каркас Word
+    /// (открытие/сохранение/закрытие) — общий <see cref="WordCom"/> (DRY). Вызывать в STA-потоке.
     /// </summary>
     public static class WordDocxWriter
     {
@@ -21,56 +22,122 @@ namespace ExcelMerger
         private const double MinPagePt = 72;    // 1"; разумные пределы размера страницы
         private const double MaxPagePt = 1584;  // 22" — максимум Word
 
-        /// <summary>Пишет .docx из абзацев страниц. Занятый файл/нет Word — MergeException.</summary>
+        /// <summary>Пишет .docx из абзацев и изображений страниц. Занятый файл/нет Word — MergeException.</summary>
         public static void Write(IList<PdfPageText> pages, string path)
         {
             if (pages == null)
                 throw new ArgumentNullException("pages");
 
             double firstLineIndent = DocumentIndent(pages); // pt; 0 — документ без красной строки
-
-            WordCom.WriteDocx(path, "Файл Word", delegate(object wordObj, object docObj)
+            string tempDir = Path.Combine(Path.GetTempPath(), "iwo_img_" + Guid.NewGuid().ToString("N"));
+            try
             {
-                dynamic word = wordObj;
-                ApplyPageSetup(docObj, pages); // размер страницы и поля из источника
-                dynamic sel = word.Selection;
-
-                for (int p = 0; p < pages.Count; p++)
+                Directory.CreateDirectory(tempDir);
+                int imgIndex = 0;
+                WordCom.WriteDocx(path, "Файл Word", delegate(object wordObj, object docObj)
                 {
-                    if (p > 0)
-                        sel.InsertBreak(WdPageBreak); // разрыв страницы между страницами PDF
-                    List<OcrParagraph> paragraphs = pages[p].Paragraphs;
-                    if (paragraphs == null)
-                        continue;
-                    foreach (OcrParagraph paragraph in paragraphs)
-                    {
-                        // Выравнивание из источника; центрированное — без красной строки.
-                        int align; double indent;
-                        switch (paragraph.Alignment)
-                        {
-                            case OcrAlignment.Center: align = WdAlignCenter; indent = 0; break;
-                            case OcrAlignment.Left: align = WdAlignLeft; indent = firstLineIndent; break;
-                            default: align = WdAlignJustify; indent = firstLineIndent; break;
-                        }
-                        sel.ParagraphFormat.Alignment = align;
-                        sel.ParagraphFormat.FirstLineIndent = indent;
+                    dynamic word = wordObj;
+                    ApplyPageSetup(docObj, pages); // размер страницы и поля из источника
+                    dynamic sel = word.Selection;
 
-                        // Формат пословно (ран за раном): кегль, полужирный, курсив, цвет.
-                        foreach (OcrRun run in paragraph.Runs)
+                    for (int p = 0; p < pages.Count; p++)
+                    {
+                        if (p > 0)
+                            sel.InsertBreak(WdPageBreak); // разрыв страницы между страницами PDF
+                        foreach (Block blk in OrderedBlocks(pages[p]))
                         {
-                            sel.Font.Name = string.IsNullOrEmpty(run.FontName) ? DefaultFontName : run.FontName;
-                            sel.Font.Size = FontSize(run.FontSizePt);
-                            sel.Font.Bold = run.Bold ? 1 : 0;
-                            sel.Font.Italic = run.Italic ? 1 : 0;
-                            sel.Font.Superscript = run.Super ? 1 : 0;
-                            sel.Font.Subscript = run.Sub ? 1 : 0;
-                            sel.Font.Color = ToBgr(run.ColorArgb);
-                            sel.TypeText(run.Text);
+                            if (blk.Paragraph != null)
+                                WriteParagraph(sel, blk.Paragraph, firstLineIndent);
+                            else
+                                InsertImage(sel, blk.Image, tempDir, ref imgIndex);
                         }
-                        sel.TypeParagraph();
                     }
-                }
-            });
+                });
+            }
+            finally
+            {
+                try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+
+        /// <summary>Блок содержимого страницы: абзац или изображение (одно из полей задано).</summary>
+        private sealed class Block
+        {
+            public OcrParagraph Paragraph;
+            public OcrImage Image;
+            public double Top; // верх блока — для порядка чтения
+        }
+
+        /// <summary>Абзацы и изображения страницы в порядке чтения (сверху вниз по Y).</summary>
+        private static List<Block> OrderedBlocks(PdfPageText page)
+        {
+            var blocks = new List<Block>();
+            if (page.Paragraphs != null)
+                foreach (OcrParagraph par in page.Paragraphs)
+                    blocks.Add(new Block { Paragraph = par, Top = par.TopPt });
+            if (page.Images != null)
+                foreach (OcrImage img in page.Images)
+                    blocks.Add(new Block { Image = img, Top = img.TopPt });
+            blocks.Sort(delegate(Block a, Block b) { return b.Top.CompareTo(a.Top); }); // ось Y вверх: больше Top — выше
+            return blocks;
+        }
+
+        private static void WriteParagraph(dynamic sel, OcrParagraph paragraph, double firstLineIndent)
+        {
+            // Выравнивание из источника; центрированное — без красной строки.
+            int align; double indent;
+            switch (paragraph.Alignment)
+            {
+                case OcrAlignment.Center: align = WdAlignCenter; indent = 0; break;
+                case OcrAlignment.Left: align = WdAlignLeft; indent = firstLineIndent; break;
+                default: align = WdAlignJustify; indent = firstLineIndent; break;
+            }
+            sel.ParagraphFormat.Alignment = align;
+            sel.ParagraphFormat.FirstLineIndent = indent;
+
+            // Формат пословно (ран за раном): шрифт, кегль, полужирный, курсив, над/подстрочный, цвет.
+            foreach (OcrRun run in paragraph.Runs)
+            {
+                sel.Font.Name = string.IsNullOrEmpty(run.FontName) ? DefaultFontName : run.FontName;
+                sel.Font.Size = FontSize(run.FontSizePt);
+                sel.Font.Bold = run.Bold ? 1 : 0;
+                sel.Font.Italic = run.Italic ? 1 : 0;
+                sel.Font.Superscript = run.Super ? 1 : 0;
+                sel.Font.Subscript = run.Sub ? 1 : 0;
+                sel.Font.Color = ToBgr(run.ColorArgb);
+                sel.TypeText(run.Text);
+            }
+            sel.TypeParagraph();
+        }
+
+        /// <summary>
+        /// Вставляет изображение inline в текущую позицию и переводит строку; размер — по рамке
+        /// PDF (pt), с защитой пределов. Сбой одной картинки не срывает документ. PNG кладётся во
+        /// временный файл (встраивается в .docx при вставке), временная папка чистится в Write.
+        /// </summary>
+        private static void InsertImage(dynamic sel, OcrImage img, string tempDir, ref int index)
+        {
+            if (img == null || img.Png == null || img.Png.Length == 0)
+                return;
+            string file = Path.Combine(tempDir, "img_" + index + ".png");
+            index++;
+            try
+            {
+                File.WriteAllBytes(file, img.Png);
+                sel.ParagraphFormat.Alignment = WdAlignLeft;
+                sel.ParagraphFormat.FirstLineIndent = 0;
+                dynamic shape = sel.InlineShapes.AddPicture(file, false, true); // встроить в документ
+                shape.LockAspectRatio = 0; // msoFalse — задаём оба размера
+                shape.Width = ClampSize(img.WidthPt);
+                shape.Height = ClampSize(img.HeightPt);
+                sel.TypeParagraph(); // изображение на своей строке
+            }
+            catch { } // одна картинка не должна сорвать конвертацию
+        }
+
+        private static double ClampSize(double pt)
+        {
+            return pt < 1 ? 1 : (pt > MaxPagePt ? MaxPagePt : pt);
         }
 
         /// <summary>Кегль рана в допустимых пределах; иначе — по умолчанию.</summary>

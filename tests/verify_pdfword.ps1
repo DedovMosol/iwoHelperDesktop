@@ -2,6 +2,7 @@
 # text is extracted (PdfTextExtract + OcrLayout) and written to .docx (WordDocxWriter),
 # then read back via Word COM. Requires installed Word.
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
 $root = Split-Path $PSScriptRoot
 $fails = @()
 New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot 'out') | Out-Null
@@ -82,6 +83,21 @@ $docx3 = Join-Path $PSScriptRoot 'out\extracted_fmt.docx'
 Remove-Item $docx3 -Force -ErrorAction SilentlyContinue
 [void][ExcelMerger.PdfToWordService]::Convert($pdf3, $docx3)
 
+# 2d) Изображение из PDF должно попасть в .docx как встроенная картинка.
+$png = Join-Path $PSScriptRoot 'out\sq.png'
+$bmp = New-Object System.Drawing.Bitmap(80, 60); $gr = [System.Drawing.Graphics]::FromImage($bmp)
+$gr.Clear([System.Drawing.Color]::Blue); $gr.Dispose(); $bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+$pdf4 = Join-Path $PSScriptRoot 'out\wordsrc_img.pdf'
+Remove-Item $pdf4 -Force -ErrorAction SilentlyContinue
+$doc4 = New-Object PdfSharp.Pdf.PdfDocument; $p4 = $doc4.AddPage(); $p4.Width = 595; $p4.Height = 842
+$g4 = [PdfSharp.Drawing.XGraphics]::FromPdfPage($p4)
+$g4.DrawString('Рисунок ниже', (New-Object PdfSharp.Drawing.XFont('Times New Roman', 12)), [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint(70, 90)))
+$xi = [PdfSharp.Drawing.XImage]::FromFile($png); $g4.DrawImage($xi, 70, 120, 80, 60); $xi.Dispose()
+$g4.Dispose(); $doc4.Save($pdf4); $doc4.Dispose()
+$docx4 = Join-Path $PSScriptRoot 'out\extracted_img.docx'
+Remove-Item $docx4 -Force -ErrorAction SilentlyContinue
+[void][ExcelMerger.PdfToWordService]::Convert($pdf4, $docx4)
+
 # 3) Read the .docx back via Word.
 $word = New-Object -ComObject Word.Application
 $word.Visible = $false
@@ -128,6 +144,11 @@ try {
     if (-not $hasRed) { $fails += 'красный цвет (пословно) не перенесён в docx' }
     if (-not $hasBold) { $fails += 'полужирный (пословно) не перенесён в docx' }
     $wdoc3.Close($false)
+
+    # Изображение вставлено в .docx.
+    $wdoc4 = $word.Documents.Open($docx4, $false, $true)
+    if ([int]$wdoc4.InlineShapes.Count -lt 1) { $fails += 'изображение не вставлено в docx' }
+    $wdoc4.Close($false)
 }
 finally {
     $word.Quit()
