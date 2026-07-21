@@ -19,6 +19,7 @@ namespace ExcelMerger
         public string FontName;   // семейство шрифта; null — по умолчанию
         public bool Super;        // надстрочный (мельче и приподнят над базовой линией)
         public bool Sub;          // подстрочный (мельче и опущен)
+        public string Uri;        // гиперссылка, если слово внутри её рамки; иначе null
 
         public double MidY { get { return (Top + Bottom) / 2; } }
         public double Height { get { return Top - Bottom; } }
@@ -38,6 +39,7 @@ namespace ExcelMerger
         public string FontName;   // семейство шрифта; null — по умолчанию
         public bool Super;        // надстрочный
         public bool Sub;          // подстрочный
+        public string Uri;        // гиперссылка рана; null — обычный текст
     }
 
     /// <summary>Абзац: раны с форматом + выравнивание. Text — склейка ранов (единый источник).</summary>
@@ -268,7 +270,8 @@ namespace ExcelMerger
                         ColorArgb = fmts[i].ColorArgb,
                         FontName = fmts[i].FontName,
                         Super = fmts[i].Super,
-                        Sub = fmts[i].Sub
+                        Sub = fmts[i].Sub,
+                        Uri = fmts[i].Uri
                     });
                     runFmt = fmts[i];
                 }
@@ -288,7 +291,8 @@ namespace ExcelMerger
         {
             return a.FontSizePt == b.FontSizePt && a.Bold == b.Bold
                 && a.Italic == b.Italic && a.ColorArgb == b.ColorArgb
-                && a.FontName == b.FontName && a.Super == b.Super && a.Sub == b.Sub;
+                && a.FontName == b.FontName && a.Super == b.Super && a.Sub == b.Sub
+                && a.Uri == b.Uri;
         }
 
         /// <summary>
