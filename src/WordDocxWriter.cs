@@ -37,6 +37,7 @@ namespace ExcelMerger
                 WordCom.WriteDocx(path, "Файл Word", delegate(object wordObj, object docObj)
                 {
                     dynamic word = wordObj;
+                    dynamic doc = docObj;
                     ApplyPageSetup(docObj, pages); // размер страницы и поля из источника
                     dynamic sel = word.Selection;
 
@@ -47,7 +48,7 @@ namespace ExcelMerger
                         foreach (Block blk in OrderedBlocks(pages[p]))
                         {
                             if (blk.Paragraph != null)
-                                WriteParagraph(sel, blk.Paragraph, firstLineIndent);
+                                WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent);
                             else
                                 InsertImage(sel, blk.Image, tempDir, ref imgIndex);
                         }
@@ -82,7 +83,7 @@ namespace ExcelMerger
             return blocks;
         }
 
-        private static void WriteParagraph(dynamic sel, OcrParagraph paragraph, double firstLineIndent)
+        private static void WriteParagraph(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent)
         {
             // Выравнивание из источника; центрированное — без красной строки.
             int align; double indent;
@@ -105,7 +106,17 @@ namespace ExcelMerger
                 sel.Font.Superscript = run.Super ? 1 : 0;
                 sel.Font.Subscript = run.Sub ? 1 : 0;
                 sel.Font.Color = ToBgr(run.ColorArgb);
-                sel.TypeText(run.Text);
+                if (string.IsNullOrEmpty(run.Uri))
+                {
+                    sel.TypeText(run.Text);
+                }
+                else
+                {
+                    int start = (int)sel.Range.End;
+                    sel.TypeText(run.Text);
+                    try { doc.Hyperlinks.Add(doc.Range(start, (int)sel.Range.End), run.Uri); }
+                    catch { } // не удалось оформить ссылку — текст всё равно на месте
+                }
             }
             sel.TypeParagraph();
         }
