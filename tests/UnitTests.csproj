@@ -31,6 +31,13 @@
     <Reference Include="PdfSharp">
       <HintPath>..\build\PdfSharp.dll</HintPath>
     </Reference>
+    <!-- PdfPig (для компиляции src\PdfTextExtract.cs); резолв в рантайме — из ресурсов exe -->
+    <Reference Include="UglyToad.PdfPig">
+      <HintPath>..\build\pdfpig\UglyToad.PdfPig.dll</HintPath>
+    </Reference>
+    <Reference Include="UglyToad.PdfPig.Core">
+      <HintPath>..\build\pdfpig\UglyToad.PdfPig.Core.dll</HintPath>
+    </Reference>
     <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.19041.1" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
