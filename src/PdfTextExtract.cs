@@ -13,6 +13,11 @@ namespace ExcelMerger
         public double FirstLineIndentPt;                   // отступ красной строки (pt); 0 — без отступов
         public double WidthPt;
         public double HeightPt;
+        // Поля страницы из рамок текста (pt); 0 — на странице не было текста.
+        public double LeftMarginPt;
+        public double RightMarginPt;
+        public double TopMarginPt;
+        public double BottomMarginPt;
 
         /// <summary>Весь текст страницы: абзацы через пустую строку.</summary>
         public string Text
@@ -87,14 +92,16 @@ namespace ExcelMerger
                             });
                         }
                         OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-                        pages.Add(new PdfPageText
+                        var pt = new PdfPageText
                         {
                             PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
                             Paragraphs = layout.Paragraphs,
                             FirstLineIndentPt = layout.FirstLineIndentPt,
                             WidthPt = page.Width,
                             HeightPt = page.Height
-                        });
+                        };
+                        SetMargins(pt, words, page.Width, page.Height);
+                        pages.Add(pt);
                     }
                     return pages;
                 }
@@ -104,6 +111,25 @@ namespace ExcelMerger
                 throw new MergeException("Не удалось извлечь текст из «" + Path.GetFileName(path) +
                     "»: файл повреждён, зашифрован или без прав на извлечение. (" + ex.Message + ")");
             }
+        }
+
+        /// <summary>Поля страницы из рамок текста (pt, ось Y вверх). Пустая страница — поля 0.</summary>
+        private static void SetMargins(PdfPageText pt, List<PdfWord> words, double pageW, double pageH)
+        {
+            if (words.Count == 0)
+                return;
+            double minL = double.MaxValue, maxR = double.MinValue, minB = double.MaxValue, maxT = double.MinValue;
+            foreach (PdfWord w in words)
+            {
+                if (w.Left < minL) minL = w.Left;
+                if (w.Right > maxR) maxR = w.Right;
+                if (w.Bottom < minB) minB = w.Bottom;
+                if (w.Top > maxT) maxT = w.Top;
+            }
+            pt.LeftMarginPt = minL;
+            pt.RightMarginPt = pageW - maxR;
+            pt.TopMarginPt = pageH - maxT;
+            pt.BottomMarginPt = minB;
         }
 
         /// <summary>Цвет буквы PdfPig → 0xRRGGBB; null/чёрный → 0.</summary>

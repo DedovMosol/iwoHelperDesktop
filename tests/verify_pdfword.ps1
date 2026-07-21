@@ -107,6 +107,12 @@ try {
     if ($nonEmpty -lt 2) { $fails += "отступный документ дал абзацев: $nonEmpty (ожидалось >=2)" }
     if ($maxIndent -le 10) { $fails += "красная строка не применена (FirstLineIndent=$maxIndent pt)" }
     if (-not $anyItalic16) { $fails += 'курсив 16pt не перенесён в docx' }
+    # Поля страницы унаследованы: исходник A4 (595) с полями 70.
+    $ps2 = $wdoc2.PageSetup
+    $pw2 = [math]::Round([double]$ps2.PageWidth)
+    if ($pw2 -lt 590 -or $pw2 -gt 600) { $fails += "ширина страницы не унаследована: $pw2" }
+    $lm2 = [double]$ps2.LeftMargin
+    if ($lm2 -lt 60 -or $lm2 -gt 80) { $fails += "левое поле не унаследовано: $lm2" }
     $wdoc2.Close($false)
 
     # Центрирование + пословный формат: центрированный абзац, красное слово (BGR 220), полужирное слово.

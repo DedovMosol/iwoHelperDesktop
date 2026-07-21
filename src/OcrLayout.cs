@@ -22,7 +22,7 @@ namespace ExcelMerger
     }
 
     /// <summary>Выравнивание абзаца в выводе.</summary>
-    public enum OcrAlignment { Justify, Center }
+    public enum OcrAlignment { Left, Justify, Center }
 
     /// <summary>Ран — отрезок абзаца с единым форматом (кегль, полужирный, курсив, цвет).</summary>
     public class OcrRun
@@ -172,7 +172,7 @@ namespace ExcelMerger
                 result.Paragraphs.Add(new OcrParagraph
                 {
                     Runs = BuildRuns(g),
-                    Alignment = DetectAlignment(g, bodyLeft, bodyRight, width)
+                    Alignment = DetectAlignment(g, bodyLeft, bodyRight, width, em)
                 });
                 double ind = g[0].Left - bodyLeft;
                 if (ind > indentTol && ind <= maxIndent)
@@ -275,22 +275,36 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Выравнивание абзаца: Center, если КАЖДАЯ строка центрирована — левый и правый зазоры
-        /// до полей заметны и почти равны (номер страницы, заголовок по центру). Иначе Justify.
+        /// Выравнивание абзаца из геометрии:
+        ///  • Center — КАЖДАЯ строка с заметными и почти равными полями слева/справа
+        ///    (номер страницы, заголовок по центру);
+        ///  • Justify — многострочный абзац, где НЕпоследние строки достают до правого поля
+        ///    (последняя строка justified-абзаца всегда рваная, её не учитываем);
+        ///  • иначе Left (рваный справа / одиночная строка — визуально как по левому краю).
         /// </summary>
-        private static OcrAlignment DetectAlignment(List<Line> group, double bodyLeft, double bodyRight, double width)
+        private static OcrAlignment DetectAlignment(List<Line> group, double bodyLeft, double bodyRight, double width, double em)
         {
             double minGap = CenterMinGapFraction * width;
             double balance = CenterBalanceFraction * width;
+            bool allCentered = true;
             foreach (Line ln in group)
             {
-                double leftGap = ln.Left - bodyLeft;
-                double rightGap = bodyRight - ln.Right;
-                bool centered = leftGap > minGap && rightGap > minGap && Math.Abs(leftGap - rightGap) <= balance;
-                if (!centered)
+                double lg = ln.Left - bodyLeft, rg = bodyRight - ln.Right;
+                if (!(lg > minGap && rg > minGap && Math.Abs(lg - rg) <= balance)) { allCentered = false; break; }
+            }
+            if (allCentered)
+                return OcrAlignment.Center;
+
+            if (group.Count >= 2)
+            {
+                double reachTol = 0.5 * em;
+                int nonLast = group.Count - 1, reach = 0;
+                for (int i = 0; i < nonLast; i++)
+                    if (group[i].Right >= bodyRight - reachTol) reach++;
+                if (reach >= (int)Math.Ceiling(nonLast * JustifiedShare))
                     return OcrAlignment.Justify;
             }
-            return OcrAlignment.Center;
+            return OcrAlignment.Left;
         }
 
         private sealed class Line

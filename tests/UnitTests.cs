@@ -115,6 +115,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: стиль рана (курсив, кегль)", TestOcrParagraphStyle);
             Run("OcrLayout: смешанный формат -> раны", TestOcrRunsMixedFormat);
             Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
+            Run("OcrLayout: рваный абзац по левому краю", TestOcrLeftAligned);
             Run("OcrLayout: центрированная строка", TestOcrCentered);
             Run("OcrLayout: тонкое тире остаётся в строке", TestOcrThinDashStaysOnLine);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
@@ -1559,6 +1560,21 @@ namespace ExcelMerger.Tests
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
             AssertEqual(1, layout.Paragraphs[0].Runs.Count, "один ран");
             AssertEqual(0xFF0000, layout.Paragraphs[0].Runs[0].ColorArgb, "цвет рана сохранён");
+        }
+
+        private static void TestOcrLeftAligned()
+        {
+            // Рваный справа абзац (строки не достают до правого поля) -> по левому краю,
+            // а не насильно по ширине. Полная строка ниже задаёт правое поле (100).
+            var words = new List<PdfWord>
+            {
+                W("aaaa", 0, 100, 60, 8),   // абзац 1, строка 1: Right 60
+                W("bbbb", 0, 88, 55, 8),    // абзац 1, строка 2: Right 55 (обе рваные)
+                W("cccc", 0, 50, 100, 8)    // абзац 2: полная строка Right 100 (задаёт поле)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEqual(2, layout.Paragraphs.Count, "два абзаца");
+            AssertEqual(OcrAlignment.Left, layout.Paragraphs[0].Alignment, "рваный абзац — по левому краю");
         }
 
         private static void TestOcrCentered()
