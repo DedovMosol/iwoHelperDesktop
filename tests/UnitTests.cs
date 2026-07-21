@@ -105,6 +105,7 @@ namespace ExcelMerger.Tests
             Run("PdfPageGrid.StaleKeys: вытесняются только отсутствующие в keep", TestGridStaleKeys);
             Run("PdfPageGrid.LowerBound: бинарный поиск по монотонному предикату", TestLowerBound);
             Run("PdfPageGrid.VisibleRange: видимый диапазон по Top/Bottom", TestVisibleRange);
+            Run("PdfSplitForm.ShouldSuggestCompression: без сжатия и ≥90% исходника", TestSuggestCompression);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -1381,6 +1382,23 @@ namespace ExcelMerger.Tests
             // Пустой список.
             PdfPageGrid.VisibleRange(0, topOf, bottomOf, 30, out first, out last);
             AssertTrue(first > last, "нет элементов -> пусто");
+        }
+
+        private static void TestSuggestCompression()
+        {
+            long mb = 1024L * 1024;
+            AssertTrue(PdfSplitForm.ShouldSuggestCompression(CompressionLevel.None, 10 * mb, 95 * mb / 10),
+                "без сжатия, 9.5МБ из 10МБ -> подсказать");
+            AssertTrue(!PdfSplitForm.ShouldSuggestCompression(CompressionLevel.None, 10 * mb, 3 * mb),
+                "3МБ из 10МБ -> не подсказывать");
+            AssertTrue(!PdfSplitForm.ShouldSuggestCompression(CompressionLevel.Good, 10 * mb, 95 * mb / 10),
+                "уже со сжатием -> не подсказывать");
+            AssertTrue(!PdfSplitForm.ShouldSuggestCompression(CompressionLevel.None, 700 * 1024, 690 * 1024),
+                "мелкий файл (<1МБ) -> не подсказывать");
+            AssertTrue(PdfSplitForm.ShouldSuggestCompression(CompressionLevel.None, 10 * mb, 9 * mb),
+                "ровно 90% -> подсказать (граница)");
+            AssertTrue(!PdfSplitForm.ShouldSuggestCompression(CompressionLevel.None, 0, 5 * mb),
+                "размер исходника неизвестен (0) -> не подсказывать");
         }
 
         private static void Run(string name, Action test)
