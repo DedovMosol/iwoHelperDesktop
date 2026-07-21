@@ -1,0 +1,242 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Threading;
+using System.Windows.Forms;
+
+namespace ExcelMerger
+{
+    /// <summary>
+    /// Инструмент «PDF → Word»: извлекает текстовый слой цифрового PDF (сохранённого из
+    /// Word, «Microsoft Print to PDF» и т.п.) в редактируемый .docx. Страницы источника
+    /// показаны сеткой (<see cref="PdfPageGrid"/>). Сканы (без текстового слоя) пока не
+    /// поддержаны — распознавание (OCR) появится позже, для скана будет понятное сообщение.
+    /// На базе <see cref="PdfToolFormBase"/> (сетка/зум/статус/закрытие/освобождение — DRY).
+    /// </summary>
+    public class OcrForm : PdfToolFormBase
+    {
+        private const string Title = "PDF → Word";
+
+        private string _sourcePath;
+        private int _pageCount;
+        private Button _btnOpen;
+        private Button _btnConvert;
+
+        public OcrForm() : this(null) { }
+
+        public OcrForm(Action showHub) : base(showHub)
+        {
+            BuildUi();
+            UpdateControls();
+        }
+
+        private void BuildUi()
+        {
+            Text = Title;
+            Icon icon = Ui.AppIcon();
+            if (icon != null)
+                Icon = icon;
+            Font = new Font("Segoe UI", 9.75f);
+            BackColor = Color.White;
+            StartPosition = FormStartPosition.CenterScreen;
+            AutoScaleDimensions = new SizeF(96f, 96f);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            ClientSize = new Size(800, 620);
+            MinimumSize = new Size(700, 520);
+            ShowInTaskbar = true;
+            WindowChrome.Enable(this, Theme.WordViolet); // фиолетовый заголовок на Windows 11
+            AllowDrop = true;
+            DragEnter += OnFileDragEnter;
+            DragDrop += OnFileDragDrop;
+            _tips = new ToolTip();
+
+            MenuStrip menu = HelpMenu.Create(this, ShowHelp);
+            MainMenuStrip = menu;
+            Controls.Add(menu);
+
+            int m = HelpMenu.Height;
+            var header = new HeaderBand(Title,
+                "Извлеките текст цифрового PDF (сохранённого из Word и т.п.) в редактируемый .docx.",
+                Theme.WordViolet, Theme.WordVioletDark);
+            header.SetBounds(0, m, ClientSize.Width, 76);
+            header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            header.TabIndex = 100;
+            Controls.Add(header);
+            if (_showHub != null)
+            {
+                Button home = Ui.HomeButton(_showHub);
+                home.SetBounds(header.Width - 180, 22, 160, 30);
+                home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                _tips.SetToolTip(home, "Открыть экран выбора инструмента");
+                header.Controls.Add(home);
+            }
+
+            int right = ClientSize.Width - 20;
+            int panelW = 210;
+            int gridBottom = ClientSize.Height - 112;
+
+            _grid = new PdfPageGrid();
+            _grid.AllowReorder = false; // только показ страниц источника
+            _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
+            _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            Controls.Add(_grid);
+
+            int px = right - panelW + 10;
+            int pw = panelW - 10;
+            _btnOpen = new RoundedButton(false);
+            _btnOpen.Text = "Открыть PDF…";
+            _btnOpen.SetBounds(px, m + 84, pw, 32);
+            _btnOpen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnOpen.Click += OnOpenClick;
+            _tips.SetToolTip(_btnOpen, "Файл также можно перетащить в окно");
+            Controls.Add(_btnOpen);
+
+            _btnConvert = new RoundedButton(true);
+            _btnConvert.Text = "Конвертировать в Word…";
+            _btnConvert.SetBounds(px, m + 128, pw, 38);
+            _btnConvert.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnConvert.Click += OnConvertClick;
+            _tips.SetToolTip(_btnConvert, "Извлечь текст в редактируемый .docx");
+            Controls.Add(_btnConvert);
+            AcceptButton = _btnConvert;
+
+            BuildBottomStrip(right, "Откройте цифровой PDF — кнопкой или перетащив его в окно.", false);
+        }
+
+        private void ShowHelp()
+        {
+            Dialogs.Info(this, Title, "Как пользоваться",
+                "1. Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.\n" +
+                "2. Нажмите «Конвертировать в Word…» и укажите имя .docx.\n\n" +
+                "Извлекается ТЕКСТОВЫЙ СЛОЙ цифровых PDF (например, сохранённых из Word, " +
+                "«Microsoft Print to PDF», экспортированных из браузера). Текст переносится " +
+                "абзацами в порядке чтения; сложную/многоколоночную вёрстку, возможно, " +
+                "придётся поправить вручную.\n\n" +
+                "Сканы (страницы-изображения без текстового слоя) пока НЕ поддержаны — " +
+                "распознавание (OCR) появится в следующих версиях; для скана будет понятное " +
+                "сообщение, файл не пострадает.");
+        }
+
+        // ---------- открытие ----------
+
+        private void OnOpenClick(object sender, EventArgs e)
+        {
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Filter = "Документы PDF (*.pdf)|*.pdf";
+                dialog.Title = "Выберите PDF";
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    LoadSource(dialog.FileName);
+            }
+        }
+
+        private void OnFileDragEnter(object sender, DragEventArgs e)
+        {
+            e.Effect = !_busy && PdfDrop.ExtractPaths(e).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+        }
+
+        private void OnFileDragDrop(object sender, DragEventArgs e)
+        {
+            if (_busy)
+                return;
+            string[] paths = PdfDrop.ExtractPaths(e);
+            if (paths.Length > 0)
+                LoadSource(paths[0]); // конвертация работает с одним документом
+        }
+
+        private void LoadSource(string path)
+        {
+            Cursor = Cursors.WaitCursor;
+            try
+            {
+                _pageCount = PdfMergeService.LoadPages(path).Count;
+            }
+            catch (MergeException ex)
+            {
+                Cursor = Cursors.Default;
+                Dialogs.Error(this, Title, "Файл не открыт", ex.Message);
+                return;
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+            }
+            _sourcePath = path;
+            var pages = new List<PdfPageRef>();
+            for (int i = 0; i < _pageCount; i++)
+                pages.Add(new PdfPageRef { SourcePath = path, PageIndex = i });
+            _grid.SetPages(pages);
+            SetStatus("Открыт «" + Path.GetFileName(path) + "»: страниц " + _pageCount + ".", Theme.TextMuted);
+            UpdateControls();
+        }
+
+        // ---------- конвертация ----------
+
+        private void OnConvertClick(object sender, EventArgs e)
+        {
+            if (_busy || _sourcePath == null)
+                return;
+            string src = _sourcePath;
+            string outPath;
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Filter = "Документ Word (*.docx)|*.docx";
+                dialog.FileName = Path.GetFileNameWithoutExtension(src) + ".docx";
+                dialog.InitialDirectory = Path.GetDirectoryName(src);
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                outPath = dialog.FileName;
+            }
+
+            _busy = true;
+            UpdateControls();
+            SetStatus("Извлечение текста…", Theme.TextMuted);
+
+            var thread = new Thread(delegate()
+            {
+                Exception error = null;
+                ConvertResult result = null;
+                try
+                {
+                    result = PdfToWordService.Convert(src, outPath);
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                }
+                try
+                {
+                    if (IsHandleCreated && !IsDisposed)
+                        BeginInvoke((MethodInvoker)delegate { OnConvertFinished(error, result, outPath); });
+                }
+                catch (InvalidOperationException) { }
+            });
+            thread.SetApartmentState(ApartmentState.STA); // требование Word COM
+            thread.IsBackground = true;
+            thread.Start();
+        }
+
+        private void OnConvertFinished(Exception error, ConvertResult result, string outPath)
+        {
+            _busy = false;
+            UpdateControls();
+            if (error != null)
+            {
+                SetStatus("Не выполнено.", Theme.ErrRed);
+                Dialogs.Error(this, Title, "Конвертация не выполнена", error.Message);
+                return;
+            }
+            SetStatus("✓ Готово: страниц " + result.Pages + " → Word (.docx).", Theme.OkGreen);
+            try { Process.Start(outPath); }
+            catch { } // нет ассоциации .docx — файл всё равно создан
+        }
+
+        private void UpdateControls()
+        {
+            _btnOpen.Enabled = !_busy;
+            _btnConvert.Enabled = !_busy && _sourcePath != null;
+        }
+    }
+}

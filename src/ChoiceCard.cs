@@ -10,7 +10,8 @@ namespace ExcelMerger
     {
         Excel,
         Pdf,
-        PdfSplit
+        PdfSplit,
+        Ocr
     }
 
     /// <summary>
@@ -127,8 +128,10 @@ namespace ExcelMerger
         private void DrawGlyph(Graphics g, Rectangle r)
         {
             bool excel = _glyph == CardGlyph.Excel;
-            Color main = excel ? Theme.Accent : PdfRed;
-            Color fold = excel ? Theme.AccentPressed : PdfFold;
+            Color main, fold;
+            if (excel) { main = Theme.Accent; fold = Theme.AccentPressed; }
+            else if (_glyph == CardGlyph.Ocr) { main = Theme.WordViolet; fold = Theme.WordVioletDark; }
+            else { main = PdfRed; fold = PdfFold; }
 
             // Координаты из примера (viewBox 24) масштабируются в прямоугольник значка.
             float s = r.Width / 24f;
@@ -177,6 +180,17 @@ namespace ExcelMerger
                     g.DrawLine(pen, p(15f, 16.5f), p(7f, 6.5f));   // лезвие
                     g.DrawEllipse(pen, p(7f, 15.5f).X, p(7f, 15.5f).Y, 3.4f * s, 3.4f * s);   // кольцо
                     g.DrawEllipse(pen, p(13.6f, 15.5f).X, p(13.6f, 15.5f).Y, 3.4f * s, 3.4f * s); // кольцо
+                }
+            }
+            else if (_glyph == CardGlyph.Ocr)
+            {
+                // Буква «W» (Word) — извлечение текста цифрового PDF в .docx.
+                using (var pen = new Pen(Color.White, 1.8f * s))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    pen.LineJoin = LineJoin.Round;
+                    DrawPolyline(g, pen, p, new[] { new[] { 7f, 11f }, new[] { 9.5f, 18f }, new[] { 12f, 13.5f }, new[] { 14.5f, 18f }, new[] { 17f, 11f } });
                 }
             }
             else

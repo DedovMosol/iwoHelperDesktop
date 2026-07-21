@@ -109,6 +109,12 @@ namespace ExcelMerger
                     if (handle == IntPtr.Zero)
                         return 3;
                 }
+                using (var ocr = new OcrForm(noop))
+                {
+                    IntPtr handle = ocr.Handle;
+                    if (handle == IntPtr.Zero)
+                        return 3;
+                }
                 using (var start = new StartForm())
                 {
                     IntPtr handle = start.Handle;
