@@ -1,5 +1,5 @@
-﻿# Проверка, что вшитый PdfSharp резолвится из ресурса exe без DLL рядом.
-# exe копируется в пустую папку и запускается там с режимом --pdfcheck.
+# Verify the embedded PdfSharp resolves from the exe resource with no DLL alongside.
+# The exe is copied into an empty folder and run there with --pdfcheck.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $tmp = Join-Path $env:TEMP ('emb_' + [guid]::NewGuid().ToString('N'))
@@ -12,7 +12,7 @@ try {
         Write-Host "VERIFY EMBEDDED OK"
         exit 0
     }
-    Write-Host "FAIL: --pdfcheck exit $($p.ExitCode) — вшитый PdfSharp не резолвится"
+    Write-Host "FAIL: --pdfcheck exit $($p.ExitCode) - embedded PdfSharp did not resolve"
     exit 1
 }
 finally {

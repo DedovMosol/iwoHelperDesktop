@@ -1,5 +1,5 @@
-﻿# Интеграционный тест режима «все листы»: файл с тремя листами объединяется
-# с --allsheets, в своде должны быть все три листа с именами «файл · лист».
+﻿# Integration test for the "all sheets" mode: a file with three sheets is merged
+# with --allsheets, and the digest must contain all three named "file · sheet".
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $dir = Join-Path $PSScriptRoot 'allsheets_in'

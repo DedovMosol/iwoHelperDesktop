@@ -1,4 +1,4 @@
-﻿# Проверка итогового файла: состав листов, значения, формула, форматирование.
+﻿# Verify the output file: sheet set, values, a formula, formatting.
 $ErrorActionPreference = 'Stop'
 $out = Join-Path $PSScriptRoot 'out\Свод.xlsx'
 $fails = @()
@@ -13,7 +13,7 @@ try {
     foreach ($s in $wb.Sheets) { $names += $s.Name }
     Write-Host ("SHEETS: " + ($names -join ' | '))
 
-    # Естественный порядок (как в Проводнике): «Отчет 2» раньше «Отчет 10».
+    # Natural order (like Explorer): "Отчет 2" before "Отчет 10".
     $expected = @(
         'Отчет _март 2026_',
         'Отчет 2',
@@ -28,7 +28,7 @@ try {
     )
     if (($names -join ';') -ne ($expected -join ';')) { $fails += "состав/порядок листов не совпал" }
 
-    $wsA = $wb.Sheets.Item('Отчет управления A_2')  # исходный .xlsx с форматированием
+    $wsA = $wb.Sheets.Item('Отчет управления A_2')  # source .xlsx with formatting
     if ($wsA.Range("A4").Value2 -ne 30) { $fails += "формула A4: ожидалось 30, получено $($wsA.Range('A4').Value2)" }
     if ($wsA.Range("A4").Formula -ne '=SUM(A2:A3)') { $fails += "A4 не формула: $($wsA.Range('A4').Formula)" }
     if (-not $wsA.Range("A1").MergeCells) { $fails += "A1 не объединена" }
@@ -37,7 +37,7 @@ try {
     if ([math]::Abs($wsA.Columns.Item(1).ColumnWidth - 25) -gt 0.5) { $fails += "ширина колонки не перенесена: $($wsA.Columns.Item(1).ColumnWidth)" }
     if ($wsA.Range("D1").Formula -ne '=A2+A3') { $fails += "D1: формула в объединённой ячейке не перенесена" }
     if (-not $wsA.Range("D1").MergeCells) { $fails += "D1 не объединена" }
-    # без опции «значения» формулы со строковыми результатами остаются формулами
+    # without the "values" option, string-result formulas stay formulas
     if (-not $wsA.Range("F1").HasFormula) { $fails += "F1 потеряла формулу" }
     if (-not $wsA.Range("G1").HasFormula) { $fails += "G1 потеряла формулу" }
 

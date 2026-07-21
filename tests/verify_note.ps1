@@ -1,5 +1,5 @@
-﻿# Интеграционный тест записки Word: exe загружается как .NET-сборка,
-# записка генерируется из синтетического результата и проверяется через Word COM.
+﻿# Integration test for the Word cover note: the exe is loaded as a .NET assembly,
+# the note is generated from a synthetic result and checked via Word COM.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $fails = @()
@@ -43,7 +43,7 @@ try {
     if ($doc.Tables.Count -ne 1) { $fails += "таблиц $($doc.Tables.Count), ожидалась 1" }
     elseif ($doc.Tables.Item(1).Rows.Count -ne 2) { $fails += "строк таблицы $($doc.Tables.Item(1).Rows.Count), ожидалось 2" }
 
-    # стандарт: поля 30/15/20/20 мм и шрифт основного текста
+    # a standard layout: margins 30/15/20/20 mm and the body font
     $ps = $doc.PageSetup
     if ([math]::Abs($ps.LeftMargin - 85.05) -gt 1) { $fails += "левое поле $($ps.LeftMargin)pt, ожидалось ~85" }
     if ([math]::Abs($ps.RightMargin - 42.55) -gt 1) { $fails += "правое поле $($ps.RightMargin)pt" }
