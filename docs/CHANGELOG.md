@@ -16,7 +16,9 @@ versions follow [SemVer](https://semver.org/).
 - **Reading‑order layout** for PDF → Word — words with their boxes become lines (by vertical
   overlap, so thin punctuation such as an em‑dash stays on its line), lines become paragraphs
   split by any of three signals: a larger vertical gap, a first‑line indent, or a short last
-  line in justified text. Line wraps are joined and hyphen‑wraps de‑hyphenated.
+  line in justified text. Line wraps are joined and hyphen‑wraps de‑hyphenated. Words on a
+  line are joined by their horizontal gap, so a font whose glyphs PdfPig over‑splits (e.g.
+  PT Astra Serif) does not come out letter‑spaced.
 - **Formatting inherited from the source**, per run: font family (normalised from the PDF
   font name, no longer hard‑coded Times New Roman), size, bold, italic, colour, and
   super/subscript. Per paragraph: alignment (left / justify / centre — a centred line such as
