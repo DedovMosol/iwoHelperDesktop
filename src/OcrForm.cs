@@ -197,6 +197,7 @@ namespace ExcelMerger
                 Dialogs.Error(this, Title, "Конвертация не выполнена", error.Message);
                 return;
             }
+            UsageStats.RecordPdfToWord();
             SetStatus("✓ Готово: страниц " + result.Pages + " → Word (.docx).", Theme.OkGreen);
             try { Process.Start(outPath); }
             catch { } // нет ассоциации .docx — файл всё равно создан
