@@ -32,6 +32,56 @@ namespace ExcelMerger
             _showHub = showHub;
         }
 
+        /// <summary>
+        /// Базовая настройка окна PDF-инструмента (единая, DRY): шрифт, фон,
+        /// центрирование, DPI-масштаб, размеры, цветной хром заголовка, AllowDrop,
+        /// подсказки. Обработчики DragEnter/DragDrop наследник вешает сам (различаются).
+        /// </summary>
+        protected void InitShell(string title, Size clientSize, Size minSize, Color chromeColor)
+        {
+            Text = title;
+            Icon icon = Ui.AppIcon();
+            if (icon != null)
+                Icon = icon;
+            Font = new Font("Segoe UI", 9.75f);
+            BackColor = Color.White;
+            StartPosition = FormStartPosition.CenterScreen;
+            AutoScaleDimensions = new SizeF(96f, 96f);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            ClientSize = clientSize;
+            MinimumSize = minSize;
+            ShowInTaskbar = true;
+            WindowChrome.Enable(this, chromeColor); // цветной заголовок на Windows 11
+            AllowDrop = true;
+            _tips = new ToolTip();
+        }
+
+        /// <summary>
+        /// Меню «Справка», брендовая шапка и кнопка «Главная» (единые, DRY). Вызывать
+        /// после <see cref="InitShell"/>. Содержимое наследник кладёт ниже
+        /// HelpMenu.Height + высоты шапки (76).
+        /// </summary>
+        protected void BuildHeaderWithHome(string title, string subtitle, Color colorTop, Color colorBottom, Action showHelp)
+        {
+            MenuStrip menu = HelpMenu.Create(this, showHelp);
+            MainMenuStrip = menu;
+            Controls.Add(menu);
+
+            var header = new HeaderBand(title, subtitle, colorTop, colorBottom);
+            header.SetBounds(0, HelpMenu.Height, ClientSize.Width, 76);
+            header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            header.TabIndex = 100; // «Главная» — в конце обхода Tab, а не в начале
+            Controls.Add(header);
+            if (_showHub != null)
+            {
+                Button home = Ui.HomeButton(_showHub);
+                home.SetBounds(header.Width - 180, 22, 160, 30);
+                home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                _tips.SetToolTip(home, "Открыть экран выбора инструмента");
+                header.Controls.Add(home);
+            }
+        }
+
         /// <summary>Троттлинг пересборки плиток при перетаскивании ползунка масштаба.</summary>
         protected void ScheduleZoom()
         {
