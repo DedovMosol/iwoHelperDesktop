@@ -1,13 +1,13 @@
-﻿# Интеграционный тест «Повторить пропущенные»: exe загружается как .NET-сборка,
-# сценарий — слияние с пропусками, починка битого файла, дослияние в свод.
+﻿# Integration test for "Retry skipped": the exe is loaded as a .NET assembly,
+# the scenario merges with skips, fixes the broken file, appends into the digest.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $fails = @()
 
-# Add-Type не принимает .exe — загружаем сборку напрямую.
+# Add-Type does not accept .exe - load the assembly directly.
 [void][System.Reflection.Assembly]::LoadFrom((Join-Path $root 'dist\iwoHelperDesktop.exe'))
 
-# Отдельная копия корпуса: битый файл будем чинить, общий корпус не трогаем.
+# A separate copy of the corpus: we will fix the broken file, leaving the shared corpus intact.
 $data = Join-Path $PSScriptRoot 'retrydata'
 Remove-Item -Recurse -Force $data -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $PSScriptRoot 'testdata') $data -Recurse
@@ -24,7 +24,7 @@ if ($first.OkCount -ne 10 -or $first.SkipCount -ne 2) {
     $fails += "первый прогон: ok=$($first.OkCount) skip=$($first.SkipCount), ожидалось 10/2"
 }
 
-# Починка: битый файл заменяется валидной книгой (лист получит имя файла).
+# Fix: the broken file is replaced with a valid workbook (the sheet gets the file name).
 Copy-Item (Join-Path $data 'Отчет 2.xlsx') (Join-Path $data 'Битый файл.xlsx') -Force
 
 $service2 = New-Object ExcelMerger.MergeService
@@ -34,7 +34,7 @@ if ($second.SkipCount -ne 1) { $fails += "после повтора skip=$($seco
 if ($second.Files.Count -ne 12) { $fails += "записей $($second.Files.Count), ожидалось 12" }
 if (-not $second.Files[0].Ok) { $fails += "«Битый файл» не стал перенесённым" }
 
-# Содержимое свода после дослияния.
+# Digest content after the append.
 $xl = New-Object -ComObject Excel.Application
 $xl.Visible = $false
 $xl.DisplayAlerts = $false

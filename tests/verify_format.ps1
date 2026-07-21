@@ -1,5 +1,5 @@
-﻿# Проверка свода в двоичном формате .xlsb: файл открывается, состав полный,
-# формула и форматирование на месте.
+﻿# Verify the .xlsb binary digest: the file opens, the sheet set is complete,
+# and the formula and formatting are present.
 $ErrorActionPreference = 'Stop'
 $out = Join-Path $PSScriptRoot 'out\Свод_b.xlsb'
 $fails = @()
