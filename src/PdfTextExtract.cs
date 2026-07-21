@@ -10,6 +10,7 @@ namespace ExcelMerger
     {
         public int PageIndex;                              // с нуля
         public List<string> Paragraphs = new List<string>();
+        public double FirstLineIndentPt;                   // отступ красной строки (pt); 0 — без отступов
         public double WidthPt;
         public double HeightPt;
 
@@ -59,10 +60,12 @@ namespace ExcelMerger
                                 Top = bb.Top
                             });
                         }
+                        OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
                         pages.Add(new PdfPageText
                         {
                             PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
-                            Paragraphs = OcrLayout.ToParagraphs(words),
+                            Paragraphs = layout.Paragraphs,
+                            FirstLineIndentPt = layout.FirstLineIndentPt,
                             WidthPt = page.Width,
                             HeightPt = page.Height
                         });
