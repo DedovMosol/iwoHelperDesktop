@@ -5,6 +5,12 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $exe = Join-Path $root 'dist\iwoHelperDesktop.exe'
 
+# Baseline of Office processes already running (e.g. the developer's own open Excel/
+# Word). The zombie check below flags only processes NOT in this snapshot, so the
+# suite is not derailed by a pre-existing session on a developer machine.
+$baselineExcel = @(Get-Process EXCEL   -ErrorAction SilentlyContinue).Id
+$baselineWord  = @(Get-Process WINWORD -ErrorAction SilentlyContinue).Id
+
 function Invoke-Exe([string]$argLine) {
     # GUI-subsystem process: without -Wait, PowerShell would not wait for the exit code.
     $p = Start-Process -FilePath $exe -ArgumentList $argLine -Wait -PassThru
@@ -100,9 +106,12 @@ Step 'Born-digital PDF -> Word (PdfPig + OcrLayout + WordDocxWriter)' {
     if ($LASTEXITCODE) { exit 1 }
 }
 
-Step 'Zombie Excel processes' {
+Step 'Zombie Excel/Word processes' {
     Start-Sleep -Seconds 3
-    if (Get-Process EXCEL -ErrorAction SilentlyContinue) { Write-Host 'ZOMBIE EXCEL'; exit 1 }
+    $newExcel = @(Get-Process EXCEL   -ErrorAction SilentlyContinue | Where-Object { $baselineExcel -notcontains $_.Id })
+    $newWord  = @(Get-Process WINWORD -ErrorAction SilentlyContinue | Where-Object { $baselineWord  -notcontains $_.Id })
+    if ($newExcel.Count) { Write-Host "ZOMBIE EXCEL ($($newExcel.Count))"; exit 1 }
+    if ($newWord.Count)  { Write-Host "ZOMBIE WORD ($($newWord.Count))";  exit 1 }
 }
 
 Write-Host 'ALL TESTS PASSED'
