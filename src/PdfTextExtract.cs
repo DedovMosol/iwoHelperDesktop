@@ -5,11 +5,22 @@ using System.Runtime.CompilerServices;
 
 namespace ExcelMerger
 {
+    /// <summary>Растровое изображение страницы (PNG) с рамкой в координатах PDF (ось Y вверх).</summary>
+    public class OcrImage
+    {
+        public byte[] Png;
+        public double TopPt;    // верх изображения — для порядка чтения вместе с абзацами
+        public double LeftPt;
+        public double WidthPt;
+        public double HeightPt;
+    }
+
     /// <summary>Текст одной страницы born-digital PDF (абзацы в порядке чтения).</summary>
     public class PdfPageText
     {
         public int PageIndex;                              // с нуля
         public List<OcrParagraph> Paragraphs = new List<OcrParagraph>();
+        public List<OcrImage> Images = new List<OcrImage>();
         public double FirstLineIndentPt;                   // отступ красной строки (pt); 0 — без отступов
         public double WidthPt;
         public double HeightPt;
@@ -104,6 +115,7 @@ namespace ExcelMerger
                             HeightPt = page.Height
                         };
                         SetMargins(pt, words, page.Width, page.Height);
+                        pt.Images = ExtractImages(page);
                         pages.Add(pt);
                     }
                     return pages;
@@ -114,6 +126,41 @@ namespace ExcelMerger
                 throw new MergeException("Не удалось извлечь текст из «" + Path.GetFileName(path) +
                     "»: файл повреждён, зашифрован или без прав на извлечение. (" + ex.Message + ")");
             }
+        }
+
+        /// <summary>
+        /// Растровые изображения страницы в PNG с рамками. Недекодируемые в PNG форматы
+        /// (CMYK-JPEG, JBIG2, CCITT и т.п.) пропускаются; сбой одной картинки не срывает
+        /// остальные и текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
+        /// </summary>
+        private static List<OcrImage> ExtractImages(UglyToad.PdfPig.Content.Page page)
+        {
+            var result = new List<OcrImage>();
+            IEnumerable<UglyToad.PdfPig.Content.IPdfImage> images;
+            try { images = page.GetImages(); }
+            catch { return result; }
+            foreach (UglyToad.PdfPig.Content.IPdfImage img in images)
+            {
+                try
+                {
+                    byte[] png;
+                    if (!img.TryGetPng(out png) || png == null || png.Length == 0)
+                        continue;
+                    UglyToad.PdfPig.Core.PdfRectangle b = img.Bounds;
+                    if (b.Width <= 0 || b.Height <= 0)
+                        continue;
+                    result.Add(new OcrImage
+                    {
+                        Png = png,
+                        LeftPt = b.Left,
+                        TopPt = b.Top,
+                        WidthPt = b.Width,
+                        HeightPt = b.Height
+                    });
+                }
+                catch { } // одна битая картинка не ломает остальные
+            }
+            return result;
         }
 
         /// <summary>Поля страницы из рамок текста (pt, ось Y вверх). Пустая страница — поля 0.</summary>
