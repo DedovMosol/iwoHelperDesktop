@@ -121,6 +121,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
             Run("OcrLayout: рваный абзац по левому краю", TestOcrLeftAligned);
             Run("OcrLayout: центрированная строка", TestOcrCentered);
+            Run("OcrLayout: фрагменты слова склеиваются по зазору", TestOcrGlueFragments);
             Run("OcrLayout: тонкое тире остаётся в строке", TestOcrThinDashStaysOnLine);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
@@ -1649,6 +1650,22 @@ namespace ExcelMerger.Tests
             AssertEqual(2, layout.Paragraphs.Count, "два абзаца");
             AssertEqual(OcrAlignment.Center, layout.Paragraphs[0].Alignment, "номер страницы по центру");
             AssertEqual(OcrAlignment.Justify, layout.Paragraphs[1].Alignment, "тело по ширине");
+        }
+
+        private static void TestOcrGlueFragments()
+        {
+            // PdfPig разбил «мир» на буквы (мелкие зазоры) — склеить без пробелов;
+            // между словами нормальный зазор — пробел. Иначе была бы «разрядка».
+            var words = new List<PdfWord>
+            {
+                W("м", 0, 0, 8, 10),      // Right 8
+                W("и", 8.5, 0, 8, 10),    // зазор 0.5 -> склеить
+                W("р", 17, 0, 8, 10),     // зазор 0.5 -> склеить  => «мир»
+                W("тут", 30, 0, 20, 10)   // зазор 5 -> пробел     => «мир тут»
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(1, p.Count, "одна строка — один абзац");
+            AssertEqual("мир тут", p[0], "фрагменты склеены, между словами пробел");
         }
 
         private static void TestOcrThinDashStaysOnLine()

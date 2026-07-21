@@ -98,6 +98,9 @@ namespace ExcelMerger
         // линии вверх (надстрочный) или вниз (подстрочный) заметно относительно кегля.
         private const double ScriptSizeFactor = 0.85;
         private const double ScriptRiseFactor = 0.1;
+        // Пробел между словами строки — только если зазор ≥ этой доли кегля. Мелкий зазор — это
+        // разбитый PdfPig на фрагменты токен (склеиваем без пробела, чтобы не было «разрядки»).
+        private const double SpaceGapFactor = 0.2;
 
         /// <summary>Итог разбора страницы: абзацы и измеренный отступ первой строки (0 — без красной строки).</summary>
         internal sealed class OcrPageLayout
@@ -240,7 +243,7 @@ namespace ExcelMerger
                         }
                         else space = true;
                     }
-                    else space = true;
+                    else space = HasSpaceBetween(ws[wi - 1], ws[wi]); // по зазору, а не всегда пробел
                     texts.Add(text);
                     fmts.Add(ws[wi]);
                     spaceBefore.Add(space);
@@ -285,6 +288,20 @@ namespace ExcelMerger
             }
             runs.RemoveAll(delegate(OcrRun r) { return r.Text.Length == 0; });
             return runs;
+        }
+
+        /// <summary>
+        /// Есть ли пробел между соседними словами строки: только если горизонтальный зазор
+        /// соизмерим с пробелом (≥ SpaceGapFactor кегля). Мелкий зазор означает, что PdfPig
+        /// разбил один токен на фрагменты (бывает у некоторых шрифтов, напр. PT Astra) — их
+        /// склеиваем без пробела, иначе получилась бы «р а з р я д к а».
+        /// </summary>
+        private static bool HasSpaceBetween(PdfWord prev, PdfWord cur)
+        {
+            double refSize = cur.FontSizePt > 0 ? cur.FontSizePt : cur.Height;
+            if (refSize <= 0) refSize = prev.Height;
+            if (refSize <= 0) refSize = 1;
+            return cur.Left - prev.Right >= SpaceGapFactor * refSize;
         }
 
         private static bool SameFormat(PdfWord a, PdfWord b)
