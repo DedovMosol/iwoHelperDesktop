@@ -112,6 +112,8 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: разрыв абзаца по красной строке (justified)", TestOcrParagraphsIndent);
             Run("OcrLayout: измерен отступ красной строки", TestOcrIndentDetected);
             Run("OcrLayout: без отступов -> красная строка не навязывается", TestOcrNoIndentReported);
+            Run("OcrLayout: стиль абзаца (курсив, кегль)", TestOcrParagraphStyle);
+            Run("OcrLayout: тонкое тире остаётся в строке", TestOcrThinDashStaysOnLine);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
 
@@ -1508,6 +1510,36 @@ namespace ExcelMerger.Tests
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
             AssertEqual(0.0, layout.FirstLineIndentPt, "без отступов -> 0 (не портим документ)");
+        }
+
+        private static void TestOcrParagraphStyle()
+        {
+            // Курсивный абзац кеглем 14 -> абзац помечен курсивом, кегль измерен.
+            var words = new List<PdfWord>
+            {
+                new PdfWord { Text = "Имя:", Left = 0, Right = 30, Bottom = 0, Top = 8, FontSizePt = 14, Italic = true },
+                new PdfWord { Text = "_dmarc", Left = 35, Right = 90, Bottom = 0, Top = 8, FontSizePt = 14, Italic = true }
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEqual(1, layout.Paragraphs.Count, "один абзац");
+            AssertEqual(14.0, layout.Paragraphs[0].FontSizePt, "измерен кегль абзаца");
+            AssertTrue(layout.Paragraphs[0].Italic, "абзац распознан курсивным");
+            AssertTrue(!layout.Paragraphs[0].Bold, "не полужирный");
+        }
+
+        private static void TestOcrThinDashStaysOnLine()
+        {
+            // Тонкое тире с крошечной рамкой и центром выше базовой линии текста не должно
+            // отрываться в отдельную строку/абзац (перекрытие рамок, а не расстояние центров).
+            var words = new List<PdfWord>
+            {
+                W("quarantine", 0, 0, 50, 8),   // [0..8], центр 4
+                W("—", 55, 4.3, 8, 0.6),         // [4.3..4.9], центр 4.6 — выше на 0.6
+                W("добавляет", 70, 0, 50, 8)     // [0..8], центр 4
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(1, p.Count, "тире не отрывается — одна строка, один абзац");
+            AssertEqual("quarantine — добавляет", p[0], "тире осталось между словами");
         }
 
         private static void TestOcrHyphenation()
