@@ -62,6 +62,8 @@ namespace ExcelMerger
                             sel.Font.Size = FontSize(run.FontSizePt);
                             sel.Font.Bold = run.Bold ? 1 : 0;
                             sel.Font.Italic = run.Italic ? 1 : 0;
+                            sel.Font.Superscript = run.Super ? 1 : 0;
+                            sel.Font.Subscript = run.Sub ? 1 : 0;
                             sel.Font.Color = ToBgr(run.ColorArgb);
                             sel.TypeText(run.Text);
                         }
