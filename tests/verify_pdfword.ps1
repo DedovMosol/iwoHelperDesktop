@@ -20,12 +20,12 @@ $g.DrawString('Привет, мир! Hello world.', $font, [PdfSharp.Drawing.XBr
 $g.DrawString('Вторая строка текста.', $font, [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint(50, 130)))
 $g.Dispose(); $doc.Save($pdf); $doc.Dispose()
 
-# 2) Extract -> .docx
-$pages = [ExcelMerger.PdfTextExtract]::Extract($pdf)
-if ($pages.Count -ne 1) { $fails += "страниц $($pages.Count), ожидалась 1" }
+# 2) Convert (PdfToWordService: extract -> .docx)
 $docx = Join-Path $PSScriptRoot 'out\extracted.docx'
 Remove-Item $docx -Force -ErrorAction SilentlyContinue
-[ExcelMerger.WordDocxWriter]::Write($pages, $docx)
+$res = [ExcelMerger.PdfToWordService]::Convert($pdf, $docx)
+if ($res.Pages -ne 1) { $fails += "страниц $($res.Pages), ожидалась 1" }
+if ($res.PagesWithText -ne 1) { $fails += "страниц с текстом $($res.PagesWithText), ожидалась 1" }
 if (-not (Test-Path $docx)) { $fails += 'docx не создан' }
 
 # 3) Read the .docx back via Word.
