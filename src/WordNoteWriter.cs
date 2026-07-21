@@ -6,8 +6,7 @@ namespace ExcelMerger
     /// Запись сопроводительной записки в .docx через COM установленного Word.
     /// Оформление по стандарту оформления: поля 30/15/20/20 мм, Times New Roman 14,
     /// красная строка 1,25 см, полуторный интервал, выравнивание по ширине.
-    /// Действуют те же COM-правила, что и в MergeService: после Close/Quit —
-    /// никаких динамических операций (см. комментарий у ComSafe.Release).
+    /// Каркас Word (открытие/сохранение/закрытие) — общий <see cref="WordCom"/> (DRY).
     /// Вызывать в STA-потоке.
     /// </summary>
     public static class WordNoteWriter
@@ -15,7 +14,6 @@ namespace ExcelMerger
         private const int WdAlignCenter = 1;
         private const int WdAlignJustify = 3;
         private const int WdLineSpace1pt5 = 1;
-        private const int WdFormatXmlDocument = 12; // .docx
         private const int WdStory = 6;
         private const int WdAutoFitWindow = 2;
 
@@ -24,24 +22,11 @@ namespace ExcelMerger
             if (note == null)
                 throw new ArgumentNullException("note");
 
-            Type wordType = Type.GetTypeFromProgID("Word.Application");
-            if (wordType == null)
-                throw new MergeException("Microsoft Word не установлен: COM-компонент Word.Application не найден.");
-
-            string lockError = MergeService.CheckOutputWritable(path);
-            if (lockError != null)
-                throw new MergeException(lockError.Replace("Итоговый файл", "Файл записки"));
-
-            dynamic word = null;
-            dynamic doc = null;
-            ComMessageFilter.Register();
-            try
+            WordCom.WriteDocx(path, "Файл записки", delegate(object wordObj, object docObj)
             {
-                word = Activator.CreateInstance(wordType);
-                word.Visible = false;
-                word.DisplayAlerts = 0; // wdAlertsNone
+                dynamic word = wordObj;
+                dynamic doc = docObj;
 
-                doc = word.Documents.Add();
                 dynamic setup = doc.PageSetup;
                 setup.LeftMargin = word.CentimetersToPoints(3.0);
                 setup.RightMargin = word.CentimetersToPoints(1.5);
@@ -98,34 +83,7 @@ namespace ExcelMerger
                 sel.TypeParagraph();
                 sel.ParagraphFormat.FirstLineIndent = 0f;
                 sel.TypeText(note.Signature);
-
-                try
-                {
-                    doc.SaveAs2(path, WdFormatXmlDocument);
-                }
-                catch (Exception ex)
-                {
-                    throw new MergeException("Не удалось сохранить записку: " + ex.Message);
-                }
-            }
-            finally
-            {
-                // Статические ссылки: после Close/Quit — никаких динамических операций.
-                object docObj = doc;
-                if (docObj != null)
-                {
-                    try { doc.Close(0); } catch { } // wdDoNotSaveChanges: файл уже сохранён
-                    ComSafe.Release(docObj);
-                }
-                object wordObj = word;
-                if (wordObj != null)
-                {
-                    try { word.Quit(0); } catch { }
-                    ComSafe.Release(wordObj);
-                }
-                ComSafe.Collect();
-                ComMessageFilter.Revoke();
-            }
+            });
         }
 
         private static void AppendSkippedTable(dynamic word, dynamic doc, NoteContent note)

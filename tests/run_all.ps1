@@ -95,6 +95,11 @@ Step 'Word cover note' {
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Born-digital PDF -> Word (PdfPig + OcrLayout + WordDocxWriter)' {
+    powershell -NoProfile -File "$PSScriptRoot\verify_pdfword.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
 Step 'Zombie Excel processes' {
     Start-Sleep -Seconds 3
     if (Get-Process EXCEL -ErrorAction SilentlyContinue) { Write-Host 'ZOMBIE EXCEL'; exit 1 }
