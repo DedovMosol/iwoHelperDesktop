@@ -12,7 +12,7 @@
 ![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D6?logo=windows&logoColor=white)
 [![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet-framework/net48)
 
-**Free, offline office tools in a single Windows app — merge Excel sheets, merge and split PDFs, and compress PDFs at Acrobat‑level quality. No subscription, no admin rights, no network.**
+**Free, offline office tools in a single Windows app — merge Excel sheets, merge/split/compress PDFs at Acrobat‑level quality, and turn born‑digital PDFs back into editable Word. No subscription, no admin rights, no network.**
 
 [![Installer](https://img.shields.io/badge/Download-Installer%20x64-0F6CBD?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
 [![Portable](https://img.shields.io/badge/Download-Portable%20x64-107C41?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
@@ -28,6 +28,7 @@ A small, self‑contained Windows application that bundles the office tasks peop
 - 📊 **Excel Digest** — merges the first visible sheet of every workbook in a folder into one file (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`), keeping all formatting (styles, formulas, charts, pivots); adds a table of contents, optional formula→value conversion, and a Word cover note (GOST R 7.0.97‑2016).
 - 📄 **PDF Merge** — build one PDF from several: a grid of page thumbnails, drag to reorder, delete extras. Pages are copied **as‑is** — scans, stamps and signatures are not distorted.
 - ✂️ **PDF Split** — extract selected pages into one file, or split by page ranges, every N pages, or top‑level bookmarks. The source is never modified.
+- 📝 **PDF → Word** — extract the text layer of a **born‑digital** PDF (saved from Word, “Microsoft Print to PDF”, exported from a browser) into an editable `.docx`. Inherits the font family, size, bold/italic, colour, super/subscript, paragraph alignment (left/justify/centre) and first‑line indent, page size and margins, images (placed in reading order) and hyperlinks. Scanned documents are not supported yet — a clear message is shown, the file is untouched.
 - 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size”: downsamples images while keeping text and vectors (not rasterization), via bundled **Ghostscript**. Default level leaves the file untouched.
 - 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing); local operation counters with manual/auto clear.
 - 🔒 **Safe by design** — no network, no admin, not packed/obfuscated; writes only to user‑selected folders and `%APPDATA%`.
@@ -48,7 +49,7 @@ A small, self‑contained Windows application that bundles the office tasks peop
 - **Installer** *(recommended)* — bundles Ghostscript, so PDF compression works out of the box. Installs **per‑user without admin** by default (choose “for all users” for a machine‑wide install).
 - **Portable** — a single `iwoHelperDesktop.exe`; just run it. PDF compression works if Ghostscript is installed on the machine.
 
-> Requirements: Windows 10/11 x64 (with .NET Framework 4.8, bundled since Windows 10 1903). Microsoft Excel/Word are needed only for the **Excel Digest** tool.
+> Requirements: Windows 10/11 x64 (with .NET Framework 4.8, bundled since Windows 10 1903). Microsoft Excel is needed for **Excel Digest**, Microsoft Word for the **Excel Digest** cover note and **PDF → Word**. The PDF tools need neither.
 
 ## 🖥️ Usage
 
@@ -56,6 +57,7 @@ Launch the app and pick a tool from the start screen. Tools open as independent 
 
 - **Excel Digest** — pick the source folder, set the output name/format, arrange/exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
 - **PDF Merge / Split** — add PDFs (button or drag‑and‑drop), reorder/select pages on the thumbnail grid, choose a **Compression** level if desired, and save.
+- **PDF → Word** — open a born‑digital PDF (button or drag‑and‑drop), then **Convert to Word…** and choose the `.docx` name.
 
 <details>
 <summary><b>Full Excel Digest guide, options and edge cases</b></summary>
@@ -108,7 +110,7 @@ Format is derived from the path extension. `--toc` adds a table of contents, `--
 ```
 build.cmd
 ```
-Needs the `dotnet` SDK (6+); builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`. The only shipped dependency, `build/PdfSharp.dll` (MIT), is embedded as a resource. PDF thumbnails use the system `Windows.Data.Pdf` (WinRT).
+Needs the `dotnet` SDK (6+); builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction in PDF → Word. PDF thumbnails use the system `Windows.Data.Pdf` (WinRT); PDF → Word writes the `.docx` through Word COM.
 
 <details>
 <summary><b>Signing, installer, release, CI and tests</b></summary>
@@ -128,6 +130,7 @@ Needs the `dotnet` SDK (6+); builds `iwoHelperDesktop.csproj` (target .NET Frame
 Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open projects:
 
 [![PdfSharp](https://img.shields.io/badge/PdfSharp-MIT-1f6feb?style=for-the-badge)](https://github.com/empira/PDFsharp)
+[![PdfPig](https://img.shields.io/badge/PdfPig-Apache%202.0-1f6feb?style=for-the-badge)](https://github.com/UglyToad/PdfPig)
 [![Ghostscript](https://img.shields.io/badge/Ghostscript-AGPL-d32f2f?style=for-the-badge)](https://ghostscript.com/)
 [![Inno Setup](https://img.shields.io/badge/Inno%20Setup-installer-107C41?style=for-the-badge)](https://jrsoftware.org/isinfo.php)
 [![Windows.Data.Pdf](https://img.shields.io/badge/Windows.Data.Pdf-WinRT-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://learn.microsoft.com/uwp/api/windows.data.pdf)
