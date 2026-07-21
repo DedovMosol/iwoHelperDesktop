@@ -35,19 +35,20 @@ Remove-Item $pdf2 -Force -ErrorAction SilentlyContinue
 $doc2 = New-Object PdfSharp.Pdf.PdfDocument
 $p2 = $doc2.AddPage(); $p2.Width = 595; $p2.Height = 842
 $g2 = [PdfSharp.Drawing.XGraphics]::FromPdfPage($p2)
-$f2 = New-Object PdfSharp.Drawing.XFont('Times New Roman', 12)
+$f2  = New-Object PdfSharp.Drawing.XFont('Times New Roman', 12)
+$f2i = New-Object PdfSharp.Drawing.XFont('Times New Roman', 16, [PdfSharp.Drawing.XFontStyle]::Italic)  # абзац 2 — курсив 16
 $bk = [PdfSharp.Drawing.XBrushes]::Black
 $mL = 70.0; $mInd = 105.0; $mR = 525.0   # левое поле, красная строка (+35pt), правое поле
-function PutS([string]$t,[double]$x,[double]$y) { $g2.DrawString($t,$f2,$bk,(New-Object PdfSharp.Drawing.XPoint($x,$y))) }
-function PutR([string]$t,[double]$y) { $w=$g2.MeasureString($t,$f2).Width; PutS $t ($mR-$w) $y }
-PutS 'Абзац' $mInd 80;  PutR 'первыйй' 80    # абзац 1: красная строка + полные justified-строки
-PutS 'текст' $mL 98;    PutR 'полнаяя' 98
-PutS 'ещёее' $mL 116;   PutR 'строкаа' 116
-PutS 'конец.' $mL 134                          # короткая последняя строка
-PutS 'Второй' $mInd 158; PutR 'абзацц' 158    # абзац 2: снова красная строка
-PutS 'текст' $mL 176;   PutR 'дальшее' 176
-PutS 'снова' $mL 194;   PutR 'полнаяя' 194
-PutS 'точка.' $mL 212
+function PutS([string]$t,[double]$x,[double]$y,$fnt) { $g2.DrawString($t,$fnt,$bk,(New-Object PdfSharp.Drawing.XPoint($x,$y))) }
+function PutR([string]$t,[double]$y,$fnt) { $w=$g2.MeasureString($t,$fnt).Width; PutS $t ($mR-$w) $y $fnt }
+PutS 'Абзац' $mInd 80 $f2;  PutR 'первыйй' 80 $f2    # абзац 1: красная строка + полные justified-строки, обычный 12
+PutS 'текст' $mL 98 $f2;    PutR 'полнаяя' 98 $f2
+PutS 'ещёее' $mL 116 $f2;   PutR 'строкаа' 116 $f2
+PutS 'конец.' $mL 134 $f2                              # короткая последняя строка
+PutS 'Второй' $mInd 166 $f2i; PutR 'абзацц' 166 $f2i  # абзац 2: снова красная строка, курсив 16
+PutS 'текст' $mL 189 $f2i;   PutR 'дальшее' 189 $f2i
+PutS 'снова' $mL 212 $f2i;   PutR 'полнаяя' 212 $f2i
+PutS 'точкаа.' $mL 235 $f2i
 $g2.Dispose(); $doc2.Save($pdf2); $doc2.Dispose()
 
 $docx2 = Join-Path $PSScriptRoot 'out\extracted_indent.docx'
@@ -65,16 +66,20 @@ try {
     if ($text -notmatch 'Вторая строка') { $fails += 'нет второй строки в docx' }
     $wdoc.Close($false)
 
-    # Красная строка + сегментация: два абзаца и заметный отступ первой строки (~35pt).
+    # Красная строка + сегментация + формат: два абзаца, заметный отступ первой строки (~35pt),
+    # и второй абзац перенесён курсивом кеглем 16.
     $wdoc2 = $word.Documents.Open($docx2, $false, $true)
-    $nonEmpty = 0; $maxIndent = 0.0
+    $nonEmpty = 0; $maxIndent = 0.0; $anyItalic16 = $false
     foreach ($par in $wdoc2.Paragraphs) {
-        if ((($par.Range.Text).Trim()).Length -gt 0) { $nonEmpty++ }
+        if ((($par.Range.Text).Trim()).Length -eq 0) { continue }
+        $nonEmpty++
         $fi = [double]$par.Format.FirstLineIndent
         if ($fi -gt $maxIndent) { $maxIndent = $fi }
+        if (($par.Range.Font.Italic -ne 0) -and ([math]::Round([double]$par.Range.Font.Size) -eq 16)) { $anyItalic16 = $true }
     }
     if ($nonEmpty -lt 2) { $fails += "отступный документ дал абзацев: $nonEmpty (ожидалось >=2)" }
     if ($maxIndent -le 10) { $fails += "красная строка не применена (FirstLineIndent=$maxIndent pt)" }
+    if (-not $anyItalic16) { $fails += 'курсив 16pt не перенесён в docx' }
     $wdoc2.Close($false)
 }
 finally {

@@ -12,6 +12,9 @@ namespace ExcelMerger
     {
         private const int WdAlignJustify = 3;
         private const int WdPageBreak = 7;
+        private const double DefaultFontSize = 12;
+        private const double MinFontSize = 5;   // защита от мусорного кегля из PDF
+        private const double MaxFontSize = 72;
 
         /// <summary>Пишет .docx из абзацев страниц. Занятый файл/нет Word — MergeException.</summary>
         public static void Write(IList<PdfPageText> pages, string path)
@@ -26,7 +29,6 @@ namespace ExcelMerger
                 dynamic word = wordObj;
                 dynamic sel = word.Selection;
                 sel.Font.Name = "Times New Roman";
-                sel.Font.Size = 12;
                 sel.ParagraphFormat.Alignment = WdAlignJustify;
                 sel.ParagraphFormat.FirstLineIndent = firstLineIndent; // красная строка, если была в источнике
 
@@ -34,16 +36,26 @@ namespace ExcelMerger
                 {
                     if (p > 0)
                         sel.InsertBreak(WdPageBreak); // разрыв страницы между страницами PDF
-                    List<string> paragraphs = pages[p].Paragraphs;
+                    List<OcrParagraph> paragraphs = pages[p].Paragraphs;
                     if (paragraphs == null)
                         continue;
-                    foreach (string paragraph in paragraphs)
+                    foreach (OcrParagraph paragraph in paragraphs)
                     {
-                        sel.TypeText(paragraph);
+                        // Формат абзаца из источника: кегль, полужирный, курсив.
+                        sel.Font.Size = FontSize(paragraph.FontSizePt);
+                        sel.Font.Bold = paragraph.Bold ? 1 : 0;
+                        sel.Font.Italic = paragraph.Italic ? 1 : 0;
+                        sel.TypeText(paragraph.Text);
                         sel.TypeParagraph();
                     }
                 }
             });
+        }
+
+        /// <summary>Кегль абзаца в допустимых пределах; иначе — по умолчанию.</summary>
+        private static double FontSize(double sizePt)
+        {
+            return sizePt >= MinFontSize && sizePt <= MaxFontSize ? sizePt : DefaultFontSize;
         }
 
         /// <summary>
