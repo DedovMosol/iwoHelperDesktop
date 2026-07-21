@@ -19,6 +19,8 @@ namespace ExcelMerger
             if (pages == null)
                 throw new ArgumentNullException("pages");
 
+            double firstLineIndent = DocumentIndent(pages); // pt; 0 — документ без красной строки
+
             WordCom.WriteDocx(path, "Файл Word", delegate(object wordObj, object docObj)
             {
                 dynamic word = wordObj;
@@ -26,6 +28,7 @@ namespace ExcelMerger
                 sel.Font.Name = "Times New Roman";
                 sel.Font.Size = 12;
                 sel.ParagraphFormat.Alignment = WdAlignJustify;
+                sel.ParagraphFormat.FirstLineIndent = firstLineIndent; // красная строка, если была в источнике
 
                 for (int p = 0; p < pages.Count; p++)
                 {
@@ -41,6 +44,22 @@ namespace ExcelMerger
                     }
                 }
             });
+        }
+
+        /// <summary>
+        /// Единый отступ красной строки документа: медиана положительных постраничных
+        /// отступов (обычно одинаковы). 0 — если ни одна страница не была с отступами.
+        /// </summary>
+        private static double DocumentIndent(IList<PdfPageText> pages)
+        {
+            var vals = new List<double>();
+            foreach (PdfPageText page in pages)
+                if (page.FirstLineIndentPt > 0)
+                    vals.Add(page.FirstLineIndentPt);
+            if (vals.Count == 0)
+                return 0;
+            vals.Sort();
+            return vals[(vals.Count - 1) / 2];
         }
     }
 }

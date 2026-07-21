@@ -38,22 +38,42 @@ namespace ExcelMerger
         // абзац законченным после «короткой» строки (не дотянувшей до поля на ShortLineFraction ширины).
         private const double JustifiedShare = 0.6;
         private const double ShortLineFraction = 0.15;
+        // Красную строку воссоздаём в выводе, только если ею оформлено не меньше этой доли абзацев
+        // (иначе документ без отступов — не портим его). Отступ крупнее MaxIndentFraction ширины —
+        // это центрирование (номер страницы и т.п.), в расчёт красной строки не берём.
+        private const double IndentedShare = 0.6;
+        private const double MaxIndentFraction = 0.25;
+
+        /// <summary>Итог разбора страницы: абзацы и измеренный отступ первой строки (0 — без красной строки).</summary>
+        internal sealed class OcrPageLayout
+        {
+            public List<string> Paragraphs = new List<string>();
+            public double FirstLineIndentPt; // pt (PDF = pt), 0 если документ без отступов
+        }
+
+        /// <summary>Слова (в любом порядке) → абзацы в порядке чтения (только текст). Чистая — под тест.</summary>
+        public static List<string> ToParagraphs(IList<PdfWord> words)
+        {
+            return Analyze(words).Paragraphs;
+        }
 
         /// <summary>
-        /// Слова (в любом порядке) → абзацы в порядке чтения. Чистая — под тест.
+        /// Слова (в любом порядке) → абзацы в порядке чтения + отступ красной строки. Чистая — под тест.
         /// Граница абзаца определяется тремя независимыми сигналами (любой срабатывает):
         ///  • вертикальный зазор заметно больше обычного (абзацы разделены пустым местом);
         ///  • красная строка — текущая строка начата правее общего левого поля (отступ);
         ///  • в justified-тексте предыдущая строка «короткая» (не дотянулась до правого поля —
         ///    значит была последней в абзаце). Это ключ для Word-экспортов, где абзацы
         ///    разделены НЕ зазором, а отступом первой строки при равном межстрочном интервале.
+        /// FirstLineIndentPt — медиана отступов первых строк, если красной строкой оформлено
+        /// большинство абзацев; иначе 0 (документ без отступов не трогаем).
         /// </summary>
-        public static List<string> ToParagraphs(IList<PdfWord> words)
+        public static OcrPageLayout Analyze(IList<PdfWord> words)
         {
             List<Line> lines = ToLines(words);
-            var paragraphs = new List<string>();
+            var result = new OcrPageLayout();
             if (lines.Count == 0)
-                return paragraphs;
+                return result;
 
             // Геометрия страницы: левое/правое поле, типичный кегль, признак выключки.
             double bodyLeft = double.MaxValue, bodyRight = double.MinValue;
@@ -78,6 +98,8 @@ namespace ExcelMerger
             double indentTol = Math.Max(IndentFactor * em, IndentWidthFraction * width);
             double shortTol = ShortLineFraction * width;
 
+            // Разбить на группы строк-абзацев.
+            var groups = new List<List<Line>>();
             var current = new List<Line>();
             for (int i = 0; i < lines.Count; i++)
             {
@@ -88,14 +110,28 @@ namespace ExcelMerger
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
                     if (gapBreak || indentBreak || shortBreak)
                     {
-                        paragraphs.Add(JoinLines(current));
+                        groups.Add(current);
                         current = new List<Line>();
                     }
                 }
                 current.Add(lines[i]);
             }
-            paragraphs.Add(JoinLines(current));
-            return paragraphs;
+            groups.Add(current);
+
+            // Текст абзацев + сбор отступов первых строк (исключая центрирование).
+            double maxIndent = MaxIndentFraction * width;
+            var indents = new List<double>();
+            foreach (List<Line> g in groups)
+            {
+                result.Paragraphs.Add(JoinLines(g));
+                double ind = g[0].Left - bodyLeft;
+                if (ind > indentTol && ind <= maxIndent)
+                    indents.Add(ind);
+            }
+            if (groups.Count >= 2 && indents.Count >= (int)Math.Ceiling(groups.Count * IndentedShare))
+                result.FirstLineIndentPt = Median(indents);
+
+            return result;
         }
 
         /// <summary>Медиана (нижняя при чётном числе). Чистая.</summary>
