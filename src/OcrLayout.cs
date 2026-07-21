@@ -17,6 +17,8 @@ namespace ExcelMerger
         public bool Italic;
         public int ColorArgb;     // 0xRRGGBB цвет текста; 0 — чёрный
         public string FontName;   // семейство шрифта; null — по умолчанию
+        public bool Super;        // надстрочный (мельче и приподнят над базовой линией)
+        public bool Sub;          // подстрочный (мельче и опущен)
 
         public double MidY { get { return (Top + Bottom) / 2; } }
         public double Height { get { return Top - Bottom; } }
@@ -34,6 +36,8 @@ namespace ExcelMerger
         public bool Italic;
         public int ColorArgb;     // 0xRRGGBB; 0 — чёрный
         public string FontName;   // семейство шрифта; null — по умолчанию
+        public bool Super;        // надстрочный
+        public bool Sub;          // подстрочный
     }
 
     /// <summary>Абзац: раны с форматом + выравнивание. Text — склейка ранов (единый источник).</summary>
@@ -41,6 +45,7 @@ namespace ExcelMerger
     {
         public List<OcrRun> Runs = new List<OcrRun>();
         public OcrAlignment Alignment = OcrAlignment.Justify;
+        public double TopPt; // верх абзаца (Y первой строки, ось вверх) — для порядка с изображениями
 
         public string Text
         {
@@ -87,6 +92,10 @@ namespace ExcelMerger
         // страницы/заголовок по центру и не выключаем его по ширине с красной строкой.
         private const double CenterMinGapFraction = 0.12;
         private const double CenterBalanceFraction = 0.08;
+        // Надстрочный/подстрочный: слово мельче доминирующего кегля строки и смещено по базовой
+        // линии вверх (надстрочный) или вниз (подстрочный) заметно относительно кегля.
+        private const double ScriptSizeFactor = 0.85;
+        private const double ScriptRiseFactor = 0.1;
 
         /// <summary>Итог разбора страницы: абзацы и измеренный отступ первой строки (0 — без красной строки).</summary>
         internal sealed class OcrPageLayout
@@ -122,6 +131,7 @@ namespace ExcelMerger
             var result = new OcrPageLayout();
             if (lines.Count == 0)
                 return result;
+            MarkScripts(lines); // пометить надстрочные/подстрочные слова
 
             // Геометрия страницы: левое/правое поле, типичный кегль, признак выключки.
             double bodyLeft = double.MaxValue, bodyRight = double.MinValue;
@@ -174,7 +184,8 @@ namespace ExcelMerger
                 result.Paragraphs.Add(new OcrParagraph
                 {
                     Runs = BuildRuns(g),
-                    Alignment = DetectAlignment(g, bodyLeft, bodyRight, width, em)
+                    Alignment = DetectAlignment(g, bodyLeft, bodyRight, width, em),
+                    TopPt = g[0].Top
                 });
                 double ind = g[0].Left - bodyLeft;
                 if (ind > indentTol && ind <= maxIndent)
@@ -255,7 +266,9 @@ namespace ExcelMerger
                         Bold = fmts[i].Bold,
                         Italic = fmts[i].Italic,
                         ColorArgb = fmts[i].ColorArgb,
-                        FontName = fmts[i].FontName
+                        FontName = fmts[i].FontName,
+                        Super = fmts[i].Super,
+                        Sub = fmts[i].Sub
                     });
                     runFmt = fmts[i];
                 }
@@ -275,7 +288,36 @@ namespace ExcelMerger
         {
             return a.FontSizePt == b.FontSizePt && a.Bold == b.Bold
                 && a.Italic == b.Italic && a.ColorArgb == b.ColorArgb
-                && a.FontName == b.FontName;
+                && a.FontName == b.FontName && a.Super == b.Super && a.Sub == b.Sub;
+        }
+
+        /// <summary>
+        /// Пометить надстрочные/подстрочные: слово мельче доминирующего кегля строки и его
+        /// базовая линия заметно выше (над-) или ниже (под-) доминирующей. Медианы по строке
+        /// устойчивы к самим скриптам. Меняет только флаги слов — чистая по смыслу.
+        /// </summary>
+        private static void MarkScripts(List<Line> lines)
+        {
+            foreach (Line ln in lines)
+            {
+                if (ln.Words.Count < 2)
+                    continue;
+                var heights = new List<double>(ln.Words.Count);
+                var bottoms = new List<double>(ln.Words.Count);
+                foreach (PdfWord w in ln.Words) { heights.Add(w.Height); bottoms.Add(w.Bottom); }
+                double domH = Median(heights);
+                double domBottom = Median(bottoms);
+                if (domH <= 0)
+                    continue;
+                foreach (PdfWord w in ln.Words)
+                {
+                    if (w.Height >= ScriptSizeFactor * domH)
+                        continue; // не мельче — не скрипт
+                    double rise = w.Bottom - domBottom;
+                    if (rise > ScriptRiseFactor * domH) w.Super = true;
+                    else if (rise < -ScriptRiseFactor * domH) w.Sub = true;
+                }
+            }
         }
 
         /// <summary>

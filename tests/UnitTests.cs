@@ -116,6 +116,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: смена шрифта -> раны", TestOcrRunsFontFamily);
             Run("OcrLayout: стиль рана (курсив, кегль)", TestOcrParagraphStyle);
             Run("OcrLayout: смешанный формат -> раны", TestOcrRunsMixedFormat);
+            Run("OcrLayout: надстрочный ран", TestOcrSuperscript);
             Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
             Run("OcrLayout: рваный абзац по левому краю", TestOcrLeftAligned);
             Run("OcrLayout: центрированная строка", TestOcrCentered);
@@ -1578,6 +1579,21 @@ namespace ExcelMerger.Tests
             AssertEqual(3, runs.Count, "три рана: обычный / жирный / обычный");
             AssertTrue(!runs[0].Bold && runs[1].Bold && !runs[2].Bold, "жирный только средний ран");
             AssertEqual("обычное жирное снова", layout.Paragraphs[0].Text, "склейка текста");
+        }
+
+        private static void TestOcrSuperscript()
+        {
+            // Мелкое приподнятое слово среди обычных -> надстрочный ран.
+            var words = new List<PdfWord>
+            {
+                W("a", 0, 0, 10, 8),    // обычные, база 0, высота 8
+                W("b", 12, 0, 10, 8),
+                W("2", 24, 4, 6, 4)     // мельче (4) и приподнято (база 4) -> надстрочный
+            };
+            List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
+            AssertEqual(2, runs.Count, "надстрочный — отдельный ран");
+            AssertTrue(runs[1].Super && !runs[1].Sub, "'2' надстрочный");
+            AssertEqual("2", runs[1].Text, "текст надстрочного рана");
         }
 
         private static void TestOcrColorRun()
