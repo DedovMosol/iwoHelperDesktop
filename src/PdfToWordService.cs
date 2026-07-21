@@ -31,8 +31,8 @@ namespace ExcelMerger
 
             if (withText == 0)
                 throw new MergeException(
-                    "В этом PDF нет извлекаемого текста — похоже, это скан (изображение). " +
-                    "Распознавание сканов (OCR) появится в следующих версиях.");
+                    "В этом PDF нет извлекаемого текста — похоже, это отсканированный документ (изображение). " +
+                    "Поддержка отсканированных документов в настоящее время недоступна.");
 
             WordDocxWriter.Write(pages, outputPath);
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };

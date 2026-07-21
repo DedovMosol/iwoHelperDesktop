@@ -11,9 +11,10 @@ namespace ExcelMerger
     /// <summary>
     /// Инструмент «PDF → Word»: извлекает текстовый слой цифрового PDF (сохранённого из
     /// Word, «Microsoft Print to PDF» и т.п.) в редактируемый .docx. Страницы источника
-    /// показаны сеткой (<see cref="PdfPageGrid"/>). Сканы (без текстового слоя) пока не
-    /// поддержаны — распознавание (OCR) появится позже, для скана будет понятное сообщение.
-    /// На базе <see cref="PdfToolFormBase"/> (сетка/зум/статус/закрытие/освобождение — DRY).
+    /// показаны сеткой (<see cref="PdfPageGrid"/>). Отсканированные документы (без текстового
+    /// слоя) в настоящее время недоступны — при попытке будет понятное сообщение (файл цел).
+    /// Конвертация обёрнута try/catch (<see cref="OnConvertClick"/>): любая ошибка — диалог,
+    /// не краш. На базе <see cref="PdfToolFormBase"/> (сетка/зум/статус/закрытие/освобождение — DRY).
     /// </summary>
     public class OcrForm : PdfToolFormBase
     {
@@ -62,16 +63,17 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnOpen, "Файл также можно перетащить в окно");
             Controls.Add(_btnOpen);
 
+            BuildBottomStrip(right, "Откройте цифровой PDF — кнопкой или перетащив его в окно.", false);
+
+            // Действие — в правом нижнем углу (как «Сохранить PDF» в «Объединении»).
             _btnConvert = new RoundedButton(true);
             _btnConvert.Text = "Конвертировать в Word…";
-            _btnConvert.SetBounds(px, m + 128, pw, 38);
-            _btnConvert.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnConvert.SetBounds(right - 230, ClientSize.Height - 58, 230, 38);
+            _btnConvert.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _btnConvert.Click += OnConvertClick;
             _tips.SetToolTip(_btnConvert, "Извлечь текст в редактируемый .docx");
             Controls.Add(_btnConvert);
             AcceptButton = _btnConvert;
-
-            BuildBottomStrip(right, "Откройте цифровой PDF — кнопкой или перетащив его в окно.", false);
         }
 
         private void ShowHelp()
@@ -83,9 +85,9 @@ namespace ExcelMerger
                 "«Microsoft Print to PDF», экспортированных из браузера). Текст переносится " +
                 "абзацами в порядке чтения; сложную/многоколоночную вёрстку, возможно, " +
                 "придётся поправить вручную.\n\n" +
-                "Сканы (страницы-изображения без текстового слоя) пока НЕ поддержаны — " +
-                "распознавание (OCR) появится в следующих версиях; для скана будет понятное " +
-                "сообщение, файл не пострадает.");
+                "Поддержка отсканированных документов (страниц-изображений без текстового слоя) " +
+                "в настоящее время недоступна — при попытке появится понятное сообщение, " +
+                "файл не пострадает.");
         }
 
         // ---------- открытие ----------
