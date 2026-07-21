@@ -10,6 +10,7 @@ namespace ExcelMerger
     /// </summary>
     public static class WordDocxWriter
     {
+        private const int WdAlignCenter = 1;
         private const int WdAlignJustify = 3;
         private const int WdPageBreak = 7;
         private const double DefaultFontSize = 12;
@@ -29,8 +30,6 @@ namespace ExcelMerger
                 dynamic word = wordObj;
                 dynamic sel = word.Selection;
                 sel.Font.Name = "Times New Roman";
-                sel.ParagraphFormat.Alignment = WdAlignJustify;
-                sel.ParagraphFormat.FirstLineIndent = firstLineIndent; // красная строка, если была в источнике
 
                 for (int p = 0; p < pages.Count; p++)
                 {
@@ -41,21 +40,38 @@ namespace ExcelMerger
                         continue;
                     foreach (OcrParagraph paragraph in paragraphs)
                     {
-                        // Формат абзаца из источника: кегль, полужирный, курсив.
-                        sel.Font.Size = FontSize(paragraph.FontSizePt);
-                        sel.Font.Bold = paragraph.Bold ? 1 : 0;
-                        sel.Font.Italic = paragraph.Italic ? 1 : 0;
-                        sel.TypeText(paragraph.Text);
+                        // Выравнивание из источника: центрированное — по центру без красной строки;
+                        // остальное — по ширине с документным отступом первой строки.
+                        bool center = paragraph.Alignment == OcrAlignment.Center;
+                        sel.ParagraphFormat.Alignment = center ? WdAlignCenter : WdAlignJustify;
+                        sel.ParagraphFormat.FirstLineIndent = center ? 0 : firstLineIndent;
+
+                        // Формат пословно (ран за раном): кегль, полужирный, курсив, цвет.
+                        foreach (OcrRun run in paragraph.Runs)
+                        {
+                            sel.Font.Size = FontSize(run.FontSizePt);
+                            sel.Font.Bold = run.Bold ? 1 : 0;
+                            sel.Font.Italic = run.Italic ? 1 : 0;
+                            sel.Font.Color = ToBgr(run.ColorArgb);
+                            sel.TypeText(run.Text);
+                        }
                         sel.TypeParagraph();
                     }
                 }
             });
         }
 
-        /// <summary>Кегль абзаца в допустимых пределах; иначе — по умолчанию.</summary>
+        /// <summary>Кегль рана в допустимых пределах; иначе — по умолчанию.</summary>
         private static double FontSize(double sizePt)
         {
             return sizePt >= MinFontSize && sizePt <= MaxFontSize ? sizePt : DefaultFontSize;
+        }
+
+        /// <summary>0xRRGGBB → WdColor (BGR-порядок), как ожидает Word.Font.Color.</summary>
+        private static int ToBgr(int argb)
+        {
+            int r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+            return r | (g << 8) | (b << 16);
         }
 
         /// <summary>
