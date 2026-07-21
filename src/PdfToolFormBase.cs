@@ -50,7 +50,7 @@ namespace ExcelMerger
         /// троттлинг-таймером), выбор сжатия и строка статуса. Вызывать ПОСЛЕ создания
         /// сетки (_grid) — к ней привязан масштаб. right — правый край рабочей области.
         /// </summary>
-        protected void BuildBottomStrip(int right, string statusText)
+        protected void BuildBottomStrip(int right, string statusText, bool withCompress = true)
         {
             int h = ClientSize.Height;
             Ui.Label(this, "Масштаб:", 20, h - 104, Font, Theme.TextMuted)
@@ -74,10 +74,13 @@ namespace ExcelMerger
             _zoomTimer.Interval = 60; // троттлинг пересборки плиток при перетаскивании ползунка
             _zoomTimer.Tick += delegate { _zoomTimer.Stop(); _grid.SetTileWidth(_zoom.Value); };
 
-            _compress = new CompressionPicker();
-            _compress.Location = new Point(right - _compress.Width, h - 106);
-            _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            Controls.Add(_compress);
+            if (withCompress)
+            {
+                _compress = new CompressionPicker();
+                _compress.Location = new Point(right - _compress.Width, h - 106);
+                _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+                Controls.Add(_compress);
+            }
 
             _lblStatus = Ui.Label(this, statusText, 20, h - 50, Font, Theme.TextMuted);
             _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;

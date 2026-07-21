@@ -6,7 +6,7 @@ using System.Windows.Forms;
 namespace ExcelMerger
 {
     /// <summary>
-    /// Стартовый экран — хаб выбора инструмента (свод Excel или объединение PDF).
+    /// Стартовый экран — хаб выбора инструмента (свод Excel и PDF-инструменты) 2×2.
     /// Только представление: открытие инструментов, дедупликацию и жизненный цикл
     /// окон ведёт <see cref="ShellContext"/>. Закрытие хаба не закрывает уже
     /// открытые инструменты; кнопка «Главная» в инструменте снова покажет этот экран.
@@ -34,10 +34,10 @@ namespace ExcelMerger
             MaximizeBox = false;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(804, 416);
+            ClientSize = new Size(546, 692); // 2×2 карточки
             WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11
 
-            var header = new HeaderBand(AppTitle, "Выберите инструмент — свод Excel, объединение или разделение PDF",
+            var header = new HeaderBand(AppTitle, "Выберите инструмент",
                 Theme.HubBlue, Theme.HubBlueDark);
             header.Centered = true; // на стартовом экране заголовок и подпись по центру
             header.SetBounds(0, 0, ClientSize.Width, 78);
@@ -66,7 +66,7 @@ namespace ExcelMerger
 
             var split = new ChoiceCard(CardGlyph.PdfSplit, "Разделение PDF",
                 "Извлечь выбранные страницы в один PDF или разбить документ на несколько: по диапазонам, каждые N страниц или по закладкам.");
-            split.SetBounds(540, 96, 240, 250);
+            split.SetBounds(24, 364, 240, 250);
             split.Click += delegate
             {
                 if (_context != null)
@@ -74,9 +74,19 @@ namespace ExcelMerger
             };
             Controls.Add(split);
 
+            var ocr = new ChoiceCard(CardGlyph.Ocr, "PDF → Word",
+                "Извлечь текст цифрового PDF (сохранённого из Word и т.п.) в редактируемый Word (.docx). Сканы пока не поддержаны.");
+            ocr.SetBounds(282, 364, 240, 250);
+            ocr.Click += delegate
+            {
+                if (_context != null)
+                    _context.OpenTool("ocr", "PDF → Word", delegate(Action back) { return new OcrForm(back); });
+            };
+            Controls.Add(ocr);
+
             // Нижний ряд: «Проверить обновления» слева (на месте версии), «О программе»
             // справа. Чуть выше и крупнее — аккуратный ряд под карточками.
-            const int rowY = 360, rowH = 36;
+            const int rowY = 632, rowH = 36;
             var update = new RoundedButton(false);
             update.Text = "⟳ Проверить обновления";
             update.SetBounds(24, rowY, 224, rowH);

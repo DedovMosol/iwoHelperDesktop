@@ -15,6 +15,9 @@ namespace ExcelMerger
         public static readonly Color PdfRedDark = Color.FromArgb(154, 34, 34);    // #9A2222
         public static readonly Color HubBlue = Color.FromArgb(15, 108, 189);      // #0F6CBD
         public static readonly Color HubBlueDark = Color.FromArgb(10, 78, 134);   // #0A4E86
+        // «PDF → Word» — фиолетовая (отличается от синей/красной/зелёной).
+        public static readonly Color WordViolet = Color.FromArgb(91, 79, 191);    // #5B4FBF
+        public static readonly Color WordVioletDark = Color.FromArgb(62, 52, 140);// #3E348C
 
         public static readonly Color TextPrimary = Color.FromArgb(45, 45, 45);
         public static readonly Color TextMuted = Color.FromArgb(115, 115, 115);
