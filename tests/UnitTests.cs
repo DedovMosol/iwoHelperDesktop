@@ -60,6 +60,7 @@ namespace ExcelMerger.Tests
             Run("PageRanges.ToIndices: диапазоны -> индексы (порядок, повторы)", TestPageRangesToIndices);
             Run("UpdateChecker: разбор тега и сравнение версий", TestUpdateChecker);
             Run("UsageStats.ShouldAutoClear: период очистки", TestShouldAutoClear);
+            Run("UsageStats.Total: включает PdfToWord, исключает сжатия", TestUsageTotal);
             Run("MessageForm.ButtonX: одна по центру, две по краям", TestMessageButtonX);
             Run("PdfSplitService.Sanitize: недопустимые символы", TestSanitize);
             Run("PdfSplit (живой): извлечение, диапазоны, каждые N, закладки", TestPdfSplitLive);
@@ -688,6 +689,17 @@ namespace ExcelMerger.Tests
             AssertTrue(!UsageStats.ShouldAutoClear(now.AddDays(-6), now, 7), "6 из 7 дней — рано");
             AssertTrue(UsageStats.ShouldAutoClear(now.AddDays(-8), now, 7), "8 дней при периоде 7 — пора");
             AssertTrue(UsageStats.ShouldAutoClear(now.AddDays(-31), now, 30), "31 день при 30 — пора");
+        }
+
+        private static void TestUsageTotal()
+        {
+            var s = new UsageStats
+            {
+                ExcelDigests = 1, PdfMerges = 2, PdfExtracts = 3, PdfSplitRanges = 4,
+                PdfSplitEveryN = 5, PdfSplitBookmarks = 6, PdfToWord = 7, PdfCompressions = 99
+            };
+            // Total — сумма ОПЕРАЦИЙ (1+…+7); сжатие — параметр, в Total не входит.
+            AssertEqual(28, s.Total, "Total включает PdfToWord и исключает PdfCompressions");
         }
 
         private static void TestMessageButtonX()

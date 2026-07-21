@@ -18,13 +18,14 @@ namespace ExcelMerger
         public int PdfSplitRanges;
         public int PdfSplitEveryN;
         public int PdfSplitBookmarks;
+        public int PdfToWord;                  // конвертаций «цифровой PDF → Word (.docx)»
         public int PdfCompressions;            // сжатых файлов; НЕ входит в Total (это параметр, не операция)
         public int AutoClearDays;              // 0 — выкл; 1 / 7 / 30
         public DateTime SinceUtc = DateTime.UtcNow;
 
         public int Total
         {
-            get { return ExcelDigests + PdfMerges + PdfExtracts + PdfSplitRanges + PdfSplitEveryN + PdfSplitBookmarks; }
+            get { return ExcelDigests + PdfMerges + PdfExtracts + PdfSplitRanges + PdfSplitEveryN + PdfSplitBookmarks + PdfToWord; }
         }
 
         /// <summary>Пора ли авто-очистка (период прошёл). Чистая — под тест.</summary>
@@ -55,6 +56,7 @@ namespace ExcelMerger
                         else if (k == "pdfSplitRanges" && int.TryParse(v, out n)) s.PdfSplitRanges = n;
                         else if (k == "pdfSplitEveryN" && int.TryParse(v, out n)) s.PdfSplitEveryN = n;
                         else if (k == "pdfSplitBookmarks" && int.TryParse(v, out n)) s.PdfSplitBookmarks = n;
+                        else if (k == "pdfToWord" && int.TryParse(v, out n)) s.PdfToWord = n;
                         else if (k == "pdfCompressions" && int.TryParse(v, out n)) s.PdfCompressions = n;
                         else if (k == "autoClearDays" && int.TryParse(v, out n)) s.AutoClearDays = n;
                         else if (k == "sinceUtc" && long.TryParse(v, out ticks)) s.SinceUtc = new DateTime(ticks, DateTimeKind.Utc);
@@ -86,6 +88,7 @@ namespace ExcelMerger
                     "pdfSplitRanges=" + PdfSplitRanges,
                     "pdfSplitEveryN=" + PdfSplitEveryN,
                     "pdfSplitBookmarks=" + PdfSplitBookmarks,
+                    "pdfToWord=" + PdfToWord,
                     "pdfCompressions=" + PdfCompressions,
                     "autoClearDays=" + AutoClearDays,
                     "sinceUtc=" + SinceUtc.Ticks
@@ -102,6 +105,7 @@ namespace ExcelMerger
             PdfSplitRanges = 0;
             PdfSplitEveryN = 0;
             PdfSplitBookmarks = 0;
+            PdfToWord = 0;
             PdfCompressions = 0;
             SinceUtc = DateTime.UtcNow;
         }
@@ -121,6 +125,7 @@ namespace ExcelMerger
         public static void RecordPdfSplitRanges() { Mutate(delegate(UsageStats s) { s.PdfSplitRanges++; }); }
         public static void RecordPdfSplitEveryN() { Mutate(delegate(UsageStats s) { s.PdfSplitEveryN++; }); }
         public static void RecordPdfSplitBookmarks() { Mutate(delegate(UsageStats s) { s.PdfSplitBookmarks++; }); }
+        public static void RecordPdfToWord() { Mutate(delegate(UsageStats s) { s.PdfToWord++; }); }
         public static void RecordPdfCompress(int count = 1) { if (count > 0) Mutate(delegate(UsageStats s) { s.PdfCompressions += count; }); }
 
         public static void SetAutoClear(int days) { Mutate(delegate(UsageStats s) { s.AutoClearDays = days; }); }
