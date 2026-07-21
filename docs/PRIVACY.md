@@ -18,28 +18,28 @@ The tools (Excel Digest, PDF Merge, PDF Split, PDF Compression) read the files y
 choose and write results to the folders you choose. This processing runs entirely on
 your machine using local components:
 
-- Microsoft Excel / Word automation (COM) for the Excel Digest and its Word cover note;
-- the embedded PdfSharp library for reading and writing PDFs;
-- Ghostscript, run as a separate local process, for optional PDF compression;
+- Microsoft Excel / Word automation (COM) for the Excel Digest and its Word cover note,
+- the embedded PdfSharp library for reading and writing PDFs,
+- Ghostscript, run as a separate local process, for optional PDF compression,
 - the built‑in Windows PDF engine (`Windows.Data.Pdf`) for rendering page thumbnails.
 
 **Your documents are never uploaded, copied off your device, or transmitted anywhere.**
 The app does not modify your source files except where you explicitly ask it to write
-output; PDF split never changes the source.
+output, PDF split never changes the source.
 
 ## Data the app stores on your computer
 
 The app keeps a small amount of data **locally**, under
 `%APPDATA%\iwo Helper Desktop\`, and never sends it anywhere:
 
-- `settings.txt` — your last‑used folders and options (e.g. output format);
+- `settings.txt` — your last‑used folders and options (e.g. output format),
 - `stats.txt` — local counters of how many operations you have run (no file names,
-  no content); these exist only for your own reference and can be cleared manually or
-  automatically from the app’s **Statistics** window;
+  no content), these exist only for your own reference and can be cleared manually or
+  automatically from the app’s **Statistics** window,
 - `reports\` — text reports of the three most recent Excel Digest runs, saved next to
   where you chose to save the digest and mirrored here.
 
-You can delete this folder at any time; the app recreates only what it needs.
+You can delete this folder at any time, the app recreates only what it needs.
 
 ## Network use
 
@@ -50,22 +50,22 @@ The app makes **no background network calls**. The single network feature is the
   (`https://api.github.com/repos/DedovMosol/iwoHelperDesktop/releases/latest`) with a
   generic `User-Agent` header and reads the latest published version tag.
 - No file contents, file names, identifiers, or personal data are included in the request.
-- The app never downloads or installs updates automatically; if a newer version exists,
+- The app never downloads or installs updates automatically, if a newer version exists,
   it offers to open the release page in **your** browser.
 
 Links in the app (download page, project page, Telegram, this policy) simply open in your
-default browser when clicked; the app itself does not track those clicks.
+default browser when clicked, the app itself does not track those clicks.
 
 ## Third parties
 
 - **GitHub** — contacted only for the update check and when you open a project/download
   link. See GitHub’s own privacy policy for how they handle web requests.
-- **Ghostscript** — used locally as a separate process for compression; it does not make
+- **Ghostscript** — used locally as a separate process for compression, it does not make
   network calls in this app.
 - **Microsoft Excel / Word** — used locally via automation for Excel/Word features and
   are governed by your own Microsoft Office configuration.
 
-The app is not packed or obfuscated and requests no special permissions; the installer
+The app is not packed or obfuscated and requests no special permissions, the installer
 installs per‑user by default and needs no administrator rights.
 
 ## Children
