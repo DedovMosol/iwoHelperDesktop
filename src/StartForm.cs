@@ -75,7 +75,7 @@ namespace ExcelMerger
             Controls.Add(split);
 
             var ocr = new ChoiceCard(CardGlyph.Ocr, "PDF → Word",
-                "Извлечь текст цифрового PDF (сохранённого из Word и т.п.) в редактируемый Word (.docx). Сканы пока не поддержаны.");
+                "Извлечь текст цифрового PDF (сохранённого из Word и т.п.) в редактируемый Word (.docx). Поддержка отсканированных документов в настоящее время недоступна.");
             ocr.SetBounds(282, 364, 240, 250);
             ocr.Click += delegate
             {

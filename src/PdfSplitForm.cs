@@ -118,14 +118,15 @@ namespace ExcelMerger
             _chkCombine.CheckedChanged += delegate { UpdateModeInputs(); };
             Controls.Add(_chkCombine);
 
-            _btnDo = new RoundedButton(true);
-            _btnDo.SetBounds(px, m + 284, pw, 38);
-            _btnDo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _btnDo.Click += OnDoClick;
-            Controls.Add(_btnDo);
-
             // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
             BuildBottomStrip(right, "Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.");
+
+            // Действие — в правом нижнем углу (как «Сохранить PDF» в «Объединении»).
+            _btnDo = new RoundedButton(true);
+            _btnDo.SetBounds(right - 190, ClientSize.Height - 58, 190, 38);
+            _btnDo.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            _btnDo.Click += OnDoClick;
+            Controls.Add(_btnDo);
         }
 
         private void ShowHelp()
