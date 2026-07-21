@@ -134,7 +134,7 @@ Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open pro
 
 ## 🔒 Privacy
 
-**Your files never leave your computer.** No telemetry, no analytics, no accounts, no background network calls. All processing (Excel, PDF merge/split/compress) runs locally; the only network request is the **manual** update check, which reads the latest version tag from GitHub and sends no file contents or personal data. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
+**Your files never leave your computer.** No telemetry, no analytics, no accounts, no background network calls. All processing (Excel, PDF merge/split/compress) runs locally, the only network request is the **manual** update check, which reads the latest version tag from GitHub and sends no file contents or personal data. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
 
 ## ⚖️ License
 
