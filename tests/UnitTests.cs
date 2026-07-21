@@ -106,6 +106,10 @@ namespace ExcelMerger.Tests
             Run("PdfPageGrid.LowerBound: бинарный поиск по монотонному предикату", TestLowerBound);
             Run("PdfPageGrid.VisibleRange: видимый диапазон по Top/Bottom", TestVisibleRange);
             Run("PdfSplitForm.ShouldSuggestCompression: без сжатия и ≥90% исходника", TestSuggestCompression);
+            Run("OcrLayout: порядок чтения (сверху вниз, слева направо)", TestOcrReadingOrder);
+            Run("OcrLayout: разрыв абзаца по вертикальному зазору", TestOcrParagraphs);
+            Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
+            Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -1399,6 +1403,65 @@ namespace ExcelMerger.Tests
                 "ровно 90% -> подсказать (граница)");
             AssertTrue(!PdfSplitForm.ShouldSuggestCompression(CompressionLevel.None, 0, 5 * mb),
                 "размер исходника неизвестен (0) -> не подсказывать");
+        }
+
+        // ---------- OcrLayout (порядок чтения born-digital) ----------
+
+        /// <summary>Слово с рамкой (Y вверх): left/bottom — левый нижний угол, +ширина/высота.</summary>
+        private static PdfWord W(string text, double left, double bottom, double width, double height)
+        {
+            return new PdfWord { Text = text, Left = left, Right = left + width, Bottom = bottom, Top = bottom + height };
+        }
+
+        private static void TestOcrReadingOrder()
+        {
+            // Ввод намеренно вперемешку; ожидаем «Hello world» затем «second line».
+            var words = new List<PdfWord>
+            {
+                W("world", 35, 90, 30, 10),
+                W("line", 35, 70, 20, 10),
+                W("Hello", 0, 90, 30, 10),
+                W("second", 0, 70, 30, 10)
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(1, p.Count, "две близкие строки -> один абзац");
+            AssertEqual("Hello world second line", p[0], "порядок чтения");
+        }
+
+        private static void TestOcrParagraphs()
+        {
+            // Три плотные строки + одна с большим зазором -> два абзаца.
+            var words = new List<PdfWord>
+            {
+                W("Aaa", 0, 100, 20, 10), // midY 105
+                W("Bbb", 0, 88, 20, 10),  // midY 93  (зазор 12)
+                W("Ccc", 0, 76, 20, 10),  // midY 81  (зазор 12)
+                W("Ddd", 0, 50, 20, 10)   // midY 55  (зазор 26 -> новый абзац)
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(2, p.Count, "разрыв абзаца по большому зазору");
+            AssertEqual("Aaa Bbb Ccc", p[0], "первый абзац");
+            AssertEqual("Ddd", p[1], "второй абзац");
+        }
+
+        private static void TestOcrHyphenation()
+        {
+            // Строка кончается «wo-», следующая «rld» -> склеить в «world».
+            var words = new List<PdfWord>
+            {
+                W("hello", 0, 90, 30, 10),
+                W("wo-", 35, 90, 20, 10),
+                W("rld", 0, 75, 20, 10)
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(1, p.Count, "один абзац");
+            AssertEqual("hello world", p[0], "дефис-перенос склеен");
+        }
+
+        private static void TestOcrEmpty()
+        {
+            AssertEqual(0, OcrLayout.ToParagraphs(new List<PdfWord>()).Count, "пусто -> нет абзацев");
+            AssertEqual(0, OcrLayout.ToParagraphs(null).Count, "null -> нет абзацев");
         }
 
         private static void Run(string name, Action test)

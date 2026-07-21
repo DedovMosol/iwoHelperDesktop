@@ -5,18 +5,22 @@ using System.Runtime.CompilerServices;
 
 namespace ExcelMerger
 {
-    /// <summary>Текст одной страницы born-digital PDF (в порядке чтения).</summary>
+    /// <summary>Текст одной страницы born-digital PDF (абзацы в порядке чтения).</summary>
     public class PdfPageText
     {
-        public int PageIndex;      // с нуля
-        public string Text;
+        public int PageIndex;                              // с нуля
+        public List<string> Paragraphs = new List<string>();
         public double WidthPt;
         public double HeightPt;
+
+        /// <summary>Весь текст страницы: абзацы через пустую строку.</summary>
+        public string Text { get { return string.Join("\n\n", Paragraphs); } }
     }
 
     /// <summary>
     /// Извлечение текстового слоя born-digital PDF (PdfPig, Apache 2.0) — без OCR.
-    /// Публичные методы не содержат типов PdfPig в телах: сначала
+    /// Слова с рамками собираются в порядок чтения (<see cref="OcrLayout"/>). Публичные
+    /// методы не содержат типов PdfPig в телах: сначала
     /// <see cref="EmbeddedAssemblies.Ensure"/>, затем [NoInlining]-ядро (как в
     /// <see cref="PdfMergeService"/>), иначе JIT падает на резолве вшитой сборки.
     /// </summary>
@@ -42,10 +46,23 @@ namespace ExcelMerger
                     var pages = new List<PdfPageText>();
                     foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
                     {
+                        var words = new List<PdfWord>();
+                        foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
+                        {
+                            UglyToad.PdfPig.Core.PdfRectangle bb = w.BoundingBox;
+                            words.Add(new PdfWord
+                            {
+                                Text = w.Text,
+                                Left = bb.Left,
+                                Right = bb.Right,
+                                Bottom = bb.Bottom,
+                                Top = bb.Top
+                            });
+                        }
                         pages.Add(new PdfPageText
                         {
                             PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
-                            Text = page.Text ?? string.Empty,
+                            Paragraphs = OcrLayout.ToParagraphs(words),
                             WidthPt = page.Width,
                             HeightPt = page.Height
                         });
