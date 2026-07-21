@@ -54,6 +54,24 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- PdfPig (Apache 2.0): извлечение текста born-digital PDF. Вендорится в
+         build\pdfpig\ и вшивается ресурсами, как PdfSharp (наружу — один exe).
+         Компилируемся против main+Core; все 12 сборок (+net48-полифиллы) вшиваются
+         и резолвятся по имени (EmbeddedAssemblies), что снимает binding-redirects. -->
+    <Reference Include="UglyToad.PdfPig">
+      <HintPath>build\pdfpig\UglyToad.PdfPig.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UglyToad.PdfPig.Core">
+      <HintPath>build\pdfpig\UglyToad.PdfPig.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <EmbeddedResource Include="build\pdfpig\*.dll">
+      <LogicalName>%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- WinRT-проекции для .NET Framework (только компиляция) -->
     <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.19041.1" />
     <!-- Референс-сборки net48, чтобы сборка не требовала установленного таргет-пака -->
