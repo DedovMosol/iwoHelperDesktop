@@ -117,6 +117,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: стиль рана (курсив, кегль)", TestOcrParagraphStyle);
             Run("OcrLayout: смешанный формат -> раны", TestOcrRunsMixedFormat);
             Run("OcrLayout: надстрочный ран", TestOcrSuperscript);
+            Run("OcrLayout: ран-гиперссылка", TestOcrHyperlinkRun);
             Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
             Run("OcrLayout: рваный абзац по левому краю", TestOcrLeftAligned);
             Run("OcrLayout: центрированная строка", TestOcrCentered);
@@ -1594,6 +1595,19 @@ namespace ExcelMerger.Tests
             AssertEqual(2, runs.Count, "надстрочный — отдельный ран");
             AssertTrue(runs[1].Super && !runs[1].Sub, "'2' надстрочный");
             AssertEqual("2", runs[1].Text, "текст надстрочного рана");
+        }
+
+        private static void TestOcrHyperlinkRun()
+        {
+            var words = new List<PdfWord>
+            {
+                new PdfWord { Text = "ссылка", Left = 0, Right = 40, Bottom = 0, Top = 8, FontSizePt = 12, Uri = "https://example.com" },
+                new PdfWord { Text = "обычный", Left = 45, Right = 90, Bottom = 0, Top = 8, FontSizePt = 12 }
+            };
+            List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
+            AssertEqual(2, runs.Count, "ссылка — отдельный ран");
+            AssertEqual("https://example.com", runs[0].Uri, "URI рана сохранён");
+            AssertTrue(runs[1].Uri == null, "обычный ран без ссылки");
         }
 
         private static void TestOcrColorRun()

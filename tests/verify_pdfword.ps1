@@ -98,6 +98,19 @@ $docx4 = Join-Path $PSScriptRoot 'out\extracted_img.docx'
 Remove-Item $docx4 -Force -ErrorAction SilentlyContinue
 [void][ExcelMerger.PdfToWordService]::Convert($pdf4, $docx4)
 
+# 2e) Гиперссылка из PDF должна перенестись в .docx как Word Hyperlink.
+$pdf5 = Join-Path $PSScriptRoot 'out\wordsrc_link.pdf'
+Remove-Item $pdf5 -Force -ErrorAction SilentlyContinue
+$doc5 = New-Object PdfSharp.Pdf.PdfDocument; $p5 = $doc5.AddPage(); $p5.Width = 595; $p5.Height = 842
+$g5 = [PdfSharp.Drawing.XGraphics]::FromPdfPage($p5)
+$g5.DrawString('Ссылка тут', (New-Object PdfSharp.Drawing.XFont('Times New Roman', 12)), [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint(70, 110)))
+$xr5 = New-Object PdfSharp.Drawing.XRect(0, 0, 595, 842)   # рамка ссылки на всю страницу — слово точно внутри
+[void]$p5.AddWebLink((New-Object PdfSharp.Pdf.PdfRectangle($xr5)), 'https://minfin.gov')
+$g5.Dispose(); $doc5.Save($pdf5); $doc5.Dispose()
+$docx5 = Join-Path $PSScriptRoot 'out\extracted_link.docx'
+Remove-Item $docx5 -Force -ErrorAction SilentlyContinue
+[void][ExcelMerger.PdfToWordService]::Convert($pdf5, $docx5)
+
 # 3) Read the .docx back via Word.
 $word = New-Object -ComObject Word.Application
 $word.Visible = $false
@@ -149,6 +162,11 @@ try {
     $wdoc4 = $word.Documents.Open($docx4, $false, $true)
     if ([int]$wdoc4.InlineShapes.Count -lt 1) { $fails += 'изображение не вставлено в docx' }
     $wdoc4.Close($false)
+
+    # Гиперссылка перенесена в .docx.
+    $wdoc5 = $word.Documents.Open($docx5, $false, $true)
+    if ([int]$wdoc5.Hyperlinks.Count -lt 1) { $fails += 'гиперссылка не перенесена в docx' }
+    $wdoc5.Close($false)
 }
 finally {
     $word.Quit()

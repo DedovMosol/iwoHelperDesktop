@@ -105,6 +105,7 @@ namespace ExcelMerger
                                 FontName = family
                             });
                         }
+                        AssignHyperlinks(words, page);
                         OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
                         var pt = new PdfPageText
                         {
@@ -125,6 +126,34 @@ namespace ExcelMerger
             {
                 throw new MergeException("Не удалось извлечь текст из «" + Path.GetFileName(path) +
                     "»: файл повреждён, зашифрован или без прав на извлечение. (" + ex.Message + ")");
+            }
+        }
+
+        /// <summary>
+        /// Пометить слова гиперссылками: если центр слова попадает в рамку ссылки страницы —
+        /// проставить её URI. Сбой получения ссылок не срывает извлечение. Вызывать из ядра.
+        /// </summary>
+        private static void AssignHyperlinks(List<PdfWord> words, UglyToad.PdfPig.Content.Page page)
+        {
+            System.Collections.Generic.IReadOnlyList<UglyToad.PdfPig.Content.Hyperlink> links;
+            try { links = page.GetHyperlinks(); }
+            catch { return; }
+            if (links == null || links.Count == 0)
+                return;
+            foreach (PdfWord w in words)
+            {
+                double mx = (w.Left + w.Right) / 2, my = (w.Top + w.Bottom) / 2;
+                foreach (UglyToad.PdfPig.Content.Hyperlink h in links)
+                {
+                    if (string.IsNullOrEmpty(h.Uri))
+                        continue;
+                    UglyToad.PdfPig.Core.PdfRectangle b = h.Bounds;
+                    if (mx >= b.Left && mx <= b.Right && my >= b.Bottom && my <= b.Top)
+                    {
+                        w.Uri = h.Uri;
+                        break;
+                    }
+                }
             }
         }
 
