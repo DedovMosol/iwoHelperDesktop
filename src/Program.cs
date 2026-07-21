@@ -16,6 +16,8 @@ namespace ExcelMerger
                 return RunSelfTest();
             if (args.Length >= 1 && string.Equals(args[0], "--pdfcheck", StringComparison.OrdinalIgnoreCase))
                 return RunPdfCheck();
+            if (args.Length >= 1 && string.Equals(args[0], "--pdftextcheck", StringComparison.OrdinalIgnoreCase))
+                return RunPdfTextCheck();
             if (args.Length >= 1 && string.Equals(args[0], "--thumbcheck", StringComparison.OrdinalIgnoreCase))
                 return RunThumbCheck();
             if (args.Length >= 1 && string.Equals(args[0], "--gscheck", StringComparison.OrdinalIgnoreCase))
@@ -148,6 +150,51 @@ namespace ExcelMerger
                 WriteConsole("PDFCHECK FAIL: " + ex.GetType().Name + " — " + ex.Message);
                 return 1;
             }
+        }
+
+        /// <summary>
+        /// Проверка born-digital пути: вшитый PdfSharp рисует текст, вшитый PdfPig
+        /// (резолвится из ресурса) извлекает его обратно. 0 = вшитый PdfPig работает.
+        /// </summary>
+        private static int RunPdfTextCheck()
+        {
+            AttachConsole(-1);
+            EmbeddedAssemblies.Ensure();
+            string pdf = Path.Combine(Path.GetTempPath(), "pdftextchk_" + Guid.NewGuid().ToString("N") + ".pdf");
+            try
+            {
+                WriteTextPdf(pdf);
+                List<PdfPageText> pages = PdfTextExtract.Extract(pdf);
+                string text = pages.Count > 0 ? pages[0].Text : "";
+                bool ok = pages.Count == 1 && text.Contains("Hello world") && text.Contains("Привет");
+                WriteConsole(ok ? "PDFTEXTCHECK OK" : "PDFTEXTCHECK FAIL: pages=" + pages.Count + " text=[" + text + "]");
+                return ok ? 0 : 1;
+            }
+            catch (Exception ex)
+            {
+                WriteConsole("PDFTEXTCHECK FAIL: " + ex.GetType().Name + " — " + ex.Message);
+                return 1;
+            }
+            finally
+            {
+                try { File.Delete(pdf); } catch { }
+            }
+        }
+
+        /// <summary>Пишет 1-страничный PDF с известным текстом через вшитый PdfSharp. NoInlining: в теле типы PdfSharp.</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void WriteTextPdf(string path)
+        {
+            var doc = new PdfSharp.Pdf.PdfDocument();
+            PdfSharp.Pdf.PdfPage page = doc.AddPage();
+            using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
+            {
+                var font = new PdfSharp.Drawing.XFont("Times New Roman", 14, PdfSharp.Drawing.XFontStyle.Regular);
+                g.DrawString("Привет, мир! Hello world.", font, PdfSharp.Drawing.XBrushes.Black,
+                    new PdfSharp.Drawing.XPoint(50, 100));
+            }
+            doc.Save(path);
+            doc.Dispose();
         }
 
         /// <summary>
