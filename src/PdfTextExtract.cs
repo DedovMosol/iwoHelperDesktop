@@ -62,6 +62,7 @@ namespace ExcelMerger
                             UglyToad.PdfPig.Core.PdfRectangle bb = w.BoundingBox;
                             double size = 0;
                             bool bold = false, italic = false;
+                            int color = 0;
                             if (w.Letters != null && w.Letters.Count > 0)
                             {
                                 UglyToad.PdfPig.Content.Letter first = w.Letters[0];
@@ -70,6 +71,7 @@ namespace ExcelMerger
                                 bold = fn.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0;
                                 italic = fn.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0
                                       || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0;
+                                color = ColorArgb(first.Color);
                             }
                             words.Add(new PdfWord
                             {
@@ -80,7 +82,8 @@ namespace ExcelMerger
                                 Top = bb.Top,
                                 FontSizePt = size,
                                 Bold = bold,
-                                Italic = italic
+                                Italic = italic,
+                                ColorArgb = color
                             });
                         }
                         OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
@@ -101,6 +104,22 @@ namespace ExcelMerger
                 throw new MergeException("Не удалось извлечь текст из «" + Path.GetFileName(path) +
                     "»: файл повреждён, зашифрован или без прав на извлечение. (" + ex.Message + ")");
             }
+        }
+
+        /// <summary>Цвет буквы PdfPig → 0xRRGGBB; null/чёрный → 0.</summary>
+        private static int ColorArgb(UglyToad.PdfPig.Graphics.Colors.IColor color)
+        {
+            if (color == null)
+                return 0;
+            var rgb = color.ToRGBValues();
+            int r = Clamp255(rgb.r), g = Clamp255(rgb.g), b = Clamp255(rgb.b);
+            return (r << 16) | (g << 8) | b;
+        }
+
+        private static int Clamp255(double v)
+        {
+            int n = (int)Math.Round(v * 255.0);
+            return n < 0 ? 0 : (n > 255 ? 255 : n);
         }
     }
 }

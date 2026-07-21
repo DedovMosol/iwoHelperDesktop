@@ -112,7 +112,10 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: разрыв абзаца по красной строке (justified)", TestOcrParagraphsIndent);
             Run("OcrLayout: измерен отступ красной строки", TestOcrIndentDetected);
             Run("OcrLayout: без отступов -> красная строка не навязывается", TestOcrNoIndentReported);
-            Run("OcrLayout: стиль абзаца (курсив, кегль)", TestOcrParagraphStyle);
+            Run("OcrLayout: стиль рана (курсив, кегль)", TestOcrParagraphStyle);
+            Run("OcrLayout: смешанный формат -> раны", TestOcrRunsMixedFormat);
+            Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
+            Run("OcrLayout: центрированная строка", TestOcrCentered);
             Run("OcrLayout: тонкое тире остаётся в строке", TestOcrThinDashStaysOnLine);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
@@ -1514,7 +1517,7 @@ namespace ExcelMerger.Tests
 
         private static void TestOcrParagraphStyle()
         {
-            // Курсивный абзац кеглем 14 -> абзац помечен курсивом, кегль измерен.
+            // Курсивная строка кеглем 14, единый формат -> один ран, курсив, кегль 14.
             var words = new List<PdfWord>
             {
                 new PdfWord { Text = "Имя:", Left = 0, Right = 30, Bottom = 0, Top = 8, FontSizePt = 14, Italic = true },
@@ -1522,9 +1525,55 @@ namespace ExcelMerger.Tests
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
             AssertEqual(1, layout.Paragraphs.Count, "один абзац");
-            AssertEqual(14.0, layout.Paragraphs[0].FontSizePt, "измерен кегль абзаца");
-            AssertTrue(layout.Paragraphs[0].Italic, "абзац распознан курсивным");
-            AssertTrue(!layout.Paragraphs[0].Bold, "не полужирный");
+            AssertEqual(1, layout.Paragraphs[0].Runs.Count, "единый формат -> один ран");
+            OcrRun r = layout.Paragraphs[0].Runs[0];
+            AssertEqual(14.0, r.FontSizePt, "кегль рана");
+            AssertTrue(r.Italic, "ран курсивный");
+            AssertTrue(!r.Bold, "не полужирный");
+            AssertEqual("Имя: _dmarc", r.Text, "текст рана");
+        }
+
+        private static void TestOcrRunsMixedFormat()
+        {
+            // Полужирное слово среди обычных -> три рана; жирным только среднее.
+            var words = new List<PdfWord>
+            {
+                new PdfWord { Text = "обычное", Left = 0, Right = 40, Bottom = 0, Top = 8, FontSizePt = 12 },
+                new PdfWord { Text = "жирное", Left = 45, Right = 85, Bottom = 0, Top = 8, FontSizePt = 12, Bold = true },
+                new PdfWord { Text = "снова", Left = 90, Right = 130, Bottom = 0, Top = 8, FontSizePt = 12 }
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEqual(1, layout.Paragraphs.Count, "один абзац");
+            List<OcrRun> runs = layout.Paragraphs[0].Runs;
+            AssertEqual(3, runs.Count, "три рана: обычный / жирный / обычный");
+            AssertTrue(!runs[0].Bold && runs[1].Bold && !runs[2].Bold, "жирный только средний ран");
+            AssertEqual("обычное жирное снова", layout.Paragraphs[0].Text, "склейка текста");
+        }
+
+        private static void TestOcrColorRun()
+        {
+            var words = new List<PdfWord>
+            {
+                new PdfWord { Text = "красный", Left = 0, Right = 40, Bottom = 0, Top = 8, FontSizePt = 12, ColorArgb = 0xFF0000 }
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEqual(1, layout.Paragraphs[0].Runs.Count, "один ран");
+            AssertEqual(0xFF0000, layout.Paragraphs[0].Runs[0].ColorArgb, "цвет рана сохранён");
+        }
+
+        private static void TestOcrCentered()
+        {
+            // Короткая центрированная строка («7») над телом -> отдельный центрированный абзац.
+            var words = new List<PdfWord>
+            {
+                W("7", 48, 180, 4, 8),      // центр: слева 48, справа 48 от полей 0..100
+                W("Тело", 0, 150, 100, 8),  // полная строка (Left 0, Right 100) — задаёт поля
+                W("строка", 0, 138, 100, 8)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEqual(2, layout.Paragraphs.Count, "два абзаца");
+            AssertEqual(OcrAlignment.Center, layout.Paragraphs[0].Alignment, "номер страницы по центру");
+            AssertEqual(OcrAlignment.Justify, layout.Paragraphs[1].Alignment, "тело по ширине");
         }
 
         private static void TestOcrThinDashStaysOnLine()

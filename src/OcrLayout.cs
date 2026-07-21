@@ -15,18 +15,41 @@ namespace ExcelMerger
         public double FontSizePt; // кегль (pt); 0 — неизвестно
         public bool Bold;
         public bool Italic;
+        public int ColorArgb;     // 0xRRGGBB цвет текста; 0 — чёрный
 
         public double MidY { get { return (Top + Bottom) / 2; } }
         public double Height { get { return Top - Bottom; } }
     }
 
-    /// <summary>Абзац: текст и преобладающее форматирование (кегль, полужирный, курсив).</summary>
-    public class OcrParagraph
+    /// <summary>Выравнивание абзаца в выводе.</summary>
+    public enum OcrAlignment { Justify, Center }
+
+    /// <summary>Ран — отрезок абзаца с единым форматом (кегль, полужирный, курсив, цвет).</summary>
+    public class OcrRun
     {
         public string Text;
         public double FontSizePt; // 0 — неизвестно, писать кеглем по умолчанию
         public bool Bold;
         public bool Italic;
+        public int ColorArgb;     // 0xRRGGBB; 0 — чёрный
+    }
+
+    /// <summary>Абзац: раны с форматом + выравнивание. Text — склейка ранов (единый источник).</summary>
+    public class OcrParagraph
+    {
+        public List<OcrRun> Runs = new List<OcrRun>();
+        public OcrAlignment Alignment = OcrAlignment.Justify;
+
+        public string Text
+        {
+            get
+            {
+                var sb = new StringBuilder();
+                for (int i = 0; i < Runs.Count; i++)
+                    sb.Append(Runs[i].Text);
+                return sb.ToString();
+            }
+        }
     }
 
     /// <summary>
@@ -57,6 +80,11 @@ namespace ExcelMerger
         // это центрирование (номер страницы и т.п.), в расчёт красной строки не берём.
         private const double IndentedShare = 0.6;
         private const double MaxIndentFraction = 0.25;
+        // Центрированная строка: левый и правый зазоры до полей заметны (> CenterMinGapFraction
+        // ширины) и почти равны (разница <= CenterBalanceFraction ширины) — так узнаём номер
+        // страницы/заголовок по центру и не выключаем его по ширине с красной строкой.
+        private const double CenterMinGapFraction = 0.12;
+        private const double CenterBalanceFraction = 0.08;
 
         /// <summary>Итог разбора страницы: абзацы и измеренный отступ первой строки (0 — без красной строки).</summary>
         internal sealed class OcrPageLayout
@@ -136,14 +164,16 @@ namespace ExcelMerger
             }
             groups.Add(current);
 
-            // Текст абзацев + сбор отступов первых строк (исключая центрирование).
+            // Абзацы: раны с форматом + выравнивание; сбор отступов первых строк (исключая центрирование).
             double maxIndent = MaxIndentFraction * width;
             var indents = new List<double>();
             foreach (List<Line> g in groups)
             {
-                var para = new OcrParagraph { Text = JoinLines(g) };
-                ApplyDominantStyle(g, para);
-                result.Paragraphs.Add(para);
+                result.Paragraphs.Add(new OcrParagraph
+                {
+                    Runs = BuildRuns(g),
+                    Alignment = DetectAlignment(g, bodyLeft, bodyRight, width)
+                });
                 double ind = g[0].Left - bodyLeft;
                 if (ind > indentTol && ind <= maxIndent)
                     indents.Add(ind);
@@ -165,25 +195,102 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Преобладающий стиль абзаца: кегль — медиана по словам; полужирный/курсив —
-        /// если так набрано большинство слов. Пословный формат (редкое смешение) сводим к
-        /// абзацному — это покрывает типовые Word-экспорты (курсивные строки, единый кегль).
+        /// Абзац → раны: слова в порядке чтения склеиваются (пробел между словами; перенос по
+        /// строкам склеивает, дефис-перенос снимается), а при смене формата (кегль/жирный/курсив/
+        /// цвет) начинается новый ран — формат сохраняется пословно, а не на весь абзац.
         /// </summary>
-        private static void ApplyDominantStyle(List<Line> group, OcrParagraph para)
+        private static List<OcrRun> BuildRuns(List<Line> group)
         {
-            var sizes = new List<double>();
-            int bold = 0, italic = 0, n = 0;
-            foreach (Line ln in group)
-                foreach (PdfWord w in ln.Words)
+            // 1) Плоский список слов в порядке чтения: текст (с возможным снятием дефиса-переноса),
+            //    слово-источник формата и признак пробела перед словом.
+            var texts = new List<string>();
+            var fmts = new List<PdfWord>();
+            var spaceBefore = new List<bool>();
+            for (int li = 0; li < group.Count; li++)
+            {
+                List<PdfWord> ws = group[li].Words;
+                for (int wi = 0; wi < ws.Count; wi++)
                 {
-                    n++;
-                    if (w.FontSizePt > 0) sizes.Add(w.FontSizePt);
-                    if (w.Bold) bold++;
-                    if (w.Italic) italic++;
+                    string text = ws[wi].Text ?? "";
+                    bool space;
+                    if (texts.Count == 0)
+                        space = false;
+                    else if (wi == 0) // первое слово новой строки — перенос
+                    {
+                        int last = texts.Count - 1;
+                        if (EndsWithHyphenAfterLetter(texts[last]))
+                        {
+                            texts[last] = texts[last].Substring(0, texts[last].Length - 1); // снять дефис
+                            space = false; // склеить перенос без пробела
+                        }
+                        else space = true;
+                    }
+                    else space = true;
+                    texts.Add(text);
+                    fmts.Add(ws[wi]);
+                    spaceBefore.Add(space);
                 }
-            para.FontSizePt = sizes.Count > 0 ? Median(sizes) : 0;
-            para.Bold = n > 0 && bold * 2 > n;
-            para.Italic = n > 0 && italic * 2 > n;
+            }
+
+            // 2) Склейка в раны: смежные слова одного формата — в один ран; межсловный пробел
+            //    относим к предыдущему рану (у пробела нет глифа — формат не важен).
+            var runs = new List<OcrRun>();
+            PdfWord runFmt = null;
+            for (int i = 0; i < texts.Count; i++)
+            {
+                if (runs.Count > 0 && runFmt != null && SameFormat(runFmt, fmts[i]))
+                {
+                    runs[runs.Count - 1].Text += (spaceBefore[i] ? " " : "") + texts[i];
+                }
+                else
+                {
+                    if (runs.Count > 0 && spaceBefore[i])
+                        runs[runs.Count - 1].Text += " ";
+                    runs.Add(new OcrRun
+                    {
+                        Text = texts[i],
+                        FontSizePt = fmts[i].FontSizePt,
+                        Bold = fmts[i].Bold,
+                        Italic = fmts[i].Italic,
+                        ColorArgb = fmts[i].ColorArgb
+                    });
+                    runFmt = fmts[i];
+                }
+            }
+
+            // 3) Обрезать края абзаца; выкинуть опустевшие раны.
+            if (runs.Count > 0)
+            {
+                runs[0].Text = runs[0].Text.TrimStart();
+                runs[runs.Count - 1].Text = runs[runs.Count - 1].Text.TrimEnd();
+            }
+            runs.RemoveAll(delegate(OcrRun r) { return r.Text.Length == 0; });
+            return runs;
+        }
+
+        private static bool SameFormat(PdfWord a, PdfWord b)
+        {
+            return a.FontSizePt == b.FontSizePt && a.Bold == b.Bold
+                && a.Italic == b.Italic && a.ColorArgb == b.ColorArgb;
+        }
+
+        /// <summary>
+        /// Выравнивание абзаца: Center, если КАЖДАЯ строка центрирована — левый и правый зазоры
+        /// до полей заметны и почти равны (номер страницы, заголовок по центру). Иначе Justify.
+        /// </summary>
+        private static OcrAlignment DetectAlignment(List<Line> group, double bodyLeft, double bodyRight, double width)
+        {
+            double minGap = CenterMinGapFraction * width;
+            double balance = CenterBalanceFraction * width;
+            foreach (Line ln in group)
+            {
+                double leftGap = ln.Left - bodyLeft;
+                double rightGap = bodyRight - ln.Right;
+                bool centered = leftGap > minGap && rightGap > minGap && Math.Abs(leftGap - rightGap) <= balance;
+                if (!centered)
+                    return OcrAlignment.Justify;
+            }
+            return OcrAlignment.Center;
         }
 
         private sealed class Line
@@ -311,41 +418,10 @@ namespace ExcelMerger
             return typical * ParagraphGapFactor;
         }
 
-        /// <summary>Строки абзаца → сплошной текст (перенос склеивает слова, дефис-перенос снимается).</summary>
-        private static string JoinLines(List<Line> lines)
+        /// <summary>Текст кончается дефисом-переносом (дефис сразу после буквы).</summary>
+        private static bool EndsWithHyphenAfterLetter(string s)
         {
-            var sb = new StringBuilder();
-            foreach (Line ln in lines)
-            {
-                string text = LineText(ln);
-                if (sb.Length == 0)
-                    sb.Append(text);
-                else if (EndsWithHyphen(sb))
-                {
-                    sb.Length -= 1;   // снять дефис
-                    sb.Append(text);  // склеить перенос без пробела
-                }
-                else
-                    sb.Append(' ').Append(text);
-            }
-            return sb.ToString().Trim();
-        }
-
-        private static string LineText(Line line)
-        {
-            var sb = new StringBuilder();
-            for (int i = 0; i < line.Words.Count; i++)
-            {
-                if (i > 0) sb.Append(' ');
-                sb.Append(line.Words[i].Text ?? "");
-            }
-            return sb.ToString();
-        }
-
-        /// <summary>Строка кончается дефисом-переносом (дефис сразу после буквы).</summary>
-        private static bool EndsWithHyphen(StringBuilder sb)
-        {
-            return sb.Length >= 2 && sb[sb.Length - 1] == '-' && char.IsLetter(sb[sb.Length - 2]);
+            return s.Length >= 2 && s[s.Length - 1] == '-' && char.IsLetter(s[s.Length - 2]);
         }
     }
 }
