@@ -3,6 +3,15 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.8] — 2026-07-21
+
+### Added
+- **Split tool: a gentle "enable Compression" hint.** When an extract/split is done
+  *without* compression and the result comes out almost as large as the source (≥ 90% and
+  over 1 MB — which happens when pages share heavy resources that are copied along with
+  them), the status line appends an unobtrusive note suggesting the Compression option to
+  reduce the size. Purely advisory; no change to the produced files.
+
 ## [1.13.7] — 2026-07-21
 
 ### Added

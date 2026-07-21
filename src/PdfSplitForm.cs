@@ -380,10 +380,12 @@ namespace ExcelMerger
             _busy = true;
             UpdateControls();
             SetStatus(openAsFolder ? "Разделение…" : "Извлечение…", Theme.TextMuted);
+            long sourceSize = SafeLength(_sourcePath); // для подсказки о сжатии (UI-поток, до старта воркера)
             var thread = new Thread(delegate()
             {
                 Exception error = null;
                 int count = 0, compressed = 0;
+                long largest = 0;
                 try
                 {
                     List<string> files = work();
@@ -391,13 +393,19 @@ namespace ExcelMerger
                     foreach (string f in files)
                         if (PdfCompression.Compress(f, level))
                             compressed++;
+                    foreach (string f in files) // итоговые размеры (уже после сжатия)
+                    {
+                        long len = SafeLength(f);
+                        if (len > largest) largest = len;
+                    }
                 }
                 catch (Exception ex) { error = ex; }
                 int resultCount = count, resultCompressed = compressed;
+                long resultLargest = largest;
                 try
                 {
                     if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { OnSplitFinished(error, resultCount, resultCompressed, openTarget, openAsFolder, record); });
+                        BeginInvoke((MethodInvoker)delegate { OnSplitFinished(error, resultCount, resultCompressed, openTarget, openAsFolder, record, level, sourceSize, resultLargest); });
                 }
                 catch (InvalidOperationException) { }
             });
@@ -405,7 +413,8 @@ namespace ExcelMerger
             thread.Start();
         }
 
-        private void OnSplitFinished(Exception error, int count, int compressed, string openTarget, bool openAsFolder, Action record)
+        private void OnSplitFinished(Exception error, int count, int compressed, string openTarget, bool openAsFolder, Action record,
+            CompressionLevel level, long sourceSize, long largestOutput)
         {
             _busy = false;
             UpdateControls();
@@ -421,8 +430,13 @@ namespace ExcelMerger
             if (compressed > 0)
                 UsageStats.RecordPdfCompress(compressed);
             string suffix = compressed > 0 ? " · сжато: " + compressed : "";
-            SetStatus(openAsFolder ? ("✓ Создано файлов: " + count + "." + suffix)
-                : ("✓ Готово." + suffix), Theme.OkGreen);
+            string status = openAsFolder ? ("✓ Создано файлов: " + count + "." + suffix)
+                                          : ("✓ Готово." + suffix);
+            // Если без сжатия результат вышел почти как исходник (общие ресурсы страниц
+            // едут вместе с ними) — ненавязчиво подсказать про «Сжатие».
+            if (ShouldSuggestCompression(level, sourceSize, largestOutput))
+                status += " · файл крупный — включите «Сжатие», чтобы уменьшить размер.";
+            SetStatus(status, Theme.OkGreen);
             try
             {
                 if (openAsFolder)
@@ -431,6 +445,27 @@ namespace ExcelMerger
                     Process.Start(openTarget);
             }
             catch { } // нет ассоциации/проводника — файлы всё равно созданы
+        }
+
+        /// <summary>Длина файла в байтах (0, если недоступен). Без исключений.</summary>
+        private static long SafeLength(string path)
+        {
+            try { return !string.IsNullOrEmpty(path) && File.Exists(path) ? new FileInfo(path).Length : 0L; }
+            catch { return 0L; }
+        }
+
+        /// <summary>
+        /// Стоит ли ненавязчиво подсказать «включите Сжатие»: сжатие не выбрано, а
+        /// результат вышел почти как исходник (≥ 90% и не мелочь). Общие ресурсы
+        /// страниц копируются вместе с ними, поэтому подмножество может весить столько же.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static bool ShouldSuggestCompression(CompressionLevel level, long sourceSize, long largestOutputSize)
+        {
+            return level == CompressionLevel.None
+                && sourceSize > 0                             // размер исходника известен
+                && largestOutputSize >= 1024L * 1024          // не шумим на мелких файлах (< 1 МБ)
+                && largestOutputSize * 10L >= sourceSize * 9L; // вышло ≥ 90% исходника
         }
 
     }
