@@ -137,6 +137,7 @@ namespace ExcelMerger.Tests
             Run("TableDetector: рамка 1x1 без внутренних линий -> не таблица", TestTableSingleBox);
             Run("TableDetector: слова вне таблицы остаются в потоке", TestTableWordsOutside);
             Run("TableDetector: нет линий -> нет таблиц, все слова в потоке", TestTableNoLines);
+            Run("PdfToWordService: страница-таблица считается текстовой (не «скан»)", TestHasExtractableContent);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -1920,6 +1921,26 @@ namespace ExcelMerger.Tests
             TableDetectResult res = TableDetector.Detect(new List<PdfLine>(), words, 200, 200);
             AssertEqual(0, res.Tables.Count, "нет линий — нет таблиц");
             AssertEqual(2, res.RemainingWords.Count, "все слова в потоке");
+        }
+
+        private static void TestHasExtractableContent()
+        {
+            // Пустая страница — нет текста.
+            AssertTrue(!PdfToWordService.HasExtractableContent(new PdfPageText()), "пустая страница — нет текста");
+            // Только абзац — есть текст.
+            var withPar = new PdfPageText();
+            withPar.Paragraphs.Add(new OcrParagraph());
+            AssertTrue(PdfToWordService.HasExtractableContent(withPar), "абзац — есть текст");
+            // Только таблица с текстом в ячейке — есть текст (иначе ложный «скан»).
+            var withTable = new PdfPageText();
+            var cell = new OcrTableCell();
+            cell.Paragraphs.Add(new OcrParagraph());
+            var row = new OcrTableRow();
+            row.Cells.Add(cell);
+            var table = new OcrTable();
+            table.Rows.Add(row);
+            withTable.Tables.Add(table);
+            AssertTrue(PdfToWordService.HasExtractableContent(withTable), "таблица с текстом — есть текст");
         }
 
         private static void Run(string name, Action test)

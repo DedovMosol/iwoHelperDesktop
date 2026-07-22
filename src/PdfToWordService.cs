@@ -45,7 +45,7 @@ namespace ExcelMerger
 
             int withText = 0;
             foreach (PdfPageText page in pages)
-                if (page.Paragraphs != null && page.Paragraphs.Count > 0)
+                if (HasExtractableContent(page))
                     withText++;
 
             if (withText == 0)
@@ -55,6 +55,20 @@ namespace ExcelMerger
 
             WordDocxWriter.Write(pages, outputPath, write);
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
+        }
+
+        /// <summary>Есть ли на странице извлекаемый текст: абзацы вне таблиц ИЛИ текст в ячейках таблиц.</summary>
+        internal static bool HasExtractableContent(PdfPageText page)
+        {
+            if (page.Paragraphs != null && page.Paragraphs.Count > 0)
+                return true;
+            if (page.Tables != null)
+                foreach (OcrTable table in page.Tables)
+                    foreach (OcrTableRow row in table.Rows)
+                        foreach (OcrTableCell cell in row.Cells)
+                            if (cell.Paragraphs != null && cell.Paragraphs.Count > 0)
+                                return true;
+            return false;
         }
 
         /// <summary>
