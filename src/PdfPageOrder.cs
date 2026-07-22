@@ -21,6 +21,12 @@ namespace ExcelMerger
             get { return _items[index]; }
         }
 
+        /// <summary>Очистить список (например, при открытии другого документа).</summary>
+        public void Clear()
+        {
+            _items.Clear();
+        }
+
         /// <summary>Все страницы документа добавляются в конец списка по порядку.</summary>
         public void AddDocument(string path, int pageCount)
         {
