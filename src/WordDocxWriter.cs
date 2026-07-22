@@ -208,6 +208,8 @@ namespace ExcelMerger
                     OcrTableCell cell = table.Rows[r].Cells[c];
                     if (cell.Covered || (cell.ColSpan <= 1 && cell.RowSpan <= 1))
                         continue;
+                    if (r + cell.RowSpan > rows || c + cell.ColSpan > cols)
+                        continue; // спан за пределами сетки — не наш инвариант, но защищаемся здесь
                     try
                     {
                         dynamic head = wtable.Cell(r + 1, c + 1);
