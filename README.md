@@ -28,7 +28,7 @@ A small, self‑contained Windows application that bundles the office tasks peop
 - 📊 **Excel Digest** — merges the first visible sheet of every workbook in a folder into one file (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`), keeping all formatting (styles, formulas, charts, pivots); adds a table of contents, optional formula→value conversion, and a Word cover note (a fixed layout).
 - 📄 **PDF Merge** — build one PDF from several: a grid of page thumbnails, drag to reorder, delete extras. Pages are copied **as‑is** — scans, stamps and signatures are not distorted.
 - ✂️ **PDF Split** — extract selected pages into one file, or split by page ranges, every N pages, or top‑level bookmarks. The source is never modified.
-- 📝 **PDF → Word** — extract the text layer of a **born‑digital** PDF (saved from Word, “Microsoft Print to PDF”, exported from a browser) into an editable `.docx`. Inherits the font family, size, bold/italic, colour, super/subscript, paragraph alignment (left/justify/centre) and first‑line indent, page size and margins, images (placed in reading order) and hyperlinks. Scanned documents are not supported yet — a clear message is shown, the file is untouched.
+- 📝 **PDF → Word** — extract the text layer of a **born‑digital** PDF (saved from Word, “Microsoft Print to PDF”, exported from a browser) into an editable `.docx`. Inherits the font family, size, bold/italic, colour, super/subscript, paragraph alignment (left/justify/centre) and first‑line indent, page size and margins, images (placed in reading order) and hyperlinks. If a font used in the PDF is not installed, the text is set in Times New Roman; tables and multi‑column layouts are flattened to single‑column paragraphs. Scanned documents are not supported yet — a clear message is shown, the file is untouched.
 - 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size”: downsamples images while keeping text and vectors (not rasterization), via bundled **Ghostscript**. Default level leaves the file untouched.
 - 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing); local operation counters with manual/auto clear.
 - 🔒 **Safe by design** — no network, no admin, not packed/obfuscated; writes only to user‑selected folders and `%APPDATA%`.
@@ -53,7 +53,7 @@ A small, self‑contained Windows application that bundles the office tasks peop
 
 ## 🖥️ Usage
 
-Launch the app and pick a tool from the start screen. Tools open as independent windows; a **⌂ Home** button returns to the chooser. Long tasks run in the background with progress on the list and the taskbar, and can be cancelled.
+Launch the app and pick a tool from the start screen. Tools open as independent windows; a **⌂ Home** button returns to the chooser. Long tasks run in the background with progress shown in the window and on the taskbar button — a real, per‑page bar for the PDF tools (merge, split, PDF → Word) and a file list for Excel Digest.
 
 - **Excel Digest** — pick the source folder, set the output name/format, arrange/exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
 - **PDF Merge / Split** — add PDFs (button or drag‑and‑drop), reorder/select pages on the thumbnail grid, choose a **Compression** level if desired, and save.
