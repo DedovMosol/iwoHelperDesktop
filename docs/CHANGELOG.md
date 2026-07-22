@@ -3,6 +3,28 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.11] — 2026-07-22
+
+### Added
+- **Progress bar on all three PDF screens** (PDF Merge, PDF Split, PDF → Word) plus the
+  Windows taskbar‑button progress. It is a **real** determinate bar driven by the actual work,
+  not a timer: PDF → Word reports each page of both passes (text extraction, then writing to
+  Word); Merge reports each page added; Split reports each part written and then each part
+  compressed. Shared once in `PdfToolFormBase` (DRY) and shown by every PDF tool. Updates are
+  marshalled to the UI thread and throttled by whole percent, so there is no flooding and no
+  flicker. The bar sits in the free strip band **above** the status/action row, so it cannot
+  overlap the buttons, the zoom slider, the compression picker or the page grid. The
+  “done/total → percent” calculation is a pure method covered by unit tests (division‑by‑zero
+  and clamping included).
+
+### Changed
+- **PDF → Word Help → “How to use” now lists the real limitations**: scanned image‑only PDFs
+  are not supported; if the source font is not installed the text is set in Times New Roman;
+  tables, side‑boxes, multiple columns and lists are flattened to single‑column paragraphs;
+  underline is not carried over (in PDF it is a drawn line, not a text attribute); a PDF saved
+  with a broken text encoding (no valid ToUnicode) extracts as unreadable text — a defect of
+  the file itself, checkable by copying the text inside the PDF.
+
 ## [1.13.10] — 2026-07-22
 
 ### Fixed

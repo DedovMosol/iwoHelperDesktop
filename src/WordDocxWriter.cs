@@ -23,7 +23,7 @@ namespace ExcelMerger
         private const double MaxPagePt = 1584;  // 22" — максимум Word
 
         /// <summary>Пишет .docx из абзацев и изображений страниц. Занятый файл/нет Word — MergeException.</summary>
-        public static void Write(IList<PdfPageText> pages, string path)
+        public static void Write(IList<PdfPageText> pages, string path, Action<int, int> progress = null)
         {
             if (pages == null)
                 throw new ArgumentNullException("pages");
@@ -52,6 +52,8 @@ namespace ExcelMerger
                             else
                                 InsertImage(sel, blk.Image, tempDir, ref imgIndex);
                         }
+                        if (progress != null)
+                            progress(p + 1, pages.Count);
                     }
                 });
             }

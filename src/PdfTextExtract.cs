@@ -56,20 +56,21 @@ namespace ExcelMerger
         /// Текст всех страниц. Битый/зашифрованный файл или запрет извлечения —
         /// <see cref="MergeException"/> с понятным сообщением.
         /// </summary>
-        public static List<PdfPageText> Extract(string path)
+        public static List<PdfPageText> Extract(string path, Action<int, int> progress = null)
         {
             EmbeddedAssemblies.Ensure();
-            return ExtractCore(path);
+            return ExtractCore(path, progress);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<PdfPageText> ExtractCore(string path)
+        private static List<PdfPageText> ExtractCore(string path, Action<int, int> progress)
         {
             try
             {
                 using (UglyToad.PdfPig.PdfDocument doc = UglyToad.PdfPig.PdfDocument.Open(path))
                 {
                     var pages = new List<PdfPageText>();
+                    int pageCount = doc.NumberOfPages;
                     foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
                     {
                         var words = new List<PdfWord>();
@@ -118,6 +119,8 @@ namespace ExcelMerger
                         SetMargins(pt, words, page.Width, page.Height);
                         pt.Images = ExtractImages(page);
                         pages.Add(pt);
+                        if (progress != null)
+                            progress(pages.Count, pageCount);
                     }
                     return pages;
                 }

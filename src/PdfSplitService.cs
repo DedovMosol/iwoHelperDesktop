@@ -18,8 +18,8 @@ namespace ExcelMerger
     /// </summary>
     public static class PdfSplitService
     {
-        /// <summary>Извлечь выбранные страницы (индексы с нуля) в один новый PDF.</summary>
-        public static void Extract(string sourcePath, IList<int> pageIndices, string outputPath)
+        /// <summary>Извлечь выбранные страницы (индексы с нуля) в один новый PDF. progress — «сделано/всего» частей (здесь одна).</summary>
+        public static void Extract(string sourcePath, IList<int> pageIndices, string outputPath, Action<int, int> progress = null)
         {
             if (pageIndices == null || pageIndices.Count == 0)
                 throw new MergeException("Не выбрано ни одной страницы.");
@@ -28,35 +28,37 @@ namespace ExcelMerger
             foreach (int idx in pageIndices)
                 order.Add(new PdfPageRef { SourcePath = sourcePath, PageIndex = idx });
             PdfMergeService.Merge(order, outputPath);
+            if (progress != null)
+                progress(1, 1); // одна часть (один итоговый файл)
         }
 
-        /// <summary>Разбить по диапазонам («1-3, 5, 8-») — каждый диапазон в свой файл.</summary>
-        public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName)
+        /// <summary>Разбить по диапазонам («1-3, 5, 8-») — каждый диапазон в свой файл. progress — «сделано/всего» частей.</summary>
+        public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress = null)
         {
             if (ranges == null || ranges.Count == 0)
                 throw new MergeException("Не задано ни одного диапазона.");
             EmbeddedAssemblies.Ensure();
-            return SplitRangesCore(sourcePath, ranges, outDir, baseName);
+            return SplitRangesCore(sourcePath, ranges, outDir, baseName, progress);
         }
 
-        /// <summary>Разбить на части по n страниц (n=1 — каждая страница отдельным файлом).</summary>
-        public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName)
+        /// <summary>Разбить на части по n страниц (n=1 — каждая страница отдельным файлом). progress — «сделано/всего» частей.</summary>
+        public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress = null)
         {
             if (n < 1)
                 throw new MergeException("Число страниц в части должно быть не меньше 1.");
             EmbeddedAssemblies.Ensure();
-            return SplitEveryNCore(sourcePath, n, outDir, baseName);
+            return SplitEveryNCore(sourcePath, n, outDir, baseName, progress);
         }
 
-        /// <summary>Разбить по закладкам верхнего уровня — файлы именуются заголовками.</summary>
-        public static List<string> SplitByBookmarks(string sourcePath, string outDir, string baseName)
+        /// <summary>Разбить по закладкам верхнего уровня — файлы именуются заголовками. progress — «сделано/всего» частей.</summary>
+        public static List<string> SplitByBookmarks(string sourcePath, string outDir, string baseName, Action<int, int> progress = null)
         {
             EmbeddedAssemblies.Ensure();
-            return SplitBookmarksCore(sourcePath, outDir, baseName);
+            return SplitBookmarksCore(sourcePath, outDir, baseName, progress);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName)
+        private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
@@ -68,13 +70,15 @@ namespace ExcelMerger
                     string path = UniquePath(outDir, baseName + "_" + r.Label);
                     WriteRange(source, r, path);
                     created.Add(path);
+                    if (progress != null)
+                        progress(created.Count, ranges.Count);
                 }
             }
             return created;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName)
+        private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
@@ -87,13 +91,15 @@ namespace ExcelMerger
                     WriteRange(source, r, path);
                     created.Add(path);
                     part++;
+                    if (progress != null)
+                        progress(created.Count, chunks.Count);
                 }
             }
             return created;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName)
+        private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName, Action<int, int> progress)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
@@ -125,6 +131,8 @@ namespace ExcelMerger
                     string path = UniquePath(outDir, baseName + "_" + Sanitize(marks[m].Value));
                     WriteRange(source, new PageRange(start, end), path);
                     created.Add(path);
+                    if (progress != null)
+                        progress(created.Count, marks.Count);
                 }
             }
             return created;
