@@ -130,6 +130,14 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
 
+            Run("TableDetector: сетка 2x2 -> строки/колонки, текст ячеек", TestTable2x2);
+            Run("TableDetector: пропущенная гориз. граница -> rowspan", TestTableRowSpan);
+            Run("TableDetector: пропущенная верт. граница -> colspan", TestTableColSpan);
+            Run("TableDetector: одиночные линии (подчёркивания) -> не таблица", TestTableStrayLines);
+            Run("TableDetector: рамка 1x1 без внутренних линий -> не таблица", TestTableSingleBox);
+            Run("TableDetector: слова вне таблицы остаются в потоке", TestTableWordsOutside);
+            Run("TableDetector: нет линий -> нет таблиц, все слова в потоке", TestTableNoLines);
+
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             return _failed == 0 ? 0 : 1;
@@ -1779,6 +1787,139 @@ namespace ExcelMerger.Tests
         {
             AssertEqual(0, OcrLayout.ToParagraphs(new List<PdfWord>()).Count, "пусто -> нет абзацев");
             AssertEqual(0, OcrLayout.ToParagraphs(null).Count, "null -> нет абзацев");
+        }
+
+        // ---------- TableDetector ----------
+        // Хелперы строят линовку и слова в координатах PDF (pt, ось Y вверх).
+
+        private static PdfLine HLine(double y, double x1, double x2)
+        {
+            return new PdfLine { Orientation = LineOrientation.Horizontal, X1 = x1, Y1 = y, X2 = x2, Y2 = y };
+        }
+
+        private static PdfLine VLine(double x, double y1, double y2)
+        {
+            return new PdfLine { Orientation = LineOrientation.Vertical, X1 = x, Y1 = y1, X2 = x, Y2 = y2 };
+        }
+
+        /// <summary>Слово шириной 10×10 с центром (cx, cy).</summary>
+        private static PdfWord Word(string text, double cx, double cy)
+        {
+            return new PdfWord { Text = text, Left = cx - 5, Right = cx + 5, Bottom = cy - 5, Top = cy + 5, FontSizePt = 10 };
+        }
+
+        private static string TableCellText(OcrTable t, int row, int col)
+        {
+            OcrTableCell cell = t.Rows[row].Cells[col];
+            return cell.Paragraphs.Count > 0 ? cell.Paragraphs[0].Text : "";
+        }
+
+        private static void TestTable2x2()
+        {
+            // Колонки X=0,50,100; строки Y=0,50,100 (полная сетка 2x2).
+            var lines = new List<PdfLine>
+            {
+                HLine(100, 0, 100), HLine(50, 0, 100), HLine(0, 0, 100),
+                VLine(0, 0, 100), VLine(50, 0, 100), VLine(100, 0, 100)
+            };
+            var words = new List<PdfWord>
+            {
+                Word("A", 25, 75), Word("B", 75, 75), // верхняя строка
+                Word("C", 25, 25), Word("D", 75, 25)  // нижняя строка
+            };
+            TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
+            AssertEqual(1, res.Tables.Count, "одна таблица");
+            OcrTable t = res.Tables[0];
+            AssertEqual(2, t.Rows.Count, "2 строки");
+            AssertEqual(2, t.ColumnCount, "2 колонки");
+            AssertEqual("A", TableCellText(t, 0, 0), "ячейка (0,0)");
+            AssertEqual("B", TableCellText(t, 0, 1), "ячейка (0,1)");
+            AssertEqual("C", TableCellText(t, 1, 0), "ячейка (1,0)");
+            AssertEqual("D", TableCellText(t, 1, 1), "ячейка (1,1)");
+            AssertEqual(0, res.RemainingWords.Count, "все слова в таблице");
+        }
+
+        private static void TestTableRowSpan()
+        {
+            // Внутренняя горизонталь Y=50 есть только в правой колонке -> левая ячейка на 2 строки.
+            var lines = new List<PdfLine>
+            {
+                HLine(100, 0, 100), HLine(0, 0, 100), HLine(50, 50, 100),
+                VLine(0, 0, 100), VLine(50, 0, 100), VLine(100, 0, 100)
+            };
+            var words = new List<PdfWord> { Word("L", 25, 50), Word("TR", 75, 75), Word("BR", 75, 25) };
+            TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
+            AssertEqual(1, res.Tables.Count, "одна таблица");
+            OcrTable t = res.Tables[0];
+            AssertEqual(2, t.Rows[0].Cells[0].RowSpan, "левая ячейка на 2 строки");
+            AssertTrue(t.Rows[1].Cells[0].Covered, "накрытая позиция под объединением");
+            AssertEqual("L", TableCellText(t, 0, 0), "текст объединённой ячейки");
+            AssertEqual("TR", TableCellText(t, 0, 1), "правая верхняя");
+            AssertEqual("BR", TableCellText(t, 1, 1), "правая нижняя");
+        }
+
+        private static void TestTableColSpan()
+        {
+            // Внутренняя вертикаль X=50 есть только в нижней строке -> верхняя ячейка на 2 колонки.
+            var lines = new List<PdfLine>
+            {
+                HLine(100, 0, 100), HLine(50, 0, 100), HLine(0, 0, 100),
+                VLine(0, 0, 100), VLine(100, 0, 100), VLine(50, 0, 50)
+            };
+            var words = new List<PdfWord> { Word("Top", 50, 75), Word("BL", 25, 25), Word("BR", 75, 25) };
+            TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
+            AssertEqual(1, res.Tables.Count, "одна таблица");
+            OcrTable t = res.Tables[0];
+            AssertEqual(2, t.Rows[0].Cells[0].ColSpan, "верхняя ячейка на 2 колонки");
+            AssertTrue(t.Rows[0].Cells[1].Covered, "накрытая позиция справа");
+            AssertEqual("Top", TableCellText(t, 0, 0), "текст объединённой ячейки");
+            AssertEqual("BL", TableCellText(t, 1, 0), "нижняя левая");
+            AssertEqual("BR", TableCellText(t, 1, 1), "нижняя правая");
+        }
+
+        private static void TestTableStrayLines()
+        {
+            // Два подчёркивания (горизонтали без вертикалей) — не таблица.
+            var lines = new List<PdfLine> { HLine(60, 0, 40), HLine(20, 0, 40) };
+            var words = new List<PdfWord> { Word("x", 20, 60) };
+            TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
+            AssertEqual(0, res.Tables.Count, "нет таблиц");
+            AssertEqual(1, res.RemainingWords.Count, "слово осталось в потоке");
+        }
+
+        private static void TestTableSingleBox()
+        {
+            // Рамка без внутренних линий — 1x1, не таблица.
+            var lines = new List<PdfLine>
+            {
+                HLine(100, 0, 100), HLine(0, 0, 100), VLine(0, 0, 100), VLine(100, 0, 100)
+            };
+            var words = new List<PdfWord> { Word("x", 50, 50) };
+            TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
+            AssertEqual(0, res.Tables.Count, "рамка 1x1 — не таблица");
+            AssertEqual(1, res.RemainingWords.Count, "слово осталось в потоке");
+        }
+
+        private static void TestTableWordsOutside()
+        {
+            var lines = new List<PdfLine>
+            {
+                HLine(100, 0, 100), HLine(50, 0, 100), HLine(0, 0, 100),
+                VLine(0, 0, 100), VLine(50, 0, 100), VLine(100, 0, 100)
+            };
+            var words = new List<PdfWord> { Word("in", 25, 75), Word("out", 300, 300) };
+            TableDetectResult res = TableDetector.Detect(lines, words, 500, 500);
+            AssertEqual(1, res.Tables.Count, "одна таблица");
+            AssertEqual(1, res.RemainingWords.Count, "внешнее слово в потоке");
+            AssertEqual("out", res.RemainingWords[0].Text, "именно внешнее слово");
+        }
+
+        private static void TestTableNoLines()
+        {
+            var words = new List<PdfWord> { Word("a", 10, 10), Word("b", 20, 20) };
+            TableDetectResult res = TableDetector.Detect(new List<PdfLine>(), words, 200, 200);
+            AssertEqual(0, res.Tables.Count, "нет линий — нет таблиц");
+            AssertEqual(2, res.RemainingWords.Count, "все слова в потоке");
         }
 
         private static void Run(string name, Action test)
