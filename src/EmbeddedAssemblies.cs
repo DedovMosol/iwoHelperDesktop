@@ -61,7 +61,10 @@ namespace ExcelMerger
             {
                 int read = stream.Read(bytes, done, bytes.Length - done);
                 if (read <= 0)
-                    break;
+                    // Недочитанный ресурс — повреждённый exe: лучше явная ошибка сразу,
+                    // чем Assembly.Load обрезанных байтов с невнятным BadImageFormat.
+                    throw new EndOfStreamException(
+                        "Вшитый ресурс прочитан не полностью: " + done + " из " + bytes.Length + " байт.");
                 done += read;
             }
             return bytes;

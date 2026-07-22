@@ -75,7 +75,7 @@ namespace ExcelMerger
             _btnRemove = AddPanelButton("Удалить", px, m + 208, pw, "Убрать выбранные страницы из вывода (Delete)");
             _btnRemove.Click += OnRemoveClick;
 
-            BuildBottomStrip(right, "Откройте цифровой PDF — кнопкой или перетащив его в окно.", false);
+            BuildBottomStrip(right, "Откройте цифровой PDF — кнопкой или перетащив его в окно.", 230, false);
 
             // Действие — в правом нижнем углу (как «Сохранить PDF» в «Объединении»).
             _btnConvert = new RoundedButton(true);
@@ -285,22 +285,9 @@ namespace ExcelMerger
             UpdateControls();
         }
 
-        /// <summary>Горячие клавиши сетки страниц (та же раскладка, что в «Объединении»).</summary>
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-        {
-            if (_grid != null && _grid.ListFocused)
-            {
-                switch (PdfMergeForm.ClassifyPageKey(keyData))
-                {
-                    case PdfMergeForm.PageKeyAction.Remove: OnRemoveClick(this, EventArgs.Empty); return true;
-                    case PdfMergeForm.PageKeyAction.MoveEarlier: MoveSelected(false); return true;
-                    case PdfMergeForm.PageKeyAction.MoveLater: MoveSelected(true); return true;
-                    case PdfMergeForm.PageKeyAction.SelectAll: _grid.SelectAll(); return true;
-                    case PdfMergeForm.PageKeyAction.Swallow: return true;
-                }
-            }
-            return base.ProcessCmdKey(ref msg, keyData);
-        }
+        // Горячие клавиши сетки (Delete, Alt+←/→, Ctrl+A, Enter) — в базе PdfToolFormBase.
+        protected override void RemoveSelectedPages() { OnRemoveClick(this, EventArgs.Empty); }
+        protected override void MoveSelectedPage(bool later) { MoveSelected(later); }
 
         private Button AddPanelButton(string text, int x, int y, int w, string tip)
         {

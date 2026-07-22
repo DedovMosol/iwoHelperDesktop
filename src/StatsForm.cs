@@ -15,6 +15,7 @@ namespace ExcelMerger
         private Label _since;
         private Label _excel, _merge, _extract, _ranges, _everyN, _bookmarks, _pdftoword, _compress, _total;
         private ComboBox _cmbAuto;
+        private ToolTip _tips;
         private bool _loading;
 
         public StatsForm()
@@ -76,7 +77,13 @@ namespace ExcelMerger
             LoadAndShow();
         }
 
-        private ToolTip _tips;
+        protected override void Dispose(bool disposing)
+        {
+            // ToolTip — компонент, а не дочерний контрол: авто-освобождение не срабатывает.
+            if (disposing && _tips != null)
+                _tips.Dispose();
+            base.Dispose(disposing);
+        }
 
         private Label Row(string caption, int y)
         {

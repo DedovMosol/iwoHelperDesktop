@@ -71,7 +71,7 @@ namespace ExcelMerger.Tests
             Run("HeaderBand: строится с заголовком, двойная буферизация", TestHeaderBand);
             Run("HeaderBand.TextRightBound: текст не заходит под кнопку", TestHeaderTextBound);
             Run("MainForm.ClassifyListKey: Alt+↑/↓, Ctrl+C/A, Delete, Enter", TestClassifyListKey);
-            Run("PdfMergeForm.ClassifyPageKey: Delete, Alt+←/→, Ctrl+A, Enter", TestClassifyPageKey);
+            Run("PdfToolFormBase.ClassifyPageKey: Delete, Alt+←/→, Ctrl+A, Enter", TestClassifyPageKey);
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
             Run("PdfPageOrder: удаление набора строк + Clear", TestPdfOrderRemove);
@@ -633,12 +633,12 @@ namespace ExcelMerger.Tests
         {
             var Alt = System.Windows.Forms.Keys.Alt;
             var Ctrl = System.Windows.Forms.Keys.Control;
-            AssertEqual(PdfMergeForm.PageKeyAction.Remove, PdfMergeForm.ClassifyPageKey(System.Windows.Forms.Keys.Delete), "Delete — удалить");
-            AssertEqual(PdfMergeForm.PageKeyAction.MoveEarlier, PdfMergeForm.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Left), "Alt+← — раньше");
-            AssertEqual(PdfMergeForm.PageKeyAction.MoveLater, PdfMergeForm.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Right), "Alt+→ — позже");
-            AssertEqual(PdfMergeForm.PageKeyAction.SelectAll, PdfMergeForm.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
-            AssertEqual(PdfMergeForm.PageKeyAction.Swallow, PdfMergeForm.ClassifyPageKey(System.Windows.Forms.Keys.Enter), "Enter — не сохранять");
-            AssertEqual(PdfMergeForm.PageKeyAction.None, PdfMergeForm.ClassifyPageKey(System.Windows.Forms.Keys.Left), "просто ← — навигация");
+            AssertEqual(PdfToolFormBase.PageKeyAction.Remove, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Delete), "Delete — удалить");
+            AssertEqual(PdfToolFormBase.PageKeyAction.MoveEarlier, PdfToolFormBase.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Left), "Alt+← — раньше");
+            AssertEqual(PdfToolFormBase.PageKeyAction.MoveLater, PdfToolFormBase.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Right), "Alt+→ — позже");
+            AssertEqual(PdfToolFormBase.PageKeyAction.SelectAll, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
+            AssertEqual(PdfToolFormBase.PageKeyAction.Swallow, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Enter), "Enter — не сохранять");
+            AssertEqual(PdfToolFormBase.PageKeyAction.None, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Left), "просто ← — навигация");
         }
 
         private static string RangeSig(System.Collections.Generic.List<PageRange> ranges)

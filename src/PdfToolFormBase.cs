@@ -103,11 +103,13 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Общий нижний строй обоих PDF-инструментов: подпись + ползунок масштаба (с
-        /// троттлинг-таймером), выбор сжатия и строка статуса. Вызывать ПОСЛЕ создания
-        /// сетки (_grid) — к ней привязан масштаб. right — правый край рабочей области.
+        /// Общий нижний строй PDF-инструментов: подпись + ползунок масштаба (с
+        /// троттлинг-таймером), выбор сжатия, полоса прогресса и строка статуса.
+        /// Вызывать ПОСЛЕ создания сетки (_grid) — к ней привязан масштаб.
+        /// right — правый край рабочей области; actionWidth — ширина кнопки действия
+        /// в правом нижнем углу: статус обрезается до неё и не уходит под кнопку.
         /// </summary>
-        protected void BuildBottomStrip(int right, string statusText, bool withCompress = true)
+        protected void BuildBottomStrip(int right, string statusText, int actionWidth, bool withCompress = true)
         {
             int h = ClientSize.Height;
             Ui.Label(this, "Масштаб:", 20, h - 144, Font, Theme.TextMuted)
@@ -140,8 +142,13 @@ namespace ExcelMerger
                 Controls.Add(_compress);
             }
 
+            // Статус делит нижний ряд с кнопкой действия справа: фиксированная ширина до
+            // кнопки + многоточие, длинный текст целиком покажет подсказка AutoEllipsis.
             _lblStatus = Ui.Label(this, statusText, 20, h - 50, Font, Theme.TextMuted);
-            _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            _lblStatus.AutoSize = false;
+            _lblStatus.AutoEllipsis = true;
+            _lblStatus.SetBounds(20, h - 50, right - actionWidth - 12 - 20, 20);
+            _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
             // Полоса прогресса — отдельный ряд между «Масштаб/Сжатие» (низ h-103: ползунок
             // h-148 + 45) и «статус/кнопка» (верх h-58): зазоры 11 и 18 px, перекрытий нет.
@@ -241,6 +248,58 @@ namespace ExcelMerger
                 catch (InvalidOperationException) { } // окно закрылось между проверкой и вызовом
             };
         }
+
+        /// <summary>Действие клавиатуры для сетки страниц. Чистая — под тест.</summary>
+        internal enum PageKeyAction { None, Remove, MoveEarlier, MoveLater, SelectAll, Swallow }
+
+        internal static PageKeyAction ClassifyPageKey(Keys keyData)
+        {
+            if (keyData == Keys.Delete) return PageKeyAction.Remove;
+            if (keyData == (Keys.Alt | Keys.Left)) return PageKeyAction.MoveEarlier;
+            if (keyData == (Keys.Alt | Keys.Right)) return PageKeyAction.MoveLater;
+            if (keyData == (Keys.Control | Keys.A)) return PageKeyAction.SelectAll;
+            if (keyData == Keys.Enter) return PageKeyAction.Swallow;
+            return PageKeyAction.None;
+        }
+
+        /// <summary>
+        /// Единые горячие клавиши сетки страниц (одна раскладка на все PDF-инструменты):
+        /// Ctrl+A — выделить всё; в редактируемых сетках (AllowReorder) Delete и Alt+←/→
+        /// правят порядок через виртуальные методы, а Enter гасится, чтобы не жать
+        /// кнопку действия по AcceptButton. В нередактируемой сетке («Разделение»)
+        /// эти клавиши уходят в стандартную обработку, как и раньше.
+        /// </summary>
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (_grid != null && _grid.ListFocused)
+            {
+                switch (ClassifyPageKey(keyData))
+                {
+                    case PageKeyAction.SelectAll:
+                        _grid.SelectAll();
+                        return true;
+                    case PageKeyAction.Remove:
+                        if (_grid.AllowReorder) { RemoveSelectedPages(); return true; }
+                        break;
+                    case PageKeyAction.MoveEarlier:
+                        if (_grid.AllowReorder) { MoveSelectedPage(false); return true; }
+                        break;
+                    case PageKeyAction.MoveLater:
+                        if (_grid.AllowReorder) { MoveSelectedPage(true); return true; }
+                        break;
+                    case PageKeyAction.Swallow:
+                        if (_grid.AllowReorder) return true;
+                        break;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        /// <summary>Удалить выбранные страницы (Delete). Зовётся только при AllowReorder.</summary>
+        protected virtual void RemoveSelectedPages() { }
+
+        /// <summary>Сдвинуть выбранную страницу раньше/позже (Alt+←/→). Зовётся только при AllowReorder.</summary>
+        protected virtual void MoveSelectedPage(bool later) { }
 
         /// <summary>Сообщение при попытке закрыть окно во время фоновой операции.</summary>
         protected virtual string BusyMessage

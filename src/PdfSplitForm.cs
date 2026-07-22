@@ -83,6 +83,16 @@ namespace ExcelMerger
             _cmbMode.SetBounds(px, m + 150, pw, 27);
             _cmbMode.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _cmbMode.SelectedIndexChanged += delegate { UpdateModeInputs(); UpdateControls(); };
+            // Выбор режима из раскрытого списка переводит фокус в его поле ввода — можно
+            // сразу печатать. Стрелки по закрытому списку фокус не трогают, иначе они
+            // перестали бы листать режимы.
+            int modeBeforeDrop = -1;
+            _cmbMode.DropDown += delegate { modeBeforeDrop = _cmbMode.SelectedIndex; };
+            _cmbMode.DropDownClosed += delegate
+            {
+                if (_cmbMode.SelectedIndex != modeBeforeDrop)
+                    FocusModeInput();
+            };
             Controls.Add(_cmbMode);
 
             // Поля ввода режимов (в одном месте, показываются по режиму).
@@ -119,7 +129,7 @@ namespace ExcelMerger
             Controls.Add(_chkCombine);
 
             // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
-            BuildBottomStrip(right, "Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.");
+            BuildBottomStrip(right, "Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.", 190);
 
             // Действие — в правом нижнем углу (как «Сохранить PDF» в «Объединении»).
             _btnDo = new RoundedButton(true);
@@ -220,6 +230,15 @@ namespace ExcelMerger
             _btnDo.Text = oneFile ? "Извлечь…" : "Разделить…";
         }
 
+        /// <summary>Фокус в поле ввода текущего режима (Focus() у недоступного поля — no-op).</summary>
+        private void FocusModeInput()
+        {
+            if (_cmbMode.SelectedIndex == ModeRanges)
+                _txtRanges.Focus();
+            else if (_cmbMode.SelectedIndex == ModeEveryN)
+                _numN.Focus();
+        }
+
         private void UpdateControls()
         {
             bool loaded = _sourcePath != null;
@@ -233,15 +252,7 @@ namespace ExcelMerger
             _btnDo.Enabled = canDo;
         }
 
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-        {
-            if (_grid != null && _grid.ListFocused && keyData == (Keys.Control | Keys.A))
-            {
-                _grid.SelectAll();
-                return true;
-            }
-            return base.ProcessCmdKey(ref msg, keyData);
-        }
+        // Ctrl+A в сетке — в базе PdfToolFormBase (сетка без AllowReorder: только выделение).
 
         // ---------- выполнение ----------
 
