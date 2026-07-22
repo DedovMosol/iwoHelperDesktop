@@ -9,10 +9,11 @@ using System.Windows.Forms;
 namespace ExcelMerger
 {
     /// <summary>
-    /// Инструмент «PDF → Word»: извлекает текстовый слой цифрового PDF (сохранённого из
-    /// Word, «Microsoft Print to PDF» и т.п.) в редактируемый .docx. Страницы источника
-    /// показаны сеткой (<see cref="PdfPageGrid"/>). Отсканированные документы (без текстового
-    /// слоя) в настоящее время недоступны — при попытке будет понятное сообщение (файл цел).
+    /// Инструмент «PDF → Word»: извлекает текстовый слой одного или НЕСКОЛЬКИХ цифровых PDF
+    /// (сохранённых из Word, «Microsoft Print to PDF» и т.п.) в один редактируемый .docx.
+    /// Страницы всех добавленных файлов показаны единой сеткой (<see cref="PdfPageGrid"/>) и
+    /// собираются в выбранном порядке. Отсканированные документы (без текстового слоя) в
+    /// настоящее время недоступны — при попытке будет понятное сообщение (файл цел).
     /// Конвертация обёрнута try/catch (<see cref="OnConvertClick"/>): любая ошибка — диалог,
     /// не краш. На базе <see cref="PdfToolFormBase"/> (сетка/зум/статус/закрытие/освобождение — DRY).
     /// </summary>
@@ -21,7 +22,6 @@ namespace ExcelMerger
         private const string Title = "PDF → Word";
 
         private readonly PdfPageOrder _order = new PdfPageOrder();
-        private string _sourcePath;
         private Button _btnOpen;
         private Button _btnUp;
         private Button _btnDown;
@@ -61,11 +61,11 @@ namespace ExcelMerger
             int px = right - panelW + 10;
             int pw = panelW - 10;
             _btnOpen = new RoundedButton(false);
-            _btnOpen.Text = "Открыть PDF…";
+            _btnOpen.Text = "Добавить PDF…";
             _btnOpen.SetBounds(px, m + 84, pw, 32);
             _btnOpen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnOpen.Click += OnOpenClick;
-            _tips.SetToolTip(_btnOpen, "Файл также можно перетащить в окно");
+            _tips.SetToolTip(_btnOpen, "Можно выбрать несколько файлов или перетащить их в окно");
             Controls.Add(_btnOpen);
 
             _btnUp = AddPanelButton("◀ Раньше", px, m + 128, pw, "Переместить страницу раньше (Alt+←)");
@@ -75,7 +75,7 @@ namespace ExcelMerger
             _btnRemove = AddPanelButton("Удалить", px, m + 208, pw, "Убрать выбранные страницы из вывода (Delete)");
             _btnRemove.Click += OnRemoveClick;
 
-            BuildBottomStrip(right, "Откройте цифровой PDF — кнопкой или перетащив его в окно.", 230, false);
+            BuildBottomStrip(right, "Добавьте цифровые PDF — кнопкой или перетащив их в окно.", 230, false);
 
             // Действие — в правом нижнем углу (как «Сохранить PDF» в «Объединении»).
             _btnConvert = new RoundedButton(true);
@@ -91,11 +91,13 @@ namespace ExcelMerger
         private void ShowHelp()
         {
             Dialogs.Info(this, Title, "Как пользоваться",
-                "1. Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.\n" +
+                "1. Добавьте один или несколько PDF — кнопкой «Добавить PDF…» (можно выбрать сразу " +
+                "несколько) или перетащив их в окно. Страницы всех файлов показываются одной сеткой.\n" +
                 "2. При необходимости измените порядок страниц: перетащите миниатюру или выделите " +
                 "её и нажмите «◀ Раньше»/«Позже ▶» (Alt+←/→). Лишние страницы уберите из вывода " +
                 "кнопкой «Удалить» (Delete). В Word попадут страницы в показанном порядке.\n" +
-                "3. Нажмите «Конвертировать в Word…» и укажите имя .docx.\n\n" +
+                "3. Нажмите «Конвертировать в Word…» и укажите имя .docx — все выбранные страницы " +
+                "соберутся в один документ.\n\n" +
                 "Извлекается ТЕКСТОВЫЙ СЛОЙ цифровых PDF (например, сохранённых из Word, " +
                 "«Microsoft Print to PDF», экспортированных из браузера). Переносятся: текст " +
                 "абзацами в порядке чтения — с шрифтом, размером, начертанием, цветом, " +
@@ -123,9 +125,10 @@ namespace ExcelMerger
             using (var dialog = new OpenFileDialog())
             {
                 dialog.Filter = "Документы PDF (*.pdf)|*.pdf";
-                dialog.Title = "Выберите PDF";
+                dialog.Multiselect = true;
+                dialog.Title = "Выберите PDF-файлы";
                 if (dialog.ShowDialog(this) == DialogResult.OK)
-                    LoadSource(dialog.FileName);
+                    AddFiles(dialog.FileNames);
             }
         }
 
@@ -136,36 +139,42 @@ namespace ExcelMerger
 
         private void OnFileDragDrop(object sender, DragEventArgs e)
         {
-            if (_busy)
-                return;
-            string[] paths = PdfDrop.ExtractPaths(e);
-            if (paths.Length > 0)
-                LoadSource(paths[0]); // конвертация работает с одним документом
+            if (!_busy)
+                AddFiles(PdfDrop.ExtractPaths(e));
         }
 
-        private void LoadSource(string path)
+        /// <summary>Добавить PDF-файлы в конец списка страниц (порядок правится в сетке). Ошибка файла — диалог, остальные добавляются.</summary>
+        private void AddFiles(string[] paths)
         {
-            int pageCount;
+            if (paths == null)
+                return;
+            int added = 0;
             Cursor = Cursors.WaitCursor;
             try
             {
-                pageCount = PdfMergeService.LoadPages(path).Count;
-            }
-            catch (MergeException ex)
-            {
-                Cursor = Cursors.Default;
-                Dialogs.Error(this, Title, "Файл не открыт", ex.Message);
-                return;
+                foreach (string path in paths)
+                {
+                    try
+                    {
+                        int pages = PdfMergeService.LoadPages(path).Count;
+                        _order.AddDocument(path, pages); // страницы в исходном порядке; пользователь переставит/удалит
+                        added += pages;
+                    }
+                    catch (MergeException ex)
+                    {
+                        Dialogs.Error(this, Title, "Файл не добавлен", ex.Message);
+                    }
+                }
             }
             finally
             {
                 Cursor = Cursors.Default;
             }
-            _sourcePath = path;
-            _order.Clear();
-            _order.AddDocument(path, pageCount); // страницы в исходном порядке; пользователь переставит/удалит
-            RefreshGrid();
-            SetStatus("Открыт «" + Path.GetFileName(path) + "»: страниц " + pageCount + ".", Theme.TextMuted);
+            if (added > 0)
+            {
+                RefreshGrid();
+                SetStatus("Страниц к переводу: " + _order.Count + ".", Theme.TextMuted);
+            }
             UpdateControls();
         }
 
@@ -173,24 +182,20 @@ namespace ExcelMerger
 
         private void OnConvertClick(object sender, EventArgs e)
         {
-            if (_busy || _sourcePath == null || _order.Count == 0)
+            if (_busy || _order.Count == 0)
                 return;
-            string src = _sourcePath;
+            // Порядок/подмножество страниц из сетки (источник + индекс; страницы могут идти из разных файлов).
+            List<PdfPageRef> order = _order.ToList();
             string outPath;
             using (var dialog = new SaveFileDialog())
             {
                 dialog.Filter = "Документ Word (*.docx)|*.docx";
-                dialog.FileName = Path.GetFileNameWithoutExtension(src) + ".docx";
-                dialog.InitialDirectory = Path.GetDirectoryName(src);
+                dialog.FileName = DefaultOutputName(order);
+                dialog.InitialDirectory = Path.GetDirectoryName(order[0].SourcePath);
                 if (dialog.ShowDialog(this) != DialogResult.OK)
                     return;
                 outPath = dialog.FileName;
             }
-
-            // Порядок/подмножество страниц из сетки (индексы с нуля в текущем порядке).
-            var order = new List<int>(_order.Count);
-            foreach (PdfPageRef p in _order.ToList())
-                order.Add(p.PageIndex);
 
             _busy = true;
             UpdateControls();
@@ -204,7 +209,7 @@ namespace ExcelMerger
                 ConvertResult result = null;
                 try
                 {
-                    result = PdfToWordService.Convert(src, outPath, order, onProgress);
+                    result = PdfToWordService.Convert(order, outPath, onProgress);
                 }
                 catch (Exception ex)
                 {
@@ -290,6 +295,17 @@ namespace ExcelMerger
         // Горячие клавиши сетки (Delete, Alt+←/→, Ctrl+A, Enter) — в базе PdfToolFormBase.
         protected override void RemoveSelectedPages() { OnRemoveClick(this, EventArgs.Empty); }
         protected override void MoveSelectedPage(bool later) { MoveSelected(later); }
+
+        /// <summary>Имя .docx по умолчанию: из одного файла — его имя; из нескольких — «Объединённый».</summary>
+        private static string DefaultOutputName(List<PdfPageRef> order)
+        {
+            var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (PdfPageRef r in order)
+                distinct.Add(r.SourcePath);
+            return distinct.Count == 1
+                ? Path.GetFileNameWithoutExtension(order[0].SourcePath) + ".docx"
+                : "Объединённый.docx";
+        }
 
         private Button AddPanelButton(string text, int x, int y, int w, string tip)
         {
