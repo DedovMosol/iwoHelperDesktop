@@ -27,7 +27,7 @@ entirely on your machine using local components:
 
 **Your documents are never uploaded, copied off your device, or transmitted anywhere.**
 The app does not modify your source files except where you explicitly ask it to write
-output; PDF split and PDF → Word never change the source. When converting a PDF to Word,
+output. PDF split and PDF → Word never change the source. When converting a PDF to Word,
 any images found in the PDF are written to a temporary folder under your system temp
 directory and deleted as soon as the `.docx` is saved.
 
