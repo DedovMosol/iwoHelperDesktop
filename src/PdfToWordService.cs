@@ -19,29 +19,44 @@ namespace ExcelMerger
     public static class PdfToWordService
     {
         /// <summary>
-        /// Извлекает текст born-digital PDF и пишет .docx. Скан без текстового слоя,
-        /// битый/зашифрованный файл или занятый выход — <see cref="MergeException"/>.
-        /// pageOrder — индексы страниц (с нуля) в нужном порядке/подмножестве; null — весь
-        /// документ в исходном порядке. progress — «сделано/всего» единиц работы (проход
-        /// извлечения по всем страницам + проход записи по выбранным), для полосы; может быть null.
+        /// Извлекает текст выбранных страниц одного или НЕСКОЛЬКИХ born-digital PDF и пишет их
+        /// в один .docx в заданном порядке. Скан без текстового слоя, битый/зашифрованный файл
+        /// или занятый выход — <see cref="MergeException"/>. order — страницы (источник + индекс
+        /// с нуля) в нужном порядке; страницы могут идти из разных файлов. progress — «сделано/всего»
+        /// единиц работы (извлечение источников — первая половина шкалы, запись — вторая); может быть null.
         /// </summary>
-        public static ConvertResult Convert(string sourcePath, string outputPath, IList<int> pageOrder = null, Action<int, int> progress = null)
+        public static ConvertResult Convert(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null)
         {
-            // Прогресс в одну непрерывную шкалу: извлечение всех M страниц + запись выбранных N.
-            int selCount = pageOrder != null ? pageOrder.Count : -1; // -1 — «все» (N станет = M)
-            int extractTotal = 0;                                    // M, узнаётся в ходе извлечения
-            Action<int, int> extract = progress == null ? null : (Action<int, int>)delegate(int d, int t)
-            {
-                extractTotal = t;
-                progress(d, t + (selCount < 0 ? t : selCount));
-            };
-            Action<int, int> write = progress == null ? null : (Action<int, int>)delegate(int d, int t)
-            {
-                progress(extractTotal + d, extractTotal + t);
-            };
+            if (order == null || order.Count == 0)
+                throw new MergeException("Не выбрано ни одной страницы для конвертации.");
 
-            List<PdfPageText> all = PdfTextExtract.Extract(sourcePath, extract);
-            List<PdfPageText> pages = SelectPages(all, pageOrder);
+            // Уникальные источники в порядке первого появления (каждый извлекаем ОДИН раз).
+            var sources = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (PdfPageRef r in order)
+                if (r != null && r.SourcePath != null && seen.Add(r.SourcePath))
+                    sources.Add(r.SourcePath);
+
+            int writeUnits = order.Count;    // страниц к записи — вторая половина шкалы прогресса
+            int totalSources = sources.Count;
+
+            // Извлечь текст каждого источника (весь файл); кэш по пути. Прогресс извлечения —
+            // первая половина шкалы, по долям источников (внутри источника — по его страницам).
+            var bySource = new Dictionary<string, List<PdfPageText>>(StringComparer.OrdinalIgnoreCase);
+            for (int si = 0; si < totalSources; si++)
+            {
+                string src = sources[si];
+                int idx = si;
+                Action<int, int> extractCb = progress == null ? null : (Action<int, int>)delegate(int d, int t)
+                {
+                    double frac = t > 0 ? (double)d / t : 1.0;
+                    double overall = totalSources > 0 ? (idx + frac) / totalSources : 1.0;
+                    progress((int)(overall * writeUnits), 2 * writeUnits);
+                };
+                bySource[src] = PdfTextExtract.Extract(src, extractCb);
+            }
+
+            List<PdfPageText> pages = Assemble(bySource, order);
 
             int withText = 0;
             foreach (PdfPageText page in pages)
@@ -50,10 +65,15 @@ namespace ExcelMerger
 
             if (withText == 0)
                 throw new MergeException(
-                    "В этом PDF нет извлекаемого текста — похоже, это отсканированный документ (изображение). " +
+                    "В выбранных PDF нет извлекаемого текста — похоже, это отсканированные документы (изображения). " +
                     "Поддержка отсканированных документов в настоящее время недоступна.");
 
-            WordDocxWriter.Write(pages, outputPath, write);
+            Action<int, int> writeCb = progress == null ? null : (Action<int, int>)delegate(int d, int t)
+            {
+                double frac = t > 0 ? (double)d / t : 1.0;
+                progress(writeUnits + (int)(frac * writeUnits), 2 * writeUnits);
+            };
+            WordDocxWriter.Write(pages, outputPath, writeCb);
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
         }
 
@@ -72,17 +92,20 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Отобрать/переупорядочить извлечённые страницы по индексам (с нуля). null — вернуть все
-        /// как есть. Индексы вне диапазона пропускаются (защита). Чистая логика — под тест.
+        /// Собрать страницы в заданном порядке из извлечённых по источникам (SourcePath → страницы).
+        /// Каждая ссылка order берёт страницу своего файла по индексу; несуществующие источник/индекс
+        /// пропускаются (защита). Страницы могут чередоваться из разных файлов. Чистая — под тест.
         /// </summary>
-        internal static List<PdfPageText> SelectPages(List<PdfPageText> all, IList<int> order)
+        internal static List<PdfPageText> Assemble(Dictionary<string, List<PdfPageText>> bySource, IList<PdfPageRef> order)
         {
-            if (order == null)
-                return all;
             var result = new List<PdfPageText>(order.Count);
-            foreach (int i in order)
-                if (i >= 0 && i < all.Count)
-                    result.Add(all[i]);
+            foreach (PdfPageRef r in order)
+            {
+                List<PdfPageText> src;
+                if (r != null && r.SourcePath != null && bySource.TryGetValue(r.SourcePath, out src)
+                    && r.PageIndex >= 0 && r.PageIndex < src.Count)
+                    result.Add(src[r.PageIndex]);
+            }
             return result;
         }
     }

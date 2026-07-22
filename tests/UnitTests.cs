@@ -75,7 +75,7 @@ namespace ExcelMerger.Tests
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
             Run("PdfPageOrder: удаление набора строк + Clear", TestPdfOrderRemove);
-            Run("PdfToWordService.SelectPages: порядок/подмножество/границы", TestSelectPages);
+            Run("PdfToWordService.Assemble: сборка страниц из нескольких PDF, границы", TestAssemble);
             Run("NoteText: период, счётчики, файл свода", TestNoteBasics);
             Run("NoteText: таблица пропущенных", TestNoteSkippedTable);
             Run("NoteText: без пропусков — «замечания отсутствуют»", TestNoteClean);
@@ -1035,29 +1035,36 @@ namespace ExcelMerger.Tests
             AssertEqual(0, order.Count, "Clear очищает список");
         }
 
-        private static void TestSelectPages()
+        private static void TestAssemble()
         {
-            var all = new List<PdfPageText>
+            // Два источника A (2 стр.) и B (1 стр.); собираем в порядке из разных файлов.
+            var bysource = new Dictionary<string, List<PdfPageText>>(StringComparer.OrdinalIgnoreCase)
             {
-                new PdfPageText { PageIndex = 0 },
-                new PdfPageText { PageIndex = 1 },
-                new PdfPageText { PageIndex = 2 }
+                { "A.pdf", new List<PdfPageText> { new PdfPageText { PageIndex = 0 }, new PdfPageText { PageIndex = 1 } } },
+                { "B.pdf", new List<PdfPageText> { new PdfPageText { PageIndex = 0 } } }
             };
-            // null -> весь документ как есть
-            AssertEqual(3, PdfToWordService.SelectPages(all, null).Count, "null -> все страницы");
-            // перестановка порядка
-            List<PdfPageText> reord = PdfToWordService.SelectPages(all, new List<int> { 2, 0, 1 });
-            AssertEqual("2,0,1", reord[0].PageIndex + "," + reord[1].PageIndex + "," + reord[2].PageIndex, "перестановка 2,0,1");
-            // подмножество (удалили часть)
-            List<PdfPageText> sub = PdfToWordService.SelectPages(all, new List<int> { 1 });
-            AssertEqual(1, sub.Count, "подмножество: одна страница");
-            AssertEqual(1, sub[0].PageIndex, "оставлена страница с индексом 1");
-            // индексы вне диапазона пропускаются
-            List<PdfPageText> oob = PdfToWordService.SelectPages(all, new List<int> { 5, 0, -1 });
-            AssertEqual(1, oob.Count, "вне диапазона пропущены");
-            AssertEqual(0, oob[0].PageIndex, "осталась только валидная страница 0");
-            // пустой порядок -> пусто
-            AssertEqual(0, PdfToWordService.SelectPages(all, new List<int>()).Count, "пустой порядок -> пусто");
+            var order = new List<PdfPageRef>
+            {
+                new PdfPageRef { SourcePath = "B.pdf", PageIndex = 0 },
+                new PdfPageRef { SourcePath = "A.pdf", PageIndex = 1 },
+                new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0 }
+            };
+            List<PdfPageText> r = PdfToWordService.Assemble(bysource, order);
+            AssertEqual(3, r.Count, "собраны все 3 страницы из двух файлов");
+            AssertTrue(ReferenceEquals(r[0], bysource["B.pdf"][0]), "первая — стр.0 из B");
+            AssertTrue(ReferenceEquals(r[1], bysource["A.pdf"][1]), "вторая — стр.1 из A");
+            AssertTrue(ReferenceEquals(r[2], bysource["A.pdf"][0]), "третья — стр.0 из A");
+            // Несуществующий источник и индекс вне диапазона — пропускаются.
+            var bad = new List<PdfPageRef>
+            {
+                new PdfPageRef { SourcePath = "нет.pdf", PageIndex = 0 },
+                new PdfPageRef { SourcePath = "A.pdf", PageIndex = 9 },
+                new PdfPageRef { SourcePath = "A.pdf", PageIndex = -1 },
+                new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0 }
+            };
+            List<PdfPageText> rb = PdfToWordService.Assemble(bysource, bad);
+            AssertEqual(1, rb.Count, "остаётся только валидная ссылка");
+            AssertTrue(ReferenceEquals(rb[0], bysource["A.pdf"][0]), "валидная — A стр.0");
         }
 
         // ---------- NoteText ----------

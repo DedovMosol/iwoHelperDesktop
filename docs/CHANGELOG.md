@@ -3,7 +3,15 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
-## [1.15.1] — 2026-07-22
+## [1.16.0] — 2026-07-23
+
+### Added
+- **PDF → Word converts several PDFs into one document.** Add several PDFs (the button now
+  takes a multi‑selection, or drop several at once) and every file’s pages appear in one
+  thumbnail grid; reorder or drop pages across all of them and convert once to a single
+  `.docx` in the shown order. Pages from different files (and different page sizes) sit in
+  the same document. The default output name is the file’s own name for a single source, or
+  “Объединённый.docx” for several. The page assembler is a pure, unit‑tested method.
 
 ### Fixed
 - **An image the PDF decoder can’t handle is now recovered instead of dropped.** When the
