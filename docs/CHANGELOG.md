@@ -3,6 +3,16 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.15.1] — 2026-07-22
+
+### Fixed
+- **An image the PDF decoder can’t handle is now recovered instead of dropped.** When the
+  embedded image decoder fails or returns a single solid colour (which previously left the
+  image skipped, e.g. a monochrome barcode coming out as a black box), the page region is
+  rendered with the bundled Ghostscript and the image is cropped out by its bounding box —
+  so it transfers faithfully, exactly as drawn. Normal images still take the fast decode
+  path untouched; the fallback simply skips when Ghostscript is unavailable.
+
 ## [1.15.0] — 2026-07-22
 
 ### Added
