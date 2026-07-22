@@ -14,7 +14,10 @@ namespace ExcelMerger
         private const int WdAlignLeft = 0;
         private const int WdAlignCenter = 1;
         private const int WdAlignJustify = 3;
-        private const int WdPageBreak = 7;
+        private const int WdSectionBreakNextPage = 2; // каждая PDF-страница — свой раздел (свой размер листа)
+        private const int WdCollapseStart = 1;
+        private const int WdCollapseEnd = 0;
+        private const double MinColWidthPt = 6;   // защита от вырожденной колонки
         private const string DefaultFontName = "Times New Roman";
         private const double DefaultFontSize = 12;
         private const double MinFontSize = 5;   // защита от мусорного кегля из PDF
@@ -38,17 +41,19 @@ namespace ExcelMerger
                 {
                     dynamic word = wordObj;
                     dynamic doc = docObj;
-                    ApplyPageSetup(docObj, pages); // размер страницы и поля из источника
                     dynamic sel = word.Selection;
 
                     for (int p = 0; p < pages.Count; p++)
                     {
                         if (p > 0)
-                            sel.InsertBreak(WdPageBreak); // разрыв страницы между страницами PDF
+                            sel.InsertBreak(WdSectionBreakNextPage); // новый раздел = свой размер листа
+                        ApplySectionSetup(sel, pages[p]); // размер и поля страницы из источника
                         foreach (Block blk in OrderedBlocks(pages[p]))
                         {
                             if (blk.Paragraph != null)
                                 WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent);
+                            else if (blk.Table != null)
+                                WriteTable(word, doc, sel, blk.Table);
                             else
                                 InsertImage(sel, blk.Image, tempDir, ref imgIndex);
                         }
@@ -63,21 +68,25 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Блок содержимого страницы: абзац или изображение (одно из полей задано).</summary>
+        /// <summary>Блок содержимого страницы: абзац, таблица или изображение (одно из полей задано).</summary>
         private sealed class Block
         {
             public OcrParagraph Paragraph;
+            public OcrTable Table;
             public OcrImage Image;
             public double Top; // верх блока — для порядка чтения
         }
 
-        /// <summary>Абзацы и изображения страницы в порядке чтения (сверху вниз по Y).</summary>
+        /// <summary>Абзацы, таблицы и изображения страницы в порядке чтения (сверху вниз по Y).</summary>
         private static List<Block> OrderedBlocks(PdfPageText page)
         {
             var blocks = new List<Block>();
             if (page.Paragraphs != null)
                 foreach (OcrParagraph par in page.Paragraphs)
                     blocks.Add(new Block { Paragraph = par, Top = par.TopPt });
+            if (page.Tables != null)
+                foreach (OcrTable table in page.Tables)
+                    blocks.Add(new Block { Table = table, Top = table.TopPt });
             if (page.Images != null)
                 foreach (OcrImage img in page.Images)
                     blocks.Add(new Block { Image = img, Top = img.TopPt });
@@ -87,13 +96,26 @@ namespace ExcelMerger
 
         private static void WriteParagraph(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent)
         {
+            WriteParagraphInto(sel, doc, paragraph, firstLineIndent, false);
+            sel.TypeParagraph();
+        }
+
+        /// <summary>
+        /// Записать абзац в текущую позицию БЕЗ завершающего перевода строки (ядро — чтобы
+        /// переиспользовать и в потоке текста, и в ячейках таблицы, DRY): выравнивание,
+        /// красная строка и формат пословно (шрифт, кегль, начертание, над/подстрочный, цвет).
+        /// В ячейке (inCell) выключка по ширине заменяется на левый край: короткий текст ячейки
+        /// иначе Word растягивает уродливыми пробелами; центрирование (шапки) сохраняется.
+        /// </summary>
+        private static void WriteParagraphInto(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, bool inCell)
+        {
             // Выравнивание из источника; центрированное — без красной строки.
             int align; double indent;
             switch (paragraph.Alignment)
             {
                 case OcrAlignment.Center: align = WdAlignCenter; indent = 0; break;
                 case OcrAlignment.Left: align = WdAlignLeft; indent = firstLineIndent; break;
-                default: align = WdAlignJustify; indent = firstLineIndent; break;
+                default: align = inCell ? WdAlignLeft : WdAlignJustify; indent = inCell ? 0 : firstLineIndent; break;
             }
             sel.ParagraphFormat.Alignment = align;
             sel.ParagraphFormat.FirstLineIndent = indent;
@@ -120,7 +142,72 @@ namespace ExcelMerger
                     catch { } // не удалось оформить ссылку — текст всё равно на месте
                 }
             }
-            sel.TypeParagraph();
+        }
+
+        /// <summary>
+        /// Вставить восстановленную таблицу в текущую позицию: сетка Rows×ColumnCount с
+        /// границами, ширинами колонок из геометрии линовки и форматированным текстом ячеек
+        /// (тем же <see cref="WriteParagraphInto"/>, DRY). Объединение ячеек пока не переносится
+        /// (накрытые позиции пишутся пустыми) — структура и текст верны в любом случае. После
+        /// таблицы ставится абзац-разделитель: без него две смежные таблицы Word слил бы в одну.
+        /// Сбой построения таблицы не срывает документ (текст ячеек уже недоступен — но остальное цело).
+        /// </summary>
+        private static void WriteTable(dynamic word, dynamic doc, dynamic sel, OcrTable table)
+        {
+            int rows = table.Rows.Count, cols = table.ColumnCount;
+            if (rows == 0 || cols == 0)
+                return;
+            try
+            {
+                dynamic wtable = doc.Tables.Add(sel.Range, rows, cols);
+                wtable.AllowAutoFit = false;
+                wtable.Borders.Enable = 1; // все границы
+
+                for (int c = 0; c < cols; c++)
+                {
+                    try { wtable.Columns[c + 1].Width = ColWidth(table.ColumnWidthsPt[c]); }
+                    catch { } // ширина косметическая; сбой одной колонки не критичен
+                }
+
+                for (int r = 0; r < rows; r++)
+                {
+                    OcrTableRow row = table.Rows[r];
+                    for (int c = 0; c < cols; c++)
+                    {
+                        OcrTableCell cell = row.Cells[c];
+                        if (cell.Covered || cell.Paragraphs == null || cell.Paragraphs.Count == 0)
+                            continue;
+                        WriteCell(word, doc, wtable, r + 1, c + 1, cell); // Word адресует ячейки с 1
+                    }
+                }
+
+                // Курсор — за таблицу, отделить абзацем (иначе следующая таблица сольётся с этой).
+                sel.Start = wtable.Range.End;
+                sel.Collapse(WdCollapseEnd);
+                sel.TypeParagraph();
+            }
+            catch { } // не удалось построить таблицу — не срываем весь документ
+        }
+
+        /// <summary>Записать абзацы ячейки в её начало (не трогая маркер конца ячейки).</summary>
+        private static void WriteCell(dynamic word, dynamic doc, dynamic wtable, int row, int col, OcrTableCell cell)
+        {
+            dynamic cellRange = wtable.Cell(row, col).Range;
+            cellRange.Collapse(WdCollapseStart); // в начало ячейки, чтобы не съесть маркер ячейки
+            cellRange.Select();
+            dynamic sel = word.Selection;
+            for (int i = 0; i < cell.Paragraphs.Count; i++)
+            {
+                if (i > 0)
+                    sel.TypeParagraph();
+                WriteParagraphInto(sel, doc, cell.Paragraphs[i], 0, true); // в ячейке: без красной строки, без выключки
+            }
+        }
+
+        /// <summary>Ширина колонки в pt с нижней защитой (вырожденную колонку Word рисует криво).</summary>
+        private static double ColWidth(double pt)
+        {
+            return pt < MinColWidthPt ? MinColWidthPt : pt;
         }
 
         /// <summary>
@@ -197,34 +284,26 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Размер страницы и поля из источника: размер — с первой страницы с текстом,
-        /// поля — медиана по таким страницам (обычно одинаковы). Размер вне разумных пределов —
-        /// оставляем шаблон Word. Поля косметические: сбой настройки не срывает конвертацию.
+        /// Размер и поля ТЕКУЩЕГО раздела из своей страницы источника (у каждой PDF-страницы —
+        /// свой раздел, поэтому книжные и альбомные страницы уживаются в одном .docx, а широкая
+        /// таблица не обрезается). Размер вне разумных пределов — оставляем шаблон Word. Поля
+        /// косметические: сбой PageSetup не срывает конвертацию.
         /// </summary>
-        private static void ApplyPageSetup(object docObj, IList<PdfPageText> pages)
+        private static void ApplySectionSetup(dynamic sel, PdfPageText page)
         {
-            double pw = 0, ph = 0;
-            var l = new List<double>(); var r = new List<double>();
-            var t = new List<double>(); var b = new List<double>();
-            foreach (PdfPageText p in pages)
-            {
-                if (p.Paragraphs == null || p.Paragraphs.Count == 0)
-                    continue; // страницы без текста поля не задают
-                if (pw <= 0 && p.WidthPt > 0) { pw = p.WidthPt; ph = p.HeightPt; }
-                l.Add(p.LeftMarginPt); r.Add(p.RightMarginPt);
-                t.Add(p.TopMarginPt); b.Add(p.BottomMarginPt);
-            }
+            double pw = page.WidthPt, ph = page.HeightPt;
             if (pw < MinPagePt || pw > MaxPagePt || ph < MinPagePt || ph > MaxPagePt)
                 return;
             try
             {
-                dynamic ps = ((dynamic)docObj).PageSetup;
+                dynamic ps = sel.PageSetup;
+                // Явные размеры задают и ориентацию (ширина > высоты — альбомная); поля из рамок текста.
                 ps.PageWidth = pw;
                 ps.PageHeight = ph;
-                ps.LeftMargin = ClampMargin(Median(l), pw);
-                ps.RightMargin = ClampMargin(Median(r), pw);
-                ps.TopMargin = ClampMargin(Median(t), ph);
-                ps.BottomMargin = ClampMargin(Median(b), ph);
+                ps.LeftMargin = ClampMargin(page.LeftMarginPt, pw);
+                ps.RightMargin = ClampMargin(page.RightMarginPt, pw);
+                ps.TopMargin = ClampMargin(page.TopMarginPt, ph);
+                ps.BottomMargin = ClampMargin(page.BottomMarginPt, ph);
             }
             catch { } // поля — косметика; сбой PageSetup не должен срывать сохранение
         }
