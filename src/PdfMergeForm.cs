@@ -42,7 +42,7 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            InitShell(Title, new Size(780, 620), new Size(660, 500), Theme.PdfRed);
+            InitShell(Title, new Size(780, 660), new Size(660, 540), Theme.PdfRed);
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
             BuildHeaderWithHome(Title,
@@ -54,7 +54,7 @@ namespace ExcelMerger
 
             _grid = new PdfPageGrid();
             _grid.AllowReorder = true;
-            _grid.SetBounds(20, m + 80, right - 20 - 150, ClientSize.Height - (m + 80) - 112);
+            _grid.SetBounds(20, m + 80, right - 20 - 150, ClientSize.Height - (m + 80) - 152);
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _grid.SelectionChanged += delegate { UpdateButtons(); };
             _grid.ReorderRequested += OnReorder;

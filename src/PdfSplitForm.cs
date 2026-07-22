@@ -45,7 +45,7 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            InitShell(Title, new Size(800, 620), new Size(700, 520), Theme.PdfRed);
+            InitShell(Title, new Size(800, 660), new Size(700, 560), Theme.PdfRed);
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
             BuildHeaderWithHome(Title,
@@ -55,7 +55,7 @@ namespace ExcelMerger
             int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
             int panelW = 210;
-            int gridBottom = ClientSize.Height - 112;
+            int gridBottom = ClientSize.Height - 152;
 
             _grid = new PdfPageGrid();
             _grid.AllowReorder = false; // разделение не меняет порядок исходника

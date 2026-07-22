@@ -3,15 +3,33 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.14.1] — 2026-07-22
+
+### Fixed
+- **Crash on exit after using PDF → Word (access violation in the hidden
+  .NET‑BroadcastEventWindow).** Root cause: the WinRT runtime (`Windows.Data.Pdf`, used for
+  page thumbnails) crashes inside the native `DLL_PROCESS_DETACH` performed by `ExitProcess`
+  during an orderly shutdown. The forced exit now uses **`TerminateProcess`**, which ends the
+  process without the DLL detach phase (and without finalizers). This is safe by design: all
+  critical cleanup — saving settings, `Quit` on Excel/Word COM — runs deterministically
+  before the exit call.
+- **The progress bar no longer collides with the zoom slider.** The zoom `TrackBar` is 45 px
+  tall (WinForms enforces this AutoSize height, the layout assumed 30), so on all three PDF
+  screens it bled over the progress bar underneath. The bottom strip is now laid out in three
+  non‑overlapping rows — zoom + compression, the progress bar, status + action button — and
+  the PDF tool windows grew 40 px taller (default and minimum size) so the thumbnail grid
+  keeps its height. Anchors are unchanged, so resizing keeps the rows apart at any window
+  size.
+
 ## [1.14.0] — 2026-07-22
 
 ### Added
 - **PDF → Word: reorder and drop pages before converting.** The page‑thumbnail grid on the
   PDF → Word screen is now interactive — **drag** a thumbnail to a new position, or select one
-  and use **◀ Раньше / Позже ▶** (Alt+←/→); remove pages you don’t need with **Удалить**
-  (Delete), Ctrl+A selects all. Word receives the pages in exactly the order shown, with the
+  and use **◀ Раньше / Позже ▶** (Alt+←/→). Remove pages you don’t need with **Удалить**
+  (Delete), and Ctrl+A selects all. Word receives the pages in exactly the order shown, with the
   dropped pages excluded. The order model (`PdfPageOrder`) and the reorder grid are the ones
-  already used by PDF Merge (reused, not re‑implemented); the conversion picks/reorders the
+  already used by PDF Merge (reused, not re‑implemented). The conversion picks and reorders the
   extracted pages through a pure, unit‑tested `SelectPages`, and the progress bar counts the
   selected pages. Converting the whole document unchanged still works exactly as before.
 
@@ -21,7 +39,7 @@ versions follow [SemVer](https://semver.org/).
 - **Progress bar on all three PDF screens** (PDF Merge, PDF Split, PDF → Word) plus the
   Windows taskbar‑button progress. It is a **real** determinate bar driven by the actual work,
   not a timer: PDF → Word reports each page of both passes (text extraction, then writing to
-  Word); Merge reports each page added; Split reports each part written and then each part
+  Word), Merge reports each page added, and Split reports each part written and then each part
   compressed. Shared once in `PdfToolFormBase` (DRY) and shown by every PDF tool. Updates are
   marshalled to the UI thread, throttled by whole percent, and the bar is drawn **exactly** at
   each value (bypassing the Vista progress‑bar catch‑up animation that would otherwise leave a
@@ -32,10 +50,10 @@ versions follow [SemVer](https://semver.org/).
   and clamping included).
 
 ### Changed
-- **PDF → Word Help → “How to use” now lists the real limitations**: scanned image‑only PDFs
-  are not supported; if the source font is not installed the text is set in Times New Roman;
-  tables, side‑boxes, multiple columns and lists are flattened to single‑column paragraphs;
-  underline is not carried over (in PDF it is a drawn line, not a text attribute); a PDF saved
+- **PDF → Word Help → “How to use” now lists the real limitations.** Scanned image‑only PDFs
+  are not supported. If the source font is not installed the text is set in Times New Roman.
+  Tables, side‑boxes, multiple columns and lists are flattened to single‑column paragraphs.
+  Underline is not carried over (in PDF it is a drawn line, not a text attribute). A PDF saved
   with a broken text encoding (no valid ToUnicode) extracts as unreadable text — a defect of
   the file itself, checkable by copying the text inside the PDF.
 
@@ -48,7 +66,7 @@ versions follow [SemVer](https://semver.org/).
   the target machine. When Word is handed an uninstalled font it routes Cyrillic to the East
   Asian fallback slot (`rFonts w:hint="eastAsia"`), and a justified paragraph then gets
   **CJK‑style character distribution** — the letters are spread to fill the line. The extracted
-  text was always correct (single spaces between words); only Word’s rendering spread it, which
+  text was always correct (single spaces between words). Only Word’s rendering spread it, which
   is why a text‑only check missed it. Fix: each run’s font is resolved against the installed
   fonts — an installed family is kept, an unknown one falls back to Times New Roman — so
   Cyrillic stays in the normal (hAnsi) slot and justifies like ordinary text. Verified by
@@ -62,7 +80,7 @@ versions follow [SemVer](https://semver.org/).
   sample’s documents) a real inter‑word space is only ≈ 0.18 × size — so the space was
   dropped and neighbouring words merged (“СЛОВОСЛОВО”, “Message Authentication” → one
   token). The threshold is now **0.08 × size**, safely below the smallest real word‑space
-  measured across the sample documents (0.179); only truly touching fragments (gap < 0.08) are
+  measured across the sample documents (0.179). Only truly touching fragments (gap < 0.08) are
   glued. Verified across the sample set: extracted text is character‑for‑character identical
   except that dropped spaces are restored (16 of 29 documents gained spaces, one document
   +213), with no document losing a space.
@@ -79,7 +97,7 @@ versions follow [SemVer](https://semver.org/).
   into an editable `.docx`. Text is read with **PdfPig** (Apache 2.0, embedded), the `.docx`
   is written through Word COM. Scanned documents (image pages with no text layer) are not
   supported yet — a clear message is shown and the file is untouched. `PdfToWordService`,
-  `PdfTextExtract`, `OcrLayout`, `FontNames` and `WordDocxWriter` are unit‑tested;
+  `PdfTextExtract`, `OcrLayout`, `FontNames` and `WordDocxWriter` are unit‑tested, and
   `verify_pdfword.ps1` is an end‑to‑end round‑trip through Word.
 - **Reading‑order layout** for PDF → Word — words with their boxes become lines (by vertical
   overlap, so thin punctuation such as an em‑dash stays on its line), lines become paragraphs
@@ -96,7 +114,7 @@ versions follow [SemVer](https://semver.org/).
   (page media box and the text bounding box), clamped to sane limits.
 - **Images** — each page’s raster images are extracted (PdfPig `GetImages` → PNG) and placed
   inline in reading order, sized to their PDF bounds. Formats that do not decode to PNG are
-  skipped; a broken image never derails the document.
+  skipped, and a broken image never derails the document.
 - **Hyperlinks** — link annotations (`GetHyperlinks`) are carried through to real Word
   hyperlinks over the matching text.
 - **Usage statistics** — a “PDF → Word” counter (with a row in the Statistics window).
@@ -117,7 +135,7 @@ versions follow [SemVer](https://semver.org/).
   *without* compression and the result comes out almost as large as the source (≥ 90% and
   over 1 MB — which happens when pages share heavy resources that are copied along with
   them), the status line appends an unobtrusive note suggesting the Compression option to
-  reduce the size. Purely advisory; no change to the produced files.
+  reduce the size. Purely advisory, with no change to the produced files.
 
 ## [1.13.7] — 2026-07-21
 
@@ -164,7 +182,7 @@ versions follow [SemVer](https://semver.org/).
   accumulates native buffers or keeps every source file locked.
 
 ### Internal
-- New reusable, unit‑tested `LruCache<T>` (bounded least‑recently‑used cache); the
+- New reusable, unit‑tested `LruCache<T>` (bounded least‑recently‑used cache). The
   renderer’s document eviction reuses `ComSafe.Release`, removing the duplicated WinRT
   COM‑release code. 8 new unit tests (LRU eviction/touch/replace/case/clear/guard,
   grid key‑set and stale‑key computation).
@@ -221,16 +239,16 @@ versions follow [SemVer](https://semver.org/).
   default — fidelity and signatures preserved), **Хорошо** (`/ebook`, ~150 DPI),
   **Нормально** (`/screen`, ~72 DPI). It **downsamples images while keeping text and
   vectors** (not rasterization), matching Adobe Acrobat / Foxit “Reduce File Size”.
-  Powered by **Ghostscript** invoked as a separate process; the compressed file is
+  Powered by **Ghostscript** invoked as a separate process. The compressed file is
   written to `<pdf>.gstmp`, validated (exit code + `%PDF-` header + strictly smaller)
   and only then replaces the original — an already-optimized PDF is left untouched.
   Output uses PDF 1.4 (classic xref) so a compressed file can still be re-merged/split
-  by the app. A shared `CompressionPicker` control is used by both tools (DRY); the
+  by the app. A shared `CompressionPicker` control is used by both tools (DRY). The
   work runs on the background thread **before** the file is opened, so the replace
   never hits a viewer lock. Compression is a no-op if Ghostscript is absent.
   Pure functions (`Preset`, `BuildArguments`, `ShouldReplace`, `PickFirstExisting`)
   and a live end-to-end compression test (real size reduction, pages preserved) are
-  covered by unit tests; `--gscheck` is a CI smoke check.
+  covered by unit tests, and `--gscheck` is a CI smoke check.
 - **Installer (Inno Setup)** alongside the portable exe: `iwoHelperDesktop-setup-*.exe`
   installs the app **and bundles Ghostscript**, so compression works out of the box.
   Default install is **per-user without administrator rights** (`%LOCALAPPDATA%`),
@@ -238,7 +256,7 @@ versions follow [SemVer](https://semver.org/).
   installer's welcome page **explicitly states the per-user default**. Built and
   signed locally via `tools\make_installer.ps1` (`tools\stage_gs.ps1` prepares the
   Ghostscript subset). Ghostscript is bundled under its own AGPL license (invoked as
-  a separate process — mere aggregation; the app stays MIT).
+  a separate process — mere aggregation, and the app stays MIT).
 - **“About” button on the start screen** (opens the About dialog). It was moved out
   of every tool's Help menu (which now keeps “How to use” and “Statistics”).
 
@@ -251,15 +269,15 @@ versions follow [SemVer](https://semver.org/).
 - The application now builds explicitly as **x64** (matches the bundled 64-bit
   Ghostscript engine).
 - **Start screen bottom row reworked**: “Check for updates” moved to where the version
-  number used to be (left); the right button is now “About” (was “Check for updates”).
+  number used to be (left), and the right button is now “About” (was “Check for updates”).
   The buttons were enlarged and raised slightly. The version is still shown in the title
   bar and the About dialog.
 - **“How to use”** (Help) in both PDF tools now documents the compression dropdown and
   the signature caveat.
 - **Branded installer wizard image** (blue gradient + logo + “iwo”) replaces the default
-  Inno graphic on the welcome/finish pages; generated by `tools\make_wizard_images.ps1`.
+  Inno graphic on the welcome/finish pages, generated by `tools\make_wizard_images.ps1`.
 - Compression's in-place replace now uses a **rename-aside** strategy (original → `.gsbak`
-  → compressed in place → backup removed; restored on any failure). This works on network
+  → compressed in place → backup removed, restored on any failure). This works on network
   drives where `File.Replace` can fail, and never leaves the file missing.
 
 ### Fixed
@@ -281,7 +299,7 @@ versions follow [SemVer](https://semver.org/).
 - **Branded message dialogs** replace the native ones everywhere (info, error,
   confirm): a coloured icon by severity, the app's rounded buttons — a single button
   is centred, two are placed at opposite sides (e.g. the “clear statistics” confirm).
-  All calls still go through the `Dialogs` facade (`MessageForm`); button placement
+  All calls still go through the `Dialogs` facade (`MessageForm`), and button placement
   is unit-tested (`ButtonX`).
 - **“Check for updates” moved to the start screen** as a dedicated button (with the
   current version shown), instead of repeating in every tool's Help menu.
@@ -296,11 +314,11 @@ versions follow [SemVer](https://semver.org/).
   Releases (HTTPS) and, if newer, offers to open the download page in the browser.
   No self-download or self-replacement — the safest fit for a portable, self-signed,
   offline-friendly app (self-updating exes are widely flagged by antivirus). Tag
-  parsing and version comparison are unit-tested; the network call runs off the UI thread.
+  parsing and version comparison are unit-tested, and the network call runs off the UI thread.
 - **“Statistics”** in the Help menu: local counters (no telemetry) of operations —
   Excel digests, PDF merges, page extractions, and splits by mode. Manual **Clear**
   and optional **auto-clear** (daily / every 7 / every 30 days). Counters use
-  read-modify-write so concurrent windows can't lose increments; the auto-clear
+  read-modify-write so concurrent windows can't lose increments, and the auto-clear
   period logic (`ShouldAutoClear`) is unit-tested.
 
 ## [1.11.2] — 2026-07-20
@@ -308,7 +326,7 @@ versions follow [SemVer](https://semver.org/).
 ### Changed
 - **PDF Split — you can now choose the output name in every mode.** The
   split-into-many modes (ranges, every N pages, bookmarks) previously only let you
-  pick the folder and reused the source file name; now a save dialog lets you set
+  pick the folder and reused the source file name. Now a save dialog lets you set
   both the folder and the base name, to which the numbers/labels are appended
   (`base_1-3.pdf`, `base_часть_1.pdf`, `base_Глава.pdf`). Extract, PDF Merge and
   the Excel digest already allowed choosing the name.
@@ -323,7 +341,7 @@ versions follow [SemVer](https://semver.org/).
 - **Lazy thumbnail rendering** in the PDF page grid: only the visible pages (plus a
   small buffer) are rendered in the background instead of every page up front —
   markedly less CPU and memory for large documents (hundreds of pages), so the UI
-  stays responsive. Visible-range windowing (`ClampWindow`) is unit-tested; the
+  stays responsive. Visible-range windowing (`ClampWindow`) is unit-tested, and the
   no-crash + lazy behaviour was verified in a real message loop (22/60 pages
   rendered for a 60-page file).
 - Drag-and-drop path extraction for the PDF tools was de-duplicated into a shared
@@ -335,15 +353,15 @@ versions follow [SemVer](https://semver.org/).
 - **New tool: “PDF Split”** (third start-screen card), complementing “PDF Merge”.
   Open one PDF, see its pages as thumbnails, and either extract or split — following
   the modes of leading offline tools (PDFsam, Acrobat):
-  - **Extract selected** — pick pages in the grid (Ctrl+A = all) → one new PDF;
-  - **By ranges** — “1-3, 5, 8-”: each range → its own file;
-  - **Every N pages** — equal chunks (N=1 → one file per page);
+  - **Extract selected** — pick pages in the grid (Ctrl+A = all) → one new PDF.
+  - **By ranges** — “1-3, 5, 8-”: each range → its own file.
+  - **Every N pages** — equal chunks (N=1 → one file per page).
   - **By bookmarks** — one file per top-level bookmark, named from the titles.
-  Pages are copied as-is (no re-conversion); the source is never modified; output
+  Pages are copied as-is (no re-conversion). The source is never modified, and output
   names are never overwritten (a number is appended). The engine (`PdfSplitService`,
   `PageRanges`) is unit-tested and validated live on real PDFs, including bookmarks.
 - The PDF page-thumbnail grid was extracted into a reusable `PdfPageGrid` control
-  and is now shared by both PDF tools (DRY); the Merge tool was refactored onto it
+  and is now shared by both PDF tools (DRY), and the Merge tool was refactored onto it
   with no behaviour change.
 
 ## [1.10.7] — 2026-07-20
@@ -354,13 +372,13 @@ versions follow [SemVer](https://semver.org/).
   - **PDF Merge**: `Delete` removes the selected pages, `Alt+←/→` reorder,
     `Ctrl+A` selects all, `Enter` no longer triggers a save from the list.
   - **Excel Digest**: added `Ctrl+A` (select all) and `Delete` (exclude/uncheck
-    selected); existing `Alt+↑/↓` (reorder), `Ctrl+C` (copy) and `Enter`-suppression
-    consolidated into `ProcessCmdKey` (copy/select-all now also work during a run).
+    selected). Existing `Alt+↑/↓` (reorder), `Ctrl+C` (copy) and `Enter`-suppression
+    are consolidated into `ProcessCmdKey` (copy/select-all now also work during a run).
   - Shortcut hints added to button tooltips and the “How to use” help.
 
 ### Fixed
 - PDF reorder/remove could run from the keyboard **during a save** (the buttons
-  were disabled but the methods weren't guarded); `MoveSelected`/`OnRemoveClick`
+  were disabled but the methods weren't guarded). `MoveSelected`/`OnRemoveClick`
   now no-op while busy.
 
 ## [1.10.6] — 2026-07-20
@@ -377,16 +395,16 @@ versions follow [SemVer](https://semver.org/).
 
 ### Fixed
 - **Excel window title.** The Excel tool window was titled like the hub
-  (“iwo Helper Desktop 1.10”); it is now “Свод Excel”, so it is distinct in the
+  (“iwo Helper Desktop 1.10”). It is now “Свод Excel”, so it is distinct in the
   title bar and Task Manager (the PDF tool was already correct).
 - **Keyboard handling in the file list now actually works.** `Enter` (the form's
   default button) is a dialog key intercepted before `KeyDown`, so the previous
-  suppression never fired; and `Alt+↑/↓` were unreliable next to the menu. Both are
+  suppression never fired, and `Alt+↑/↓` were unreliable next to the menu. Both are
   now handled in `ProcessCmdKey` (which runs first): `Enter` in the list no longer
   starts the merge, `Alt+↑/↓` reorder reliably. Routing is unit-tested
   (`ClassifyListKey`).
 - **Self-healing restart no longer double-counts results in the UI.** When a wedged
-  Excel instance is restarted, the previous pass is replayed; the merge service now
+  Excel instance is restarted, the previous pass is replayed. The merge service now
   raises a `Restarting` event and the window clears the per-file rows so results
   aren't accumulated twice.
 
@@ -415,7 +433,7 @@ versions follow [SemVer](https://semver.org/).
 - **Accessibility**: the start-screen tool cards report as buttons with a name and
   description to screen readers (`AccessibleRole`/`AccessibleName`).
 - **Keyboard**: in the Excel “Files to merge” list, `Alt+↑`/`Alt+↓` reorder the
-  selected file; `Enter` in the list no longer triggers the merge.
+  selected file, and `Enter` in the list no longer triggers the merge.
 - The source-folder field is rescanned with a short debounce instead of on every
   keystroke.
 - Tab order: the “Back to menu” button is visited last instead of early.
@@ -437,7 +455,7 @@ versions follow [SemVer](https://semver.org/).
   - **Signature pre-check** (`FileSignature`): each source file's container is
     detected by magic bytes before Excel touches it. A file that is neither a ZIP
     (OOXML) nor an OLE2/CFB document — e.g. text renamed to `.xlsx` — is skipped
-    as corrupt; a `.xlsx`/`.xlsm`/`.xlsb` whose container is OLE2 is an encrypted
+    as corrupt. A `.xlsx`/`.xlsm`/`.xlsb` whose container is OLE2 is an encrypted
     (password-protected) workbook and is skipped as such. This matters because
     `Workbooks.Open` on a broken or encrypted file can wedge Excel so that every
     following file fails to open too.
@@ -460,17 +478,17 @@ versions follow [SemVer](https://semver.org/).
   the natural name order with “By name”, and select the whole set with
   “Check all” / “Uncheck all”. After the merge the per-file result fills the same
   rows. The reorder/exclusion logic is a pure, unit-tested model (`SourceFileList`,
-  `ListReorder` — shared with the PDF page order, DRY); the merge service now
+  `ListReorder` — shared with the PDF page order, DRY), and the merge service now
   takes an explicit file list (`Merge(files, …)`, `PrepareSourceList`).
 - **Branded window header**: the top of every window (the start screen and both
   tools) carries an accent-green gradient header band (`HeaderBand`) with the
-  title and subtitle; the “◀ Back to menu” button sits on it. On Windows 11 the
-  system title bar is tinted to match via DWM (`WindowChrome`); on Windows 10 the
-  title bar stays default and the header band provides the branding. Unit tests:
+  title and subtitle, and the “◀ Back to menu” button sits on it. On Windows 11 the
+  system title bar is tinted to match via DWM (`WindowChrome`), while on Windows 10
+  the title bar stays default and the header band provides the branding. Unit tests:
   `WindowChrome` COLORREF packing, `HeaderBand` construction.
 
 ### Changed
-- **README and CHANGELOG are now in English**; the changelog moved to
+- **README and CHANGELOG are now in English**, and the changelog moved to
   `docs/CHANGELOG.md`.
 
 ## [1.9.0] — 2026-07-17
@@ -478,10 +496,10 @@ versions follow [SemVer](https://semver.org/).
 ### Added
 - **Sheet selection in “Excel Digest”**: a “Sheets” drop-down — “First sheet
   only” (default, as before) or “All sheets”. In “all sheets” mode every visible
-  sheet of each file is transferred with names “file · sheet”; the table of
+  sheet of each file is transferred with names “file · sheet”, and the table of
   contents and the report get a row per sheet. CLI flag `--allsheets`. The result
-  model is now one record per sheet; a retry of skipped files correctly expands a
-  file into several sheets. Tests: `SheetBaseName`, `FileCount`, multi-sheet retry
+  model is now one record per sheet, and a retry of skipped files correctly expands
+  a file into several sheets. Tests: `SheetBaseName`, `FileCount`, multi-sheet retry
   (unit) and `verify_allsheets.ps1` (integration).
 
 ## [1.8.3] — 2026-07-17
@@ -498,12 +516,12 @@ versions follow [SemVer](https://semver.org/).
 - Start screen: the “Choose a tool” title is centred, the “What do you need?”
   caption removed.
 - In the “About” window only the links themselves are clickable (t.me/…,
-  DedovMosol/…); the “Telegram:”, “GitHub:” labels are plain text.
+  DedovMosol/…), and the “Telegram:”, “GitHub:” labels are plain text.
 
 ### Fixed
 - A chooser card fired twice on a single click (the base control raised Click and
   the handler raised it again): because of this the very first open showed “tool
-  already open”. The duplicate call was removed; verified with window messages
+  already open”. The duplicate call was removed and verified with window messages
   (exactly one Click).
 
 ## [1.8.2] — 2026-07-17
@@ -524,7 +542,7 @@ versions follow [SemVer](https://semver.org/).
 ## [1.8.1] — 2026-07-17
 
 ### Added
-- **PDF thumbnail zoom**: a slider and Ctrl+mouse wheel. A page is rendered once;
+- **PDF thumbnail zoom**: a slider and Ctrl+mouse wheel. A page is rendered once,
   on zoom the tiles are rebuilt from cache (GDI, no repeated WinRT), and the
   rebuild is throttled — no stutter. Unit tests `ThumbZoom`.
 
@@ -549,22 +567,22 @@ versions follow [SemVer](https://semver.org/).
   net48): a single exe `dist/iwoHelperDesktop.exe`, PdfSharp still embedded as a
   resource. This opened access to WinRT (Windows.Data.Pdf) for thumbnails via the
   NuGet package `Microsoft.Windows.SDK.Contracts` — compile time only, not
-  shipped; nothing is installed on the target machine.
+  shipped, so nothing is installed on the target machine.
 
 ### Added
 - **Tool-chooser start screen**: “Excel Digest” and “PDF Merge” cards with
-  descriptions; after a tool is closed the chooser is shown again.
+  descriptions. After a tool is closed the chooser is shown again.
 - **PDF page thumbnails**: the “PDF Merge” tool shows a grid of previews of the
   real pages (the system Windows.Data.Pdf engine), reordered by dragging
   thumbnails and with buttons. Rendering runs in the background (a separate
-  thread); if the engine is unavailable (e.g. on Windows Server) it falls back to
-  placeholders as designed. Tests: `verify_thumb.ps1` (rendering and aspect ratio)
+  thread), and if the engine is unavailable (e.g. on Windows Server) it falls back
+  to placeholders as designed. Tests: `verify_thumb.ps1` (rendering and aspect ratio)
   and `--thumbcheck` (clean process exit after WinRT rendering).
 
 ### Fixed
 - Forced process exit (`FastExit`/`ExitProcess`) after working with WinRT: the
   normal finalization of the Windows.Data.Pdf COM wrappers crashed the process on
-  unload; the critical cleanup (settings, COM Quit for Excel/Word) runs
+  unload, so the critical cleanup (settings, COM Quit for Excel/Word) runs
   deterministically before exit.
 
 ## [1.7.0] — 2026-07-17
@@ -585,7 +603,7 @@ versions follow [SemVer](https://semver.org/).
 ### Added
 - **Word cover note**: a “Word note” link after the merge — a `.docx` next to the
   digest (period, counters, a table of skipped files with reasons), formatted per
-  GOST R 7.0.97-2016; generated through the COM of an installed Word, the pure
+  GOST R 7.0.97-2016 and generated through the COM of an installed Word. The pure
   text model is covered by unit tests, the document by an integration test
   (`tests/verify_note.ps1`).
 - Sorting the log by clicking a column header (natural comparison, a second click
@@ -600,7 +618,7 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 - A **“Retry skipped”** button: fixed files are appended to an existing digest
-  without a full rebuild; the table of contents is regenerated from the overall
+  without a full rebuild, and the table of contents is regenerated from the overall
   result, the order and the successful sheets are preserved.
 - **Copying log rows** — Ctrl+C or the context menu: a “file → sheet → reason”
   row in the report format, handy to forward to the owner of a broken file.
@@ -613,7 +631,7 @@ versions follow [SemVer](https://semver.org/).
 ## [1.4.0] — 2026-07-16
 
 ### Added
-- **Output format selection**: `.xlsx`, `.xlsm`, `.xlsb`, `.xls` (a drop-down; in
+- **Output format selection**: `.xlsx`, `.xlsm`, `.xlsb`, `.xls` (a drop-down — in
   the CLI the format is derived from the path extension).
 - An integration run to `.xlsb` in the common test set.
 
@@ -622,7 +640,7 @@ versions follow [SemVer](https://semver.org/).
   (`AccentCheckBox`).
 - The log columns share the window width proportionally.
 - Per the Windows guidelines, the ellipses were removed from the “How to use” and
-  “About” items; the punctuation in the help was fixed.
+  “About” items, and the punctuation in the help was fixed.
 
 ## [1.3.0] — 2026-07-16
 
@@ -644,7 +662,7 @@ versions follow [SemVer](https://semver.org/).
   Excel starts, not after all sources have been processed.
 - **Report history** in `%APPDATA%\ExcelMerger\reports` (at most three), an “Open
   report” link after the merge.
-- CI (GitHub Actions): build, unit tests, GUI smoke; the exe is published to
+- CI (GitHub Actions): build, unit tests, GUI smoke. The exe is published to
   Releases on a `v*` tag.
 - `tools/sign.ps1` — signing the exe with a self-signed certificate (SHA256).
 - `tests/run_all` — the whole test pyramid in one command.
@@ -653,7 +671,7 @@ versions follow [SemVer](https://semver.org/).
 
 ### Fixed
 - **Escaping strings when writing to cells**: a file name or a formula's string
-  result that started with “=” turned into a formula (injection); a leading
+  result that started with “=” turned into a formula (injection), and a leading
   apostrophe of a string was lost. Verified experimentally, covered by unit and
   integration tests.
 
@@ -666,7 +684,7 @@ versions follow [SemVer](https://semver.org/).
 - **Natural file order** as in Explorer: “Report 2” before “Report 10”
   (StrCmpLogicalW).
 - A **“Replace formulas with values”** option — a digest without external
-  references; merged cells are handled by a per-cell fallback.
+  references. Merged cells are handled by a per-cell fallback.
 - An OLE message filter: automatic retry of COM calls rejected by a busy Excel.
 - A manual recalculation mode during the merge (faster with formulas).
 - Unit tests without external frameworks (`tests/build_tests.cmd`).
@@ -678,11 +696,11 @@ First release.
 - Merges the first visible sheet of every Excel file in a folder into a single
   `.xlsx` through the COM of an installed Excel — without losing formatting,
   formulas, merged cells, charts and pivot tables.
-- Source formats: `.xlsx`, `.xls`, `.xlsm`, `.xlsb`; broken and password-protected
-  files are skipped with a reason; hidden sheets are not transferred; sheet names
-  come from file names with deduplication and a 31-character limit.
+- Source formats: `.xlsx`, `.xls`, `.xlsm`, `.xlsb`. Broken and password-protected
+  files are skipped with a reason, hidden sheets are not transferred, and sheet
+  names come from file names with deduplication and a 31-character limit.
 - WinForms GUI: live validation, processing progress, a colour-coded log,
-  folder drag-and-drop, path memory; an icon and branded styling.
-- A `--cli` mode for scripts and automated tests; integration tests on a corpus
-  of 13 files; a single exe ~65 KB with no dependencies (.NET Framework 4.8,
+  folder drag-and-drop, path memory, an icon and branded styling.
+- A `--cli` mode for scripts and automated tests, integration tests on a corpus
+  of 13 files, and a single exe ~65 KB with no dependencies (.NET Framework 4.8,
   the compiler bundled with Windows).

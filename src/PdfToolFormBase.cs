@@ -110,11 +110,12 @@ namespace ExcelMerger
         protected void BuildBottomStrip(int right, string statusText, bool withCompress = true)
         {
             int h = ClientSize.Height;
-            Ui.Label(this, "Масштаб:", 20, h - 104, Font, Theme.TextMuted)
+            Ui.Label(this, "Масштаб:", 20, h - 144, Font, Theme.TextMuted)
                 .Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 
             _zoom = new TrackBar();
-            _zoom.SetBounds(85, h - 108, 180, 30);
+            // Реальная высота TrackBar — 45 (AutoSize), заданную меньшую он игнорирует.
+            _zoom.SetBounds(85, h - 148, 180, 45);
             _zoom.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             _zoom.Minimum = ThumbZoom.MinWidth;
             _zoom.Maximum = ThumbZoom.MaxWidth;
@@ -134,7 +135,7 @@ namespace ExcelMerger
             if (withCompress)
             {
                 _compress = new CompressionPicker();
-                _compress.Location = new Point(right - _compress.Width, h - 106);
+                _compress.Location = new Point(right - _compress.Width, h - 146);
                 _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
                 Controls.Add(_compress);
             }
@@ -142,10 +143,10 @@ namespace ExcelMerger
             _lblStatus = Ui.Label(this, statusText, 20, h - 50, Font, Theme.TextMuted);
             _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 
-            // Полоса прогресса — в свободной зоне между рядом «Масштаб/Сжатие» (низ ~ h-78) и рядом
-            // «статус/кнопка» (верх ~ h-58): целиком выше кнопки, поэтому ничего не перекрывает.
+            // Полоса прогресса — отдельный ряд между «Масштаб/Сжатие» (низ h-103: ползунок
+            // h-148 + 45) и «статус/кнопка» (верх h-58): зазоры 11 и 18 px, перекрытий нет.
             _progress = new ProgressBar();
-            _progress.SetBounds(20, h - 76, right - 20 - 52, 16);
+            _progress.SetBounds(20, h - 92, right - 20 - 52, 16);
             _progress.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             _progress.Minimum = 0;
             _progress.Maximum = 100;
@@ -153,9 +154,9 @@ namespace ExcelMerger
             _progress.Visible = false;
             Controls.Add(_progress);
 
-            _progressPct = Ui.Label(this, "", right - 46, h - 76, Font, Theme.TextMuted);
+            _progressPct = Ui.Label(this, "", right - 46, h - 92, Font, Theme.TextMuted);
             _progressPct.AutoSize = false; // фикс. ширина + выключка вправо: «0 %»/«100 %» стоят одинаково
-            _progressPct.SetBounds(right - 46, h - 76, 46, 16);
+            _progressPct.SetBounds(right - 46, h - 92, 46, 16);
             _progressPct.TextAlign = ContentAlignment.MiddleRight;
             _progressPct.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _progressPct.Visible = false;
