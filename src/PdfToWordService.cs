@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace ExcelMerger
@@ -20,10 +21,16 @@ namespace ExcelMerger
         /// <summary>
         /// Извлекает текст born-digital PDF и пишет .docx. Скан без текстового слоя,
         /// битый/зашифрованный файл или занятый выход — <see cref="MergeException"/>.
+        /// progress — «сделано/всего» единиц работы (извлечение и запись считаются двумя
+        /// проходами по страницам: всего 2×страниц), для полосы прогресса; может быть null.
         /// </summary>
-        public static ConvertResult Convert(string sourcePath, string outputPath)
+        public static ConvertResult Convert(string sourcePath, string outputPath, Action<int, int> progress = null)
         {
-            List<PdfPageText> pages = PdfTextExtract.Extract(sourcePath);
+            // Два прохода (извлечение + запись) в одну непрерывную шкалу 0..2N.
+            Action<int, int> extract = progress == null ? null : (Action<int, int>)delegate(int d, int t) { progress(d, 2 * t); };
+            Action<int, int> write = progress == null ? null : (Action<int, int>)delegate(int d, int t) { progress(t + d, 2 * t); };
+
+            List<PdfPageText> pages = PdfTextExtract.Extract(sourcePath, extract);
             int withText = 0;
             foreach (PdfPageText page in pages)
                 if (page.Paragraphs != null && page.Paragraphs.Count > 0)
@@ -34,7 +41,7 @@ namespace ExcelMerger
                     "В этом PDF нет извлекаемого текста — похоже, это отсканированный документ (изображение). " +
                     "Поддержка отсканированных документов в настоящее время недоступна.");
 
-            WordDocxWriter.Write(pages, outputPath);
+            WordDocxWriter.Write(pages, outputPath, write);
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
         }
     }

@@ -262,6 +262,8 @@ namespace ExcelMerger
             _busy = true;
             UpdateButtons();
             SetStatus("Сохранение…", Theme.TextMuted);
+            BeginProgress();
+            Action<int, int> onProgress = UiProgress();
 
             var thread = new Thread(delegate()
             {
@@ -269,7 +271,7 @@ namespace ExcelMerger
                 bool compressed = false;
                 try
                 {
-                    PdfMergeService.Merge(pages, outputPath);
+                    PdfMergeService.Merge(pages, outputPath, onProgress);
                 }
                 catch (Exception ex)
                 {
@@ -293,6 +295,7 @@ namespace ExcelMerger
         private void OnSaveFinished(Exception error, string outputPath, int pageCount, bool compressed)
         {
             _busy = false;
+            EndProgress();
             UpdateButtons();
             if (error != null)
             {

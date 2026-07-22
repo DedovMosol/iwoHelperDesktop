@@ -284,7 +284,7 @@ namespace ExcelMerger
                         return;
                     outPath = dialog.FileName;
                 }
-                RunSplit(delegate { PdfSplitService.Extract(src, indices, outPath); return new List<string> { outPath }; },
+                RunSplit(delegate(Action<int, int> pr) { PdfSplitService.Extract(src, indices, outPath, pr); return new List<string> { outPath }; },
                     level, outPath, false, UsageStats.RecordPdfExtract);
                 return;
             }
@@ -319,20 +319,20 @@ namespace ExcelMerger
                     baseName = Path.GetFileNameWithoutExtension(src);
             }
 
-            Func<List<string>> work;
+            Func<Action<int, int>, List<string>> work;
             Action record;
             switch (mode)
             {
                 case ModeRanges:
-                    work = delegate { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName, pr); };
                     record = UsageStats.RecordPdfSplitRanges;
                     break;
                 case ModeEveryN:
-                    work = delegate { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName, pr); };
                     record = UsageStats.RecordPdfSplitEveryN;
                     break;
                 case ModeBookmarks:
-                    work = delegate { return PdfSplitService.SplitByBookmarks(src, dir, baseName); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByBookmarks(src, dir, baseName, pr); };
                     record = UsageStats.RecordPdfSplitBookmarks;
                     break;
                 default:
@@ -345,11 +345,13 @@ namespace ExcelMerger
         /// Выполнить работу в фоне; сжать полученные файлы (на этом же воркере, до
         /// открытия результата); по завершении — статус, счётчик, открытие результата.
         /// </summary>
-        private void RunSplit(Func<List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record)
+        private void RunSplit(Func<Action<int, int>, List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record)
         {
             _busy = true;
             UpdateControls();
             SetStatus(openAsFolder ? "Разделение…" : "Извлечение…", Theme.TextMuted);
+            BeginProgress();
+            Action<int, int> onProgress = UiProgress();
             long sourceSize = SafeLength(_sourcePath); // для подсказки о сжатии (UI-поток, до старта воркера)
             var thread = new Thread(delegate()
             {
@@ -358,11 +360,15 @@ namespace ExcelMerger
                 long largest = 0;
                 try
                 {
-                    List<string> files = work();
+                    // Две фазы в одну шкалу 2×частей: разбиение (0..P) и сжатие (P..2P).
+                    List<string> files = work(delegate(int done, int total) { onProgress(done, 2 * total); });
                     count = files.Count;
-                    foreach (string f in files)
-                        if (PdfCompression.Compress(f, level))
+                    for (int i = 0; i < files.Count; i++)
+                    {
+                        if (PdfCompression.Compress(files[i], level))
                             compressed++;
+                        onProgress(files.Count + i + 1, 2 * files.Count);
+                    }
                     foreach (string f in files) // итоговые размеры (уже после сжатия)
                     {
                         long len = SafeLength(f);
@@ -387,6 +393,7 @@ namespace ExcelMerger
             CompressionLevel level, long sourceSize, long largestOutput)
         {
             _busy = false;
+            EndProgress();
             UpdateControls();
             if (error != null)
             {

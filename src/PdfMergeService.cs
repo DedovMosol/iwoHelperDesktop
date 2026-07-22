@@ -44,7 +44,7 @@ namespace ExcelMerger
         }
 
         /// <summary>Собирает страницы в порядке order в новый PDF. Пустой порядок — ошибка.</summary>
-        public static void Merge(IList<PdfPageRef> order, string outputPath)
+        public static void Merge(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null)
         {
             if (order == null || order.Count == 0)
                 throw new MergeException("Нет страниц для объединения.");
@@ -52,7 +52,7 @@ namespace ExcelMerger
             if (lockError != null)
                 throw new MergeException(lockError.Replace("Итоговый файл", "Файл PDF"));
             EmbeddedAssemblies.Ensure();
-            MergeCore(order, outputPath);
+            MergeCore(order, outputPath, progress);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -90,7 +90,7 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void MergeCore(IList<PdfPageRef> order, string outputPath)
+        private static void MergeCore(IList<PdfPageRef> order, string outputPath, Action<int, int> progress)
         {
             // Каждый источник открывается один раз, сколько бы страниц из него ни брали.
             var sources = new Dictionary<string, PdfDocument>(StringComparer.OrdinalIgnoreCase);
@@ -98,6 +98,7 @@ namespace ExcelMerger
             try
             {
                 output = new PdfDocument();
+                int added = 0;
                 foreach (PdfPageRef page in order)
                 {
                     PdfDocument source;
@@ -118,6 +119,9 @@ namespace ExcelMerger
                         throw new MergeException("В «" + page.FileName + "» нет страницы " + (page.PageIndex + 1) +
                             " — файл изменился после добавления в список.");
                     output.AddPage(source.Pages[page.PageIndex]);
+                    added++;
+                    if (progress != null)
+                        progress(added, order.Count);
                 }
 
                 try

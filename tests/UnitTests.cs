@@ -114,6 +114,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: без отступов -> красная строка не навязывается", TestOcrNoIndentReported);
             Run("FontNames.Clean: нормализация имени шрифта", TestFontNames);
             Run("WordDocxWriter: неустановленный шрифт -> fallback (против eastAsia-разрядки)", TestResolveFontName);
+            Run("PdfToolFormBase: проценты прогресса (сделано/всего, клампы)", TestProgressPercent);
             Run("OcrLayout: смена шрифта -> раны", TestOcrRunsFontFamily);
             Run("OcrLayout: стиль рана (курсив, кегль)", TestOcrParagraphStyle);
             Run("OcrLayout: смешанный формат -> раны", TestOcrRunsMixedFormat);
@@ -1552,6 +1553,20 @@ namespace ExcelMerger.Tests
             AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("PT Astra Serif", installed, "Times New Roman"), "неустановленный -> fallback");
             AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName(null, installed, "Times New Roman"), "null -> fallback");
             AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("X", null, "Times New Roman"), "нет списка -> fallback");
+        }
+
+        private static void TestProgressPercent()
+        {
+            AssertEqual(0, PdfToolFormBase.ProgressPercent(0, 0), "0/0 -> 0 (без деления на ноль)");
+            AssertEqual(0, PdfToolFormBase.ProgressPercent(0, 10), "0/10 -> 0");
+            AssertEqual(50, PdfToolFormBase.ProgressPercent(5, 10), "5/10 -> 50");
+            AssertEqual(100, PdfToolFormBase.ProgressPercent(10, 10), "10/10 -> 100");
+            AssertEqual(100, PdfToolFormBase.ProgressPercent(11, 10), "11/10 -> 100 (кламп сверху)");
+            AssertEqual(0, PdfToolFormBase.ProgressPercent(-1, 10), "отрицательное сделано -> 0");
+            AssertEqual(0, PdfToolFormBase.ProgressPercent(5, -1), "отрицательное всего -> 0");
+            AssertEqual(33, PdfToolFormBase.ProgressPercent(1, 3), "1/3 -> 33 (округление вниз)");
+            AssertEqual(66, PdfToolFormBase.ProgressPercent(2, 3), "2/3 -> 66");
+            AssertEqual(50, PdfToolFormBase.ProgressPercent(1000000, 2000000), "большие числа без переполнения");
         }
 
         private static void TestOcrRunsFontFamily()
