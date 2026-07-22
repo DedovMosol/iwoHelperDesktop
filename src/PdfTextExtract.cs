@@ -112,6 +112,7 @@ namespace ExcelMerger
                         List<PdfLine> lines = ExtractLines(page);
                         // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
                         TableDetectResult det = TableDetector.Detect(lines, words, page.Width, page.Height);
+                        UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке под словами
                         OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(det.RemainingWords);
                         var pt = new PdfPageText
                         {

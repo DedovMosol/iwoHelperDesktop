@@ -138,6 +138,8 @@ namespace ExcelMerger.Tests
             Run("TableDetector: слова вне таблицы остаются в потоке", TestTableWordsOutside);
             Run("TableDetector: нет линий -> нет таблиц, все слова в потоке", TestTableNoLines);
             Run("PdfToWordService: страница-таблица считается текстовой (не «скан»)", TestHasExtractableContent);
+            Run("UnderlineDetector: линия под словом -> подчёркнуто", TestUnderlineMarks);
+            Run("UnderlineDetector: далёкая/короткая линия -> не подчёркнуто", TestUnderlineIgnores);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -1921,6 +1923,31 @@ namespace ExcelMerger.Tests
             TableDetectResult res = TableDetector.Detect(new List<PdfLine>(), words, 200, 200);
             AssertEqual(0, res.Tables.Count, "нет линий — нет таблиц");
             AssertEqual(2, res.RemainingWords.Count, "все слова в потоке");
+        }
+
+        private static void TestUnderlineMarks()
+        {
+            // Слово [Left..Right]=[10..40], низ Bottom=50; линия у самой базовой линии на всю ширину.
+            var w = Word("под", 25, 55); // центр 25 -> Left 20, Right 30; переопределим ниже вручную
+            w.Left = 10; w.Right = 40; w.Bottom = 50; w.Top = 60;
+            var lines = new List<PdfLine> { HLine(48, 10, 40) }; // на 2 pt ниже низа, вся ширина
+            UnderlineDetector.Mark(new List<PdfWord> { w }, lines);
+            AssertTrue(w.Underline, "линия у базовой линии на всю ширину -> подчёркнуто");
+        }
+
+        private static void TestUnderlineIgnores()
+        {
+            var far = new PdfWord { Text = "far", Left = 10, Right = 40, Bottom = 50, Top = 60 };
+            UnderlineDetector.Mark(new List<PdfWord> { far }, new List<PdfLine> { HLine(30, 10, 40) }); // далеко внизу
+            AssertTrue(!far.Underline, "далёкая линия -> не подчёркнуто");
+
+            var shortLine = new PdfWord { Text = "sh", Left = 10, Right = 40, Bottom = 50, Top = 60 };
+            UnderlineDetector.Mark(new List<PdfWord> { shortLine }, new List<PdfLine> { HLine(48, 10, 18) }); // покрытие ~27%
+            AssertTrue(!shortLine.Underline, "короткая линия -> не подчёркнуто");
+
+            var noLines = new PdfWord { Text = "no", Left = 10, Right = 40, Bottom = 50, Top = 60 };
+            UnderlineDetector.Mark(new List<PdfWord> { noLines }, new List<PdfLine>());
+            AssertTrue(!noLines.Underline, "нет линий -> не подчёркнуто");
         }
 
         private static void TestHasExtractableContent()

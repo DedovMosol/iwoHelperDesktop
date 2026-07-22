@@ -3,6 +3,32 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.15.0] — 2026-07-22
+
+### Added
+- **PDF → Word now reconstructs bordered tables as real Word tables.** Digital PDFs (Word
+  exports, “Microsoft Print to PDF”, browser exports) draw table grids as ruling lines;
+  those lines are now read from the page vector graphics and, together with the words,
+  turned back into a Word table — column widths from the ruling geometry, per‑cell text
+  (each cell laid out by the same reading‑order engine as the body), and **merged cells**
+  (colspan/rowspan) inferred from missing internal borders. Before, a table came out as
+  garbled text read straight across the cells; now the structure and every cell are
+  correct. Detection is conservative: only clearly bordered ≥2×2 grids become tables, and
+  on any doubt the words stay in the ordinary text flow, so output is never worse than
+  before. Borderless tables, multi‑column layouts and lists are still flattened.
+- **Per‑page size and orientation.** Each source page becomes its own Word section with its
+  own page size, so a document that mixes portrait and landscape pages is preserved and a
+  wide landscape table is no longer clipped by a portrait page.
+- **Underline is carried over.** In a digital PDF an underline is a drawn line under the
+  text, not a text attribute; a horizontal rule sitting on a word’s baseline across its
+  width now marks that word underlined in Word.
+
+### Changed
+- **PDF → Word Help lists what is now supported** (underline, bordered tables with merges,
+  per‑page orientation) and narrows the remaining limitations to borderless tables,
+  multi‑column/list layouts and stamp graphics (whose inner text
+  is still extracted as text).
+
 ## [1.14.1] — 2026-07-22
 
 ### Fixed

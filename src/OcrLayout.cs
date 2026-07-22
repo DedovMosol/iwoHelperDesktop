@@ -19,6 +19,7 @@ namespace ExcelMerger
         public string FontName;   // семейство шрифта; null — по умолчанию
         public bool Super;        // надстрочный (мельче и приподнят над базовой линией)
         public bool Sub;          // подстрочный (мельче и опущен)
+        public bool Underline;    // под словом проходит горизонтальная линовка (подчёркивание)
         public string Uri;        // гиперссылка, если слово внутри её рамки; иначе null
 
         public double MidY { get { return (Top + Bottom) / 2; } }
@@ -39,6 +40,7 @@ namespace ExcelMerger
         public string FontName;   // семейство шрифта; null — по умолчанию
         public bool Super;        // надстрочный
         public bool Sub;          // подстрочный
+        public bool Underline;    // подчёркнутый
         public string Uri;        // гиперссылка рана; null — обычный текст
     }
 
@@ -278,6 +280,7 @@ namespace ExcelMerger
                         FontName = fmts[i].FontName,
                         Super = fmts[i].Super,
                         Sub = fmts[i].Sub,
+                        Underline = fmts[i].Underline,
                         Uri = fmts[i].Uri
                     });
                     runFmt = fmts[i];
@@ -314,7 +317,7 @@ namespace ExcelMerger
             return a.FontSizePt == b.FontSizePt && a.Bold == b.Bold
                 && a.Italic == b.Italic && a.ColorArgb == b.ColorArgb
                 && a.FontName == b.FontName && a.Super == b.Super && a.Sub == b.Sub
-                && a.Uri == b.Uri;
+                && a.Underline == b.Underline && a.Uri == b.Uri;
         }
 
         /// <summary>
