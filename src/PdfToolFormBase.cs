@@ -197,9 +197,26 @@ namespace ExcelMerger
             if (!_busy || pct == _lastPct)
                 return; // поздний вызов после завершения или без изменения — пропускаем
             _lastPct = pct;
-            _progress.Value = pct;
+            SetBarInstant(pct);
             _progressPct.Text = pct + " %";
             _taskbar.SetValue(Handle, pct, 100);
+        }
+
+        /// <summary>
+        /// Нарисовать полосу на точном значении МГНОВЕННО, минуя «догоняющую» анимацию Vista+
+        /// ProgressBar. Из-за этой анимации при частых обновлениях в кадре виден разрыв заливки
+        /// (белый провал, будто полосу перекрыли). Приём: задать значение на 1 больше и тут же
+        /// вернуть — уменьшение ProgressBar не анимируется, поэтому рисуется сразу и целиком.
+        /// </summary>
+        private void SetBarInstant(int pct)
+        {
+            if (pct >= _progress.Maximum)
+                _progress.Value = _progress.Maximum;
+            else
+            {
+                _progress.Value = pct + 1;
+                _progress.Value = pct;
+            }
         }
 
         /// <summary>
