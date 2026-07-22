@@ -7,15 +7,15 @@ push, but does **not** create GitHub Releases.
 
 Each release publishes two assets:
 
-- `iwoHelperDesktop.exe` — portable single file (run as-is; PDF compression works if
-  Ghostscript is installed on the machine);
+- `iwoHelperDesktop.exe` — portable single file (run as-is — PDF compression works if
+  Ghostscript is installed on the machine).
 - `iwoHelperDesktop-setup-<version>.exe` — installer that **bundles Ghostscript**
   (compression out of the box), installs **per-user without admin** by default.
 
 ## Prerequisites (maintainer machine)
 
 - .NET SDK (build), [Inno Setup 6/7](https://jrsoftware.org/isdl.php) (installer),
-  Ghostscript (bundled into the installer — `tools\stage_gs.ps1` copies the subset);
+  Ghostscript (bundled into the installer — `tools\stage_gs.ps1` copies the subset).
 - [GitHub CLI](https://cli.github.com/) authenticated (`gh auth login`) with push access.
 
 ## Steps

@@ -25,13 +25,13 @@ A small, self‑contained Windows application that bundles the office tasks peop
 
 ## 🚀 Features
 
-- 📊 **Excel Digest** — merges the first visible sheet of every workbook in a folder into one file (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`), keeping all formatting (styles, formulas, charts, pivots); adds a table of contents, optional formula→value conversion, and a Word cover note (a fixed layout).
+- 📊 **Excel Digest** — merges the first visible sheet of every workbook in a folder into one file (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`), keeping all formatting (styles, formulas, charts, pivots). It adds a table of contents, optional formula→value conversion, and a Word cover note (a fixed layout).
 - 📄 **PDF Merge** — build one PDF from several: a grid of page thumbnails, drag to reorder, delete extras. Pages are copied **as‑is** — scans, stamps and signatures are not distorted.
 - ✂️ **PDF Split** — extract selected pages into one file, or split by page ranges, every N pages, or top‑level bookmarks. The source is never modified.
-- 📝 **PDF → Word** — extract the text layer of a **born‑digital** PDF (saved from Word, “Microsoft Print to PDF”, exported from a browser) into an editable `.docx`. Inherits the font family, size, bold/italic, colour, super/subscript, paragraph alignment (left/justify/centre) and first‑line indent, page size and margins, images (placed in reading order) and hyperlinks. If a font used in the PDF is not installed, the text is set in Times New Roman; tables and multi‑column layouts are flattened to single‑column paragraphs. Scanned documents are not supported yet — a clear message is shown, the file is untouched.
+- 📝 **PDF → Word** — extract the text layer of a **born‑digital** PDF (saved from Word, “Microsoft Print to PDF”, exported from a browser) into an editable `.docx`. Inherits the font family, size, bold/italic, colour, super/subscript, paragraph alignment (left/justify/centre) and first‑line indent, page size and margins, images (placed in reading order) and hyperlinks. On the thumbnail grid you can reorder pages by dragging (or ◀ Раньше / Позже ▶) and drop pages you don’t need, so Word gets them in exactly the order shown. If a font used in the PDF is not installed, the text is set in Times New Roman, and tables and multi‑column layouts are flattened to single‑column paragraphs. Scanned documents are not supported yet — a clear message is shown and the file is untouched.
 - 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size”: downsamples images while keeping text and vectors (not rasterization), via bundled **Ghostscript**. Default level leaves the file untouched.
-- 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing); local operation counters with manual/auto clear.
-- 🔒 **Safe by design** — no network, no admin, not packed/obfuscated; writes only to user‑selected folders and `%APPDATA%`.
+- 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing), plus local operation counters with manual or automatic clearing.
+- 🔒 **Safe by design** — no network, no admin, not packed or obfuscated, and writes only to user‑selected folders and `%APPDATA%`.
 
 ## 📸 Screenshots
 
@@ -47,37 +47,37 @@ A small, self‑contained Windows application that bundles the office tasks peop
 | **Windows 10 / 11 (x64)** | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) |
 
 - **Installer** *(recommended)* — bundles Ghostscript, so PDF compression works out of the box. Installs **per‑user without admin** by default (choose “for all users” for a machine‑wide install).
-- **Portable** — a single `iwoHelperDesktop.exe`; just run it. PDF compression works if Ghostscript is installed on the machine.
+- **Portable** — a single `iwoHelperDesktop.exe` — just run it. PDF compression works if Ghostscript is installed on the machine.
 
-> Requirements: Windows 10/11 x64 (with .NET Framework 4.8, bundled since Windows 10 1903). Microsoft Excel is needed for **Excel Digest**, Microsoft Word for the **Excel Digest** cover note and **PDF → Word**. The PDF tools need neither.
+> Requirements: Windows 10/11 x64 (with .NET Framework 4.8, bundled since Windows 10 1903). **Excel Digest** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split and Compression** need neither Excel nor Word.
 
 ## 🖥️ Usage
 
-Launch the app and pick a tool from the start screen. Tools open as independent windows; a **⌂ Home** button returns to the chooser. Long tasks run in the background with progress shown in the window and on the taskbar button — a real, per‑page bar for the PDF tools (merge, split, PDF → Word) and a file list for Excel Digest.
+Launch the app and pick a tool from the start screen. Tools open as independent windows, and a **⌂ Home** button returns to the chooser. Long tasks run in the background with progress shown in the window and on the taskbar button — a real, per‑page bar for the PDF tools (merge, split, PDF → Word) and a file list for Excel Digest.
 
-- **Excel Digest** — pick the source folder, set the output name/format, arrange/exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
-- **PDF Merge / Split** — add PDFs (button or drag‑and‑drop), reorder/select pages on the thumbnail grid, choose a **Compression** level if desired, and save.
-- **PDF → Word** — open a born‑digital PDF (button or drag‑and‑drop), then **Convert to Word…** and choose the `.docx` name.
+- **Excel Digest** — pick the source folder, set the output name and format, arrange or exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
+- **PDF Merge / Split** — add PDFs (button or drag‑and‑drop), reorder or select pages on the thumbnail grid, choose a **Compression** level if desired, and save.
+- **PDF → Word** — open a born‑digital PDF (button or drag‑and‑drop), reorder or drop pages on the thumbnail grid if needed, then **Convert to Word…** and choose the `.docx` name.
 
 <details>
 <summary><b>Full Excel Digest guide, options and edge cases</b></summary>
 
-1. Select the source folder (Browse… or drop it onto the window); the file count is shown immediately.
-2. Set the output name and format (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`); “Sheets” takes the first sheet of each file or all of them.
+1. Select the source folder (Browse… or drop it onto the window). The file count is shown immediately.
+2. Set the output name and format (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`). “Sheets” takes the first sheet of each file or all of them.
 3. Change the output folder if needed (defaults to the source folder).
-4. Arrange the **Files to merge** list — reorder by dragging or ▲/▼, exclude via checkboxes; “By name” restores natural order.
-5. Click **Merge** — progress on the list and taskbar; the button flashes on completion when the window is inactive.
-6. Existing output prompts to overwrite; a file open in Excel is detected up front.
+4. Arrange the **Files to merge** list — reorder by dragging or ▲/▼, exclude via checkboxes. “By name” restores natural order.
+5. Click **Merge** — progress shows on the list and taskbar, and the button flashes on completion when the window is inactive.
+6. Existing output prompts to overwrite, and a file open in Excel is detected up front.
 
-**Files to merge** is one list with two roles: before the merge it shows order/inclusion; during/after it fills in the per‑file result (sheet name, status, skip reason / warning such as “file contains macros”). Rows copy to the clipboard (Ctrl+C).
+**Files to merge** is one list with two roles: before the merge it shows order and inclusion, and during or after it fills in the per‑file result (sheet name, status, skip reason or warning such as “file contains macros”). Rows copy to the clipboard (Ctrl+C).
 
 After the merge: **Open file / folder / report** (a text history in `%APPDATA%\iwo Helper Desktop\reports`, three latest) and **Word note** — a `.docx` cover note (period, counters, a table of skipped files), formatted per a fixed layout. If files were skipped, **Retry skipped** appends fixed files without a full rebuild.
 
-Options (format and “Table of contents” are remembered; “Replace formulas with values” starts off each run):
-- **Table of contents** (on by default) — the first sheet becomes a TOC with hyperlinks and per‑file status; header row frozen.
+Options (format and “Table of contents” are remembered, while “Replace formulas with values” starts off each run):
+- **Table of contents** (on by default) — the first sheet becomes a TOC with hyperlinks and per‑file status, with the header row frozen.
 - **Replace formulas with values** — the digest no longer depends on the sources.
 
-Edge cases handled: broken/password‑protected files are detected by signature and skipped **before** Excel opens them (so they can’t wedge the shared instance); if Excel still wedges, it is restarted automatically; low disk space stops the run up front; hidden sheets are skipped; name clashes get a `_2` suffix; names > 31 chars are truncated and `: \ / ? * [ ]` become `_`; `~$` temp files are ignored; macros are never executed (VBA files are flagged).
+Edge cases handled: broken or password‑protected files are detected by signature and skipped **before** Excel opens them, so they can’t wedge the shared instance. If Excel still wedges, it is restarted automatically. Low disk space stops the run up front, hidden sheets are skipped, name clashes get a `_2` suffix, names over 31 chars are truncated, and `: \ / ? * [ ]` become `_`. Temp files (`~$…`) are ignored, and macros are never executed (VBA files are flagged).
 
 </details>
 
@@ -85,13 +85,13 @@ Edge cases handled: broken/password‑protected files are detected by signature 
 <summary><b>PDF compression details & signature caveat</b></summary>
 
 Both PDF tools have a **Compression** dropdown applied to the produced PDF:
-- **Отлично** — no compression (default): byte‑for‑byte the merge/extract output; fidelity and signatures preserved.
+- **Отлично** — no compression (default): byte‑for‑byte the merge/extract output, with fidelity and signatures preserved.
 - **Хорошо** — Ghostscript `/ebook` (~150 DPI).
 - **Нормально** — Ghostscript `/screen` (~72 DPI).
 
-The compressing levels downsample images while keeping text and vectors (the same idea as Adobe Acrobat / Foxit “Reduce File Size”), done by **Ghostscript** as a separate process. The result is validated (valid PDF, strictly smaller) before replacing the original; an already‑optimized file is left untouched. Output is PDF 1.4, so a compressed file can still be re‑merged/split by the app.
+The compressing levels downsample images while keeping text and vectors (the same idea as Adobe Acrobat / Foxit “Reduce File Size”), done by **Ghostscript** as a separate process. The result is validated (valid PDF, strictly smaller) before replacing the original, and an already‑optimized file is left untouched. Output is PDF 1.4, so a compressed file can still be re‑merged or re‑split by the app.
 
-**Signatures:** any real compression changes the file’s bytes, so a **signed** PDF’s signature becomes invalid afterwards (true of Acrobat too). Compress unsigned documents, or before signing. Ghostscript is used under its own AGPL license (invoked as a separate process — the app stays MIT); the portable exe opens the official [download page](https://ghostscript.com/releases/gsdnld.html) if it is absent.
+**Signatures:** any real compression changes the file’s bytes, so a **signed** PDF’s signature becomes invalid afterwards (true of Acrobat too). Compress unsigned documents, or before signing. Ghostscript is used under its own AGPL license (invoked as a separate process — the app stays MIT), and the portable exe opens the official [download page](https://ghostscript.com/releases/gsdnld.html) if it is absent.
 
 </details>
 
@@ -110,7 +110,7 @@ Format is derived from the path extension. `--toc` adds a table of contents, `--
 ```
 build.cmd
 ```
-Needs the `dotnet` SDK (6+); builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction in PDF → Word. PDF thumbnails use the system `Windows.Data.Pdf` (WinRT); PDF → Word writes the `.docx` through Word COM.
+Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction in PDF → Word. PDF thumbnails use the system `Windows.Data.Pdf` (WinRT), and PDF → Word writes the `.docx` through Word COM.
 
 <details>
 <summary><b>Signing, installer, release, CI and tests</b></summary>
@@ -119,7 +119,7 @@ Needs the `dotnet` SDK (6+); builds `iwoHelperDesktop.csproj` (target .NET Frame
 - **Installer:** `powershell -NoProfile -File tools\make_installer.ps1` — builds/signs the exe, stages bundled Ghostscript (`tools\stage_gs.ps1`), compiles `installer\iwoHelperDesktop.iss` (Inno Setup), signs the setup. Wizard images come from `tools\make_wizard_images.ps1`.
 - **Release:** `powershell -NoProfile -File tools\make_release.ps1 -Publish` — builds/signs both artifacts, notes from the CHANGELOG, creates the GitHub release. See [docs/RELEASING.md](docs/RELEASING.md).
 - **CI** (`.github/workflows/ci.yml`): on every push — build, unit tests, GUI smoke, a Ghostscript round‑trip (`--gscheck`), and an installer compile check. Releases are cut locally (self‑signed cert lives only on the maintainer’s machine).
-- **Tests:** `tests\build_tests.cmd` (unit, no Office); `tests\run_all.cmd` (full pyramid, needs Excel/Word). Repository layout, corpus and maintainer notes are in [docs/](docs/).
+- **Tests:** `tests\build_tests.cmd` (unit, no Office), and `tests\run_all.cmd` (full pyramid, needs Excel/Word). Repository layout, corpus and maintainer notes are in [docs/](docs/).
 
 **Maintainer note:** Office COM is used through late binding (`dynamic`). Never perform dynamic operations on a closed COM object (store the reference in an `object` before `Close`/`Quit`) — a dynamic bind on a dead object crashes with `COMException 0x80010114`. Text into Excel cells must go through `CellText.EscapeValues`.
 
