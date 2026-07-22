@@ -21,16 +21,28 @@ namespace ExcelMerger
         /// <summary>
         /// Извлекает текст born-digital PDF и пишет .docx. Скан без текстового слоя,
         /// битый/зашифрованный файл или занятый выход — <see cref="MergeException"/>.
-        /// progress — «сделано/всего» единиц работы (извлечение и запись считаются двумя
-        /// проходами по страницам: всего 2×страниц), для полосы прогресса; может быть null.
+        /// pageOrder — индексы страниц (с нуля) в нужном порядке/подмножестве; null — весь
+        /// документ в исходном порядке. progress — «сделано/всего» единиц работы (проход
+        /// извлечения по всем страницам + проход записи по выбранным), для полосы; может быть null.
         /// </summary>
-        public static ConvertResult Convert(string sourcePath, string outputPath, Action<int, int> progress = null)
+        public static ConvertResult Convert(string sourcePath, string outputPath, IList<int> pageOrder = null, Action<int, int> progress = null)
         {
-            // Два прохода (извлечение + запись) в одну непрерывную шкалу 0..2N.
-            Action<int, int> extract = progress == null ? null : (Action<int, int>)delegate(int d, int t) { progress(d, 2 * t); };
-            Action<int, int> write = progress == null ? null : (Action<int, int>)delegate(int d, int t) { progress(t + d, 2 * t); };
+            // Прогресс в одну непрерывную шкалу: извлечение всех M страниц + запись выбранных N.
+            int selCount = pageOrder != null ? pageOrder.Count : -1; // -1 — «все» (N станет = M)
+            int extractTotal = 0;                                    // M, узнаётся в ходе извлечения
+            Action<int, int> extract = progress == null ? null : (Action<int, int>)delegate(int d, int t)
+            {
+                extractTotal = t;
+                progress(d, t + (selCount < 0 ? t : selCount));
+            };
+            Action<int, int> write = progress == null ? null : (Action<int, int>)delegate(int d, int t)
+            {
+                progress(extractTotal + d, extractTotal + t);
+            };
 
-            List<PdfPageText> pages = PdfTextExtract.Extract(sourcePath, extract);
+            List<PdfPageText> all = PdfTextExtract.Extract(sourcePath, extract);
+            List<PdfPageText> pages = SelectPages(all, pageOrder);
+
             int withText = 0;
             foreach (PdfPageText page in pages)
                 if (page.Paragraphs != null && page.Paragraphs.Count > 0)
@@ -43,6 +55,21 @@ namespace ExcelMerger
 
             WordDocxWriter.Write(pages, outputPath, write);
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
+        }
+
+        /// <summary>
+        /// Отобрать/переупорядочить извлечённые страницы по индексам (с нуля). null — вернуть все
+        /// как есть. Индексы вне диапазона пропускаются (защита). Чистая логика — под тест.
+        /// </summary>
+        internal static List<PdfPageText> SelectPages(List<PdfPageText> all, IList<int> order)
+        {
+            if (order == null)
+                return all;
+            var result = new List<PdfPageText>(order.Count);
+            foreach (int i in order)
+                if (i >= 0 && i < all.Count)
+                    result.Add(all[i]);
+            return result;
         }
     }
 }

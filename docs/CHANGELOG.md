@@ -3,6 +3,18 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.14.0] — 2026-07-22
+
+### Added
+- **PDF → Word: reorder and drop pages before converting.** The page‑thumbnail grid on the
+  PDF → Word screen is now interactive — **drag** a thumbnail to a new position, or select one
+  and use **◀ Раньше / Позже ▶** (Alt+←/→); remove pages you don’t need with **Удалить**
+  (Delete), Ctrl+A selects all. Word receives the pages in exactly the order shown, with the
+  dropped pages excluded. The order model (`PdfPageOrder`) and the reorder grid are the ones
+  already used by PDF Merge (reused, not re‑implemented); the conversion picks/reorders the
+  extracted pages through a pure, unit‑tested `SelectPages`, and the progress bar counts the
+  selected pages. Converting the whole document unchanged still works exactly as before.
+
 ## [1.13.11] — 2026-07-22
 
 ### Added

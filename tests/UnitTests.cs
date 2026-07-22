@@ -74,7 +74,8 @@ namespace ExcelMerger.Tests
             Run("PdfMergeForm.ClassifyPageKey: Delete, Alt+←/→, Ctrl+A, Enter", TestClassifyPageKey);
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
-            Run("PdfPageOrder: удаление набора строк", TestPdfOrderRemove);
+            Run("PdfPageOrder: удаление набора строк + Clear", TestPdfOrderRemove);
+            Run("PdfToWordService.SelectPages: порядок/подмножество/границы", TestSelectPages);
             Run("NoteText: период, счётчики, файл свода", TestNoteBasics);
             Run("NoteText: таблица пропущенных", TestNoteSkippedTable);
             Run("NoteText: без пропусков — «замечания отсутствуют»", TestNoteClean);
@@ -1014,6 +1015,33 @@ namespace ExcelMerger.Tests
             order.RemoveAt(new[] { 2, 0 }); // произвольный порядок индексов
             AssertEqual("А.pdf:2", OrderSignature(order), "удаление набора");
             AssertEqual(1, order.Count, "осталась одна строка");
+            order.Clear();
+            AssertEqual(0, order.Count, "Clear очищает список");
+        }
+
+        private static void TestSelectPages()
+        {
+            var all = new List<PdfPageText>
+            {
+                new PdfPageText { PageIndex = 0 },
+                new PdfPageText { PageIndex = 1 },
+                new PdfPageText { PageIndex = 2 }
+            };
+            // null -> весь документ как есть
+            AssertEqual(3, PdfToWordService.SelectPages(all, null).Count, "null -> все страницы");
+            // перестановка порядка
+            List<PdfPageText> reord = PdfToWordService.SelectPages(all, new List<int> { 2, 0, 1 });
+            AssertEqual("2,0,1", reord[0].PageIndex + "," + reord[1].PageIndex + "," + reord[2].PageIndex, "перестановка 2,0,1");
+            // подмножество (удалили часть)
+            List<PdfPageText> sub = PdfToWordService.SelectPages(all, new List<int> { 1 });
+            AssertEqual(1, sub.Count, "подмножество: одна страница");
+            AssertEqual(1, sub[0].PageIndex, "оставлена страница с индексом 1");
+            // индексы вне диапазона пропускаются
+            List<PdfPageText> oob = PdfToWordService.SelectPages(all, new List<int> { 5, 0, -1 });
+            AssertEqual(1, oob.Count, "вне диапазона пропущены");
+            AssertEqual(0, oob[0].PageIndex, "осталась только валидная страница 0");
+            // пустой порядок -> пусто
+            AssertEqual(0, PdfToWordService.SelectPages(all, new List<int>()).Count, "пустой порядок -> пусто");
         }
 
         // ---------- NoteText ----------
