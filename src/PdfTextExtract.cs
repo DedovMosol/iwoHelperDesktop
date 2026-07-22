@@ -21,6 +21,7 @@ namespace ExcelMerger
         public int PageIndex;                              // с нуля
         public List<OcrParagraph> Paragraphs = new List<OcrParagraph>();
         public List<OcrImage> Images = new List<OcrImage>();
+        public List<OcrTable> Tables = new List<OcrTable>(); // восстановленные таблицы (порядок чтения — по TopPt)
         internal List<PdfLine> Lines = new List<PdfLine>(); // линовка страницы (границы таблиц, подчёркивания)
         public double FirstLineIndentPt;                   // отступ красной строки (pt); 0 — без отступов
         public double WidthPt;
@@ -108,18 +109,22 @@ namespace ExcelMerger
                             });
                         }
                         AssignHyperlinks(words, page);
-                        OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+                        List<PdfLine> lines = ExtractLines(page);
+                        // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
+                        TableDetectResult det = TableDetector.Detect(lines, words, page.Width, page.Height);
+                        OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(det.RemainingWords);
                         var pt = new PdfPageText
                         {
                             PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
                             Paragraphs = layout.Paragraphs,
                             FirstLineIndentPt = layout.FirstLineIndentPt,
                             WidthPt = page.Width,
-                            HeightPt = page.Height
+                            HeightPt = page.Height,
+                            Lines = lines,
+                            Tables = det.Tables
                         };
                         SetMargins(pt, words, page.Width, page.Height);
                         pt.Images = ExtractImages(page);
-                        pt.Lines = ExtractLines(page);
                         pages.Add(pt);
                         if (progress != null)
                             progress(pages.Count, pageCount);
