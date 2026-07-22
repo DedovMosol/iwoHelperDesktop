@@ -16,6 +16,7 @@ namespace ExcelMerger
         private const double DropBelow = 4.0;   // насколько ниже низа слова может лежать линия
         private const double RiseAbove = 1.5;   // и насколько выше (линия у самой базовой линии)
         private const double CoverFraction = 0.6; // линия должна перекрывать эту долю ширины слова
+        private const double MaxWidthFactor = 3.0; // линия длиннее слова во столько раз — это разделитель, не подчёркивание
 
         /// <summary>Проставить <see cref="PdfWord.Underline"/> словам, под которыми есть линовка.</summary>
         public static void Mark(IList<PdfWord> words, IList<PdfLine> lines)
@@ -38,6 +39,10 @@ namespace ExcelMerger
                 {
                     // Линия у базовой линии слова: не выше низа на RiseAbove и не ниже на DropBelow.
                     if (line.Position > w.Bottom + RiseAbove || line.Position < w.Bottom - DropBelow)
+                        continue;
+                    // Разделитель (линия во всю ширину колонки) многократно длиннее слова — это не
+                    // подчёркивание: секционные линейки резюме иначе ложно подчёркивают метки.
+                    if (line.Length > MaxWidthFactor * width)
                         continue;
                     double overlap = Math.Min(line.MaxX, w.Right) - Math.Max(line.MinX, w.Left);
                     if (overlap >= CoverFraction * width)

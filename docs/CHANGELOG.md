@@ -21,7 +21,18 @@ versions follow [SemVer](https://semver.org/).
   wide landscape table is no longer clipped by a portrait page.
 - **Underline is carried over.** In a digital PDF an underline is a drawn line under the
   text, not a text attribute; a horizontal rule sitting on a word’s baseline across its
-  width now marks that word underlined in Word.
+  width now marks that word underlined in Word. A full‑width rule (a section divider) is
+  not mistaken for an underline — it is far wider than the word above it.
+- **Images that PdfPig can’t turn into PNG (typically JPEG/DCTDecode) are now recovered.**
+  The raw image stream is decoded through GDI and re‑saved as PNG, so photos embedded as
+  JPEG (e.g. a document portrait) transfer instead of silently disappearing.
+- **Left‑sidebar (two‑column) pages read in the right order.** A narrow left column of
+  labels/dates (as in a document) used to interleave word‑by‑word into the body text and
+  corrupt its indentation. Such a sidebar is now detected — the body and the sidebar are
+  laid out separately (each with its own margins) and merged top‑to‑bottom — so the body
+  reads cleanly and each label sits by its section. Detection is conservative (it needs a
+  clear left column separated by wide in‑line gaps) and no‑ops on ordinary single‑column
+  pages. Dense multi‑column body text is still out of scope.
 
 ### Changed
 - **PDF → Word Help lists what is now supported** (underline, bordered tables with merges,

@@ -169,9 +169,9 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Растровые изображения страницы в PNG с рамками. Недекодируемые в PNG форматы
-        /// (CMYK-JPEG, JBIG2, CCITT и т.п.) пропускаются; сбой одной картинки не срывает
-        /// остальные и текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
+        /// Растровые изображения страницы в PNG с рамками. Недекодируемые форматы (JBIG2,
+        /// CCITT, CMYK-JPEG и т.п.) пропускаются; сбой одной картинки не срывает остальные и
+        /// текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
         /// </summary>
         private static List<OcrImage> ExtractImages(UglyToad.PdfPig.Content.Page page)
         {
@@ -183,8 +183,8 @@ namespace ExcelMerger
             {
                 try
                 {
-                    byte[] png;
-                    if (!img.TryGetPng(out png) || png == null || png.Length == 0)
+                    byte[] png = EncodePng(img);
+                    if (png == null || png.Length == 0)
                         continue;
                     UglyToad.PdfPig.Core.PdfRectangle b = img.Bounds;
                     if (b.Width <= 0 || b.Height <= 0)
@@ -201,6 +201,38 @@ namespace ExcelMerger
                 catch { } // одна битая картинка не ломает остальные
             }
             return result;
+        }
+
+        /// <summary>
+        /// PNG для изображения PDF: сначала штатный TryGetPng; если он не смог (частый случай —
+        /// DCTDecode/JPEG, для которого PdfPig не строит PNG), декодируем сырые байты потока через
+        /// GDI (System.Drawing понимает JPEG/PNG/GIF/BMP) и пересохраняем в PNG. Возвращает null,
+        /// если ни один путь не дал картинку (напр. сырьё — недекодируемый формат).
+        /// </summary>
+        private static byte[] EncodePng(UglyToad.PdfPig.Content.IPdfImage img)
+        {
+            try
+            {
+                byte[] direct;
+                if (img.TryGetPng(out direct) && direct != null && direct.Length > 0)
+                    return direct;
+            }
+            catch { } // TryGetPng может кинуть на экзотическом формате — уходим в фолбэк
+
+            try
+            {
+                byte[] raw = img.RawBytes.ToArray(); // ReadOnlyMemory<byte> -> массив (напр. JPEG)
+                if (raw.Length == 0)
+                    return null;
+                using (var ms = new MemoryStream(raw))
+                using (System.Drawing.Image bmp = System.Drawing.Image.FromStream(ms))
+                using (var outMs = new MemoryStream())
+                {
+                    bmp.Save(outMs, System.Drawing.Imaging.ImageFormat.Png);
+                    return outMs.ToArray();
+                }
+            }
+            catch { return null; } // сырьё не декодируется в растр — пропускаем картинку
         }
 
         // Классификация отрезка как линовки: отклонение от оси (pt) и минимальная длина.

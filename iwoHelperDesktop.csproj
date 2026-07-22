@@ -66,6 +66,12 @@
       <HintPath>build\pdfpig\UglyToad.PdfPig.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- System.Memory нужен на этапе КОМПИЛЯЦИИ: тип ReadOnlyMemory в IPdfImage.RawBytes.
+         Сама сборка уже вшита ресурсом (build\pdfpig\*.dll) и резолвится в рантайме. -->
+    <Reference Include="System.Memory">
+      <HintPath>build\pdfpig\System.Memory.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <EmbeddedResource Include="build\pdfpig\*.dll">
       <LogicalName>%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>

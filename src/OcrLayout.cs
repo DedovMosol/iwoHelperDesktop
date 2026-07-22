@@ -107,6 +107,13 @@ namespace ExcelMerger
         // зазора: в узких шрифтах (напр. Calibri Light) пробел ≈ 0.18 кегля, поэтому прежние 0.2
         // роняли настоящие пробелы и слепляли слова («СЛОВОСЛОВО»). 0.08 надёжно ниже.
         private const double SpaceGapFactor = 0.08;
+        // Разделение узкой левой колонки-сайдбара от тела. Внутристрочный зазор больше
+        // ColumnGapFactor×em — граница колонок; сайдбар-сегмент начинается левее поля тела не
+        // меньше чем на SidebarBodyGapFactor×em; активируется, только если так делятся ≥ MinSplitLines
+        // строк (иначе одноколоночный текст — не трогаем) и обе части существенны.
+        private const double ColumnGapFactor = 3.0;
+        private const double SidebarBodyGapFactor = 2.0;
+        private const int MinSplitLines = 2;
 
         /// <summary>Итог разбора страницы: абзацы и измеренный отступ первой строки (0 — без красной строки).</summary>
         internal sealed class OcrPageLayout
@@ -139,6 +146,25 @@ namespace ExcelMerger
         public static OcrPageLayout Analyze(IList<PdfWord> words)
         {
             List<Line> lines = ToLines(words);
+            // Левая узкая колонка-сайдбар (метки/даты резюме и т.п.) сбивает геометрию тела и
+            // «влезает» в его строки. Если она распознана — тело и сайдбар разбираются ОТДЕЛЬНО
+            // (у каждого своя геометрия), а абзацы сводятся по вертикали в OrderedBlocks (по TopPt).
+            ColumnSplit split = TrySplitSidebar(lines);
+            if (split != null)
+            {
+                OcrPageLayout body = AnalyzeLines(ToLines(split.Body));
+                OcrPageLayout side = AnalyzeLines(ToLines(split.Sidebar));
+                var merged = new OcrPageLayout { FirstLineIndentPt = body.FirstLineIndentPt };
+                merged.Paragraphs.AddRange(body.Paragraphs);
+                merged.Paragraphs.AddRange(side.Paragraphs); // порядок неважен — OrderedBlocks сортирует по TopPt
+                return merged;
+            }
+            return AnalyzeLines(lines);
+        }
+
+        /// <summary>Разбор уже сгруппированных строк в абзацы (ядро Analyze без разделения колонок).</summary>
+        private static OcrPageLayout AnalyzeLines(List<Line> lines)
+        {
             var result = new OcrPageLayout();
             if (lines.Count == 0)
                 return result;
@@ -206,6 +232,97 @@ namespace ExcelMerger
                 result.FirstLineIndentPt = Median(indents);
 
             return result;
+        }
+
+        /// <summary>Слова левого сайдбара и тела после разделения колонок.</summary>
+        private sealed class ColumnSplit
+        {
+            public List<PdfWord> Sidebar;
+            public List<PdfWord> Body;
+        }
+
+        /// <summary>
+        /// Распознать узкую левую колонку-сайдбар и вернуть слова тела/сайдбара, иначе null.
+        /// Признак: в строках есть большие внутренние зазоры (сайдбар-сегмент слева + тело справа);
+        /// поле тела — минимальный левый край сегментов ПОСЛЕ зазора; сайдбар — сегменты, начатые
+        /// заметно левее поля тела. Активируется только при ≥ MinSplitLines делящихся строках и
+        /// существенности обеих частей — иначе (одноколоночный текст) вернём null. Чистая — под тест.
+        /// </summary>
+        private static ColumnSplit TrySplitSidebar(List<Line> lines)
+        {
+            if (lines.Count < 4)
+                return null;
+            var heights = new List<double>(lines.Count);
+            foreach (Line ln in lines) heights.Add(ln.Height);
+            double em = Median(heights);
+            if (em <= 0)
+                return null;
+            double gapTol = ColumnGapFactor * em;
+
+            // Сегменты каждой строки (разрыв по зазору > gapTol) и левые края «правых» сегментов.
+            var segments = new List<Segment>();     // все сегменты всех строк
+            var afterGapLefts = new List<double>();  // левые края сегментов, перед которыми был зазор
+            int splitLines = 0;
+            foreach (Line ln in lines)
+            {
+                List<Segment> segs = SplitLineByGaps(ln, gapTol);
+                if (segs.Count > 1)
+                {
+                    splitLines++;
+                    for (int i = 1; i < segs.Count; i++)
+                        afterGapLefts.Add(segs[i].Left);
+                }
+                segments.AddRange(segs);
+            }
+            if (splitLines < MinSplitLines || afterGapLefts.Count == 0)
+                return null;
+
+            double bodyLeft = Min(afterGapLefts);
+            double threshold = bodyLeft - SidebarBodyGapFactor * em;
+
+            var sidebar = new List<PdfWord>();
+            var body = new List<PdfWord>();
+            foreach (Segment s in segments)
+                (s.Left < threshold ? sidebar : body).AddRange(s.Words);
+
+            // Обе части должны быть существенны, иначе это не сайдбар-раскладка.
+            if (sidebar.Count < 3 || body.Count < 10)
+                return null;
+            return new ColumnSplit { Sidebar = sidebar, Body = body };
+        }
+
+        /// <summary>Отрезок строки без больших внутренних зазоров: левый край и его слова.</summary>
+        private sealed class Segment
+        {
+            public double Left;
+            public readonly List<PdfWord> Words = new List<PdfWord>();
+        }
+
+        /// <summary>Разбить строку на сегменты там, где зазор между соседними словами больше gapTol.</summary>
+        private static List<Segment> SplitLineByGaps(Line line, double gapTol)
+        {
+            var result = new List<Segment>();
+            var cur = new Segment { Left = line.Words[0].Left };
+            cur.Words.Add(line.Words[0]);
+            for (int i = 1; i < line.Words.Count; i++)
+            {
+                double gap = line.Words[i].Left - line.Words[i - 1].Right;
+                if (gap > gapTol)
+                {
+                    result.Add(cur);
+                    cur = new Segment { Left = line.Words[i].Left };
+                }
+                cur.Words.Add(line.Words[i]);
+            }
+            result.Add(cur);
+            return result;
+        }
+
+        private static double Min(List<double> values)
+        {
+            double m = double.MaxValue;
+            for (int i = 0; i < values.Count; i++) if (values[i] < m) m = values[i];
+            return m;
         }
 
         /// <summary>Медиана (нижняя при чётном числе). Чистая.</summary>
