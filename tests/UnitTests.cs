@@ -140,6 +140,9 @@ namespace ExcelMerger.Tests
             Run("PdfToWordService: страница-таблица считается текстовой (не «скан»)", TestHasExtractableContent);
             Run("UnderlineDetector: линия под словом -> подчёркнуто", TestUnderlineMarks);
             Run("UnderlineDetector: далёкая/короткая линия -> не подчёркнуто", TestUnderlineIgnores);
+            Run("UnderlineDetector: линия во всю ширину (разделитель) -> не подчёркнуто", TestUnderlineWideRule);
+            Run("OcrLayout: левый сайдбар отделяется от тела (не перемешиваются)", TestSidebarSeparation);
+            Run("OcrLayout: одноколоночный текст не делится (сайдбар не срабатывает)", TestNoSidebarSingleColumn);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -1948,6 +1951,62 @@ namespace ExcelMerger.Tests
             var noLines = new PdfWord { Text = "no", Left = 10, Right = 40, Bottom = 50, Top = 60 };
             UnderlineDetector.Mark(new List<PdfWord> { noLines }, new List<PdfLine>());
             AssertTrue(!noLines.Underline, "нет линий -> не подчёркнуто");
+        }
+
+        private static void TestUnderlineWideRule()
+        {
+            // Полноширинный разделитель под меткой не должен подчёркивать её.
+            var w = new PdfWord { Text = "метка", Left = 57, Right = 120, Bottom = 50, Top = 60, FontSizePt = 10 };
+            var rule = HLine(48, 57, 520); // длина 463 >> ширины слова 63 (×7)
+            UnderlineDetector.Mark(new List<PdfWord> { w }, new List<PdfLine> { rule });
+            AssertTrue(!w.Underline, "разделитель во всю ширину -> не подчёркивание");
+        }
+
+        /// <summary>Слово с явной рамкой (для тестов колонок/подчёркивания).</summary>
+        private static PdfWord WordBox(string text, double left, double right, double bottom)
+        {
+            return new PdfWord { Text = text, Left = left, Right = right, Bottom = bottom, Top = bottom + 10, FontSizePt = 10 };
+        }
+
+        private static void TestSidebarSeparation()
+        {
+            // 3 строки: слева узкая метка (X57-90), справа тело (X150-350), большой зазор между ними.
+            var words = new List<PdfWord>();
+            double[] ys = { 220, 200, 180, 160 };
+            for (int i = 0; i < ys.Length; i++)
+            {
+                double y = ys[i];
+                words.Add(WordBox("SIDE" + i, 57, 90, y));            // сайдбар-сегмент
+                words.Add(WordBox("BODYa" + i, 150, 190, y));         // тело: слова с обычным интервалом
+                words.Add(WordBox("BODYb" + i, 195, 235, y));
+                words.Add(WordBox("BODYc" + i, 240, 280, y));
+                words.Add(WordBox("BODYd" + i, 285, 350, y));
+            }
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            // Ни один абзац не должен содержать одновременно сайдбар- и тело-токен (нет перемешивания).
+            bool anyMixed = false, anySidebarOnly = false;
+            foreach (OcrParagraph p in paras)
+            {
+                bool hasSide = p.Text.Contains("SIDE");
+                bool hasBody = p.Text.Contains("BODY");
+                if (hasSide && hasBody) anyMixed = true;
+                if (hasSide && !hasBody) anySidebarOnly = true;
+            }
+            AssertTrue(!anyMixed, "сайдбар и тело не смешаны в одном абзаце");
+            AssertTrue(anySidebarOnly, "метка сайдбара — отдельным абзацем");
+        }
+
+        private static void TestNoSidebarSingleColumn()
+        {
+            // Одноколоночная строка без больших зазоров: слова обязаны остаться в одном абзаце.
+            var words = new List<PdfWord>
+            {
+                WordBox("one", 50, 90, 200), WordBox("two", 95, 135, 200),
+                WordBox("three", 140, 190, 200), WordBox("four", 195, 235, 200)
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            AssertEqual(1, paras.Count, "одна строка -> один абзац (сайдбар не сработал)");
+            AssertTrue(paras[0].Text.Contains("one") && paras[0].Text.Contains("four"), "все слова в одном абзаце");
         }
 
         private static void TestHasExtractableContent()
