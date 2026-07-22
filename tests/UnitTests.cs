@@ -143,6 +143,7 @@ namespace ExcelMerger.Tests
             Run("UnderlineDetector: линия во всю ширину (разделитель) -> не подчёркнуто", TestUnderlineWideRule);
             Run("OcrLayout: левый сайдбар отделяется от тела (не перемешиваются)", TestSidebarSeparation);
             Run("OcrLayout: одноколоночный текст не делится (сайдбар не срабатывает)", TestNoSidebarSingleColumn);
+            Run("WordDocxWriter: порядок чтения (сверху вниз, бок о бок — слева направо)", TestReadingOrder);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -2007,6 +2008,18 @@ namespace ExcelMerger.Tests
             List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
             AssertEqual(1, paras.Count, "одна строка -> один абзац (сайдбар не сработал)");
             AssertTrue(paras[0].Text.Contains("one") && paras[0].Text.Contains("four"), "все слова в одном абзаце");
+        }
+
+        private static void TestReadingOrder()
+        {
+            // Выше по странице (больший Top) — раньше.
+            AssertTrue(WordDocxWriter.CompareReadingOrder(200, 0, 100, 0) < 0, "верхний блок раньше нижнего");
+            AssertTrue(WordDocxWriter.CompareReadingOrder(100, 0, 200, 0) > 0, "нижний блок позже верхнего");
+            // Одна строка-полоса (|dTop| <= 12): левее — раньше (таблицы бок о бок).
+            AssertTrue(WordDocxWriter.CompareReadingOrder(100, 50, 105, 300) < 0, "в одной полосе левый раньше правого");
+            AssertTrue(WordDocxWriter.CompareReadingOrder(100, 300, 100, 50) > 0, "в одной полосе правый позже левого");
+            // Разница по Top больше полосы — X не важен.
+            AssertTrue(WordDocxWriter.CompareReadingOrder(200, 900, 100, 0) < 0, "верхний раньше, несмотря на больший X");
         }
 
         private static void TestHasExtractableContent()

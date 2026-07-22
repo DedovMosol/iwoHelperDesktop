@@ -46,7 +46,7 @@ namespace ExcelMerger
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
             BuildHeaderWithHome(Title,
-                "Перетаскивайте миниатюры, чтобы задать порядок; масштаб — ползунком или Ctrl+колесо.",
+                "Объединение документов формата *.pdf с возможностью изменения порядка страниц и сжатием.",
                 Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
 
             int m = HelpMenu.Height;

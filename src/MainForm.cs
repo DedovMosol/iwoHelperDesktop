@@ -132,7 +132,7 @@ namespace ExcelMerger
 
             BuildMenu();
             var header = new HeaderBand("Свод Excel",
-                "Листы Excel-файлов из папки — в один итоговый файл",
+                "Объедините листы Excel-файлов из папки в один свод.",
                 Theme.Accent, Theme.AccentPressed);
             header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;

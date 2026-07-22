@@ -42,7 +42,7 @@ namespace ExcelMerger
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
             BuildHeaderWithHome(Title,
-                "Извлеките текст цифрового PDF в редактируемый .docx. Порядок страниц можно менять перетаскиванием.",
+                "Извлечение текста и таблиц из документов формата *.pdf с возможностью изменения порядка страниц.",
                 Theme.WordViolet, Theme.WordVioletDark, ShowHelp);
 
             int m = HelpMenu.Height;

@@ -141,7 +141,7 @@ namespace ExcelMerger
             OcrTableCell[,] origin = BuildCells(xs, ys, vlines, hlines, cols, rows);
             AssignWords(origin, xs, ys, cols, rows, allWords, consumed);
 
-            var table = new OcrTable { TopPt = top };
+            var table = new OcrTable { TopPt = top, LeftPt = left };
             for (int c = 0; c < cols; c++)
                 table.ColumnWidthsPt.Add(xs[c + 1] - xs[c]);
             for (int r = 0; r < rows; r++)

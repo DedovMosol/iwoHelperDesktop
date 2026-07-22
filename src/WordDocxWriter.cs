@@ -68,30 +68,44 @@ namespace ExcelMerger
             }
         }
 
+        private const double RowBandPt = 12; // блоки ближе этого по вертикали — одна «строка-полоса»
+
         /// <summary>Блок содержимого страницы: абзац, таблица или изображение (одно из полей задано).</summary>
         private sealed class Block
         {
             public OcrParagraph Paragraph;
             public OcrTable Table;
             public OcrImage Image;
-            public double Top; // верх блока — для порядка чтения
+            public double Top;  // верх блока (Y, ось вверх) — основной порядок чтения
+            public double Left; // левый край — вторичный порядок для блоков в одной строке-полосе
         }
 
-        /// <summary>Абзацы, таблицы и изображения страницы в порядке чтения (сверху вниз по Y).</summary>
+        /// <summary>Абзацы, таблицы и изображения страницы в порядке чтения (сверху вниз, затем слева направо).</summary>
         private static List<Block> OrderedBlocks(PdfPageText page)
         {
             var blocks = new List<Block>();
             if (page.Paragraphs != null)
                 foreach (OcrParagraph par in page.Paragraphs)
-                    blocks.Add(new Block { Paragraph = par, Top = par.TopPt });
+                    blocks.Add(new Block { Paragraph = par, Top = par.TopPt, Left = par.LeftPt });
             if (page.Tables != null)
                 foreach (OcrTable table in page.Tables)
-                    blocks.Add(new Block { Table = table, Top = table.TopPt });
+                    blocks.Add(new Block { Table = table, Top = table.TopPt, Left = table.LeftPt });
             if (page.Images != null)
                 foreach (OcrImage img in page.Images)
-                    blocks.Add(new Block { Image = img, Top = img.TopPt });
-            blocks.Sort(delegate(Block a, Block b) { return b.Top.CompareTo(a.Top); }); // ось Y вверх: больше Top — выше
+                    blocks.Add(new Block { Image = img, Top = img.TopPt, Left = img.LeftPt });
+            blocks.Sort(delegate(Block a, Block b) { return CompareReadingOrder(a.Top, a.Left, b.Top, b.Left); });
             return blocks;
+        }
+
+        /// <summary>
+        /// Порядок чтения: сверху вниз (больше Top — выше — раньше); блоки в одной строке-полосе
+        /// (|разница Top| ≤ RowBandPt, напр. таблицы бок о бок) — слева направо. Чистая — под тест.
+        /// </summary>
+        internal static int CompareReadingOrder(double aTop, double aLeft, double bTop, double bLeft)
+        {
+            if (Math.Abs(aTop - bTop) > RowBandPt)
+                return bTop.CompareTo(aTop); // ось Y вверх: больший Top — выше — раньше
+            return aLeft.CompareTo(bLeft);   // одна полоса — левее раньше
         }
 
         private static void WriteParagraph(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent)
