@@ -21,6 +21,7 @@ namespace ExcelMerger
         public int PageIndex;                              // с нуля
         public List<OcrParagraph> Paragraphs = new List<OcrParagraph>();
         public List<OcrImage> Images = new List<OcrImage>();
+        internal List<PdfLine> Lines = new List<PdfLine>(); // линовка страницы (границы таблиц, подчёркивания)
         public double FirstLineIndentPt;                   // отступ красной строки (pt); 0 — без отступов
         public double WidthPt;
         public double HeightPt;
@@ -118,6 +119,7 @@ namespace ExcelMerger
                         };
                         SetMargins(pt, words, page.Width, page.Height);
                         pt.Images = ExtractImages(page);
+                        pt.Lines = ExtractLines(page);
                         pages.Add(pt);
                         if (progress != null)
                             progress(pages.Count, pageCount);
@@ -193,6 +195,109 @@ namespace ExcelMerger
                 catch { } // одна битая картинка не ломает остальные
             }
             return result;
+        }
+
+        // Классификация отрезка как линовки: отклонение от оси (pt) и минимальная длина.
+        private const double LineAxisTol = 1.0; // |dy| для горизонтали / |dx| для вертикали
+        private const double MinLineLen = 2.0;  // короче — графический шум, не линовка
+        private const double ThinFillMax = 2.5; // залитая полоска тоньше этого — это линия, не фон
+
+        /// <summary>
+        /// Линовка страницы (границы таблиц, подчёркивания) из векторной графики. Берём только
+        /// строго горизонтальные/вертикальные штрихи и рёбра прямоугольников; диагонали, кривые
+        /// и крупные заливки (фон ячеек) пропускаем. Сбой одной фигуры не срывает остальные и
+        /// текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
+        /// </summary>
+        private static List<PdfLine> ExtractLines(UglyToad.PdfPig.Content.Page page)
+        {
+            var result = new List<PdfLine>();
+            System.Collections.Generic.IReadOnlyList<UglyToad.PdfPig.Graphics.PdfPath> paths;
+            try { paths = page.ExperimentalAccess.Paths; }
+            catch { return result; }
+            if (paths == null)
+                return result;
+            foreach (UglyToad.PdfPig.Graphics.PdfPath path in paths)
+            {
+                try
+                {
+                    if (path == null || path.IsClipping)
+                        continue; // невидимая обтравка — не ink
+                    bool stroked = path.IsStroked;
+                    bool filled = path.IsFilled;
+                    if (!stroked && !filled)
+                        continue;
+                    double thickness = path.LineWidth;
+                    for (int i = 0; i < path.Count; i++)
+                    {
+                        UglyToad.PdfPig.Core.PdfSubpath sub = path[i];
+                        if (sub == null)
+                            continue;
+                        if (stroked && sub.IsDrawnAsRectangle)
+                            AddRectangleEdges(result, sub, thickness);
+                        else if (stroked)
+                            AddLineCommands(result, sub, thickness);
+                        else if (sub.IsDrawnAsRectangle) // filled, не stroked
+                            AddThinFilledRect(result, sub);
+                    }
+                }
+                catch { } // одна битая фигура не ломает остальные
+            }
+            return result;
+        }
+
+        /// <summary>Рёбра нарисованного прямоугольника → 4 линии (границы ячейки/рамки).</summary>
+        private static void AddRectangleEdges(List<PdfLine> result, UglyToad.PdfPig.Core.PdfSubpath sub, double thickness)
+        {
+            UglyToad.PdfPig.Core.PdfRectangle? r = sub.GetDrawnRectangle();
+            if (r == null)
+                return;
+            UglyToad.PdfPig.Core.PdfRectangle rect = r.Value;
+            AddSegment(result, rect.Left, rect.Top, rect.Right, rect.Top, thickness);
+            AddSegment(result, rect.Left, rect.Bottom, rect.Right, rect.Bottom, thickness);
+            AddSegment(result, rect.Left, rect.Bottom, rect.Left, rect.Top, thickness);
+            AddSegment(result, rect.Right, rect.Bottom, rect.Right, rect.Top, thickness);
+        }
+
+        /// <summary>Прямые команды Line подпути → линовка (диагонали отсеются в AddSegment).</summary>
+        private static void AddLineCommands(List<PdfLine> result, UglyToad.PdfPig.Core.PdfSubpath sub, double thickness)
+        {
+            System.Collections.Generic.IReadOnlyList<UglyToad.PdfPig.Core.PdfSubpath.IPathCommand> cmds = sub.Commands;
+            if (cmds == null)
+                return;
+            foreach (UglyToad.PdfPig.Core.PdfSubpath.IPathCommand c in cmds)
+            {
+                var line = c as UglyToad.PdfPig.Core.PdfSubpath.Line;
+                if (line != null)
+                    AddSegment(result, line.From.X, line.From.Y, line.To.X, line.To.Y, thickness);
+            }
+        }
+
+        /// <summary>Тонкая залитая полоска (линия, нарисованная заливкой) → одна линия по длинной оси.</summary>
+        private static void AddThinFilledRect(List<PdfLine> result, UglyToad.PdfPig.Core.PdfSubpath sub)
+        {
+            UglyToad.PdfPig.Core.PdfRectangle? r = sub.GetDrawnRectangle();
+            if (r == null)
+                return;
+            UglyToad.PdfPig.Core.PdfRectangle rect = r.Value;
+            double w = rect.Width, h = rect.Height;
+            if (Math.Min(w, h) > ThinFillMax)
+                return; // крупная заливка — фон ячейки, а не линия
+            double midX = (rect.Left + rect.Right) / 2, midY = (rect.Bottom + rect.Top) / 2;
+            if (w >= h)
+                AddSegment(result, rect.Left, midY, rect.Right, midY, Math.Min(w, h));
+            else
+                AddSegment(result, midX, rect.Bottom, midX, rect.Top, Math.Min(w, h));
+        }
+
+        /// <summary>Классифицировать отрезок и добавить, если это строго H/V-линовка достаточной длины.</summary>
+        private static void AddSegment(List<PdfLine> result, double x1, double y1, double x2, double y2, double thickness)
+        {
+            double dx = Math.Abs(x2 - x1), dy = Math.Abs(y2 - y1);
+            if (dy <= LineAxisTol && dx > dy && dx >= MinLineLen)
+                result.Add(new PdfLine { Orientation = LineOrientation.Horizontal, X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, Thickness = thickness });
+            else if (dx <= LineAxisTol && dy > dx && dy >= MinLineLen)
+                result.Add(new PdfLine { Orientation = LineOrientation.Vertical, X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, Thickness = thickness });
+            // иначе диагональ/кривая — не линовка
         }
 
         /// <summary>Поля страницы из рамок текста (pt, ось Y вверх). Пустая страница — поля 0.</summary>
