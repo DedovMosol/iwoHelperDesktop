@@ -129,6 +129,7 @@ namespace ExcelMerger
                 sel.Font.Italic = run.Italic ? 1 : 0;
                 sel.Font.Superscript = run.Super ? 1 : 0;
                 sel.Font.Subscript = run.Sub ? 1 : 0;
+                sel.Font.Underline = run.Underline ? 1 : 0; // wdUnderlineSingle / None
                 sel.Font.Color = ToBgr(run.ColorArgb);
                 if (string.IsNullOrEmpty(run.Uri))
                 {
