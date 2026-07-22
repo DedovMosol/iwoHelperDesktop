@@ -113,6 +113,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: измерен отступ красной строки", TestOcrIndentDetected);
             Run("OcrLayout: без отступов -> красная строка не навязывается", TestOcrNoIndentReported);
             Run("FontNames.Clean: нормализация имени шрифта", TestFontNames);
+            Run("WordDocxWriter: неустановленный шрифт -> fallback (против eastAsia-разрядки)", TestResolveFontName);
             Run("OcrLayout: смена шрифта -> раны", TestOcrRunsFontFamily);
             Run("OcrLayout: стиль рана (курсив, кегль)", TestOcrParagraphStyle);
             Run("OcrLayout: смешанный формат -> раны", TestOcrRunsMixedFormat);
@@ -122,6 +123,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: рваный абзац по левому краю", TestOcrLeftAligned);
             Run("OcrLayout: центрированная строка", TestOcrCentered);
             Run("OcrLayout: фрагменты слова склеиваются по зазору", TestOcrGlueFragments);
+            Run("OcrLayout: узкий настоящий пробел сохранён (не склейка)", TestOcrNarrowSpaceKept);
             Run("OcrLayout: тонкое тире остаётся в строке", TestOcrThinDashStaysOnLine);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
@@ -1530,8 +1532,26 @@ namespace ExcelMerger.Tests
             AssertEqual("Courier New", FontNames.Clean("CourierNewPS-BoldMT"), "Courier New");
             AssertEqual("Arial", FontNames.Clean("ArialMT"), "ArialMT");
             AssertEqual("Calibri", FontNames.Clean("Calibri"), "уже чистое");
+            AssertEqual("PT Astra Serif", FontNames.Clean("BBHOZJ+PTAstraSerif-Regular"), "PT Astra Serif: префикс-аббревиатура + слитное");
+            AssertEqual("MS Gothic", FontNames.Clean("MSGothic"), "MS Gothic: аббревиатура-префикс");
             AssertTrue(FontNames.Clean(null) == null, "null -> null");
             AssertTrue(FontNames.Clean("  ") == null, "пусто -> null");
+        }
+
+        private static void TestResolveFontName()
+        {
+            var installed = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Times New Roman", "Calibri Light"
+            };
+            // Установленный шрифт — оставить как есть (в т.ч. без учёта регистра).
+            AssertEqual("Calibri Light", WordDocxWriter.ResolveFontName("Calibri Light", installed, "Times New Roman"), "установленный сохранён");
+            // Совпадение без учёта регистра — установленный не уходит в fallback (Word регистронезависим).
+            AssertEqual("times new roman", WordDocxWriter.ResolveFontName("times new roman", installed, "Times New Roman"), "регистр при поиске не важен");
+            // НЕустановленный (напр. PT Astra Serif) -> fallback, иначе Word уводит кириллицу в eastAsia -> разрядка.
+            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("PT Astra Serif", installed, "Times New Roman"), "неустановленный -> fallback");
+            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName(null, installed, "Times New Roman"), "null -> fallback");
+            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("X", null, "Times New Roman"), "нет списка -> fallback");
         }
 
         private static void TestOcrRunsFontFamily()
@@ -1654,18 +1674,33 @@ namespace ExcelMerger.Tests
 
         private static void TestOcrGlueFragments()
         {
-            // PdfPig разбил «мир» на буквы (мелкие зазоры) — склеить без пробелов;
-            // между словами нормальный зазор — пробел. Иначе была бы «разрядка».
+            // Почти соприкасающиеся куски одного токена (мизерный зазор < 0.08 кегля) склеиваем
+            // без пробела; между словами обычный зазор — пробел.
             var words = new List<PdfWord>
             {
                 W("м", 0, 0, 8, 10),      // Right 8
-                W("и", 8.5, 0, 8, 10),    // зазор 0.5 -> склеить
-                W("р", 17, 0, 8, 10),     // зазор 0.5 -> склеить  => «мир»
-                W("тут", 30, 0, 20, 10)   // зазор 5 -> пробел     => «мир тут»
+                W("и", 8.5, 0, 8, 10),    // зазор 0.5 (0.05 кегля) -> склеить
+                W("р", 17, 0, 8, 10),     // зазор 0.5 (0.05 кегля) -> склеить  => «мир»
+                W("тут", 30, 0, 20, 10)   // зазор 5 (0.5 кегля) -> пробел      => «мир тут»
             };
             List<string> p = OcrLayout.ToParagraphs(words);
             AssertEqual(1, p.Count, "одна строка — один абзац");
             AssertEqual("мир тут", p[0], "фрагменты склеены, между словами пробел");
+        }
+
+        private static void TestOcrNarrowSpaceKept()
+        {
+            // Регресс: в узких шрифтах (Calibri Light) настоящий межсловный зазор ≈ 0.18 кегля.
+            // Прежний порог 0.2 ронял такой пробел и слеплял слова («СЛОВОСЛОВО»);
+            // 0.08 сохраняет пробел. Зазор здесь 0.15 кегля — между старым и новым порогом.
+            var words = new List<PdfWord>
+            {
+                W("МИНИСТЕРСТВО", 0, 0, 60, 16),      // Right 60
+                W("ФИНАНСОВ", 62.4, 0, 40, 16)        // зазор 2.4 = 0.15 кегля -> пробел
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(1, p.Count, "одна строка — один абзац");
+            AssertEqual("МИНИСТЕРСТВО ФИНАНСОВ", p[0], "узкий настоящий пробел сохранён (не склейка)");
         }
 
         private static void TestOcrThinDashStaysOnLine()

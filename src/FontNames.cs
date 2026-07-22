@@ -11,6 +11,10 @@ namespace ExcelMerger
     public static class FontNames
     {
         private static readonly Regex Subset = new Regex(@"^[A-Z]{6}\+", RegexOptions.CultureInvariant);
+        // Разбивка слитного имени: сначала отделяем ЗАГЛАВНЫЙ префикс-аббревиатуру от следующего
+        // слова («PTAstra» → «PT Astra», «MSGothic» → «MS Gothic»), затем обычные границы
+        // строчная→ЗАГЛАВНАЯ («AstraSerif» → «Astra Serif»).
+        private static readonly Regex AcronymWord = new Regex(@"(?<=[A-Z])(?=[A-Z][a-z])", RegexOptions.CultureInvariant);
         private static readonly Regex DeCamel = new Regex(@"(?<=[a-z])(?=[A-Z])", RegexOptions.CultureInvariant);
 
         /// <summary>Имя шрифта из PDF → семейство для Word; null/пусто → null (писать по умолчанию).</summary>
@@ -30,7 +34,8 @@ namespace ExcelMerger
             if (s.Length == 0)
                 return null;
 
-            s = DeCamel.Replace(s, " "); // «TimesNewRoman» → «Times New Roman»
+            s = AcronymWord.Replace(s, " "); // «PTAstraSerif» → «PT AstraSerif»
+            s = DeCamel.Replace(s, " ");     // «PT AstraSerif» → «PT Astra Serif»
             return s;
         }
 
