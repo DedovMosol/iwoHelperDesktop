@@ -169,6 +169,7 @@ namespace ExcelMerger
                     catch { } // ширина косметическая; сбой одной колонки не критичен
                 }
 
+                // Сначала заполняем (все ячейки на месте — прямая адресация r,c), потом сливаем.
                 for (int r = 0; r < rows; r++)
                 {
                     OcrTableRow row = table.Rows[r];
@@ -181,12 +182,39 @@ namespace ExcelMerger
                     }
                 }
 
+                MergeSpans(wtable, table, rows, cols);
+
                 // Курсор — за таблицу, отделить абзацем (иначе следующая таблица сольётся с этой).
                 sel.Start = wtable.Range.End;
                 sel.Collapse(WdCollapseEnd);
                 sel.TypeParagraph();
             }
             catch { } // не удалось построить таблицу — не срываем весь документ
+        }
+
+        /// <summary>
+        /// Объединить ячейки по ColSpan/RowSpan уже заполненной таблицы. Идём с конца (снизу
+        /// вверх, справа налево): слияние блока перенумеровывает ячейки НИЖЕ и ПРАВЕЕ, а они уже
+        /// обработаны, поэтому адреса ещё не слитых блоков (выше/левее) не сбиваются. Слияние
+        /// склеивает содержимое ячеек, добавляя пустые абзацы накрытых — их подчищаем.
+        /// </summary>
+        private static void MergeSpans(dynamic wtable, OcrTable table, int rows, int cols)
+        {
+            for (int r = rows - 1; r >= 0; r--)
+            {
+                for (int c = cols - 1; c >= 0; c--)
+                {
+                    OcrTableCell cell = table.Rows[r].Cells[c];
+                    if (cell.Covered || (cell.ColSpan <= 1 && cell.RowSpan <= 1))
+                        continue;
+                    try
+                    {
+                        dynamic head = wtable.Cell(r + 1, c + 1);
+                        head.Merge(wtable.Cell(r + cell.RowSpan, c + cell.ColSpan));
+                    }
+                    catch { } // одно неудавшееся объединение не роняет таблицу
+                }
+            }
         }
 
         /// <summary>Записать абзацы ячейки в её начало (не трогая маркер конца ячейки).</summary>
