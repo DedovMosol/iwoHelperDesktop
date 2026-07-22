@@ -24,21 +24,32 @@ versions follow [SemVer](https://semver.org/).
   width now marks that word underlined in Word. A full‑width rule (a section divider) is
   not mistaken for an underline — it is far wider than the word above it.
 - **Images that PdfPig can’t turn into PNG (typically JPEG/DCTDecode) are now recovered.**
-  The raw image stream is decoded through GDI and re‑saved as PNG, so photos embedded as
-  JPEG (e.g. a document portrait) transfer instead of silently disappearing.
+  The raw image stream is decoded through GDI and re‑saved as PNG, so a JPEG‑embedded photo
+  transfers instead of silently disappearing.
 - **Left‑sidebar (two‑column) pages read in the right order.** A narrow left column of
-  labels/dates (as in a document) used to interleave word‑by‑word into the body text and
-  corrupt its indentation. Such a sidebar is now detected — the body and the sidebar are
-  laid out separately (each with its own margins) and merged top‑to‑bottom — so the body
-  reads cleanly and each label sits by its section. Detection is conservative (it needs a
-  clear left column separated by wide in‑line gaps) and no‑ops on ordinary single‑column
-  pages. Dense multi‑column body text is still out of scope.
+  labels or dates used to interleave word‑by‑word into the body text and corrupt its
+  indentation. Such a sidebar is now detected — the body and the sidebar are laid out
+  separately (each with its own margins) and merged top‑to‑bottom — so the body reads
+  cleanly and each label sits by its section. Detection is conservative (it needs a clear
+  left column separated by wide in‑line gaps) and no‑ops on ordinary single‑column pages.
+  Dense multi‑column body text is still out of scope.
+- **Side‑by‑side blocks read left‑to‑right.** Tables (and paragraphs) that sit on the same
+  row band — e.g. two small tables placed next to each other — are now ordered left before
+  right instead of by vertical position alone, so they no longer come out swapped.
 
 ### Changed
+- **Tool subtitles reworded** to state each tool’s purpose (no semicolons), and the header
+  now lays the subtitle across the **full width** below the “⌂ Главная” button, so a longer
+  subtitle is not clipped with an ellipsis at the default or minimum window size.
 - **PDF → Word Help lists what is now supported** (underline, bordered tables with merges,
   per‑page orientation) and narrows the remaining limitations to borderless tables,
   multi‑column/list layouts and stamp graphics (whose inner text
   is still extracted as text).
+
+### Fixed
+- **A broken image no longer prints as a solid black box.** Some monochrome images that the
+  PDF image decoder mangles into a single colour are now detected and skipped, so any text
+  they accompanied is kept while the bogus rectangle is dropped.
 
 ## [1.14.1] — 2026-07-22
 
@@ -134,13 +145,12 @@ versions follow [SemVer](https://semver.org/).
   “PTAstraSerif” → **“PT Astra Serif”** (and “MSGothic” → “MS Gothic”), so where the font *is*
   installed it is matched and kept instead of being replaced.
 - **PDF → Word: words no longer glue together.** A separate bug in the line word‑join: it used
-  a gap threshold of **0.2 × font size**, but in narrow fonts (e.g. Calibri Light in the
-  sample’s documents) a real inter‑word space is only ≈ 0.18 × size — so the space was
-  dropped and neighbouring words merged (“СЛОВОСЛОВО”, “Message Authentication” → one
-  token). The threshold is now **0.08 × size**, safely below the smallest real word‑space
-  measured across the sample documents (0.179). Only truly touching fragments (gap < 0.08) are
+  a gap threshold of **0.2 × font size**, but in narrow fonts (e.g. Calibri Light) a real
+  inter‑word space is only ≈ 0.18 × size — so the space was dropped and neighbouring words
+  merged (two adjacent words glued into one). The threshold is now **0.08 × size**, safely
+  below the smallest real word‑space measured across the sample documents (0.179). Only truly touching fragments (gap < 0.08) are
   glued. Verified across the sample set: extracted text is character‑for‑character identical
-  except that dropped spaces are restored (16 of 29 documents gained spaces, one document
+  except that dropped spaces are restored (16 of 29 documents gained spaces, one of them
   +213), with no document losing a space.
 - **Correction to the 1.13.9 note on letter‑spacing.** PdfPig’s default word extractor does
   **not** over‑split PT Astra Serif into letter fragments (verified): that document comes out

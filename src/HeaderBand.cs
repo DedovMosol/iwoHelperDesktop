@@ -60,17 +60,32 @@ namespace ExcelMerger
                 return;
             }
 
-            // Слева, не заходя под дочерние контролы (кнопку «Главная»): обрезаем многоточием.
-            int leftmostChild = int.MaxValue;
+            // Заголовок не заходит под дочерние контролы (кнопку «Главная») — обрезаем многоточием.
+            int leftmostChild = int.MaxValue, childBottom = 0;
             foreach (Control c in Controls)
-                if (c.Visible && c.Left < leftmostChild)
-                    leftmostChild = c.Left;
+                if (c.Visible)
+                {
+                    if (c.Left < leftmostChild) leftmostChild = c.Left;
+                    if (c.Bottom > childBottom) childBottom = c.Bottom;
+                }
             int rightBound = TextRightBound(Width, leftmostChild);
             TextRenderer.DrawText(e.Graphics, _title, TitleFont,
                 new Rectangle(18, titleY, rightBound - 18, 26), Color.White, flags);
+
             if (_subtitle.Length > 0)
+            {
+                // Подпись опускаем НИЖЕ кнопки «Главная» и даём полную ширину — иначе длинный
+                // текст режется у левого края кнопки. Если под кнопкой не помещается по высоте —
+                // остаёмся на прежнем месте, обрезая многоточием у кнопки.
+                int subY = subtitleY, subRight = rightBound;
+                if (childBottom + 2 + 18 <= Height)
+                {
+                    subY = Math.Max(subtitleY, childBottom + 2);
+                    subRight = Width - 20;
+                }
                 TextRenderer.DrawText(e.Graphics, _subtitle, Font,
-                    new Rectangle(20, subtitleY, rightBound - 20, 20), SubtitleColor, flags);
+                    new Rectangle(20, subY, subRight - 20, 20), SubtitleColor, flags);
+            }
         }
 
         /// <summary>

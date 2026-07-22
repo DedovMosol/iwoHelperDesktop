@@ -31,7 +31,8 @@ namespace ExcelMerger
     {
         public List<OcrTableRow> Rows = new List<OcrTableRow>();
         public List<double> ColumnWidthsPt = new List<double>();
-        public double TopPt; // верх таблицы (Y, ось вверх) — для сортировки блоков страницы
+        public double TopPt;  // верх таблицы (Y, ось вверх) — для сортировки блоков страницы
+        public double LeftPt; // левый край таблицы — вторичный порядок (таблицы бок о бок: левее раньше)
 
         public int ColumnCount { get { return ColumnWidthsPt.Count; } }
     }

@@ -49,7 +49,7 @@ namespace ExcelMerger
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
             BuildHeaderWithHome(Title,
-                "Извлеките нужные страницы в один PDF или разбейте документ на несколько.",
+                "Извлечение страниц из документа формата *.pdf со сжатием.",
                 Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
 
             int m = HelpMenu.Height;

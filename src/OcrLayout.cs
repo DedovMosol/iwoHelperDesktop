@@ -49,7 +49,8 @@ namespace ExcelMerger
     {
         public List<OcrRun> Runs = new List<OcrRun>();
         public OcrAlignment Alignment = OcrAlignment.Justify;
-        public double TopPt; // верх абзаца (Y первой строки, ось вверх) — для порядка с изображениями
+        public double TopPt;  // верх абзаца (Y первой строки, ось вверх) — для порядка с изображениями
+        public double LeftPt; // левый край абзаца — вторичный порядок (левее — раньше в одной строке-полосе)
 
         public string Text
         {
@@ -222,7 +223,8 @@ namespace ExcelMerger
                 {
                     Runs = BuildRuns(g),
                     Alignment = DetectAlignment(g, bodyLeft, bodyRight, width, em),
-                    TopPt = g[0].Top
+                    TopPt = g[0].Top,
+                    LeftPt = g[0].Left
                 });
                 double ind = g[0].Left - bodyLeft;
                 if (ind > indentTol && ind <= maxIndent)

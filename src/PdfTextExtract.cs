@@ -186,6 +186,8 @@ namespace ExcelMerger
                     byte[] png = EncodePng(img);
                     if (png == null || png.Length == 0)
                         continue;
+                    if (IsSolidColor(png))
+                        continue; // одноцветный растр — обычно сбой декодера (напр. штрих-код чёрным ящиком); пропускаем
                     UglyToad.PdfPig.Core.PdfRectangle b = img.Bounds;
                     if (b.Width <= 0 || b.Height <= 0)
                         continue;
@@ -233,6 +235,33 @@ namespace ExcelMerger
                 }
             }
             catch { return null; } // сырьё не декодируется в растр — пропускаем картинку
+        }
+
+        /// <summary>
+        /// Одноцветный ли растр (все опрошенные пиксели одного цвета). Признак сбоя декодера
+        /// PDF-картинки (напр. штрих-код выходит сплошным чёрным прямоугольником) — такое
+        /// изображение бессмысленно, его лучше не переносить. Сбой чтения — не считаем одноцветным.
+        /// </summary>
+        private static bool IsSolidColor(byte[] png)
+        {
+            try
+            {
+                using (var ms = new MemoryStream(png))
+                using (var bmp = new System.Drawing.Bitmap(ms))
+                {
+                    int w = bmp.Width, h = bmp.Height;
+                    if (w < 2 || h < 2)
+                        return false;
+                    int stepX = Math.Max(1, w / 16), stepY = Math.Max(1, h / 16);
+                    int first = bmp.GetPixel(0, 0).ToArgb();
+                    for (int y = 0; y < h; y += stepY)
+                        for (int x = 0; x < w; x += stepX)
+                            if (bmp.GetPixel(x, y).ToArgb() != first)
+                                return false; // нашёлся другой цвет — не одноцветный
+                    return true;
+                }
+            }
+            catch { return false; } // не декодировали — не считаем одноцветным (пусть проходит)
         }
 
         // Классификация отрезка как линовки: отклонение от оси (pt) и минимальная длина.
