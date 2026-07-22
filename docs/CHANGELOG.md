@@ -3,6 +3,38 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.13.10] — 2026-07-22
+
+### Fixed
+- **PDF → Word: Cyrillic no longer comes out letter‑spaced (“р а з р я д к а”).** This was the
+  visible bug — every Cyrillic word rendered with gaps between the letters while Latin stayed
+  solid. Root cause: the source font (e.g. **PT Astra Serif**) is often **not installed** on
+  the target machine. When Word is handed an uninstalled font it routes Cyrillic to the East
+  Asian fallback slot (`rFonts w:hint="eastAsia"`), and a justified paragraph then gets
+  **CJK‑style character distribution** — the letters are spread to fill the line. The extracted
+  text was always correct (single spaces between words); only Word’s rendering spread it, which
+  is why a text‑only check missed it. Fix: each run’s font is resolved against the installed
+  fonts — an installed family is kept, an unknown one falls back to Times New Roman — so
+  Cyrillic stays in the normal (hAnsi) slot and justifies like ordinary text. Verified by
+  rendering the output back to PDF: the page now matches the reference. `w:hint="eastAsia"`
+  drops from 184 to 0 on the sample page.
+- **Font‑family normalisation splits an all‑caps prefix from the following word** —
+  “PTAstraSerif” → **“PT Astra Serif”** (and “MSGothic” → “MS Gothic”), so where the font *is*
+  installed it is matched and kept instead of being replaced.
+- **PDF → Word: words no longer glue together.** A separate bug in the line word‑join: it used
+  a gap threshold of **0.2 × font size**, but in narrow fonts (e.g. Calibri Light in the
+  sample’s documents) a real inter‑word space is only ≈ 0.18 × size — so the space was
+  dropped and neighbouring words merged (“СЛОВОСЛОВО”, “Message Authentication” → one
+  token). The threshold is now **0.08 × size**, safely below the smallest real word‑space
+  measured across the sample documents (0.179); only truly touching fragments (gap < 0.08) are
+  glued. Verified across the sample set: extracted text is character‑for‑character identical
+  except that dropped spaces are restored (16 of 29 documents gained spaces, one document
+  +213), with no document losing a space.
+- **Correction to the 1.13.9 note on letter‑spacing.** PdfPig’s default word extractor does
+  **not** over‑split PT Astra Serif into letter fragments (verified): that document comes out
+  with solid words. The earlier gap‑based join was unnecessary and, at 0.2, actively harmful
+  (see above). The real letter‑spacing was the East Asian rendering issue, now fixed.
+
 ## [1.13.9] — 2026-07-21
 
 ### Added

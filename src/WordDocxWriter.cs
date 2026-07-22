@@ -99,7 +99,7 @@ namespace ExcelMerger
             // Формат пословно (ран за раном): шрифт, кегль, полужирный, курсив, над/подстрочный, цвет.
             foreach (OcrRun run in paragraph.Runs)
             {
-                sel.Font.Name = string.IsNullOrEmpty(run.FontName) ? DefaultFontName : run.FontName;
+                sel.Font.Name = ResolveFont(run.FontName);
                 sel.Font.Size = FontSize(run.FontSizePt);
                 sel.Font.Bold = run.Bold ? 1 : 0;
                 sel.Font.Italic = run.Italic ? 1 : 0;
@@ -149,6 +149,43 @@ namespace ExcelMerger
         private static double ClampSize(double pt)
         {
             return pt < 1 ? 1 : (pt > MaxPagePt ? MaxPagePt : pt);
+        }
+
+        /// <summary>
+        /// Имя шрифта для рана: если шрифт источника установлен в системе — оставляем его, иначе
+        /// подставляем установленный по умолчанию. КЛЮЧЕВОЕ: когда Word получает НЕустановленный
+        /// шрифт, он уводит кириллицу в восточноазиатский фолбэк-слот (rFonts hint="eastAsia"),
+        /// и при выключке по ширине раздвигает буквы по правилам CJK — получается «р а з р я д к а»
+        /// (а латиница остаётся слитной). Установленный шрифт держит кириллицу в hAnsi — обычная
+        /// выключка. Список шрифтов читается один раз.
+        /// </summary>
+        private static string ResolveFont(string requested)
+        {
+            return ResolveFontName(requested, InstalledFonts, DefaultFontName);
+        }
+
+        /// <summary>Чистая логика подстановки (под тест): установленный шрифт — оставить, иначе — fallback.</summary>
+        internal static string ResolveFontName(string requested, ICollection<string> installed, string fallback)
+        {
+            if (string.IsNullOrEmpty(requested))
+                return fallback;
+            return installed != null && installed.Contains(requested) ? requested : fallback;
+        }
+
+        private static readonly HashSet<string> InstalledFonts = LoadInstalledFonts();
+
+        /// <summary>Семейства установленных шрифтов (без учёта регистра). Сбой чтения — пустой набор (всё уйдёт в fallback).</summary>
+        private static HashSet<string> LoadInstalledFonts()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                using (var col = new System.Drawing.Text.InstalledFontCollection())
+                    foreach (System.Drawing.FontFamily fam in col.Families)
+                        set.Add(fam.Name);
+            }
+            catch { }
+            return set;
         }
 
         /// <summary>Кегль рана в допустимых пределах; иначе — по умолчанию.</summary>
