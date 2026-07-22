@@ -144,6 +144,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: левый сайдбар отделяется от тела (не перемешиваются)", TestSidebarSeparation);
             Run("OcrLayout: одноколоночный текст не делится (сайдбар не срабатывает)", TestNoSidebarSingleColumn);
             Run("WordDocxWriter: порядок чтения (сверху вниз, бок о бок — слева направо)", TestReadingOrder);
+            Run("PageRasterizer: рамка PDF (Y-вверх) -> пиксельный кроп, кламп по краю", TestCropRect);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -2008,6 +2009,21 @@ namespace ExcelMerger.Tests
             List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
             AssertEqual(1, paras.Count, "одна строка -> один абзац (сайдбар не сработал)");
             AssertTrue(paras[0].Text.Contains("one") && paras[0].Text.Contains("four"), "все слова в одном абзаце");
+        }
+
+        private static void TestCropRect()
+        {
+            // Страница 500×1000 pt отрендерена в 1000×2000 px (2 px/pt). Картинка Y-вверх:
+            // left=100, top=800, w=200, h=100 (занимает Y 700..800). Верх в пикселях = (1000-800)*2.
+            System.Drawing.Rectangle r = PageRasterizer.CropRect(1000, 2000, 500, 1000, 100, 800, 200, 100);
+            AssertEqual(200, r.X, "X");
+            AssertEqual(400, r.Y, "Y (ось вниз)");
+            AssertEqual(400, r.Width, "ширина в px");
+            AssertEqual(200, r.Height, "высота в px");
+            // Кламп: картинка выходит за правый/нижний край — обрезается по границам страницы.
+            System.Drawing.Rectangle c = PageRasterizer.CropRect(1000, 2000, 500, 1000, 400, 1000, 200, 100);
+            AssertTrue(c.X + c.Width <= 1000, "правый край не за пределами");
+            AssertTrue(c.Y >= 0 && c.Y + c.Height <= 2000, "по вертикали в пределах");
         }
 
         private static void TestReadingOrder()

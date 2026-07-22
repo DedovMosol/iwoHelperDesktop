@@ -125,7 +125,7 @@ namespace ExcelMerger
                             Tables = det.Tables
                         };
                         SetMargins(pt, words, page.Width, page.Height);
-                        pt.Images = ExtractImages(page);
+                        pt.Images = ExtractImages(page, path);
                         pages.Add(pt);
                         if (progress != null)
                             progress(pages.Count, pageCount);
@@ -173,34 +173,58 @@ namespace ExcelMerger
         /// CCITT, CMYK-JPEG и т.п.) пропускаются; сбой одной картинки не срывает остальные и
         /// текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
         /// </summary>
-        private static List<OcrImage> ExtractImages(UglyToad.PdfPig.Content.Page page)
+        private static List<OcrImage> ExtractImages(UglyToad.PdfPig.Content.Page page, string pdfPath)
         {
             var result = new List<OcrImage>();
             IEnumerable<UglyToad.PdfPig.Content.IPdfImage> images;
             try { images = page.GetImages(); }
             catch { return result; }
-            foreach (UglyToad.PdfPig.Content.IPdfImage img in images)
+
+            System.Drawing.Bitmap pageRaster = null; // ленивый рендер страницы — только если понадобится фолбэк
+            bool rasterTried = false;
+            try
             {
-                try
+                foreach (UglyToad.PdfPig.Content.IPdfImage img in images)
                 {
-                    byte[] png = EncodePng(img);
-                    if (png == null || png.Length == 0)
-                        continue;
-                    if (IsSolidColor(png))
-                        continue; // одноцветный растр — обычно сбой декодера (напр. штрих-код чёрным ящиком); пропускаем
-                    UglyToad.PdfPig.Core.PdfRectangle b = img.Bounds;
-                    if (b.Width <= 0 || b.Height <= 0)
-                        continue;
-                    result.Add(new OcrImage
+                    try
                     {
-                        Png = png,
-                        LeftPt = b.Left,
-                        TopPt = b.Top,
-                        WidthPt = b.Width,
-                        HeightPt = b.Height
-                    });
+                        UglyToad.PdfPig.Core.PdfRectangle b = img.Bounds;
+                        if (b.Width <= 0 || b.Height <= 0)
+                            continue;
+
+                        byte[] png = EncodePng(img);
+                        // Декодер не справился (null) или выдал одноцветный мусор (напр. штрих-код
+                        // чёрным ящиком) — фолбэк: рендерим страницу Ghostscript-ом и вырезаем картинку
+                        // по её рамке. Так переносится любая картинка, как она выглядит.
+                        if (png == null || png.Length == 0 || IsSolidColor(png))
+                        {
+                            if (!rasterTried)
+                            {
+                                pageRaster = PageRasterizer.RenderPage(pdfPath, page.Number);
+                                rasterTried = true;
+                            }
+                            png = PageRasterizer.CropRegion(pageRaster, page.Width, page.Height,
+                                b.Left, b.Top, b.Width, b.Height);
+                            if (png == null || IsSolidColor(png))
+                                continue; // и фолбэк не помог (нет GS / область пустая) — пропускаем
+                        }
+
+                        result.Add(new OcrImage
+                        {
+                            Png = png,
+                            LeftPt = b.Left,
+                            TopPt = b.Top,
+                            WidthPt = b.Width,
+                            HeightPt = b.Height
+                        });
+                    }
+                    catch { } // одна битая картинка не ломает остальные
                 }
-                catch { } // одна битая картинка не ломает остальные
+            }
+            finally
+            {
+                if (pageRaster != null)
+                    pageRaster.Dispose();
             }
             return result;
         }
@@ -251,7 +275,7 @@ namespace ExcelMerger
                 {
                     int w = bmp.Width, h = bmp.Height;
                     if (w < 2 || h < 2)
-                        return false;
+                        return true; // 1-пиксельный растр смысла не несёт — считаем вырожденным
                     int stepX = Math.Max(1, w / 16), stepY = Math.Max(1, h / 16);
                     int first = bmp.GetPixel(0, 0).ToArgb();
                     for (int y = 0; y < h; y += stepY)
