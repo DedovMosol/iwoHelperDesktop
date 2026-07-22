@@ -11,8 +11,10 @@ versions follow [SemVer](https://semver.org/).
   not a timer: PDF → Word reports each page of both passes (text extraction, then writing to
   Word); Merge reports each page added; Split reports each part written and then each part
   compressed. Shared once in `PdfToolFormBase` (DRY) and shown by every PDF tool. Updates are
-  marshalled to the UI thread and throttled by whole percent, so there is no flooding and no
-  flicker. The bar sits in the free strip band **above** the status/action row, so it cannot
+  marshalled to the UI thread, throttled by whole percent, and the bar is drawn **exactly** at
+  each value (bypassing the Vista progress‑bar catch‑up animation that would otherwise leave a
+  visible gap in the fill during rapid updates), so there is no flooding, no flicker and no
+  broken fill. The bar sits in the free strip band **above** the status/action row, so it cannot
   overlap the buttons, the zoom slider, the compression picker or the page grid. The
   “done/total → percent” calculation is a pure method covered by unit tests (division‑by‑zero
   and clamping included).

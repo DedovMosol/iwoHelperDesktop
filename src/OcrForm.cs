@@ -172,7 +172,7 @@ namespace ExcelMerger
 
             _busy = true;
             UpdateControls();
-            SetStatus("Извлечение текста…", Theme.TextMuted);
+            SetStatus("Конвертация в Word…", Theme.TextMuted);
             BeginProgress();
             Action<int, int> onProgress = UiProgress();
 
