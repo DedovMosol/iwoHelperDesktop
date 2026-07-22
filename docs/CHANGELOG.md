@@ -20,6 +20,27 @@ versions follow [SemVer](https://semver.org/).
   the PDF tool windows grew 40 px taller (default and minimum size) so the thumbnail grid
   keeps its height. Anchors are unchanged, so resizing keeps the rows apart at any window
   size.
+- **A long status line no longer runs under the action button** on the PDF screens. The
+  status label used to auto‑size without a width limit and shares its row with the button,
+  so a long result (e.g. the “file is large — enable Compression” hint) could disappear
+  under it. The label is now clipped at the button with an ellipsis, and the built‑in
+  tooltip shows the full text.
+- **Two small `ToolTip` leaks.** The Excel window and the Statistics window created a
+  `ToolTip` but never disposed it (a `ToolTip` is a component, not a child control, so it
+  is not released automatically). Both now dispose it, matching the PDF windows.
+
+### Changed
+- **Page‑grid hotkeys unified in the base form.** The identical Delete / Alt+←→ / Ctrl+A /
+  Enter handling was duplicated in PDF Merge and PDF → Word (the latter reaching into the
+  former’s classifier), and PDF Split carried its own Ctrl+A copy. The classifier and the
+  dispatch now live once in `PdfToolFormBase`. Editable grids override two small hooks, and
+  the behaviour of all three screens is bit‑for‑bit unchanged (the unit test moved along).
+- **PDF Split: picking a mode from the opened drop‑down focuses its input field** (ranges
+  or page count), so you can type right away. Arrow keys on the closed list still cycle
+  modes without stealing focus.
+- **Embedded‑resource loading fails fast on a short read.** If an embedded assembly
+  resource cannot be read completely (a corrupted exe), the loader now throws a clear
+  end‑of‑stream error instead of handing truncated bytes to `Assembly.Load`.
 
 ## [1.14.0] — 2026-07-22
 

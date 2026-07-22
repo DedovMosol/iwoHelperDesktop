@@ -74,7 +74,7 @@ namespace ExcelMerger
             _btnRemove.Click += OnRemoveClick;
             _tips.SetToolTip(_btnRemove, "Удалить выбранные страницы (Delete)");
 
-            BuildBottomStrip(right, "Добавьте PDF-файлы — кнопкой или перетащив их в окно.");
+            BuildBottomStrip(right, "Добавьте PDF-файлы — кнопкой или перетащив их в окно.", 190);
 
             var save = new RoundedButton(true);
             save.Text = "Сохранить PDF…";
@@ -211,34 +211,9 @@ namespace ExcelMerger
             UpdateButtons();
         }
 
-        /// <summary>Действие клавиатуры для сетки страниц. Чистая — под тест.</summary>
-        internal enum PageKeyAction { None, Remove, MoveEarlier, MoveLater, SelectAll, Swallow }
-
-        internal static PageKeyAction ClassifyPageKey(Keys keyData)
-        {
-            if (keyData == Keys.Delete) return PageKeyAction.Remove;
-            if (keyData == (Keys.Alt | Keys.Left)) return PageKeyAction.MoveEarlier;
-            if (keyData == (Keys.Alt | Keys.Right)) return PageKeyAction.MoveLater;
-            if (keyData == (Keys.Control | Keys.A)) return PageKeyAction.SelectAll;
-            if (keyData == Keys.Enter) return PageKeyAction.Swallow;
-            return PageKeyAction.None;
-        }
-
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-        {
-            if (_grid != null && _grid.ListFocused)
-            {
-                switch (ClassifyPageKey(keyData))
-                {
-                    case PageKeyAction.Remove: OnRemoveClick(this, EventArgs.Empty); return true;
-                    case PageKeyAction.MoveEarlier: MoveSelected(false); return true;
-                    case PageKeyAction.MoveLater: MoveSelected(true); return true;
-                    case PageKeyAction.SelectAll: _grid.SelectAll(); return true;
-                    case PageKeyAction.Swallow: return true;
-                }
-            }
-            return base.ProcessCmdKey(ref msg, keyData);
-        }
+        // Горячие клавиши сетки (Delete, Alt+←/→, Ctrl+A, Enter) — в базе PdfToolFormBase.
+        protected override void RemoveSelectedPages() { OnRemoveClick(this, EventArgs.Empty); }
+        protected override void MoveSelectedPage(bool later) { MoveSelected(later); }
 
         // ---------- сохранение ----------
 

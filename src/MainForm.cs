@@ -93,8 +93,14 @@ namespace ExcelMerger
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && _inputDebounce != null)
-                _inputDebounce.Dispose();
+            if (disposing)
+            {
+                if (_inputDebounce != null)
+                    _inputDebounce.Dispose();
+                // ToolTip — компонент, а не дочерний контрол: авто-освобождение не срабатывает.
+                if (_tips != null)
+                    _tips.Dispose();
+            }
             base.Dispose(disposing);
         }
 
