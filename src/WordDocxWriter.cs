@@ -42,6 +42,8 @@ namespace ExcelMerger
                     dynamic word = wordObj;
                     dynamic doc = docObj;
                     dynamic sel = word.Selection;
+                    ListTemplates lists = ListTemplates.Load(word); // галереи нумерованного/маркированного списка
+                    var listState = new ListState();
 
                     for (int p = 0; p < pages.Count; p++)
                     {
@@ -51,15 +53,20 @@ namespace ExcelMerger
                         foreach (Block blk in OrderedBlocks(pages[p]))
                         {
                             if (blk.Paragraph != null)
-                                WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent);
-                            else if (blk.Table != null)
-                                WriteTable(word, doc, sel, blk.Table);
+                                WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent, lists, listState);
                             else
-                                InsertImage(sel, blk.Image, tempDir, ref imgIndex);
+                            {
+                                ClearInheritedList(sel, listState); // таблица/картинка обрывают список
+                                if (blk.Table != null)
+                                    WriteTable(word, doc, sel, blk.Table);
+                                else
+                                    InsertImage(sel, blk.Image, tempDir, ref imgIndex);
+                            }
                         }
                         if (progress != null)
                             progress(p + 1, pages.Count);
                     }
+                    ClearInheritedList(sel, listState); // хвостовой пустой абзац не должен унаследовать маркер
                 });
             }
             finally
@@ -108,10 +115,100 @@ namespace ExcelMerger
             return aLeft.CompareTo(bLeft);   // одна полоса — левее раньше
         }
 
-        private static void WriteParagraph(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent)
+        private static void WriteParagraph(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, ListTemplates lists, ListState state)
         {
-            WriteParagraphInto(sel, doc, paragraph, firstLineIndent, false);
+            bool asList = lists.Available && paragraph.ListKind != ListKind.None;
+            if (asList)
+            {
+                // Маркер («1.», «•») снимаем — Word рисует свой; отступ задаёт шаблон списка (indent=0).
+                WriteParagraphInto(sel, doc, paragraph, 0, false, paragraph.ListContentStart);
+                ApplyList(sel, lists, paragraph, state);
+            }
+            else
+            {
+                ClearInheritedList(sel, state); // после пункта списка следующий абзац не должен унаследовать маркер
+                WriteParagraphInto(sel, doc, paragraph, firstLineIndent, false, 0);
+            }
             sel.TypeParagraph();
+        }
+
+        /// <summary>Шаблоны нумерованного и маркированного списка Word (одни на документ). Available=false — списки не применяем.</summary>
+        private sealed class ListTemplates
+        {
+            public dynamic Number;
+            public dynamic Bullet;
+            public bool Available { get { return Number != null && Bullet != null; } }
+
+            private const int WdBulletGallery = 1;
+            private const int WdNumberGallery = 2;
+
+            /// <summary>Взять первый шаблон из галерей нумерации и маркеров. Сбой — Available=false (пишем как обычный текст).</summary>
+            public static ListTemplates Load(dynamic word)
+            {
+                var t = new ListTemplates();
+                try { t.Number = word.ListGalleries.Item(WdNumberGallery).ListTemplates.Item(1); } catch { t.Number = null; }
+                try { t.Bullet = word.ListGalleries.Item(WdBulletGallery).ListTemplates.Item(1); } catch { t.Bullet = null; }
+                return t;
+            }
+        }
+
+        /// <summary>Состояние последовательности списка: продолжать нумерацию или начать заново.</summary>
+        private sealed class ListState
+        {
+            public ListKind PrevKind = ListKind.None; // вид непосредственно предыдущего абзаца (для маркированного и очистки)
+            public int LastNumber;                    // номер последнего нумерованного пункта; НЕ сбрасывается несписочным
+                                                      // абзацем — нумерованный список продолжается сквозь вложенный текст
+                                                      // (пункт может содержать внутри обычные абзацы, затем идёт следующий пункт)
+        }
+
+        private const int WdListApplyToWholeList = 0;
+        private const int WdWord10ListBehavior = 2;
+
+        /// <summary>
+        /// Применить нативный список к текущему абзацу.
+        ///  • Нумерованный — продолжаем ту же нумерацию, если номер ровно на 1 больше предыдущего
+        ///    нумерованного пункта, ДАЖЕ если между ними были обычные абзацы (пункт с вложенным
+        ///    обычным текстом внутри → следующий пункт продолжает счёт 2,3,4). Иначе начинаем
+        ///    заново — так второй список с пунктами 1,2,3 стартует с 1 после первого (1–4).
+        ///  • Маркированный — продолжается, только пока буллеты идут подряд (для галочек нумерация
+        ///    не важна — вид одинаков).
+        /// </summary>
+        private static void ApplyList(dynamic sel, ListTemplates lists, OcrParagraph p, ListState state)
+        {
+            bool continuePrev;
+            if (p.ListKind == ListKind.Numbered)
+            {
+                continuePrev = state.LastNumber > 0 && p.ListNumber == state.LastNumber + 1;
+                state.LastNumber = p.ListNumber;
+            }
+            else
+            {
+                continuePrev = state.PrevKind == ListKind.Bulleted;
+            }
+            dynamic tmpl = p.ListKind == ListKind.Numbered ? lists.Number : lists.Bullet;
+            try { sel.Range.ListFormat.ApplyListTemplateWithLevel(tmpl, continuePrev, WdListApplyToWholeList, WdWord10ListBehavior, 1); }
+            catch { }
+            state.PrevKind = p.ListKind;
+        }
+
+        /// <summary>
+        /// Снять маркер списка с текущего абзаца, унаследованный от предыдущего пункта (после
+        /// пункта TypeParagraph создаёт новый абзац с тем же форматом списка). Заодно убираем
+        /// отступ шаблона списка. LastNumber НЕ трогаем — нумерованный список должен продолжиться
+        /// после вложенных обычных абзацев. Вызываем только если список был активен — лишних
+        /// COM-вызовов нет.
+        /// </summary>
+        private static void ClearInheritedList(dynamic sel, ListState state)
+        {
+            if (state.PrevKind == ListKind.None)
+                return;
+            try
+            {
+                sel.Range.ListFormat.RemoveNumbers();
+                sel.ParagraphFormat.LeftIndent = 0; // снять «висячий» отступ шаблона списка
+            }
+            catch { }
+            state.PrevKind = ListKind.None;
         }
 
         /// <summary>
@@ -121,7 +218,7 @@ namespace ExcelMerger
         /// В ячейке (inCell) выключка по ширине заменяется на левый край: короткий текст ячейки
         /// иначе Word растягивает уродливыми пробелами; центрирование (шапки) сохраняется.
         /// </summary>
-        private static void WriteParagraphInto(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, bool inCell)
+        private static void WriteParagraphInto(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, bool inCell, int skipChars)
         {
             // Выравнивание из источника; центрированное — без красной строки.
             int align; double indent;
@@ -135,8 +232,17 @@ namespace ExcelMerger
             sel.ParagraphFormat.FirstLineIndent = indent;
 
             // Формат пословно (ран за раном): шрифт, кегль, полужирный, курсив, над/подстрочный, цвет.
+            // skipChars — снять ведущий маркер списка, растянутый по первым ранам (Word рисует свой).
+            int skip = skipChars;
             foreach (OcrRun run in paragraph.Runs)
             {
+                string text = run.Text;
+                if (skip > 0)
+                {
+                    if (skip >= text.Length) { skip -= text.Length; continue; } // весь ран — часть маркера
+                    text = text.Substring(skip);
+                    skip = 0;
+                }
                 sel.Font.Name = ResolveFont(run.FontName);
                 sel.Font.Size = FontSize(run.FontSizePt);
                 sel.Font.Bold = run.Bold ? 1 : 0;
@@ -147,12 +253,12 @@ namespace ExcelMerger
                 sel.Font.Color = ToBgr(run.ColorArgb);
                 if (string.IsNullOrEmpty(run.Uri))
                 {
-                    sel.TypeText(run.Text);
+                    sel.TypeText(text);
                 }
                 else
                 {
                     int start = (int)sel.Range.End;
-                    sel.TypeText(run.Text);
+                    sel.TypeText(text);
                     try { doc.Hyperlinks.Add(doc.Range(start, (int)sel.Range.End), run.Uri); }
                     catch { } // не удалось оформить ссылку — текст всё равно на месте
                 }
@@ -245,7 +351,7 @@ namespace ExcelMerger
             {
                 if (i > 0)
                     sel.TypeParagraph();
-                WriteParagraphInto(sel, doc, cell.Paragraphs[i], 0, true); // в ячейке: без красной строки, без выключки
+                WriteParagraphInto(sel, doc, cell.Paragraphs[i], 0, true, 0); // в ячейке: без красной строки, без выключки, без списков
             }
         }
 

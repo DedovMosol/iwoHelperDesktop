@@ -129,6 +129,14 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: тонкое тире остаётся в строке", TestOcrThinDashStaysOnLine);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
+            Run("ListMarker: нумерованный «1.»/«12)»", TestListMarkerNumbered);
+            Run("ListMarker: маркированный «•»/«—»", TestListMarkerBulleted);
+            Run("ListMarker: не список (год, проценты, без пробела, обычный текст)", TestListMarkerNegatives);
+            Run("OcrLayout: плотный нумерованный список -> отдельные пункты с ListKind", TestOcrNumberedList);
+            Run("OcrLayout: маркированный список -> ListKind=Bulleted, содержимое без маркера", TestOcrBulletedList);
+            Run("StampDetector: штамп -> область со всеми словами, вне полосы не берётся", TestStampDetected);
+            Run("StampDetector: нет одного опорного слова -> не штамп", TestStampMissingAnchor);
+            Run("StampDetector: опорные слова разбросаны по странице -> не штамп", TestStampScatteredRejected);
 
             Run("TableDetector: сетка 2x2 -> строки/колонки, текст ячеек", TestTable2x2);
             Run("TableDetector: пропущенная гориз. граница -> rowspan", TestTableRowSpan);
@@ -1802,6 +1810,133 @@ namespace ExcelMerger.Tests
         {
             AssertEqual(0, OcrLayout.ToParagraphs(new List<PdfWord>()).Count, "пусто -> нет абзацев");
             AssertEqual(0, OcrLayout.ToParagraphs(null).Count, "null -> нет абзацев");
+        }
+
+        // ---------- ListMarker (маркеры списка) ----------
+
+        private static void TestListMarkerNumbered()
+        {
+            ListMarker.Result a = ListMarker.Detect("1. Внести изменения");
+            AssertEqual((int)ListKind.Numbered, (int)a.Kind, "«1.» -> нумерованный");
+            AssertEqual(1, a.Number, "номер 1");
+            AssertEqual("Внести изменения", "1. Внести изменения".Substring(a.ContentStart), "содержимое без маркера");
+
+            ListMarker.Result b = ListMarker.Detect("12) пункт");
+            AssertEqual((int)ListKind.Numbered, (int)b.Kind, "«12)» -> нумерованный");
+            AssertEqual(12, b.Number, "номер 12");
+            AssertEqual("пункт", "12) пункт".Substring(b.ContentStart), "содержимое после «12)»");
+        }
+
+        private static void TestListMarkerBulleted()
+        {
+            ListMarker.Result a = ListMarker.Detect("• первый");
+            AssertEqual((int)ListKind.Bulleted, (int)a.Kind, "«•» -> маркированный");
+            AssertEqual("первый", "• первый".Substring(a.ContentStart), "содержимое без буллета");
+
+            ListMarker.Result b = ListMarker.Detect("— тире-буллет");
+            AssertEqual((int)ListKind.Bulleted, (int)b.Kind, "«—» -> маркированный");
+            AssertEqual("тире-буллет", "— тире-буллет".Substring(b.ContentStart), "содержимое без тире");
+        }
+
+        private static void TestListMarkerNegatives()
+        {
+            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("2025 год отчёта").Kind, "год не маркер");
+            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("12.5% роста").Kind, "проценты не маркер");
+            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("1.без пробела").Kind, "без пробела после точки — не маркер");
+            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("•безпробела").Kind, "буллет без пробела — не маркер");
+            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("Обычный текст").Kind, "обычный текст — не список");
+            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("").Kind, "пусто — не список");
+        }
+
+        private static void TestOcrNumberedList()
+        {
+            // Плотный одностроковый список (равный интервал, левый край, без отступа): без деления
+            // по маркеру строки слиплись бы в один абзац. Ожидаем два пункта, ListKind=Numbered.
+            var words = new List<PdfWord>
+            {
+                W("1.", 0, 100, 8, 10), W("Первый", 12, 100, 40, 10),
+                W("2.", 0, 88, 8, 10),  W("Второй", 12, 88, 40, 10)
+            };
+            List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
+            AssertEqual(2, ps.Count, "два пункта -> два абзаца");
+            AssertEqual((int)ListKind.Numbered, (int)ps[0].ListKind, "пункт 1 — нумерованный");
+            AssertEqual(1, ps[0].ListNumber, "номер первого пункта");
+            AssertEqual((int)ListKind.Numbered, (int)ps[1].ListKind, "пункт 2 — нумерованный");
+            AssertEqual(2, ps[1].ListNumber, "номер второго пункта");
+            AssertEqual("Первый", ps[0].Text.Substring(ps[0].ListContentStart), "содержимое 1 без маркера");
+            AssertEqual("Второй", ps[1].Text.Substring(ps[1].ListContentStart), "содержимое 2 без маркера");
+        }
+
+        private static void TestOcrBulletedList()
+        {
+            var words = new List<PdfWord>
+            {
+                W("•", 0, 100, 6, 10), W("яблоко", 10, 100, 40, 10),
+                W("•", 0, 88, 6, 10),  W("груша", 10, 88, 40, 10)
+            };
+            List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
+            AssertEqual(2, ps.Count, "два буллета -> два абзаца");
+            AssertEqual((int)ListKind.Bulleted, (int)ps[0].ListKind, "буллет 1");
+            AssertEqual((int)ListKind.Bulleted, (int)ps[1].ListKind, "буллет 2");
+            AssertEqual("яблоко", ps[0].Text.Substring(ps[0].ListContentStart), "содержимое буллета 1 без маркера");
+            AssertEqual("груша", ps[1].Text.Substring(ps[1].ListContentStart), "содержимое буллета 2 без маркера");
+        }
+
+        // ---------- StampDetector (текстовый штамп) ----------
+
+        /// <summary>Синтетический текстовый штамп (4 строки) в левом нижнем углу + одно слово тела выше.</summary>
+        private static List<PdfWord> StampWords()
+        {
+            return new List<PdfWord>
+            {
+                // строка-заголовок
+                W("Документ", 100, 200, 50, 9), W("подписан", 155, 200, 50, 9),
+                W("электронной", 210, 200, 60, 9), W("подписью", 275, 200, 50, 9),
+                // сертификат
+                W("Сертификат:", 100, 186, 60, 9), W("7f1224cd", 165, 186, 60, 9),
+                // владелец
+                W("Владелец", 100, 172, 50, 9), W("Иванов", 155, 172, 40, 9), W("Иван", 200, 172, 30, 9),
+                // действителен
+                W("Действителен", 100, 158, 70, 9), W("с", 175, 158, 8, 9), W("01.01.2025", 188, 158, 55, 9),
+                W("по", 248, 158, 15, 9), W("01.01.2026", 268, 158, 55, 9),
+                // слово тела заметно выше штампа — в область попасть не должно
+                W("Обычныйтекст", 100, 500, 80, 9)
+            };
+        }
+
+        private static void TestStampDetected()
+        {
+            List<PdfWord> words = StampWords();
+            StampRegion s = StampDetector.Detect(words, 595, 842);
+            AssertTrue(s != null, "штамп распознан");
+            AssertEqual(14, s.Words.Count, "в область попали все 14 слов штампа (без слова тела)");
+            bool bodyIn = false;
+            foreach (PdfWord w in s.Words) if (w.Text == "Обычныйтекст") bodyIn = true;
+            AssertTrue(!bodyIn, "слово тела вне полосы штампа не захвачено");
+            AssertTrue(s.Left <= 100 && s.Right >= 323 && s.Bottom <= 158 && s.Top >= 209, "рамка охватывает все строки штампа");
+        }
+
+        private static void TestStampMissingAnchor()
+        {
+            // Без слова «Действителен» (заменено нейтральным) — одного опорного слова нет.
+            List<PdfWord> words = StampWords();
+            for (int i = 0; i < words.Count; i++)
+                if (words[i].Text == "Действителен") words[i].Text = "Выдан";
+            AssertTrue(StampDetector.Detect(words, 595, 842) == null, "нет всех четырёх опорных слов -> не штамп");
+        }
+
+        private static void TestStampScatteredRejected()
+        {
+            // Все четыре слова есть, но раскиданы по всей странице (обычная проза) — не компактно.
+            var words = new List<PdfWord>
+            {
+                W("подписан", 50, 800, 50, 9),
+                W("Сертификат", 50, 600, 60, 9),
+                W("Владелец", 50, 400, 50, 9),
+                W("Действителен", 50, 100, 70, 9),
+                W("прочее1", 300, 700, 40, 9), W("прочее2", 300, 300, 40, 9)
+            };
+            AssertTrue(StampDetector.Detect(words, 595, 842) == null, "разбросанные опорные слова -> не штамп");
         }
 
         // ---------- TableDetector ----------

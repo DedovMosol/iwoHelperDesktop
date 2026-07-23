@@ -3,6 +3,25 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.1] — 2026-07-23
+
+### Added
+- **PDF → Word rebuilds numbered and bulleted lists as native Word lists.** A paragraph that
+  starts with a list marker (`1.`, `12)`, `•`, `—`, …) becomes a real Word list item: the
+  marker is dropped and Word draws its own, with a proper hanging indent. Numbering continues
+  across paragraphs nested inside an item (an item can hold ordinary text and the next item
+  keeps counting 2, 3, 4), and a fresh list restarts at 1 — so a second list after the first
+  starts over correctly. Detection is deliberately strict (marker punctuation + space +
+  content) so “2025 г.” or “12.5 %” are never mistaken for a list. The marker classifier is a
+  pure, unit‑tested method.
+- **PDF → Word turns a text stamp into an image.** When a stamp is drawn
+  as text (“Документ с текстовым штампом / Сертификат / Владелец / Действителен”)
+  rather than a picture, that region is rendered with the bundled Ghostscript and placed as
+  an image, and its text is removed so it isn’t duplicated. Detection needs all four anchor
+  words in a compact box, so ordinary prose is never affected; if the region can’t be
+  rendered (no Ghostscript) the text is kept unchanged — no regression. Picture stamps keep
+  transferring as images as before. The region detector is a pure, unit‑tested method.
+
 ## [1.16.0] — 2026-07-23
 
 ### Added

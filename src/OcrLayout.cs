@@ -52,6 +52,13 @@ namespace ExcelMerger
         public double TopPt;  // верх абзаца (Y первой строки, ось вверх) — для порядка с изображениями
         public double LeftPt; // левый край абзаца — вторичный порядок (левее — раньше в одной строке-полосе)
 
+        // Список: вид маркера в начале абзаца и номер (для нумерованного). None — обычный абзац.
+        // ListContentStart — индекс в Text, с которого идёт содержимое (маркер снимается при записи —
+        // нативный список Word рисует свой маркер). Заполняется в AnalyzeLines через ListMarker.
+        public ListKind ListKind = ListKind.None;
+        public int ListNumber;       // номер нумерованного пункта; 0 для маркированного/обычного
+        public int ListContentStart; // сколько ведущих символов Text занимает маркер (снять при записи)
+
         public string Text
         {
             get
@@ -194,7 +201,10 @@ namespace ExcelMerger
             double indentTol = Math.Max(IndentFactor * em, IndentWidthFraction * width);
             double shortTol = ShortLineFraction * width;
 
-            // Разбить на группы строк-абзацев.
+            // Разбить на группы строк-абзацев. Дополнительный сигнал — строка начинается с
+            // маркера списка («1.», «•»): каждый пункт становится своим абзацем даже в плотном
+            // одностроковом списке (равный интервал, без отступа), где иначе строки слиплись бы
+            // в один абзац и распознался бы лишь первый маркер.
             var groups = new List<List<Line>>();
             var current = new List<Line>();
             for (int i = 0; i < lines.Count; i++)
@@ -204,7 +214,8 @@ namespace ExcelMerger
                     bool gapBreak = lines[i - 1].MidY - lines[i].MidY > gapThreshold;
                     bool indentBreak = lines[i].Left - bodyLeft > indentTol;
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
-                    if (gapBreak || indentBreak || shortBreak)
+                    bool listBreak = StartsWithListMarker(lines[i]);
+                    if (gapBreak || indentBreak || shortBreak || listBreak)
                     {
                         groups.Add(current);
                         current = new List<Line>();
@@ -219,13 +230,21 @@ namespace ExcelMerger
             var indents = new List<double>();
             foreach (List<Line> g in groups)
             {
-                result.Paragraphs.Add(new OcrParagraph
+                var para = new OcrParagraph
                 {
                     Runs = BuildRuns(g),
                     Alignment = DetectAlignment(g, bodyLeft, bodyRight, width, em),
                     TopPt = g[0].Top,
                     LeftPt = g[0].Left
-                });
+                };
+                if (para.Alignment != OcrAlignment.Center)
+                {
+                    ListMarker.Result m = ListMarker.Detect(para.Text);
+                    para.ListKind = m.Kind;
+                    para.ListNumber = m.Number;
+                    para.ListContentStart = m.ContentStart;
+                }
+                result.Paragraphs.Add(para);
                 double ind = g[0].Left - bodyLeft;
                 if (ind > indentTol && ind <= maxIndent)
                     indents.Add(ind);
@@ -630,6 +649,20 @@ namespace ExcelMerger
         private static bool EndsWithHyphenAfterLetter(string s)
         {
             return s.Length >= 2 && s[s.Length - 1] == '-' && char.IsLetter(s[s.Length - 2]);
+        }
+
+        /// <summary>Начинается ли строка с маркера списка («1.», «•»). По первым словам (маркеру
+        /// хватает начала строки), с одним пробелом между словами — маркеру этого достаточно.</summary>
+        private static bool StartsWithListMarker(Line line)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < line.Words.Count; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                sb.Append(line.Words[i].Text ?? "");
+                if (sb.Length > 8) break; // маркер распознаётся по самому началу — большего не нужно
+            }
+            return ListMarker.Detect(sb.ToString()).Kind != ListKind.None;
         }
     }
 }
