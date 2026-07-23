@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/screenshots/banner.png" width="720" alt="iwo Helper Desktop">
+<img src="docs/screenshots/banner.jpg" width="720" alt="iwo Helper Desktop">
 
 <br>
 
