@@ -28,11 +28,11 @@ namespace ExcelMerger
 
             Type wordType = Type.GetTypeFromProgID("Word.Application");
             if (wordType == null)
-                throw new MergeException("Microsoft Word не установлен: COM-компонент Word.Application не найден.");
+                throw new MergeException(Loc.T("err.word.notInstalled"));
 
             string lockError = MergeService.CheckOutputWritable(path);
             if (lockError != null)
-                throw new MergeException(lockError.Replace("Итоговый файл", lockLabel));
+                throw new MergeException(string.Format(Loc.T("err.word.fileBusy"), lockLabel));
 
             dynamic word = null;
             dynamic doc = null;
@@ -52,7 +52,7 @@ namespace ExcelMerger
                 }
                 catch (Exception ex)
                 {
-                    throw new MergeException("Не удалось сохранить «" + Path.GetFileName(path) + "»: " + ex.Message);
+                    throw new MergeException(string.Format(Loc.T("err.split.saveFailed"), Path.GetFileName(path), ex.Message));
                 }
             }
             finally

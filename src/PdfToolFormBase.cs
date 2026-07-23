@@ -84,7 +84,7 @@ namespace ExcelMerger
                 Button home = Ui.HomeButton(_showHub);
                 home.SetBounds(header.Width - 180, 22, 160, 30);
                 home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                _tips.SetToolTip(home, "Открыть экран выбора инструмента");
+                _tips.SetToolTip(home, Loc.T("common.homeTip"));
                 header.Controls.Add(home);
             }
         }
@@ -112,7 +112,7 @@ namespace ExcelMerger
         protected void BuildBottomStrip(int right, string statusText, int actionWidth, bool withCompress = true)
         {
             int h = ClientSize.Height;
-            Ui.Label(this, "Масштаб:", 20, h - 144, Font, Theme.TextMuted)
+            Ui.Label(this, Loc.T("common.zoom"), 20, h - 144, Font, Theme.TextMuted)
                 .Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 
             _zoom = new TrackBar();
@@ -126,7 +126,7 @@ namespace ExcelMerger
             _zoom.SmallChange = 16;
             _zoom.LargeChange = 32;
             _zoom.ValueChanged += delegate { ScheduleZoom(); };
-            _tips.SetToolTip(_zoom, "Масштаб миниатюр (также Ctrl+колесо мыши)");
+            _tips.SetToolTip(_zoom, Loc.T("common.tip.zoom"));
             Controls.Add(_zoom);
             _grid.ZoomChanged += delegate(int w) { _zoom.Value = w; }; // Ctrl+колесо в сетке двигает ползунок
 
@@ -304,7 +304,7 @@ namespace ExcelMerger
         /// <summary>Сообщение при попытке закрыть окно во время фоновой операции.</summary>
         protected virtual string BusyMessage
         {
-            get { return "Дождитесь завершения…"; }
+            get { return Loc.T("common.busy"); }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

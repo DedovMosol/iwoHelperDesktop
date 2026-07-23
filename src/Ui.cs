@@ -49,7 +49,7 @@ namespace ExcelMerger
         public static Button HomeButton(Action showHub)
         {
             var b = new RoundedButton(false);
-            b.Text = "⌂ Главная";
+            b.Text = Loc.T("common.home");
             b.Click += delegate { showHub(); };
             return b;
         }

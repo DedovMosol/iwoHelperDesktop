@@ -3,6 +3,19 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.2] — 2026-07-23
+
+### Added
+- **English interface, with a language switch.** The whole UI — windows, menus, buttons,
+  tooltips and messages — is now available in English as well as Russian. Pick the language
+  from a globe icon in the top‑right corner of the start screen, or from **☰ Menu →
+  Язык / Language** in any tool window; each option shows a small country flag. The choice is
+  saved and applied instantly — open windows rebuild in the new language on the spot. The
+  tool menu was renamed from “Справка” to **☰ Menu**. Content of generated documents (the
+  GOST cover note, reports, the digest’s table of contents) intentionally stays in Russian.
+- The **About** box text was refreshed to list all current tools (Excel digest, merge, split
+  and compress PDFs, PDF → Word).
+
 ## [1.16.1] — 2026-07-23
 
 ### Added

@@ -140,8 +140,7 @@ namespace ExcelMerger
             }
             catch (Exception ex)
             {
-                throw new MergeException("Не удалось извлечь текст из «" + Path.GetFileName(path) +
-                    "»: файл повреждён, зашифрован или без прав на извлечение. (" + ex.Message + ")");
+                throw new MergeException(string.Format(Loc.T("err.ocr.extractFailed"), Path.GetFileName(path), ex.Message));
             }
         }
 

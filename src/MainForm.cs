@@ -79,7 +79,7 @@ namespace ExcelMerger
                 _txtInput.Text = _settings.LastInputFolder;
             if (!string.IsNullOrEmpty(_settings.LastOutputFolder) && Directory.Exists(_settings.LastOutputFolder))
                 _txtOutDir.Text = _settings.LastOutputFolder;
-            _txtName.Text = "Свод_" + DateTime.Now.ToString("yyyy-MM-dd");
+            _txtName.Text = Loc.T("excel.defaultName") + DateTime.Now.ToString("yyyy-MM-dd");
             _chkToc.Checked = _settings.AddToc;
             // «Заменить формулы значениями» всегда стартует выключенным: режим
             // меняет содержимое свода и включается осознанно на каждый запуск.
@@ -108,7 +108,7 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            Text = "Свод Excel"; // имя окна = имя инструмента (как у «Объединение PDF»), не как у хаба
+            Text = Loc.T("hub.excel.name"); // имя окна = имя инструмента (как у «Объединение PDF»), не как у хаба
             Icon appIcon = Ui.AppIcon();
             if (appIcon != null)
                 Icon = appIcon;
@@ -131,8 +131,8 @@ namespace ExcelMerger
             var stretch = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
             BuildMenu();
-            var header = new HeaderBand("Свод Excel",
-                "Объедините листы Excel-файлов из папки в один свод.",
+            var header = new HeaderBand(Loc.T("hub.excel.name"),
+                Loc.T("excel.header.subtitle"),
                 Theme.Accent, Theme.AccentPressed);
             header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -141,21 +141,21 @@ namespace ExcelMerger
             AddHomeButton(header);
 
             // Шаг 1: исходная папка
-            AddSectionLabel("ПАПКА С ИСХОДНЫМИ ФАЙЛАМИ", 115);
+            AddSectionLabel(Loc.T("excel.sec.inputFolder"), 115);
             _txtInput = AddTextBox(20, 135, right - 20 - 110);
             // Дебаунс: набор пути вручную не сканирует папку на каждый символ.
             _inputDebounce = new System.Windows.Forms.Timer();
             _inputDebounce.Interval = 300;
             _inputDebounce.Tick += delegate { _inputDebounce.Stop(); RefreshFileList(); };
             _txtInput.TextChanged += delegate { _inputDebounce.Stop(); _inputDebounce.Start(); };
-            _btnBrowseInput = AddButton("Обзор…", false, right - 100, 134, 100, 29);
+            _btnBrowseInput = AddButton(Loc.T("common.browse"), false, right - 100, 134, 100, 29);
             _btnBrowseInput.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseInput.Click += OnBrowseInput;
             _lblFound = Ui.Label(this, "", 20, 167, Font, Theme.TextMuted);
 
             // Шаг 2: итоговый файл
-            AddSectionLabel("ИТОГОВЫЙ ФАЙЛ", 199);
-            Ui.Label(this, "Имя:", 20, 222, Font, Theme.TextPrimary);
+            AddSectionLabel(Loc.T("excel.sec.output"), 199);
+            Ui.Label(this, Loc.T("excel.lbl.name"), 20, 222, Font, Theme.TextPrimary);
             _txtName = AddTextBox(75, 219, 300);
             _txtName.Anchor = AnchorStyles.Top | AnchorStyles.Left; // фиксированная ширина: справа выбор формата
             _txtName.TextChanged += delegate { UpdateReadiness(); };
@@ -164,41 +164,39 @@ namespace ExcelMerger
             _cmbFormat.Items.AddRange(OutputFormats.Extensions);
             _cmbFormat.SetBounds(383, 219, 85, 27);
             Controls.Add(_cmbFormat);
-            _tips.SetToolTip(_cmbFormat, "Формат итогового файла; .xls — старый формат Excel 97–2003");
+            _tips.SetToolTip(_cmbFormat, Loc.T("excel.tip.format"));
 
-            Ui.Label(this, "Папка:", 20, 258, Font, Theme.TextPrimary);
+            Ui.Label(this, Loc.T("excel.lbl.folder"), 20, 258, Font, Theme.TextPrimary);
             _txtOutDir = AddTextBox(75, 255, right - 75 - 110);
-            _btnBrowseOut = AddButton("Обзор…", false, right - 100, 254, 100, 29);
+            _btnBrowseOut = AddButton(Loc.T("common.browse"), false, right - 100, 254, 100, 29);
             _btnBrowseOut.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseOut.Click += OnBrowseOutput;
 
             // Параметры
-            AddSectionLabel("ПАРАМЕТРЫ", 289);
-            Ui.Label(this, "Листы:", 20, 312, Font, Theme.TextPrimary);
+            AddSectionLabel(Loc.T("excel.sec.params"), 289);
+            Ui.Label(this, Loc.T("excel.lbl.sheets"), 20, 312, Font, Theme.TextPrimary);
             _cmbScope = new ComboBox();
             _cmbScope.DropDownStyle = ComboBoxStyle.DropDownList;
-            _cmbScope.Items.AddRange(new object[] { "Только первый лист", "Все листы" });
+            _cmbScope.Items.AddRange(new object[] { Loc.T("excel.scope.first"), Loc.T("excel.scope.all") });
             _cmbScope.SetBounds(75, 309, 200, 27);
             Controls.Add(_cmbScope);
-            _tips.SetToolTip(_cmbScope, "Из каждого файла брать только первый видимый лист или все видимые");
+            _tips.SetToolTip(_cmbScope, Loc.T("excel.tip.scope"));
 
-            _chkToc = AddCheckBox("Добавить лист «Содержание» с оглавлением и ссылками", 20, 345,
-                "Первым листом свода будет оглавление: гиперссылки на листы и статусы всех файлов");
-            _chkValues = AddCheckBox("Заменить формулы значениями", 20, 371,
-                "Свод не будет зависеть от исходных файлов: вместо формул — вычисленные значения");
+            _chkToc = AddCheckBox(Loc.T("excel.chk.toc"), 20, 345, Loc.T("excel.tip.toc"));
+            _chkValues = AddCheckBox(Loc.T("excel.chk.values"), 20, 371, Loc.T("excel.tip.values"));
 
             // Действия: основная слева, отмена — у правого края, подальше от основной
-            _btnMerge = AddButton("Объединить", true, 20, 407, 170, 40);
+            _btnMerge = AddButton(Loc.T("excel.btn.merge"), true, 20, 407, 170, 40);
             _btnMerge.Click += OnMergeClick;
             AcceptButton = _btnMerge;
-            _tips.SetToolTip(_btnMerge, "Собрать свод из файлов выбранной папки (Enter)");
+            _tips.SetToolTip(_btnMerge, Loc.T("excel.tip.merge"));
 
-            _btnCancel = AddButton("Отменить", false, right - 130, 407, 130, 40);
+            _btnCancel = AddButton(Loc.T("excel.btn.cancel"), false, right - 130, 407, 130, 40);
             _btnCancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnCancel.Enabled = false;
             _btnCancel.Click += OnCancelClick;
             CancelButton = _btnCancel;
-            _tips.SetToolTip(_btnCancel, "Остановить после текущего файла (Esc)");
+            _tips.SetToolTip(_btnCancel, Loc.T("excel.tip.cancel"));
 
             _progress = new ProgressBar();
             _progress.SetBounds(20, 465, right - 20, 8);
@@ -206,10 +204,10 @@ namespace ExcelMerger
             _progress.Visible = false; // пустая полоса в простое только путает
             Controls.Add(_progress);
 
-            _lblStatus = Ui.Label(this, "Выберите папку с исходными файлами.", 20, 483, Font, Theme.TextMuted);
+            _lblStatus = Ui.Label(this, Loc.T("excel.status.chooseFolder"), 20, 483, Font, Theme.TextMuted);
 
             // Файлы: порядок и состав до слияния; после — результат в тех же строках
-            AddSectionLabel("ФАЙЛЫ ДЛЯ ОБЪЕДИНЕНИЯ", 508);
+            AddSectionLabel(Loc.T("excel.sec.files"), 508);
             _list = new ListView();
             _list.SetBounds(20, 528, right - 20 - 150, ClientSize.Height - 528 - 44);
             _list.Anchor = stretch | AnchorStyles.Bottom;
@@ -218,9 +216,9 @@ namespace ExcelMerger
             _list.CheckBoxes = true; // снятая галочка исключает файл из свода
             _list.HeaderStyle = ColumnHeaderStyle.Nonclickable; // порядок задаёт пользователь
             _list.BorderStyle = BorderStyle.FixedSingle;
-            _list.Columns.Add("Файл", 300);
-            _list.Columns.Add("Результат", 130);
-            _list.Columns.Add("Примечание", 180);
+            _list.Columns.Add(Loc.T("excel.col.file"), 300);
+            _list.Columns.Add(Loc.T("excel.col.result"), 130);
+            _list.Columns.Add(Loc.T("excel.col.note"), 180);
             EnableDoubleBuffer(_list);
             _list.ItemChecked += OnItemChecked;
             _list.ItemCheck += delegate(object s, ItemCheckEventArgs e)
@@ -235,7 +233,7 @@ namespace ExcelMerger
             _list.DragDrop += OnFileDragDrop;
             _list.DragLeave += delegate { HideDropLine(); };
             var copyMenu = new ContextMenuStrip();
-            var copyItem = new ToolStripMenuItem("Копировать");
+            var copyItem = new ToolStripMenuItem(Loc.T("common.copy"));
             copyItem.ShortcutKeyDisplayString = "Ctrl+C";
             copyItem.Click += delegate { CopySelectedRows(); };
             copyMenu.Items.Add(copyItem);
@@ -248,18 +246,18 @@ namespace ExcelMerger
 
             // Кнопки управления списком (правая колонка на уровне списка)
             int fcol = right - 140;
-            _btnUp = AddListButton("▲ Выше", fcol, 528);
+            _btnUp = AddListButton(Loc.T("excel.btn.up"), fcol, 528);
             _btnUp.Click += delegate { MoveSelectedFile(false); };
-            _tips.SetToolTip(_btnUp, "Переместить выбранный файл выше (Alt+↑)");
-            _btnDown = AddListButton("▼ Ниже", fcol, 562);
+            _tips.SetToolTip(_btnUp, Loc.T("excel.tip.up"));
+            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 562);
             _btnDown.Click += delegate { MoveSelectedFile(true); };
-            _tips.SetToolTip(_btnDown, "Переместить выбранный файл ниже (Alt+↓)");
-            _btnSortName = AddListButton("По имени", fcol, 604);
+            _tips.SetToolTip(_btnDown, Loc.T("excel.tip.down"));
+            _btnSortName = AddListButton(Loc.T("excel.btn.sortName"), fcol, 604);
             _btnSortName.Click += delegate { SortFilesByName(); };
-            _tips.SetToolTip(_btnSortName, "Вернуть естественный порядок по имени файла");
-            _btnCheckAll = AddListButton("Отметить все", fcol, 646);
+            _tips.SetToolTip(_btnSortName, Loc.T("excel.tip.sortName"));
+            _btnCheckAll = AddListButton(Loc.T("excel.btn.checkAll"), fcol, 646);
             _btnCheckAll.Click += delegate { SetAllChecked(true); };
-            _btnUncheckAll = AddListButton("Снять все", fcol, 680);
+            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, 680);
             _btnUncheckAll.Click += delegate { SetAllChecked(false); };
 
             _dropLine = new Panel();
@@ -269,26 +267,26 @@ namespace ExcelMerger
             Controls.Add(_dropLine);
             _dropLine.BringToFront();
 
-            _btnRetry = AddButton("Повторить пропущенные", false, right - 200, ClientSize.Height - 40, 200, 30);
+            _btnRetry = AddButton(Loc.T("excel.btn.retry"), false, right - 200, ClientSize.Height - 40, 200, 30);
             _btnRetry.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _btnRetry.Visible = false;
             _btnRetry.Click += OnRetryClick;
-            _tips.SetToolTip(_btnRetry, "Дослить исправленные файлы в существующий свод без полного пересбора");
+            _tips.SetToolTip(_btnRetry, Loc.T("excel.tip.retry"));
 
-            _lnkOpenFile = AddBottomLink("Открыть файл", 20);
+            _lnkOpenFile = AddBottomLink(Loc.T("excel.link.openFile"), 20);
             _lnkOpenFile.LinkClicked += delegate { OpenPath(_lastOutputPath, false); };
-            _lnkOpenFolder = AddBottomLink("Открыть папку", 145);
+            _lnkOpenFolder = AddBottomLink(Loc.T("excel.link.openFolder"), 145);
             _lnkOpenFolder.LinkClicked += delegate { OpenPath(_lastOutputPath, true); };
-            _lnkOpenReport = AddBottomLink("Открыть отчёт", 280);
+            _lnkOpenReport = AddBottomLink(Loc.T("excel.link.openReport"), 280);
             _lnkOpenReport.LinkClicked += delegate { OpenPath(_lastReportPath, false); };
-            _tips.SetToolTip(_lnkOpenReport, "Отчёт о слиянии; в истории хранятся три последних");
-            _lnkNote = AddBottomLink("Записка Word", 415);
+            _tips.SetToolTip(_lnkOpenReport, Loc.T("excel.tip.openReport"));
+            _lnkNote = AddBottomLink(Loc.T("excel.link.note"), 415);
             _lnkNote.LinkClicked += delegate { OnNoteClick(); };
-            _tips.SetToolTip(_lnkNote, "Сопроводительная записка к своду (.docx): итоги, пропущенные файлы, оформление по ГОСТ");
+            _tips.SetToolTip(_lnkNote, Loc.T("excel.tip.note"));
 
-            _tips.SetToolTip(_txtInput, "Папку можно перетащить мышью в окно программы");
-            _tips.SetToolTip(_txtName, "Расширение .xlsx добавится автоматически");
-            _tips.SetToolTip(_txtOutDir, "Пусто — итоговый файл сохранится в папку с исходными");
+            _tips.SetToolTip(_txtInput, Loc.T("excel.tip.input"));
+            _tips.SetToolTip(_txtName, Loc.T("excel.tip.name"));
+            _tips.SetToolTip(_txtOutDir, Loc.T("excel.tip.outDir"));
 
             Resize += delegate { AdjustNoteColumn(); };
             AdjustNoteColumn();
@@ -302,13 +300,13 @@ namespace ExcelMerger
             Button home = Ui.HomeButton(_showHub);
             home.SetBounds(header.Width - 180, 24, 160, 30);
             home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _tips.SetToolTip(home, "Открыть экран выбора инструмента");
+            _tips.SetToolTip(home, Loc.T("common.homeTip"));
             header.Controls.Add(home);
         }
 
         private void BuildMenu()
         {
-            var reports = new ToolStripMenuItem("Папка отчётов");
+            var reports = new ToolStripMenuItem(Loc.T("excel.menu.reports"));
             reports.Click += delegate { OpenReportsFolder(); };
 
             MenuStrip menu = HelpMenu.Create(this, ShowHelp, reports);
@@ -318,23 +316,7 @@ namespace ExcelMerger
 
         private void ShowHelp()
         {
-            Dialogs.Info(this, AppTitle, "Как пользоваться",
-                "1. Укажите папку с исходными файлами — «Обзор…» или перетащите папку в окно.\n" +
-                "2. Задайте имя свода; папку сохранения можно сменить (пустая — папка с исходными).\n" +
-                "3. В списке «Файлы для объединения» задайте порядок и состав: перетаскиванием " +
-                "строк или кнопками «▲ Выше»/«▼ Ниже»; снимите галочку у ненужного файла. " +
-                "«По имени» вернёт естественный порядок, «Отметить все»/«Снять все» — быстрый выбор.\n" +
-                "4. Нажмите «Объединить»: из каждого выбранного файла переносится первый видимый " +
-                "лист со всем оформлением, формулами и диаграммами.\n\n" +
-                "Параметры:\n" +
-                "• «Листы» — только первый видимый лист каждого файла или все видимые,\n" +
-                "• лист «Содержание» — оглавление свода с гиперссылками и статусами файлов,\n" +
-                "• «Заменить формулы значениями» — свод не зависит от исходных файлов.\n\n" +
-                "После слияния результат по каждому файлу виден в тех же строках. Битые " +
-                "и запароленные файлы пропускаются, причина видна в списке и в отчёте.\n\n" +
-                "Горячие клавиши в списке: Alt+↑/↓ — порядок, Delete — исключить, " +
-                "Ctrl+A — выделить всё, Ctrl+C — копировать.\n" +
-                "Отчёты (три последних): Справка → «Папка отчётов».");
+            Dialogs.Info(this, AppTitle, Loc.T("menu.howTo"), Loc.T("excel.help.body"));
         }
 
         private void OpenReportsFolder()
@@ -346,7 +328,7 @@ namespace ExcelMerger
             }
             catch (Exception ex)
             {
-                Dialogs.Error(this, AppTitle, "Не удалось открыть папку отчётов", ex.Message);
+                Dialogs.Error(this, AppTitle, Loc.T("excel.err.openReports"), ex.Message);
             }
         }
 
@@ -450,7 +432,7 @@ namespace ExcelMerger
 
         private void OnBrowseInput(object sender, EventArgs e)
         {
-            string path = FolderPicker.Show(this, "Папка с исходными файлами Excel", _txtInput.Text.Trim());
+            string path = FolderPicker.Show(this, Loc.T("excel.pick.input"), _txtInput.Text.Trim());
             if (path != null)
                 SetInputFolder(path);
         }
@@ -460,7 +442,7 @@ namespace ExcelMerger
             string initial = _txtOutDir.Text.Trim();
             if (initial.Length == 0)
                 initial = _txtInput.Text.Trim();
-            string path = FolderPicker.Show(this, "Папка для сохранения итогового файла", initial);
+            string path = FolderPicker.Show(this, Loc.T("excel.pick.output"), initial);
             if (path != null)
                 _txtOutDir.Text = path;
         }
@@ -510,13 +492,13 @@ namespace ExcelMerger
             string folder = _txtInput.Text.Trim();
             List<string> paths = new List<string>();
             if (folder.Length == 0)
-                SetFoundLabel("Укажите папку или перетащите её в окно.", Theme.TextMuted);
+                SetFoundLabel(Loc.T("excel.found.chooseFolder"), Theme.TextMuted);
             else if (!Directory.Exists(folder))
-                SetFoundLabel("Папка не найдена.", Theme.ErrRed);
+                SetFoundLabel(Loc.T("excel.found.notFound"), Theme.ErrRed);
             else
             {
                 try { paths = MergeService.FindSourceFiles(folder, null); }
-                catch (Exception ex) { SetFoundLabel("Не удалось прочитать папку: " + ex.Message, Theme.ErrRed); }
+                catch (Exception ex) { SetFoundLabel(string.Format(Loc.T("excel.found.readError"), ex.Message), Theme.ErrRed); }
             }
             _files.SetFiles(paths);
             RebuildFileRows();
@@ -552,11 +534,11 @@ namespace ExcelMerger
             if (_files.Count == 0)
             {
                 if (_txtInput.Text.Trim().Length > 0 && Directory.Exists(_txtInput.Text.Trim()))
-                    SetFoundLabel("Файлы Excel (.xlsx, .xls, .xlsm, .xlsb) не найдены.", Theme.ErrRed);
+                    SetFoundLabel(Loc.T("excel.found.noExcel"), Theme.ErrRed);
                 return;
             }
             int inc = _files.IncludedCount;
-            SetFoundLabel("Найдено файлов: " + _files.Count + ", выбрано: " + inc, Theme.OkGreen);
+            SetFoundLabel(string.Format(Loc.T("excel.found.count"), _files.Count, inc), Theme.OkGreen);
         }
 
         private void SetFoundLabel(string text, Color color)
@@ -778,22 +760,22 @@ namespace ExcelMerger
             string folder = _txtInput.Text.Trim();
             if (!Directory.Exists(folder))
             {
-                Dialogs.Error(this, AppTitle, "Папка с исходными файлами не найдена",
-                    "Проверьте путь: " + folder);
+                Dialogs.Error(this, AppTitle, Loc.T("excel.err.folderNotFound.title"),
+                    string.Format(Loc.T("excel.err.folderNotFound.body"), folder));
                 return;
             }
 
             string name = OutputFormats.StripKnownExtension(_txtName.Text.Trim());
             if (name.Length == 0)
             {
-                Dialogs.Error(this, AppTitle, "Укажите имя итогового файла",
-                    "Поле «Имя» не заполнено.");
+                Dialogs.Error(this, AppTitle, Loc.T("excel.err.noName.title"),
+                    Loc.T("excel.err.noName.body"));
                 return;
             }
             if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             {
-                Dialogs.Error(this, AppTitle, "Недопустимое имя файла",
-                    "Имя не должно содержать символы  \\ / : * ? \" < > |");
+                Dialogs.Error(this, AppTitle, Loc.T("excel.err.badName.title"),
+                    Loc.T("excel.err.badName.body"));
                 return;
             }
 
@@ -802,8 +784,8 @@ namespace ExcelMerger
                 outDir = folder;
             if (!Directory.Exists(outDir))
             {
-                if (!Dialogs.ConfirmWarning(this, AppTitle, "Папка сохранения не существует",
-                        "Создать папку?\n" + outDir))
+                if (!Dialogs.ConfirmWarning(this, AppTitle, Loc.T("excel.confirm.createFolder.title"),
+                        string.Format(Loc.T("excel.confirm.createFolder.body"), outDir)))
                     return;
                 try
                 {
@@ -811,7 +793,7 @@ namespace ExcelMerger
                 }
                 catch (Exception ex)
                 {
-                    Dialogs.Error(this, AppTitle, "Не удалось создать папку", ex.Message);
+                    Dialogs.Error(this, AppTitle, Loc.T("excel.err.createFolder"), ex.Message);
                     return;
                 }
             }
@@ -821,14 +803,14 @@ namespace ExcelMerger
             List<string> files = _files.IncludedInOrder();
             if (files.Count == 0)
             {
-                Dialogs.Error(this, AppTitle, "Не выбрано ни одного файла",
-                    "Отметьте галочками файлы для объединения.");
+                Dialogs.Error(this, AppTitle, Loc.T("excel.err.noFiles.title"),
+                    Loc.T("excel.err.noFiles.body"));
                 return;
             }
 
             if (File.Exists(outputPath) &&
-                !Dialogs.ConfirmWarning(this, AppTitle, "Файл уже существует",
-                    "Файл «" + Path.GetFileName(outputPath) + "» уже есть в папке сохранения.\nПерезаписать его?"))
+                !Dialogs.ConfirmWarning(this, AppTitle, Loc.T("excel.confirm.overwrite.title"),
+                    string.Format(Loc.T("excel.confirm.overwrite.body"), Path.GetFileName(outputPath))))
                 return;
 
             // Занятый итоговый файл должен остановить работу сейчас,
@@ -836,7 +818,7 @@ namespace ExcelMerger
             string lockError = MergeService.CheckOutputWritable(outputPath);
             if (lockError != null)
             {
-                Dialogs.Error(this, AppTitle, "Итоговый файл недоступен для записи", lockError);
+                Dialogs.Error(this, AppTitle, Loc.T("excel.err.outputLocked"), lockError);
                 return;
             }
 
@@ -869,7 +851,7 @@ namespace ExcelMerger
             string lockError = MergeService.CheckOutputWritable(outputPath);
             if (lockError != null)
             {
-                Dialogs.Error(this, AppTitle, "Итоговый файл недоступен для записи", lockError);
+                Dialogs.Error(this, AppTitle, Loc.T("excel.err.outputLocked"), lockError);
                 return;
             }
             MergeOptions options = _lastOptions;
@@ -908,7 +890,7 @@ namespace ExcelMerger
             _btnRetry.Visible = false;
             _progress.Value = 0;
             _progress.Visible = true;
-            SetStatus("Запуск Excel…", Theme.TextMuted);
+            SetStatus(Loc.T("excel.status.startingExcel"), Theme.TextMuted);
             _lastOutputPath = outputPath;
             _lastInputFolder = folder;
             _lastOptions = options;
@@ -976,7 +958,7 @@ namespace ExcelMerger
                 if (current - 1 <= total)
                     _progress.Value = current - 1;
                 SyncTaskbar();
-                SetStatus("Файл " + current + " из " + total + ": " + fileName, Theme.TextMuted);
+                SetStatus(string.Format(Loc.T("excel.status.fileProgress"), current, total, fileName), Theme.TextMuted);
             });
         }
 
@@ -1010,17 +992,17 @@ namespace ExcelMerger
             Color color;
             if (ok == 0)
             {
-                status = "✗ пропущен";
+                status = Loc.T("excel.row.skipped");
                 color = Theme.ErrRed;
             }
             else if (fail == 0)
             {
-                status = ok == 1 ? "✓ перенесён" : "✓ листов: " + ok;
+                status = ok == 1 ? Loc.T("excel.row.moved") : string.Format(Loc.T("excel.row.sheets"), ok);
                 color = notes.Count > 0 ? Theme.WarnOrange : Theme.OkGreen;
             }
             else
             {
-                status = "⚠ листов: " + ok + " из " + (ok + fail);
+                status = string.Format(Loc.T("excel.row.sheetsPartial"), ok, ok + fail);
                 color = Theme.WarnOrange;
             }
             row.SubItems[1].Text = status;
@@ -1055,8 +1037,8 @@ namespace ExcelMerger
             if (error != null)
             {
                 _taskbar.SetState(Handle, TaskbarProgressState.Error);
-                SetStatus("Объединение не выполнено.", Theme.ErrRed);
-                Dialogs.Error(this, AppTitle, "Объединение не выполнено", error.Message);
+                SetStatus(Loc.T("excel.status.failed"), Theme.ErrRed);
+                Dialogs.Error(this, AppTitle, Loc.T("excel.err.mergeFailed.title"), error.Message);
                 _taskbar.SetState(Handle, TaskbarProgressState.None);
                 return;
             }
@@ -1064,7 +1046,7 @@ namespace ExcelMerger
             if (result.Cancelled)
             {
                 _taskbar.SetState(Handle, TaskbarProgressState.None);
-                SetStatus("Отменено — итоговый файл не создан.", Theme.WarnOrange);
+                SetStatus(Loc.T("excel.status.cancelled"), Theme.WarnOrange);
                 return;
             }
 
@@ -1074,12 +1056,11 @@ namespace ExcelMerger
             _progress.Value = _progress.Maximum;
             string text;
             if (result.SkipCount > 0)
-                text = "Готово: перенесено " + result.OkCount + ", пропущено " + result.SkipCount +
-                    " — причины в списке.";
+                text = string.Format(Loc.T("excel.status.doneWithSkips"), result.OkCount, result.SkipCount);
             else
-                text = "✓ Готово: перенесено листов — " + result.OkCount + ".";
+                text = string.Format(Loc.T("excel.status.doneClean"), result.OkCount);
             if (result.TocError != null)
-                text += " Внимание: " + result.TocError + ".";
+                text += string.Format(Loc.T("excel.status.tocWarn"), result.TocError);
             bool clean = result.SkipCount == 0 && result.TocError == null;
             SetStatus(text, clean ? Theme.OkGreen : Theme.WarnOrange);
             _lnkOpenFile.Visible = true;
@@ -1098,11 +1079,11 @@ namespace ExcelMerger
             DateTime startedAt = _lastStartedAt;
             string notePath = Path.Combine(
                 Path.GetDirectoryName(result.OutputPath),
-                Path.GetFileNameWithoutExtension(result.OutputPath) + " — записка.docx");
+                Path.GetFileNameWithoutExtension(result.OutputPath) + Loc.T("excel.noteFileSuffix"));
 
             _noteBusy = true;
             _lnkNote.Enabled = false;
-            SetStatus("Готовится записка Word…", Theme.TextMuted);
+            SetStatus(Loc.T("excel.status.noteBusy"), Theme.TextMuted);
 
             var thread = new Thread(delegate()
             {
@@ -1122,13 +1103,13 @@ namespace ExcelMerger
                     if (error != null)
                     {
                         if (!_running) // статус идущего слияния не перебиваем
-                            SetStatus("Записка не создана.", Theme.ErrRed);
-                        Dialogs.Error(this, AppTitle, "Записка не создана", error.Message);
+                            SetStatus(Loc.T("excel.status.noteFailed"), Theme.ErrRed);
+                        Dialogs.Error(this, AppTitle, Loc.T("excel.err.noteFailed.title"), error.Message);
                     }
                     else
                     {
                         if (!_running)
-                            SetStatus("Записка сохранена рядом со сводом.", Theme.OkGreen);
+                            SetStatus(Loc.T("excel.status.noteSaved"), Theme.OkGreen);
                         OpenPath(notePath, false);
                     }
                 });
@@ -1181,7 +1162,7 @@ namespace ExcelMerger
             if (_service != null)
                 _service.Cancel();
             _btnCancel.Enabled = false;
-            SetStatus("Отмена после текущего файла…", Theme.WarnOrange);
+            SetStatus(Loc.T("excel.status.cancelling"), Theme.WarnOrange);
         }
 
         private void SetStatus(string text, Color color)
@@ -1210,20 +1191,20 @@ namespace ExcelMerger
         {
             if (_noteBusy)
             {
-                SetStatus("Дождитесь завершения записки Word…", Theme.WarnOrange);
+                SetStatus(Loc.T("excel.status.waitNote"), Theme.WarnOrange);
                 e.Cancel = true; // генерация занимает секунды; иначе остался бы зомби-WINWORD
                 return;
             }
             if (_running)
             {
                 if (!_closeRequested &&
-                    Dialogs.ConfirmWarning(this, AppTitle, "Идёт объединение",
-                        "Прервать объединение и закрыть программу?"))
+                    Dialogs.ConfirmWarning(this, AppTitle, Loc.T("excel.confirm.closeBusy.title"),
+                        Loc.T("excel.confirm.closeBusy.body")))
                 {
                     _closeRequested = true;
                     if (_service != null)
                         _service.Cancel();
-                    SetStatus("Завершение…", Theme.WarnOrange);
+                    SetStatus(Loc.T("excel.status.finishing"), Theme.WarnOrange);
                 }
                 e.Cancel = true; // закроемся сами после корректного завершения Excel
                 return;
@@ -1257,7 +1238,7 @@ namespace ExcelMerger
             }
             catch (Exception ex)
             {
-                Dialogs.Error(this, AppTitle, "Не удалось открыть", ex.Message);
+                Dialogs.Error(this, AppTitle, Loc.T("common.err.openFailed"), ex.Message);
             }
         }
     }

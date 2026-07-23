@@ -140,7 +140,7 @@ namespace ExcelMerger
                 string full = Path.GetFullPath(outputPath);
                 string dir = Path.GetDirectoryName(full);
                 if (dir == null || !Directory.Exists(dir))
-                    return "Папка сохранения не существует: " + dir;
+                    return string.Format(Loc.T("err.merge.folderMissing"), dir);
                 if (File.Exists(full))
                 {
                     // Эксклюзивное открытие: открытый в Excel файл даст IOException.
@@ -156,15 +156,15 @@ namespace ExcelMerger
             }
             catch (IOException)
             {
-                return "Итоговый файл занят другой программой — закройте его (обычно он открыт в Excel) и повторите.";
+                return Loc.T("err.merge.outputBusy");
             }
             catch (UnauthorizedAccessException)
             {
-                return "Нет прав на запись в папку сохранения.";
+                return Loc.T("err.merge.noWritePerm");
             }
             catch (Exception ex)
             {
-                return "Итоговый файл недоступен для записи (" + ShortMessage(ex) + ").";
+                return string.Format(Loc.T("err.merge.outputNotWritable"), ShortMessage(ex));
             }
         }
 
@@ -179,7 +179,7 @@ namespace ExcelMerger
 
             List<string> sources = PrepareSourceList(files, outputPath);
             if (sources.Count == 0)
-                throw new MergeException("Не выбрано ни одного файла Excel для объединения.");
+                throw new MergeException(Loc.T("err.merge.noFiles"));
 
             ValidateOutput(outputPath);
             return Run(outputPath, sources, options, null);
@@ -220,7 +220,7 @@ namespace ExcelMerger
             if (previous == null)
                 throw new ArgumentNullException("previous");
             if (!File.Exists(outputPath))
-                throw new MergeException("Итоговый файл не найден — сначала выполните обычное объединение.");
+                throw new MergeException(Loc.T("err.merge.noOutput"));
 
             var retryPaths = new List<string>();
             foreach (FileResult fr in previous.Files)
@@ -229,7 +229,7 @@ namespace ExcelMerger
                     retryPaths.Add(fr.FullPath);
             }
             if (retryPaths.Count == 0)
-                throw new MergeException("Пропущенных файлов нет — повторять нечего.");
+                throw new MergeException(Loc.T("err.merge.nothingToRetry"));
 
             ValidateOutput(outputPath);
             return Run(outputPath, retryPaths, options, previous);
@@ -287,8 +287,8 @@ namespace ExcelMerger
         private static void ValidateOutput(string outputPath)
         {
             if (OutputFormats.FileFormatFor(outputPath) == 0)
-                throw new MergeException("Неподдерживаемое расширение итогового файла. Допустимы: " +
-                    string.Join(", ", OutputFormats.Extensions) + ".");
+                throw new MergeException(string.Format(Loc.T("err.merge.badExtension"),
+                    string.Join(", ", OutputFormats.Extensions) + "."));
             string lockError = CheckOutputWritable(outputPath);
             if (lockError != null)
                 throw new MergeException(lockError);
@@ -306,8 +306,7 @@ namespace ExcelMerger
         {
             if (freeBytes >= MinFreeBytes)
                 return null;
-            return "На диске " + root + " почти нет свободного места (" + (freeBytes / (1024 * 1024)) +
-                " МБ). Excel не сможет открыть файлы — освободите место и повторите.";
+            return string.Format(Loc.T("err.merge.lowSpace"), root, freeBytes / (1024 * 1024));
         }
 
         /// <summary>Предполётная проверка рабочих дисков (системный, temp, диск свода).</summary>
@@ -366,9 +365,8 @@ namespace ExcelMerger
                     // Виновный файл в чёрный список и перезапуск свежего Excel.
                     // Add вернёт false, если файл уже исключён (защита от зацикливания).
                     if (restart >= MaxWedgeRestarts || !excluded.Add(wedge.FilePath))
-                        throw new MergeException("Excel не удалось стабилизировать после файла «" +
-                            Path.GetFileName(wedge.FilePath) +
-                            "». Исключите этот файл из списка (снимите галочку) и повторите.");
+                        throw new MergeException(string.Format(Loc.T("err.merge.excelUnstable"),
+                            Path.GetFileName(wedge.FilePath)));
                     RaiseTrace("перезапуск Excel после зависания на " + Path.GetFileName(wedge.FilePath));
                     var restarting = Restarting;
                     if (restarting != null)
@@ -390,7 +388,7 @@ namespace ExcelMerger
 
             Type excelType = Type.GetTypeFromProgID("Excel.Application");
             if (excelType == null)
-                throw new MergeException("Microsoft Excel не установлен: COM-компонент Excel.Application не найден.");
+                throw new MergeException(Loc.T("err.merge.excelMissing"));
 
             dynamic excel = null;
             dynamic target = null;
@@ -496,7 +494,7 @@ namespace ExcelMerger
                     return attempt; // без сохранения: существующий свод не тронут
 
                 if (!intoExisting && attempt.OkCount == 0)
-                    throw new MergeException("Не удалось перенести ни один лист — итоговый файл не создан. Причины указаны в списке файлов.");
+                    throw new MergeException(Loc.T("err.merge.noSheets"));
 
                 MergeResult final = intoExisting
                     ? CombineRetryResults(previous, attempt.Files)
@@ -520,7 +518,7 @@ namespace ExcelMerger
                     }
                     catch (Exception ex)
                     {
-                        final.TocError = "лист «Содержание» создать не удалось (" + ShortMessage(ex) + ")";
+                        final.TocError = string.Format(Loc.T("err.merge.tocFailed"), ShortMessage(ex));
                     }
                 }
 
@@ -533,9 +531,7 @@ namespace ExcelMerger
                 }
                 catch (Exception ex)
                 {
-                    throw new MergeException(
-                        "Не удалось сохранить итоговый файл. Возможно, он открыт в Excel или нет прав на запись в папку.\n(" +
-                        ShortMessage(ex) + ")");
+                    throw new MergeException(string.Format(Loc.T("err.merge.saveFailed"), ShortMessage(ex)));
                 }
 
                 return final;

@@ -34,7 +34,7 @@ namespace ExcelMerger
         {
             var result = new List<PageRange>();
             if (spec == null || spec.Trim().Length == 0)
-                throw new MergeException("Укажите диапазоны страниц, например: 1-3, 5, 8-");
+                throw new MergeException(Loc.T("err.ranges.empty"));
 
             foreach (string raw in spec.Split(','))
             {
@@ -57,12 +57,12 @@ namespace ExcelMerger
                 }
 
                 if (start < 1 || end > pageCount || start > end)
-                    throw new MergeException("Диапазон «" + token + "» вне 1–" + pageCount + ".");
+                    throw new MergeException(string.Format(Loc.T("err.ranges.outside"), token, pageCount));
                 result.Add(new PageRange(start - 1, end - 1));
             }
 
             if (result.Count == 0)
-                throw new MergeException("Не задано ни одного диапазона.");
+                throw new MergeException(Loc.T("err.split.noRanges"));
             return result;
         }
 
@@ -70,7 +70,7 @@ namespace ExcelMerger
         public static List<PageRange> EveryN(int pageCount, int n)
         {
             if (n < 1)
-                throw new MergeException("Число страниц в части должно быть не меньше 1.");
+                throw new MergeException(Loc.T("err.split.badN"));
             var result = new List<PageRange>();
             for (int start = 0; start < pageCount; start += n)
             {
@@ -98,7 +98,7 @@ namespace ExcelMerger
         {
             int value;
             if (!int.TryParse(s, out value))
-                throw new MergeException("Не понял номер страницы в «" + token + "».");
+                throw new MergeException(string.Format(Loc.T("err.ranges.badPage"), token));
             return value;
         }
     }

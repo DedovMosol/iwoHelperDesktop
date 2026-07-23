@@ -137,6 +137,10 @@ namespace ExcelMerger.Tests
             Run("StampDetector: штамп ЭП -> область со всеми словами, вне полосы не берётся", TestStampDetected);
             Run("StampDetector: нет одного опорного слова -> не штамп", TestStampMissingAnchor);
             Run("StampDetector: опорные слова разбросаны по странице -> не штамп", TestStampScatteredRejected);
+            Run("Loc: каталог полон — у каждого ключа непустые ru и en", TestLocCatalogComplete);
+            Run("Loc: плейсхолдеры {N} у ru и en совпадают", TestLocPlaceholders);
+            Run("Loc: Init/Current/Parse/Code", TestLocInit);
+            Run("Loc: EN — в построенных формах нет кириллицы (кроме двуязычных меток)", TestNoCyrillicInEnglishForms);
 
             Run("TableDetector: сетка 2x2 -> строки/колонки, текст ячеек", TestTable2x2);
             Run("TableDetector: пропущенная гориз. граница -> rowspan", TestTableRowSpan);
@@ -451,20 +455,21 @@ namespace ExcelMerger.Tests
             {
                 AssertEqual(1, menu.Items.Count, "один пункт строки меню");
                 var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
-                AssertEqual("Справка", help.Text, "название пункта");
+                AssertEqual(Loc.T("menu.root"), help.Text, "название пункта");
 
                 var texts = new List<string>();
                 foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         texts.Add(it.Text);
-                AssertTrue(texts.Contains("Как пользоваться"), "есть «Как пользоваться»");
-                AssertTrue(texts.Contains("Статистика"), "есть «Статистика»");
+                AssertTrue(texts.Contains(Loc.T("menu.howTo")), "есть «Как пользоваться»");
+                AssertTrue(texts.Contains(Loc.T("menu.stats")), "есть «Статистика»");
+                AssertTrue(texts.Contains(Loc.T("menu.language")), "есть выбор языка");
                 AssertTrue(texts.Contains("Папка отчётов"), "доп. пункт вставлен");
                 // «О программе» перенесена на стартовый экран — в меню её быть не должно.
-                AssertTrue(!texts.Contains("О программе"), "«О программе» убрана из меню");
+                AssertTrue(!texts.Contains(Loc.T("hub.about")), "«О программе» убрана из меню");
             }
 
-            // Без доп. пунктов: «Как пользоваться», «Статистика».
+            // Без доп. пунктов: «Как пользоваться», «Статистика», «Язык / Language».
             using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }))
             {
                 var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
@@ -472,7 +477,7 @@ namespace ExcelMerger.Tests
                 foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         menuItems++;
-                AssertEqual(2, menuItems, "без extras — два пункта");
+                AssertEqual(3, menuItems, "без extras — три пункта (справка, статистика, язык)");
             }
         }
 
@@ -1937,6 +1942,141 @@ namespace ExcelMerger.Tests
                 W("прочее1", 300, 700, 40, 9), W("прочее2", 300, 300, 40, 9)
             };
             AssertTrue(StampDetector.Detect(words, 595, 842) == null, "разбросанные опорные слова -> не штамп");
+        }
+
+        // ---------- Loc (локализация) ----------
+
+        private static void TestLocCatalogComplete()
+        {
+            int n = 0;
+            foreach (string key in Loc.Keys)
+            {
+                string[] p = Loc.Pair(key);
+                AssertTrue(p != null && p.Length == 2, "пара для «" + key + "»");
+                AssertTrue(!string.IsNullOrEmpty(p[0]), "ru пусто у «" + key + "»");
+                AssertTrue(!string.IsNullOrEmpty(p[1]), "en пусто у «" + key + "»");
+                n++;
+            }
+            AssertTrue(n > 100, "каталог непустой (ключей: " + n + ")");
+        }
+
+        private static void TestLocPlaceholders()
+        {
+            // {0},{1}… у ru и en должны совпадать — иначе string.Format кинет на одном из языков.
+            foreach (string key in Loc.Keys)
+            {
+                string[] p = Loc.Pair(key);
+                AssertEqual(Placeholders(p[0]), Placeholders(p[1]), "плейсхолдеры {N} расходятся у «" + key + "»");
+            }
+        }
+
+        private static string Placeholders(string s)
+        {
+            var set = new SortedSet<int>();
+            foreach (System.Text.RegularExpressions.Match x in
+                     System.Text.RegularExpressions.Regex.Matches(s, "\\{(\\d+)\\}"))
+                set.Add(int.Parse(x.Groups[1].Value));
+            return string.Join(",", set);
+        }
+
+        private static void TestLocInit()
+        {
+            Lang saved = Loc.Current;
+            try
+            {
+                Loc.Init(Lang.En); AssertEqual((int)Lang.En, (int)Loc.Current, "Init En");
+                Loc.Init(Lang.Ru); AssertEqual((int)Lang.Ru, (int)Loc.Current, "Init Ru");
+                AssertEqual((int)Lang.En, (int)Loc.Parse("en"), "Parse en");
+                AssertEqual((int)Lang.En, (int)Loc.Parse("EN"), "Parse EN");
+                AssertEqual((int)Lang.Ru, (int)Loc.Parse("ru"), "Parse ru");
+                AssertEqual((int)Lang.Ru, (int)Loc.Parse("xx"), "Parse неизвестный -> ru");
+                AssertEqual("en", Loc.Code(Lang.En), "Code En");
+                AssertEqual("ru", Loc.Code(Lang.Ru), "Code Ru");
+            }
+            finally { Loc.Init(saved); }
+        }
+
+        private static void TestNoCyrillicInEnglishForms()
+        {
+            Lang saved = Loc.Current;
+            var offenders = new List<string>();
+            // «Язык / Language» — намеренно двуязычный пункт меню; кириллица там ожидаема.
+            var whitelist = new HashSet<string> { Loc.Pair("menu.language")[1] };
+            var th = new System.Threading.Thread(delegate()
+            {
+                Loc.Init(Lang.En);
+                System.Windows.Forms.Form[] forms;
+                try
+                {
+                    // Тул-формы — с непустым showHub, чтобы кнопка «Главная» (условная) создавалась
+                    // и попадала в проверку (иначе захардкоженный перевод в ней остался бы незамеченным).
+                    Action back = delegate { };
+                    forms = new System.Windows.Forms.Form[]
+                    {
+                        new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back),
+                        new OcrForm(back), new StartForm(), new AboutForm(), new StatsForm()
+                    };
+                }
+                catch (Exception ex) { offenders.Add("ctor: " + ex.Message); return; }
+                foreach (System.Windows.Forms.Form f in forms)
+                {
+                    CheckCyrillic(f.Text, "Form.Text", offenders, whitelist);
+                    WalkControls(f, offenders, whitelist);
+                    if (f.MainMenuStrip != null)
+                        foreach (System.Windows.Forms.ToolStripItem it in f.MainMenuStrip.Items)
+                            WalkMenu(it, offenders, whitelist);
+                    try { f.Dispose(); } catch { }
+                }
+            });
+            th.SetApartmentState(System.Threading.ApartmentState.STA);
+            th.IsBackground = true;
+            th.Start();
+            th.Join();
+            Loc.Init(saved);
+            AssertTrue(offenders.Count == 0, "кириллица в EN: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        private static void WalkControls(System.Windows.Forms.Control c, List<string> offenders, HashSet<string> whitelist)
+        {
+            foreach (System.Windows.Forms.Control child in c.Controls)
+            {
+                // Пропускаем поля значений: TextBox (пути/имена/реквизиты), NumericUpDown.
+                bool isValue = child is System.Windows.Forms.TextBoxBase || child is System.Windows.Forms.NumericUpDown;
+                if (!isValue)
+                {
+                    CheckCyrillic(child.Text, child.GetType().Name + ".Text", offenders, whitelist);
+                    var combo = child as System.Windows.Forms.ComboBox;
+                    if (combo != null)
+                        foreach (object it in combo.Items)
+                            CheckCyrillic(Convert.ToString(it), "ComboItem", offenders, whitelist);
+                    var lv = child as System.Windows.Forms.ListView;
+                    if (lv != null)
+                        foreach (System.Windows.Forms.ColumnHeader col in lv.Columns)
+                            CheckCyrillic(col.Text, "Column", offenders, whitelist);
+                }
+                WalkControls(child, offenders, whitelist);
+            }
+        }
+
+        private static void WalkMenu(System.Windows.Forms.ToolStripItem item, List<string> offenders, HashSet<string> whitelist)
+        {
+            CheckCyrillic(item.Text, "Menu", offenders, whitelist);
+            var mi = item as System.Windows.Forms.ToolStripMenuItem;
+            if (mi != null)
+                foreach (System.Windows.Forms.ToolStripItem sub in mi.DropDownItems)
+                    WalkMenu(sub, offenders, whitelist);
+        }
+
+        private static void CheckCyrillic(string text, string where, List<string> offenders, HashSet<string> whitelist)
+        {
+            if (string.IsNullOrEmpty(text) || whitelist.Contains(text))
+                return;
+            foreach (char ch in text)
+                if (ch >= 'Ѐ' && ch <= 'ӿ')
+                {
+                    offenders.Add(where + ": «" + text + "»");
+                    return;
+                }
         }
 
         // ---------- TableDetector ----------

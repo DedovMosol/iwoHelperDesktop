@@ -19,7 +19,7 @@ namespace ExcelMerger
     /// </summary>
     public class OcrForm : PdfToolFormBase
     {
-        private const string Title = "PDF → Word";
+        private static string Title { get { return Loc.T("hub.ocr.name"); } }
 
         private readonly PdfPageOrder _order = new PdfPageOrder();
         private Button _btnOpen;
@@ -42,7 +42,7 @@ namespace ExcelMerger
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
             BuildHeaderWithHome(Title,
-                "Извлечение текста и таблиц из документов формата *.pdf с возможностью изменения порядка страниц.",
+                Loc.T("ocr.header.subtitle"),
                 Theme.WordViolet, Theme.WordVioletDark, ShowHelp);
 
             int m = HelpMenu.Height;
@@ -61,61 +61,36 @@ namespace ExcelMerger
             int px = right - panelW + 10;
             int pw = panelW - 10;
             _btnOpen = new RoundedButton(false);
-            _btnOpen.Text = "Добавить PDF…";
+            _btnOpen.Text = Loc.T("ocr.btn.open");
             _btnOpen.SetBounds(px, m + 84, pw, 32);
             _btnOpen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnOpen.Click += OnOpenClick;
-            _tips.SetToolTip(_btnOpen, "Можно выбрать несколько файлов или перетащить их в окно");
+            _tips.SetToolTip(_btnOpen, Loc.T("ocr.tip.open"));
             Controls.Add(_btnOpen);
 
-            _btnUp = AddPanelButton("◀ Раньше", px, m + 128, pw, "Переместить страницу раньше (Alt+←)");
+            _btnUp = AddPanelButton(Loc.T("common.earlier"), px, m + 128, pw, Loc.T("common.tip.earlier"));
             _btnUp.Click += delegate { MoveSelected(false); };
-            _btnDown = AddPanelButton("Позже ▶", px, m + 164, pw, "Переместить страницу позже (Alt+→)");
+            _btnDown = AddPanelButton(Loc.T("common.later"), px, m + 164, pw, Loc.T("common.tip.later"));
             _btnDown.Click += delegate { MoveSelected(true); };
-            _btnRemove = AddPanelButton("Удалить", px, m + 208, pw, "Убрать выбранные страницы из вывода (Delete)");
+            _btnRemove = AddPanelButton(Loc.T("common.remove"), px, m + 208, pw, Loc.T("common.tip.remove"));
             _btnRemove.Click += OnRemoveClick;
 
-            BuildBottomStrip(right, "Добавьте цифровые PDF — кнопкой или перетащив их в окно.", 230, false);
+            BuildBottomStrip(right, Loc.T("ocr.status.addPdf"), 230, false);
 
             // Действие — в правом нижнем углу (как «Сохранить PDF» в «Объединении»).
             _btnConvert = new RoundedButton(true);
-            _btnConvert.Text = "Конвертировать в Word…";
+            _btnConvert.Text = Loc.T("ocr.btn.convert");
             _btnConvert.SetBounds(right - 230, ClientSize.Height - 58, 230, 38);
             _btnConvert.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _btnConvert.Click += OnConvertClick;
-            _tips.SetToolTip(_btnConvert, "Извлечь текст в редактируемый .docx");
+            _tips.SetToolTip(_btnConvert, Loc.T("ocr.tip.convert"));
             Controls.Add(_btnConvert);
             AcceptButton = _btnConvert;
         }
 
         private void ShowHelp()
         {
-            Dialogs.Info(this, Title, "Как пользоваться",
-                "1. Добавьте один или несколько PDF — кнопкой «Добавить PDF…» (можно выбрать сразу " +
-                "несколько) или перетащив их в окно. Страницы всех файлов показываются одной сеткой.\n" +
-                "2. При необходимости измените порядок страниц: перетащите миниатюру или выделите " +
-                "её и нажмите «◀ Раньше»/«Позже ▶» (Alt+←/→). Лишние страницы уберите из вывода " +
-                "кнопкой «Удалить» (Delete). В Word попадут страницы в показанном порядке.\n" +
-                "3. Нажмите «Конвертировать в Word…» и укажите имя .docx — все выбранные страницы " +
-                "соберутся в один документ.\n\n" +
-                "Извлекается ТЕКСТОВЫЙ СЛОЙ цифровых PDF (например, сохранённых из Word, " +
-                "«Microsoft Print to PDF», экспортированных из браузера). Переносятся: текст " +
-                "абзацами в порядке чтения — с шрифтом, размером, начертанием, цветом, " +
-                "подчёркиванием, выравниванием и красной строкой; таблицы с линиями (границами) " +
-                "восстанавливаются ячейками, включая объединённые; книжная и альбомная " +
-                "ориентация страниц сохраняется постранично; изображения и гиперссылки.\n\n" +
-                "Текущие ограничения перевода в Word:\n" +
-                "• Отсканированные документы (страницы-изображения без текстового слоя) не " +
-                "поддерживаются — появится сообщение, файл не пострадает.\n" +
-                "• Если шрифт из PDF не установлен в системе, текст оформляется шрифтом " +
-                "Times New Roman — начертание может немного отличаться от оригинала.\n" +
-                "• Таблицы БЕЗ линий (границ), врезки, несколько колонок и списки переносятся " +
-                "простыми абзацами в одну колонку — их, возможно, придётся поправить вручную.\n" +
-                "• Декоративные печати электронной подписи не воспроизводятся как графика; " +
-                "их текст (сведения о сертификате) извлекается обычным текстом.\n" +
-                "• Если PDF сохранён с испорченной кодировкой текста (без корректного ToUnicode), " +
-                "извлечённый текст будет нечитаемым — это дефект самого файла, а не конвертации; " +
-                "проверить можно, скопировав текст в самом PDF (Ctrl+C).");
+            Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("ocr.help.body"));
         }
 
         // ---------- открытие ----------
@@ -124,9 +99,9 @@ namespace ExcelMerger
         {
             using (var dialog = new OpenFileDialog())
             {
-                dialog.Filter = "Документы PDF (*.pdf)|*.pdf";
+                dialog.Filter = Loc.T("common.pdfFilter");
                 dialog.Multiselect = true;
-                dialog.Title = "Выберите PDF-файлы";
+                dialog.Title = Loc.T("common.pickPdf");
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                     AddFiles(dialog.FileNames);
             }
@@ -162,7 +137,7 @@ namespace ExcelMerger
                     }
                     catch (MergeException ex)
                     {
-                        Dialogs.Error(this, Title, "Файл не добавлен", ex.Message);
+                        Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), ex.Message);
                     }
                 }
             }
@@ -173,7 +148,7 @@ namespace ExcelMerger
             if (added > 0)
             {
                 RefreshGrid();
-                SetStatus("Страниц к переводу: " + _order.Count + ".", Theme.TextMuted);
+                SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
             }
             UpdateControls();
         }
@@ -189,7 +164,7 @@ namespace ExcelMerger
             string outPath;
             using (var dialog = new SaveFileDialog())
             {
-                dialog.Filter = "Документ Word (*.docx)|*.docx";
+                dialog.Filter = Loc.T("ocr.docxFilter");
                 dialog.FileName = DefaultOutputName(order);
                 dialog.InitialDirectory = Path.GetDirectoryName(order[0].SourcePath);
                 if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -199,7 +174,7 @@ namespace ExcelMerger
 
             _busy = true;
             UpdateControls();
-            SetStatus("Конвертация в Word…", Theme.TextMuted);
+            SetStatus(Loc.T("ocr.status.converting"), Theme.TextMuted);
             BeginProgress();
             Action<int, int> onProgress = UiProgress();
 
@@ -234,12 +209,12 @@ namespace ExcelMerger
             UpdateControls();
             if (error != null)
             {
-                SetStatus("Не выполнено.", Theme.ErrRed);
-                Dialogs.Error(this, Title, "Конвертация не выполнена", error.Message);
+                SetStatus(Loc.T("ocr.status.failed"), Theme.ErrRed);
+                Dialogs.Error(this, Title, Loc.T("ocr.err.convertFailed"), error.Message);
                 return;
             }
             UsageStats.RecordPdfToWord();
-            SetStatus("✓ Готово: страниц " + result.Pages + " → Word (.docx).", Theme.OkGreen);
+            SetStatus(string.Format(Loc.T("ocr.status.done"), result.Pages), Theme.OkGreen);
             try { Process.Start(outPath); }
             catch { } // нет ассоциации .docx — файл всё равно создан
         }
@@ -288,7 +263,7 @@ namespace ExcelMerger
                 return;
             _order.RemoveAt(_grid.GetSelectedIndices());
             RefreshGrid();
-            SetStatus("Страниц к переводу: " + _order.Count + ".", Theme.TextMuted);
+            SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
             UpdateControls();
         }
 
@@ -304,7 +279,7 @@ namespace ExcelMerger
                 distinct.Add(r.SourcePath);
             return distinct.Count == 1
                 ? Path.GetFileNameWithoutExtension(order[0].SourcePath) + ".docx"
-                : "Объединённый.docx";
+                : Loc.T("ocr.defaultMerged");
         }
 
         private Button AddPanelButton(string text, int x, int y, int w, string tip)

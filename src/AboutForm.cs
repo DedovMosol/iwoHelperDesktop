@@ -8,15 +8,13 @@ namespace ExcelMerger
     /// <summary>Окно «О программе»: версия, автор, лицензия, ссылки и реквизиты для доната.</summary>
     public class AboutForm : Form
     {
-        // Реквизиты доната — можно выделить и скопировать, а также скопировать по кнопке.
+        // Реквизиты доната — выделяемые read-only поля (правый клик / Ctrl+C).
         internal const string DonationAccount = "40817810354405296071";
         internal const string DonationBank = "ПОВОЛЖСКИЙ БАНК ПАО СБЕРБАНК";
 
-        private Label _copyStatus;
-
         public AboutForm()
         {
-            Text = "О программе";
+            Text = Loc.T("hub.about");
             Font = new Font("Segoe UI", 9.75f);
             BackColor = Color.White;
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -42,45 +40,43 @@ namespace ExcelMerger
             Ui.Label(this, "iwo Helper Desktop", 86, 26,
                 new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
-            Ui.Label(this, "Версия " + version.ToString(3), 88, 58, Font, Theme.TextMuted);
+            Ui.Label(this, string.Format(Loc.T("about.version"), version.ToString(3)), 88, 58, Font, Theme.TextMuted);
 
             // Описание — выравнивание по ширине; ширина ограничена окном (не вылезает за край).
             var desc = new JustifiedLabel();
             desc.Font = Font;
             desc.ForeColor = Theme.TextPrimary;
             desc.SetBounds(24, 96, ClientSize.Width - 48, 10);
-            desc.Text = "Офисные инструменты: свод листов Excel, объединение и разделение PDF со сжатием.";
+            desc.Text = Loc.T("about.desc");
             desc.Height = desc.GetPreferredHeight();
             Controls.Add(desc);
 
             int y = desc.Bottom + 14;
-            Ui.Label(this, "Автор: Dodonov Andrey (DedovMosol)", 24, y, Font, Theme.TextPrimary); y += 24;
-            Ui.Label(this, "© 2026 · Лицензия MIT", 24, y, Font, Theme.TextMuted); y += 30;
+            Ui.Label(this, Loc.T("about.author"), 24, y, Font, Theme.TextPrimary); y += 24;
+            Ui.Label(this, Loc.T("about.license"), 24, y, Font, Theme.TextMuted); y += 30;
 
             Label tg = Ui.Label(this, "Telegram:", 24, y, Font, Theme.TextPrimary);
             Ui.UrlLink(this, "t.me/i_wantout", tg.Right + 6, y, "https://t.me/i_wantout"); y += 24;
             Label gh = Ui.Label(this, "GitHub:", 24, y, Font, Theme.TextPrimary);
             Ui.UrlLink(this, "DedovMosol/iwoHelperDesktop", gh.Right + 6, y,
                 "https://github.com/DedovMosol/iwoHelperDesktop"); y += 24;
-            LinkLabel pp = Ui.UrlLink(this, "Политика конфиденциальности", 24, y,
+            LinkLabel pp = Ui.UrlLink(this, Loc.T("about.privacy"), 24, y,
                 "https://github.com/DedovMosol/iwoHelperDesktop/blob/main/docs/PRIVACY.md");
-            Ui.Label(this, "(данные не покидают ваш ПК)", pp.Right + 6, y, Font, Theme.TextMuted); y += 34;
+            Ui.Label(this, Loc.T("about.privacyNote"), pp.Right + 6, y, Font, Theme.TextMuted); y += 34;
 
             // --- Донаты: реквизиты можно выделить и скопировать (read-only TextBox) ---
-            Ui.Label(this, "Поддержать проект (донаты):", 24, y,
+            Ui.Label(this, Loc.T("about.donate"), 24, y,
                 new Font("Segoe UI", 9.75f, FontStyle.Bold), Theme.TextPrimary); y += 26;
 
-            Label accCap = Ui.Label(this, "Счёт:", 24, y, Font, Theme.TextPrimary);
-            TextBox accBox = SelectableValue(DonationAccount, accCap.Right + 6, y - 1, 168);
-            LinkLabel copy = Ui.Link(this, "копировать", accBox.Right + 12, y);
-            copy.LinkClicked += delegate { Copy(DonationAccount); };
+            // Реквизиты — выделяемые read-only поля: копируются правым кликом или Ctrl+C
+            // (отдельная кнопка «копировать» не нужна).
+            Label accCap = Ui.Label(this, Loc.T("about.account"), 24, y, Font, Theme.TextPrimary);
+            SelectableValue(DonationAccount, accCap.Right + 6, y - 1, ClientSize.Width - (accCap.Right + 6) - 24);
             y += 26;
 
-            Label bankCap = Ui.Label(this, "Банк:", 24, y, Font, Theme.TextPrimary);
+            Label bankCap = Ui.Label(this, Loc.T("about.bank"), 24, y, Font, Theme.TextPrimary);
             SelectableValue(DonationBank, bankCap.Right + 6, y - 1, ClientSize.Width - (bankCap.Right + 6) - 24);
-            y += 26;
-
-            _copyStatus = Ui.Label(this, "", 24, y, Font, Theme.OkGreen); y += 24;
+            y += 30;
 
             // Высота окна — под весь контент плюс кнопка снизу.
             ClientSize = new Size(ClientSize.Width, y + 16 + 36 + 16);
@@ -110,19 +106,5 @@ namespace ExcelMerger
             return tb;
         }
 
-        private void Copy(string text)
-        {
-            try
-            {
-                Clipboard.SetText(text);
-                _copyStatus.ForeColor = Theme.OkGreen;
-                _copyStatus.Text = "✓ Скопировано в буфер обмена";
-            }
-            catch
-            {
-                _copyStatus.ForeColor = Theme.ErrRed;
-                _copyStatus.Text = "Не удалось скопировать (буфер занят)";
-            }
-        }
     }
 }

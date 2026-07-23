@@ -22,7 +22,7 @@ namespace ExcelMerger
         public static void Extract(string sourcePath, IList<int> pageIndices, string outputPath, Action<int, int> progress = null)
         {
             if (pageIndices == null || pageIndices.Count == 0)
-                throw new MergeException("Не выбрано ни одной страницы.");
+                throw new MergeException(Loc.T("err.split.noPages"));
             // Переиспользуем протестированное ядро объединения: набор страниц → один файл.
             var order = new List<PdfPageRef>();
             foreach (int idx in pageIndices)
@@ -36,7 +36,7 @@ namespace ExcelMerger
         public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress = null)
         {
             if (ranges == null || ranges.Count == 0)
-                throw new MergeException("Не задано ни одного диапазона.");
+                throw new MergeException(Loc.T("err.split.noRanges"));
             EmbeddedAssemblies.Ensure();
             return SplitRangesCore(sourcePath, ranges, outDir, baseName, progress);
         }
@@ -45,7 +45,7 @@ namespace ExcelMerger
         public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress = null)
         {
             if (n < 1)
-                throw new MergeException("Число страниц в части должно быть не меньше 1.");
+                throw new MergeException(Loc.T("err.split.badN"));
             EmbeddedAssemblies.Ensure();
             return SplitEveryNCore(sourcePath, n, outDir, baseName, progress);
         }
@@ -66,7 +66,7 @@ namespace ExcelMerger
                 foreach (PageRange r in ranges)
                 {
                     if (r.Start < 0 || r.End >= source.PageCount)
-                        throw new MergeException("Диапазон " + r.Label + " вне файла (страниц: " + source.PageCount + ").");
+                        throw new MergeException(string.Format(Loc.T("err.split.rangeOutside"), r.Label, source.PageCount));
                     string path = UniquePath(outDir, baseName + "_" + r.Label);
                     WriteRange(source, r, path);
                     created.Add(path);
@@ -87,7 +87,7 @@ namespace ExcelMerger
                 int part = 1;
                 foreach (PageRange r in chunks)
                 {
-                    string path = UniquePath(outDir, baseName + "_часть_" + part);
+                    string path = UniquePath(outDir, baseName + Loc.T("split.partInfix") + part);
                     WriteRange(source, r, path);
                     created.Add(path);
                     part++;
@@ -119,7 +119,7 @@ namespace ExcelMerger
                         marks.Add(new KeyValuePair<int, string>(idx, outline.Title));
                 }
                 if (marks.Count == 0)
-                    throw new MergeException("В файле нет закладок верхнего уровня — этот режим не применим.");
+                    throw new MergeException(Loc.T("err.split.noBookmarks"));
                 marks.Sort(delegate(KeyValuePair<int, string> a, KeyValuePair<int, string> b) { return a.Key.CompareTo(b.Key); });
 
                 for (int m = 0; m < marks.Count; m++)
@@ -150,7 +150,7 @@ namespace ExcelMerger
                 }
                 catch (Exception ex)
                 {
-                    throw new MergeException("Не удалось сохранить «" + Path.GetFileName(path) + "»: " + ex.Message);
+                    throw new MergeException(string.Format(Loc.T("err.split.saveFailed"), Path.GetFileName(path), ex.Message));
                 }
             }
         }
@@ -163,8 +163,7 @@ namespace ExcelMerger
             }
             catch (Exception ex)
             {
-                throw new MergeException("Не удалось открыть «" + Path.GetFileName(path) +
-                    "»: файл повреждён, защищён паролем или использует неподдерживаемые возможности PDF. (" + ex.Message + ")");
+                throw new MergeException(string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message));
             }
         }
 
@@ -186,13 +185,13 @@ namespace ExcelMerger
         internal static string Sanitize(string name)
         {
             if (string.IsNullOrEmpty(name))
-                return "без_имени";
+                return Loc.T("split.unnamed");
             char[] invalid = Path.GetInvalidFileNameChars();
             var sb = new StringBuilder(name.Length);
             foreach (char c in name)
                 sb.Append(Array.IndexOf(invalid, c) >= 0 ? '_' : c);
             string s = sb.ToString().Trim();
-            return s.Length == 0 ? "без_имени" : s;
+            return s.Length == 0 ? Loc.T("split.unnamed") : s;
         }
     }
 }

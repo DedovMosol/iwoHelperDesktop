@@ -23,13 +23,17 @@ namespace ExcelMerger
         /// <summary>Максимальное время работы GS на один файл.</summary>
         private const int TimeoutMs = 300000; // 5 минут — верхняя граница на большой скан
 
-        /// <summary>Подписи для выпадающего списка (индекс = CompressionLevel).</summary>
-        public static readonly string[] LevelLabels =
+        /// <summary>Подписи для выпадающего списка (индекс = CompressionLevel). Метод, а не поле:
+        /// читаются на текущем языке при каждом вызове (переключение языка пересоздаёт список).</summary>
+        public static string[] LevelLabels()
         {
-            "Отлично — без сжатия",
-            "Хорошо — меньше размер",
-            "Нормально — минимальный размер"
-        };
+            return new[]
+            {
+                Loc.T("compress.level.none"),
+                Loc.T("compress.level.good"),
+                Loc.T("compress.level.small")
+            };
+        }
 
         /// <summary>Пресет Ghostscript для уровня. None сюда не передаётся (guard в Compress).</summary>
         public static string Preset(CompressionLevel level)

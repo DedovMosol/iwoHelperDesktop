@@ -104,13 +104,13 @@ namespace ExcelMerger
             if (confirm)
             {
                 var no = new RoundedButton(false);
-                no.Text = "Нет";
+                no.Text = Loc.T("common.no");
                 no.SetBounds(ButtonX(0, 2, W, BtnW, Pad), btnY, BtnW, BtnH);
                 no.DialogResult = DialogResult.No;
                 Controls.Add(no);
 
                 var yes = new RoundedButton(true);
-                yes.Text = "Да";
+                yes.Text = Loc.T("common.yes");
                 yes.SetBounds(ButtonX(1, 2, W, BtnW, Pad), btnY, BtnW, BtnH);
                 yes.DialogResult = DialogResult.Yes;
                 Controls.Add(yes);
