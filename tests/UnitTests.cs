@@ -161,10 +161,16 @@ namespace ExcelMerger.Tests
             Run("GlyphDedup: сдвоенные глифы схлопываются, слово помечается жирным", TestGlyphDedupDoubled);
             Run("GlyphDedup: настоящие соседние одинаковые символы («77») не склеиваются", TestGlyphDedupRealPair);
             Run("GlyphDedup: единичный дубль чистится, но слово не жирное", TestGlyphDedupSparse);
+            Run("XyCut: существенный блок + одинокая пометка справа — режется", TestXyCutOneSubstantialColumn);
+            Run("GridDetector: чек «метка … значение» -> безграничная таблица", TestGridReceipt);
+            Run("GridDetector: justified-текст без широких зазоров — не сетка", TestGridJustifiedNegative);
+            Run("GridDetector: две строки пар — мало для сетки", TestGridTwoRowsNegative);
+            Run("AddRuleWords: одиночная линия -> прочерк «____», подчёркивание/толстая — нет", TestRuleWords);
+            Run("PdfTextExtract: «_»-слово и PUA-мусор распознаются", TestUnderscoreAndPua);
             Run("XyCut: колонки с общими базовыми линиями — левая целиком раньше правой", TestXyCutColumns);
             Run("XyCut: этаж под колонками выводится после обеих колонок", TestXyCutFloorsThenColumns);
             Run("XyCut: широкий пробел одной строки («подпись … дата») — не колонки", TestXyCutGuardSingleLine);
-            Run("XyCut: колонка из одного элемента — разрез отклонён", TestXyCutGuardThinColumn);
+            Run("XyCut: крошка рядом с существенной колонкой — режется (пометка)", TestXyCutGuardThinColumn);
             Run("OcrLayout: двухколоночная шапка — абзацы колонок не смешаны, левая раньше", TestOcrTwoColumnsSeparated);
             Run("OcrLayout: ячейка таблицы (splitColumns=false) — «метка … число» одной строкой", TestOcrCellNoColumns);
             Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
@@ -1622,16 +1628,20 @@ namespace ExcelMerger.Tests
         {
             var installed = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "Times New Roman", "Calibri Light"
+                "Times New Roman", "Calibri Light", "Liberation Serif"
             };
-            // Установленный шрифт — оставить как есть (в т.ч. без учёта регистра).
-            AssertEqual("Calibri Light", WordDocxWriter.ResolveFontName("Calibri Light", installed, "Times New Roman"), "установленный сохранён");
-            // Совпадение без учёта регистра — установленный не уходит в fallback (Word регистронезависим).
-            AssertEqual("times new roman", WordDocxWriter.ResolveFontName("times new roman", installed, "Times New Roman"), "регистр при поиске не важен");
+            // Установленный шрифт — оставить как есть (в т.ч. без учёта регистра) для латиницы.
+            AssertEqual("Calibri Light", WordDocxWriter.ResolveFontName("Calibri Light", "text", installed, "Times New Roman"), "установленный сохранён");
+            AssertEqual("times new roman", WordDocxWriter.ResolveFontName("times new roman", "текст", installed, "Times New Roman"), "регистр при поиске не важен");
             // НЕустановленный (напр. PT Astra Serif) -> fallback, иначе Word уводит кириллицу в eastAsia -> разрядка.
-            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("PT Astra Serif", installed, "Times New Roman"), "неустановленный -> fallback");
-            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName(null, installed, "Times New Roman"), "null -> fallback");
-            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("X", null, "Times New Roman"), "нет списка -> fallback");
+            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("PT Astra Serif", "текст", installed, "Times New Roman"), "неустановленный -> fallback");
+            // УСТАНОВЛЕННЫЙ, но не Word-родной (Liberation Serif): кириллице — fallback (Word
+            // ставит hint=eastAsia и разжижает буквы CJK-выключкой), латинице — оставить.
+            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("Liberation Serif", "Уважаемые", installed, "Times New Roman"), "кириллица вне сейф-листа -> fallback");
+            AssertEqual("Liberation Serif", WordDocxWriter.ResolveFontName("Liberation Serif", "latin only", installed, "Times New Roman"), "латиница может остаться");
+            AssertEqual("Calibri Light", WordDocxWriter.ResolveFontName("Calibri Light", "кириллица", installed, "Times New Roman"), "сейф-лист держит кириллицу");
+            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName(null, "т", installed, "Times New Roman"), "null -> fallback");
+            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("X", "т", null, "Times New Roman"), "нет списка -> fallback");
         }
 
         private static void TestProgressPercent()
@@ -2425,6 +2435,103 @@ namespace ExcelMerger.Tests
             AssertTrue(!GlyphDedup.LooksBold(keep.Count, dropped), "единичный дубль — не жирный");
         }
 
+        private static void TestXyCutOneSubstantialColumn()
+        {
+            // Бланк слева (3 строки) + одинокая пометка «кому» справа одной строкой: колонка-
+            // крошка допустима рядом с существенной — иначе пометка вклинивается в строку бланка.
+            var boxes = new[]
+            {
+                CB(0, 0, 200, 60, 10), CB(1, 300, 200, 50, 10),
+                CB(2, 0, 180, 60, 10),
+                CB(4, 0, 160, 60, 10)
+            };
+            List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
+            AssertEqual(2, leaves.Count, "бланк и пометка разрезаны");
+            AssertEqual("0,2,4", TagsOf(leaves[0]), "бланк целиком");
+            AssertEqual("1", TagsOf(leaves[1]), "пометка отдельно");
+        }
+
+        private static PdfWord WS(string text, double left, double bottom, double width, double height, double size)
+        {
+            return new PdfWord { Text = text, Left = left, Right = left + width, Bottom = bottom, Top = bottom + height, FontSizePt = size };
+        }
+
+        private static void TestGridReceipt()
+        {
+            // Чек: четыре строки «метка … значение» с широким зазором, левые края выровнены.
+            var words = new List<PdfWord>
+            {
+                WS("Плательщик", 0, 200, 50, 8, 8),  WS("Name", 100, 200, 40, 8, 8),
+                WS("Услуга", 0, 180, 35, 8, 8),      WS("Вывоз", 100, 180, 35, 8, 8),
+                WS("Счет", 0, 160, 30, 8, 8),        WS("250003", 100, 160, 40, 8, 8),
+                WS("Сумма", 0, 140, 35, 8, 8),       WS("256,78", 100, 140, 40, 8, 8)
+            };
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEqual(1, r.Tables.Count, "одна сетка-таблица");
+            OcrTable t = r.Tables[0];
+            AssertTrue(t.Borderless, "сетка без границ");
+            AssertEqual(2, t.ColumnCount, "две колонки");
+            AssertEqual(4, t.Rows.Count, "четыре ряда");
+            AssertEqual(0, r.RemainingWords.Count, "все слова в таблице");
+            AssertTrue(t.Rows[0].Cells[0].Paragraphs[0].Text.Contains("Плательщик"), "метка в первой колонке");
+            AssertTrue(t.Rows[0].Cells[1].Paragraphs[0].Text.Contains("Name"), "значение во второй колонке");
+        }
+
+        private static void TestGridJustifiedNegative()
+        {
+            // Обычный текст: зазоры между словами меньше порога — сегмент один, сетки нет.
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 4; row++)
+            {
+                double y = 200 - row * 20;
+                for (int i = 0; i < 6; i++)
+                    words.Add(WS("w" + row + i, i * 45, y, 40, 10, 10));
+            }
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEqual(0, r.Tables.Count, "justified-текст не считается сеткой");
+            AssertEqual(words.Count, r.RemainingWords.Count, "слова остались в потоке");
+        }
+
+        private static void TestGridTwoRowsNegative()
+        {
+            // Две строки пар («подпись … дата» и подобные) — мало строк для сетки.
+            var words = new List<PdfWord>
+            {
+                WS("a", 0, 200, 30, 10, 10), WS("b", 200, 200, 30, 10, 10),
+                WS("c", 0, 180, 30, 10, 10), WS("d", 200, 180, 30, 10, 10)
+            };
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEqual(0, r.Tables.Count, "двух строк недостаточно");
+        }
+
+        private static void TestRuleWords()
+        {
+            // Одиночная линия-прочерк становится «____» по кеглю окружения; линия-подчёркивание
+            // и толстая полоса — нет.
+            var words = new List<PdfWord> { WS("№", 100, 100, 10, 10, 10) };
+            var rule = new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 10, Y1 = 100, X2 = 60, Y2 = 100, Thickness = 1 };
+            var under = new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 200, Y1 = 100, X2 = 240, Y2 = 100, Thickness = 1 };
+            var fat = new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 300, Y1 = 100, X2 = 350, Y2 = 100, Thickness = 8 };
+            var lone = new List<PdfLine> { rule, under, fat };
+            var used = new HashSet<PdfLine> { under };
+            PdfTextExtract.AddRuleWords(words, lone, used);
+            AssertEqual(2, words.Count, "добавлен один прочерк");
+            PdfWord w = words[1];
+            AssertEqual("__________", w.Text, "50pt при кегле 10 -> десять «_»");
+            AssertEqual(10.0, w.Left, "прочерк на месте линии");
+            AssertTrue(w.Top > w.Bottom, "прочерку дана высота");
+        }
+
+        private static void TestUnderscoreAndPua()
+        {
+            AssertTrue(PdfTextExtract.IsUnderscoreOnly("____"), "прочерк распознан");
+            AssertTrue(!PdfTextExtract.IsUnderscoreOnly("_а_"), "буква внутри — не прочерк");
+            AssertTrue(!PdfTextExtract.IsUnderscoreOnly(""), "пусто — не прочерк");
+            AssertTrue(PdfTextExtract.IsPrivateUseOnly(new string(new[] { (char)0xF0A7, (char)0x20, (char)0xF0B7 })), "PUA-мусор распознан");
+            AssertTrue(!PdfTextExtract.IsPrivateUseOnly("текст"), "обычный текст не PUA");
+            AssertTrue(!PdfTextExtract.IsPrivateUseOnly("  "), "одни пробелы — не PUA");
+        }
+
         // ---------- XyCut (порядок чтения многоколоночной вёрстки) ----------
 
         /// <summary>Бокс разреза: left/bottom — левый нижний угол (Y вверх), +ширина/высота.</summary>
@@ -2487,7 +2594,8 @@ namespace ExcelMerger.Tests
 
         private static void TestXyCutGuardThinColumn()
         {
-            // Справа один-единственный бокс: колонка из одного элемента — не колонка.
+            // Крошка (один бокс) рядом с СУЩЕСТВЕННОЙ колонкой — валидный разрез (пометка «кому»
+            // у бланка); защиту от «(подпись) … (дата)» держит TestXyCutGuardSingleLine.
             var boxes = new[]
             {
                 CB(0, 0, 200, 40, 10),
@@ -2495,7 +2603,7 @@ namespace ExcelMerger.Tests
                 CB(1, 100, 190, 40, 10)
             };
             List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
-            AssertEqual(1, leaves.Count, "колонка из одного элемента отклонена");
+            AssertEqual(2, leaves.Count, "существенная колонка + крошка режутся");
         }
 
         private static void TestOcrTwoColumnsSeparated()

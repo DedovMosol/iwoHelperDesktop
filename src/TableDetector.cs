@@ -3,11 +3,16 @@ using System.Collections.Generic;
 
 namespace ExcelMerger
 {
-    /// <summary>Итог поиска таблиц на странице: сами таблицы + слова, не попавшие ни в одну.</summary>
+    /// <summary>
+    /// Итог поиска таблиц на странице: сами таблицы, слова вне них и ОДИНОЧНЫЕ линии —
+    /// компоненты из одной линии, не ставшие таблицей (прочерки реквизитов «______ №»;
+    /// рамки и сетки состоят из связанных линий и сюда не попадают).
+    /// </summary>
     internal sealed class TableDetectResult
     {
         public List<OcrTable> Tables = new List<OcrTable>();
         public List<PdfWord> RemainingWords = new List<PdfWord>();
+        public List<PdfLine> LoneLines = new List<PdfLine>();
     }
 
     /// <summary>
@@ -41,17 +46,51 @@ namespace ExcelMerger
             }
 
             var consumed = new HashSet<PdfWord>();
+            var lone = new List<PdfLine>();
             foreach (List<PdfLine> comp in ConnectedComponents(lines))
             {
                 OcrTable table = TryBuildTable(comp, allWords, consumed);
                 if (table != null)
                     result.Tables.Add(table);
+                else if (comp.Count == 1 || IsCollinearHorizontal(comp))
+                    lone.AddRange(comp); // прочерк, нарисованный кусками (дырки под «№»/«от»), — куски по отдельности
             }
+            // Линия ВНУТРИ рамки таблицы (поле подписи в ячейке) — не самостоятельный прочерк:
+            // словом-заполнителем она легла бы ПОВЕРХ таблицы отдельным абзацем-мусором.
+            foreach (PdfLine l in lone)
+                if (!InsideAnyTable(result.Tables, l))
+                    result.LoneLines.Add(l);
             result.Tables.Sort(delegate(OcrTable a, OcrTable b) { return b.TopPt.CompareTo(a.TopPt); }); // сверху вниз
             foreach (PdfWord w in allWords)
                 if (!consumed.Contains(w))
                     result.RemainingWords.Add(w);
             return result;
+        }
+
+        /// <summary>Лежит ли линия (по центру) внутри рамки какой-либо из построенных таблиц.</summary>
+        private static bool InsideAnyTable(List<OcrTable> tables, PdfLine line)
+        {
+            double cx = (line.MinX + line.MaxX) / 2;
+            double cy = (line.MinY + line.MaxY) / 2;
+            foreach (OcrTable t in tables)
+                if (cx >= t.LeftPt && cx <= t.RightPt && cy >= t.BottomPt && cy <= t.TopPt)
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Компонент из смыкающихся кусков ОДНОЙ горизонтальной оси (линия реквизитов рисуется
+        /// отрезками с разрывами под текстом «№»/«от») — это не рамка, а полилиния-прочерк.
+        /// </summary>
+        private static bool IsCollinearHorizontal(List<PdfLine> comp)
+        {
+            if (comp.Count < 2)
+                return false;
+            double first = comp[0].Position;
+            foreach (PdfLine l in comp)
+                if (l.Orientation != LineOrientation.Horizontal || Math.Abs(l.Position - first) > ClusterTol)
+                    return false;
+            return true;
         }
 
         // ---------- связные компоненты линий ----------

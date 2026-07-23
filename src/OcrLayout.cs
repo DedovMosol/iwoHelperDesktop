@@ -574,7 +574,7 @@ namespace ExcelMerger
             return OcrAlignment.Left;
         }
 
-        private sealed class Line
+        internal sealed class Line
         {
             public readonly List<PdfWord> Words = new List<PdfWord>();
             public double MidY; // центр строки — по слову-затравке (самому верхнему)
@@ -641,7 +641,7 @@ namespace ExcelMerger
             return overlap >= SameLineFactor * minH;
         }
 
-        private static List<Line> ToLines(IList<PdfWord> words)
+        internal static List<Line> ToLines(IList<PdfWord> words)
         {
             var result = new List<Line>();
             if (words == null || words.Count == 0)

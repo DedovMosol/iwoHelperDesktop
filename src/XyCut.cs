@@ -121,26 +121,36 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Вертикальный разрез с защитой: каждая колонка существенна, иначе null (не режем).</summary>
+        /// <summary>
+        /// Вертикальный разрез с защитой: хотя бы ОДНА колонка существенна (наполнена и высока),
+        /// иначе null. Все колонки — крошки («(подпись) … (дата)» одной строки) — не колонки,
+        /// страница не должна читаться столбиками одиночных слов. Но существенный блок с мелким
+        /// соседом — настоящая вёрстка: бланк слева и одинокая пометка «кому» справа режутся,
+        /// иначе пометка вклинивается в строку бланка.
+        /// </summary>
         private static List<List<int>> SplitColumns(CutContext ctx, List<int> items)
         {
             List<List<int>> columns = SplitAtGaps(ctx.Boxes, items, false, ctx.VGapMin);
             if (columns == null)
                 return null;
+            bool anySubstantial = false;
             foreach (List<int> column in columns)
             {
                 if (column.Count < ctx.MinColumnItems)
-                    return null;
+                    continue;
                 double top = double.MinValue, bottom = double.MaxValue;
                 foreach (int i in column)
                 {
                     if (ctx.Boxes[i].Top > top) top = ctx.Boxes[i].Top;
                     if (ctx.Boxes[i].Bottom < bottom) bottom = ctx.Boxes[i].Bottom;
                 }
-                if (top - bottom < ctx.MinColumnExtent)
-                    return null;
+                if (top - bottom >= ctx.MinColumnExtent)
+                {
+                    anySubstantial = true;
+                    break;
+                }
             }
-            return columns;
+            return anySubstantial ? columns : null;
         }
 
         /// <summary>

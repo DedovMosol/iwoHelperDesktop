@@ -18,17 +18,22 @@ namespace ExcelMerger
         private const double CoverFraction = 0.6; // линия должна перекрывать эту долю ширины слова
         private const double MaxWidthFactor = 3.0; // линия длиннее слова во столько раз — это разделитель, не подчёркивание
 
-        /// <summary>Проставить <see cref="PdfWord.Underline"/> словам, под которыми есть линовка.</summary>
-        public static void Mark(IList<PdfWord> words, IList<PdfLine> lines)
+        /// <summary>
+        /// Проставить <see cref="PdfWord.Underline"/> словам, под которыми есть линовка.
+        /// Возвращает линии, опознанные как подчёркивания, — прочерками реквизитов
+        /// (<see cref="PdfTextExtract"/>) они уже не станут.
+        /// </summary>
+        public static HashSet<PdfLine> Mark(IList<PdfWord> words, IList<PdfLine> lines)
         {
+            var used = new HashSet<PdfLine>();
             if (words == null || lines == null || lines.Count == 0)
-                return;
+                return used;
             var horizontals = new List<PdfLine>();
             foreach (PdfLine l in lines)
                 if (l.Orientation == LineOrientation.Horizontal)
                     horizontals.Add(l);
             if (horizontals.Count == 0)
-                return;
+                return used;
 
             foreach (PdfWord w in words)
             {
@@ -48,10 +53,12 @@ namespace ExcelMerger
                     if (overlap >= CoverFraction * width)
                     {
                         w.Underline = true;
+                        used.Add(line);
                         break;
                     }
                 }
             }
+            return used;
         }
     }
 }

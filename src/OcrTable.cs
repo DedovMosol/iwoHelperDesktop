@@ -35,6 +35,7 @@ namespace ExcelMerger
         public double LeftPt;   // левый край таблицы — вторичный порядок (таблицы бок о бок: левее раньше)
         public double RightPt;  // правый/нижний края рамки — для XY-порядка блоков страницы
         public double BottomPt;
+        public bool Borderless; // сетка без линовки (чек, форма) — в Word рисуется без границ
 
         public int ColumnCount { get { return ColumnWidthsPt.Count; } }
     }

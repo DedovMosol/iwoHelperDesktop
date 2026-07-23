@@ -131,13 +131,24 @@ namespace ExcelMerger
                                 color = ColorArgb(first.Color);
                                 family = FontNames.Clean(fn);
                             }
+                            // Символы приватной зоны юникода (заглушки полей Word, маркеры Symbol)
+                            // не имеют смысла вне своего шрифта — в выводе это «□». Пропускаем.
+                            if (IsPrivateUseOnly(text))
+                                continue;
+                            double top = bb.Top;
+                            // Прочерк «____» рисуется у базовой линии рамкой в пару pt: такой
+                            // вырожденный бокс не пересекается по вертикали с соседями («№», «от»)
+                            // и отрывался от них в отдельные строки. Даём прочерку высоту хотя бы
+                            // трети кегля — как у обычного слова той же строки.
+                            if (size > 0 && top - bb.Bottom < UnderscoreMinHeightFactor * size && IsUnderscoreOnly(text))
+                                top = bb.Bottom + UnderscoreMinHeightFactor * size;
                             words.Add(new PdfWord
                             {
                                 Text = text,
                                 Left = bb.Left,
                                 Right = bb.Right,
                                 Bottom = bb.Bottom,
-                                Top = bb.Top,
+                                Top = top,
                                 FontSizePt = size,
                                 Bold = bold,
                                 Italic = italic,
@@ -152,8 +163,15 @@ namespace ExcelMerger
                         List<PdfLine> lines = ExtractLines(page);
                         // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
                         TableDetectResult det = TableDetector.Detect(lines, words, page.Width, page.Height);
-                        UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке под словами
-                        OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(det.RemainingWords);
+                        HashSet<PdfLine> underlines = UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке
+                        // Одиночные линии, не ставшие ни таблицей, ни подчёркиванием, — прочерки
+                        // реквизитов («______ №»): переносим текстом-заполнителем, иначе строка
+                        // реквизитов теряет прочерки и разваливается.
+                        AddRuleWords(det.RemainingWords, det.LoneLines, underlines);
+                        // Сетки без линовки (чеки, формы «метка … значение») — таблицей без границ.
+                        GridDetectResult grids = GridDetector.Detect(det.RemainingWords);
+                        det.Tables.AddRange(grids.Tables);
+                        OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(grids.RemainingWords);
                         var pt = new PdfPageText
                         {
                             PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
@@ -179,6 +197,103 @@ namespace ExcelMerger
             {
                 throw new MergeException(string.Format(Loc.T("err.ocr.extractFailed"), Path.GetFileName(path), ex.Message));
             }
+        }
+
+        private const double UnderscoreMinHeightFactor = 0.35; // виртуальная высота прочерка в долях кегля
+
+        // Прочерк из одиночной линии: пределы толщины/длины и ширина «_» в долях кегля (TNR ≈ 0.5).
+        // Толщина до 6 pt: прочерки реквизитов встречаются и «жирным» штрихом (5 pt), а заливки
+        // толще этого ExtractLines в линовку уже не пускает.
+        private const double RuleMaxThicknessPt = 6;
+        private const double RuleMinLenPt = 6;
+        private const double UnderscoreAdvanceEm = 0.5;
+        private const int RuleMaxChars = 120; // страховка от линейки во всю страницу при крошечном кегле
+        // Подъём рамки прочерка над линией: линия прочерка лежит НИЖЕ базовой линии соседних
+        // слов («№», «от»), и трети кегля не хватает, чтобы рамки пересеклись и строка собралась.
+        private const double RuleAscentFactor = 0.6;
+
+        /// <summary>
+        /// Превратить одиночные горизонтальные линии (не таблица и не подчёркивание) в
+        /// слова-прочерки «____»: линии-заполнители реквизитов («______ № ______», «На № … от …»)
+        /// иначе теряются вовсе, и строка реквизитов разваливается. Число «_» подбирается по
+        /// длине линии и типичному кеглю слов страницы; рамка прочерка — от линии вверх на треть
+        /// кегля, чтобы строка собралась вместе с соседними словами. Чистая — под тест.
+        /// </summary>
+        internal static void AddRuleWords(List<PdfWord> words, List<PdfLine> loneLines, HashSet<PdfLine> underlineLines)
+        {
+            if (words == null || loneLines == null || loneLines.Count == 0)
+                return;
+            var sizes = new List<double>(words.Count);
+            foreach (PdfWord w in words)
+                if (w.FontSizePt > 0)
+                    sizes.Add(w.FontSizePt);
+            double size = MathUtil.Median(sizes);
+            if (size <= 0) size = 10;
+
+            var added = new List<PdfWord>(); // против задвоения: линию нередко рисуют дважды (туда-обратно)
+            foreach (PdfLine line in loneLines)
+            {
+                if (line.Orientation != LineOrientation.Horizontal
+                    || (underlineLines != null && underlineLines.Contains(line))
+                    || line.Thickness > RuleMaxThicknessPt
+                    || line.Length < RuleMinLenPt)
+                    continue;
+                bool duplicate = false;
+                foreach (PdfWord prev in added)
+                {
+                    double overlap = Math.Min(prev.Right, line.MaxX) - Math.Max(prev.Left, line.MinX);
+                    if (overlap > 0.5 * line.Length && Math.Abs(prev.Bottom - line.Position) <= 1.5)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate)
+                    continue;
+                int n = (int)Math.Round(line.Length / (UnderscoreAdvanceEm * size));
+                if (n < 2) n = 2;
+                if (n > RuleMaxChars) n = RuleMaxChars;
+                var rule = new PdfWord
+                {
+                    Text = new string('_', n),
+                    Left = line.MinX,
+                    Right = line.MaxX,
+                    Bottom = line.Position,
+                    Top = line.Position + RuleAscentFactor * size,
+                    FontSizePt = size
+                };
+                words.Add(rule);
+                added.Add(rule);
+            }
+        }
+
+        /// <summary>Слово целиком из «_» (прочерк-заполнитель реквизитов)?</summary>
+        internal static bool IsUnderscoreOnly(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+            for (int i = 0; i < text.Length; i++)
+                if (text[i] != '_')
+                    return false;
+            return true;
+        }
+
+        /// <summary>Все символы слова — из приватной зоны юникода (U+E000–U+F8FF)?</summary>
+        internal static bool IsPrivateUseOnly(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+            bool anyPua = false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (char.IsWhiteSpace(c))
+                    continue;
+                if (c < 0xE000 || c > 0xF8FF)
+                    return false;
+                anyPua = true;
+            }
+            return anyPua;
         }
 
         /// <summary>
