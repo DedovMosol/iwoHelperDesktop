@@ -109,6 +109,9 @@ namespace ExcelMerger
                             });
                         }
                         AssignHyperlinks(words, page);
+                        // Текстовый штамп → переносим картинкой (рендер-кроп), а его слова убираем
+                        // из потока (иначе печать задвоится: картинка + те же строки текстом).
+                        OcrImage stampImage = ExtractTextStamp(words, page, path);
                         List<PdfLine> lines = ExtractLines(page);
                         // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
                         TableDetectResult det = TableDetector.Detect(lines, words, page.Width, page.Height);
@@ -126,6 +129,8 @@ namespace ExcelMerger
                         };
                         SetMargins(pt, words, page.Width, page.Height);
                         pt.Images = ExtractImages(page, path);
+                        if (stampImage != null)
+                            pt.Images.Add(stampImage); // штамп — в общий поток изображений (порядок по TopPt)
                         pages.Add(pt);
                         if (progress != null)
                             progress(pages.Count, pageCount);
@@ -227,6 +232,43 @@ namespace ExcelMerger
                     pageRaster.Dispose();
             }
             return result;
+        }
+
+        private const double StampCropPadPt = 6.0; // отступ кропа, чтобы захватить рамку печати вокруг текста
+
+        /// <summary>
+        /// Распознать текстовый штамп и вернуть его как изображение (рендер-кроп области
+        /// Ghostscript-ом), убрав слова штампа из <paramref name="words"/>. Если штамп не найден
+        /// или картинку получить не удалось (нет Ghostscript, пустая область) — возвращает null и
+        /// НИЧЕГО не убирает: текст остаётся текстом (прежнее поведение, без регрессии). Вызывать
+        /// из ядра (после Ensure) — тело ссылается на типы PdfPig.
+        /// </summary>
+        private static OcrImage ExtractTextStamp(List<PdfWord> words, UglyToad.PdfPig.Content.Page page, string pdfPath)
+        {
+            StampRegion stamp = StampDetector.Detect(words, page.Width, page.Height);
+            if (stamp == null)
+                return null;
+
+            double left = stamp.Left - StampCropPadPt, top = stamp.Top + StampCropPadPt;
+            double width = stamp.Width + 2 * StampCropPadPt, height = stamp.Height + 2 * StampCropPadPt;
+            System.Drawing.Bitmap raster = null;
+            try
+            {
+                raster = PageRasterizer.RenderPage(pdfPath, page.Number);
+                if (raster == null)
+                    return null; // нет Ghostscript — штамп остаётся текстом
+                byte[] png = PageRasterizer.CropRegion(raster, page.Width, page.Height, left, top, width, height);
+                if (png == null || png.Length == 0)
+                    return null; // рендер/кроп не удался — не переносим, текст остаётся текстом
+                // Проверку на одноцветность НЕ делаем: штамп — это белый фон с тонким текстом и рамкой,
+                // разреженная выборка приняла бы его за пустой; наличие текста уже доказано StampDetector.
+
+                var remove = new HashSet<PdfWord>(stamp.Words);
+                words.RemoveAll(delegate(PdfWord w) { return remove.Contains(w); }); // снять текст печати
+                return new OcrImage { Png = png, LeftPt = left, TopPt = top, WidthPt = width, HeightPt = height };
+            }
+            catch { return null; } // сбой рендера/кропа — штамп остаётся текстом
+            finally { if (raster != null) raster.Dispose(); }
         }
 
         /// <summary>
