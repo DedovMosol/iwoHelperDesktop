@@ -65,7 +65,7 @@ try {
     # 7. Very long file name (>31 chars) - the sheet name must be truncated
     $wb = $xl.Workbooks.Add()
     $wb.Sheets.Item(1).Range("A1").Value2 = "длинное имя"
-    $wb.SaveAs((Join-Path $dir "Очень длинное имя файла отчета министерства за март 2026.xlsx"), 51)
+    $wb.SaveAs((Join-Path $dir "Очень длинное имя файла отчета за первый квартал 2026.xlsx"), 51)
     $wb.Close($false)
 
     # 7b. File name with brackets [ ] - Excel cannot open such files,

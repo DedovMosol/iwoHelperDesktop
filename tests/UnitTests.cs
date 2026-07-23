@@ -170,7 +170,7 @@ namespace ExcelMerger.Tests
         private static void TestNamerTruncation()
         {
             var n = new SheetNamer();
-            string name = n.Next("Очень длинное имя файла отчета министерства за март");
+            string name = n.Next("Очень длинное имя файла отчета за первый квартал");
             AssertTrue(name.Length <= 31, "длина " + name.Length + " превышает 31");
             AssertEqual("Очень длинное имя файла отчета", name, "обрезка с зачисткой хвоста");
         }
