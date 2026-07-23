@@ -52,7 +52,7 @@ namespace ExcelMerger
                 string json = reader.ReadToEnd();
                 Match m = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
                 if (!m.Success)
-                    throw new Exception("не удалось прочитать версию из ответа GitHub");
+                    throw new Exception(Loc.T("update.err.parseVersion"));
                 return m.Groups[1].Value;
             }
         }
@@ -86,21 +86,21 @@ namespace ExcelMerger
         {
             if (error != null)
             {
-                Dialogs.Error(owner, Title, "Не удалось проверить обновления",
-                    "Проверьте подключение к интернету. (" + error.Message + ")");
+                Dialogs.Error(owner, Title, Loc.T("update.err.title"),
+                    string.Format(Loc.T("update.err.network"), error.Message));
                 return;
             }
             Version latest = UpdateChecker.ParseTag(tag);
             Version current = Assembly.GetExecutingAssembly().GetName().Version;
             if (latest == null)
             {
-                Dialogs.Error(owner, Title, "Не удалось проверить обновления", "Непонятный ответ сервера.");
+                Dialogs.Error(owner, Title, Loc.T("update.err.title"), Loc.T("update.err.badResponse"));
                 return;
             }
             if (UpdateChecker.IsNewer(latest, current))
             {
-                if (Dialogs.ConfirmWarning(owner, Title, "Доступна новая версия " + latest.ToString(3),
-                        "У вас " + current.ToString(3) + ". Открыть страницу загрузки в браузере?"))
+                if (Dialogs.ConfirmWarning(owner, Title, string.Format(Loc.T("update.available.title"), latest.ToString(3)),
+                        string.Format(Loc.T("update.available.body"), current.ToString(3))))
                 {
                     try { Process.Start(UpdateChecker.ReleasesPage); }
                     catch { } // нет браузера — ссылку видно в диалоге
@@ -108,7 +108,7 @@ namespace ExcelMerger
             }
             else
             {
-                Dialogs.Info(owner, Title, "Обновлений нет", "У вас последняя версия (" + current.ToString(3) + ").");
+                Dialogs.Info(owner, Title, Loc.T("update.none.title"), string.Format(Loc.T("update.none.body"), current.ToString(3)));
             }
         }
     }

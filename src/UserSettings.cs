@@ -13,6 +13,7 @@ namespace ExcelMerger
         public bool AddToc = true;              // «Содержание» по умолчанию включено
         public bool AllSheets;                  // все листы (по умолчанию — только первый)
         public string OutputExtension = ".xlsx";
+        public string Language = "ru";          // язык интерфейса: «ru»/«en» (см. Loc)
 
         private static string FilePath
         {
@@ -39,6 +40,7 @@ namespace ExcelMerger
                     else if (key == "addToc" && bool.TryParse(value, out flag)) s.AddToc = flag;
                     else if (key == "allSheets" && bool.TryParse(value, out flag)) s.AllSheets = flag;
                     else if (key == "outputExtension" && OutputFormats.FileFormatFor("x" + value) != 0) s.OutputExtension = value;
+                    else if (key == "language" && (value == "ru" || value == "en")) s.Language = value;
                 }
             }
             catch { } // повреждённые настройки не должны мешать запуску
@@ -56,7 +58,11 @@ namespace ExcelMerger
                     "lastOutputFolder=" + (LastOutputFolder ?? ""),
                     "addToc=" + AddToc,
                     "allSheets=" + AllSheets,
-                    "outputExtension=" + (OutputExtension ?? ".xlsx")
+                    "outputExtension=" + (OutputExtension ?? ".xlsx"),
+                    // Язык — из живого Loc (единый источник истины), а НЕ из поля этого
+                    // экземпляра: другие формы держат устаревшую копию настроек и иначе
+                    // затёрли бы язык обратно при своём Save.
+                    "language=" + Loc.Code(Loc.Current)
                 });
             }
             catch { }

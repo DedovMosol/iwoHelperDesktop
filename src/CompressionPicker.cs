@@ -25,7 +25,7 @@ namespace ExcelMerger
             Font = new Font("Segoe UI", 9.75f);
 
             var caption = new Label();
-            caption.Text = "Сжатие:";
+            caption.Text = Loc.T("common.compression");
             caption.AutoSize = true;
             caption.ForeColor = Theme.TextPrimary;
             caption.BackColor = Color.Transparent;
@@ -34,20 +34,19 @@ namespace ExcelMerger
 
             _combo = new ComboBox();
             _combo.DropDownStyle = ComboBoxStyle.DropDownList;
-            _combo.Items.AddRange(PdfCompression.LevelLabels);
+            string[] levelLabels = PdfCompression.LevelLabels();
+            _combo.Items.AddRange(levelLabels);
             _combo.SelectedIndex = (int)CompressionLevel.None; // «Отлично — без сжатия»
             // Ширина — под самый длинный пункт (иначе «Нормально — минимальный размер» обрезается).
             int widest = 0;
-            foreach (string lbl in PdfCompression.LevelLabels)
+            foreach (string lbl in levelLabels)
                 widest = Math.Max(widest, TextRenderer.MeasureText(lbl, Font).Width);
             _combo.SetBounds(caption.Right + 8, 1, widest + 40, 27); // +кнопка списка и отступы
             _combo.SelectedIndexChanged += OnSelectedIndexChanged;
             Controls.Add(_combo);
 
             _tips = new ToolTip();
-            _tips.SetToolTip(_combo,
-                "«Хорошо»/«Нормально» уменьшают размер, снижая разрешение изображений (как в Acrobat).\n" +
-                "Текст и вектор сохраняются. У подписанных PDF подпись станет недействительной.");
+            _tips.SetToolTip(_combo, Loc.T("common.tip.compression"));
 
             Size = new Size(_combo.Right, 29);
         }
@@ -77,12 +76,10 @@ namespace ExcelMerger
             if (_combo.SelectedIndex > 0 && !Ghostscript.Available)
             {
                 Dialogs.InfoWithLink(FindForm(),
-                    "Сжатие недоступно",
-                    "Нужен Ghostscript",
-                    "Сжатие PDF использует Ghostscript — он не найден в системе. " +
-                    "Установите его (бесплатно), затем перезапустите приложение — либо " +
-                    "используйте установщик приложения, в него Ghostscript уже входит.",
-                    "Скачать Ghostscript",
+                    Loc.T("gs.title"),
+                    Loc.T("gs.heading"),
+                    Loc.T("gs.body"),
+                    Loc.T("gs.download"),
                     Ghostscript.DownloadPage);
                 _reverting = true;
                 try { _combo.SelectedIndex = (int)CompressionLevel.None; }

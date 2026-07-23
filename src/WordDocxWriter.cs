@@ -37,7 +37,7 @@ namespace ExcelMerger
             {
                 Directory.CreateDirectory(tempDir);
                 int imgIndex = 0;
-                WordCom.WriteDocx(path, "Файл Word", delegate(object wordObj, object docObj)
+                WordCom.WriteDocx(path, Loc.T("word.label.docx"), delegate(object wordObj, object docObj)
                 {
                     dynamic word = wordObj;
                     dynamic doc = docObj;

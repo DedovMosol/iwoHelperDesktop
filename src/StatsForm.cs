@@ -20,7 +20,7 @@ namespace ExcelMerger
 
         public StatsForm()
         {
-            Text = "Статистика";
+            Text = Loc.T("menu.stats");
             Font = new Font("Segoe UI", 9.75f);
             BackColor = Color.White;
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -37,37 +37,37 @@ namespace ExcelMerger
             WindowChrome.Enable(this, Theme.HubBlue);
 
             Ui.AccentBar(this, 0, Theme.HubBlue);
-            Ui.Label(this, "Статистика", 24, 22, new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+            Ui.Label(this, Loc.T("menu.stats"), 24, 22, new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             _since = Ui.Label(this, "", 24, 56, Font, Theme.TextMuted);
 
-            _excel = Row("Своды Excel", 92);
-            _merge = Row("Объединения PDF", 118);
-            _extract = Row("Извлечения страниц (PDF)", 144);
-            _ranges = Row("Разбиение по диапазонам", 170);
-            _everyN = Row("Разбиение: каждые N страниц", 196);
-            _bookmarks = Row("Разбиение по закладкам", 222);
-            _pdftoword = Row("Конвертации PDF → Word", 248);
-            _compress = Row("Сжатия PDF (файлов)", 274);
+            _excel = Row(Loc.T("stats.row.excel"), 92);
+            _merge = Row(Loc.T("stats.row.merge"), 118);
+            _extract = Row(Loc.T("stats.row.extract"), 144);
+            _ranges = Row(Loc.T("stats.row.ranges"), 170);
+            _everyN = Row(Loc.T("stats.row.everyN"), 196);
+            _bookmarks = Row(Loc.T("stats.row.bookmarks"), 222);
+            _pdftoword = Row(Loc.T("stats.row.pdftoword"), 248);
+            _compress = Row(Loc.T("stats.row.compress"), 274);
             _total = Ui.Label(this, "", 24, 306, new Font("Segoe UI", 10.5f, FontStyle.Bold), Theme.TextPrimary);
 
-            Ui.Label(this, "Автоочистка:", 24, 352, Font, Theme.TextPrimary);
+            Ui.Label(this, Loc.T("stats.autoClear"), 24, 352, Font, Theme.TextPrimary);
             _cmbAuto = new ComboBox();
             _cmbAuto.DropDownStyle = ComboBoxStyle.DropDownList;
-            _cmbAuto.Items.AddRange(new object[] { "Выключена", "Раз в день", "Раз в 7 дней", "Раз в 30 дней" });
+            _cmbAuto.Items.AddRange(new object[] { Loc.T("stats.auto.off"), Loc.T("stats.auto.daily"), Loc.T("stats.auto.7days"), Loc.T("stats.auto.30days") });
             _cmbAuto.SetBounds(120, 349, 180, 27);
             _cmbAuto.SelectedIndexChanged += OnAutoChanged;
             Controls.Add(_cmbAuto);
             _tips = new ToolTip();
-            _tips.SetToolTip(_cmbAuto, "Счётчики будут автоматически обнуляться с выбранной периодичностью");
+            _tips.SetToolTip(_cmbAuto, Loc.T("stats.tip.auto"));
 
             var clear = new RoundedButton(false);
-            clear.Text = "Очистить";
+            clear.Text = Loc.T("stats.btn.clear");
             clear.SetBounds(24, ClientSize.Height - 52, 130, 36);
             clear.Click += OnClear;
             Controls.Add(clear);
 
             var close = new RoundedButton(true);
-            close.Text = "Закрыть";
+            close.Text = Loc.T("common.close");
             close.SetBounds(ClientSize.Width - 124, ClientSize.Height - 52, 100, 36);
             close.Click += delegate { Close(); };
             Controls.Add(close);
@@ -96,7 +96,7 @@ namespace ExcelMerger
         {
             UsageStats s = UsageStats.Load();
             _loading = true;
-            _since.Text = "Считается с " + s.SinceUtc.ToLocalTime().ToString("dd.MM.yyyy") + ".";
+            _since.Text = string.Format(Loc.T("stats.since"), s.SinceUtc.ToLocalTime().ToString("dd.MM.yyyy"));
             _excel.Text = s.ExcelDigests.ToString();
             _merge.Text = s.PdfMerges.ToString();
             _extract.Text = s.PdfExtracts.ToString();
@@ -105,7 +105,7 @@ namespace ExcelMerger
             _bookmarks.Text = s.PdfSplitBookmarks.ToString();
             _pdftoword.Text = s.PdfToWord.ToString();
             _compress.Text = s.PdfCompressions.ToString();
-            _total.Text = "Всего операций: " + s.Total;
+            _total.Text = string.Format(Loc.T("stats.total"), s.Total);
             _cmbAuto.SelectedIndex = Array.IndexOf(AutoDays, s.AutoClearDays) >= 0 ? Array.IndexOf(AutoDays, s.AutoClearDays) : 0;
             _loading = false;
         }
@@ -121,8 +121,8 @@ namespace ExcelMerger
 
         private void OnClear(object sender, EventArgs e)
         {
-            if (Dialogs.ConfirmWarning(this, "Статистика", "Очистить счётчики?",
-                    "Все накопленные числа обнулятся. Действие необратимо."))
+            if (Dialogs.ConfirmWarning(this, Loc.T("menu.stats"), Loc.T("stats.confirm.clear.title"),
+                    Loc.T("stats.confirm.clear.body")))
             {
                 UsageStats.ClearCounters();
                 LoadAndShow();

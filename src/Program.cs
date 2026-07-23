@@ -12,6 +12,7 @@ namespace ExcelMerger
         [STAThread]
         private static int Main(string[] args)
         {
+            Loc.Init(Loc.Parse(UserSettings.Load().Language)); // язык интерфейса из настроек — до создания окон
             if (args.Length >= 1 && string.Equals(args[0], "--selftest", StringComparison.OrdinalIgnoreCase))
                 return RunSelfTest();
             if (args.Length >= 1 && string.Equals(args[0], "--pdfcheck", StringComparison.OrdinalIgnoreCase))
@@ -30,7 +31,7 @@ namespace ExcelMerger
                 {
                     AttachConsole(-1);
                     WriteConsole("ERROR: " + parseError);
-                    WriteConsole("Использование: iwoHelperDesktop.exe --cli <папка> <итоговый> [--toc] [--values] [--allsheets]");
+                    WriteConsole(Loc.T("cli.usage"));
                     return 1;
                 }
                 return RunCli(args[1], args[2], options);
@@ -61,7 +62,7 @@ namespace ExcelMerger
                     options.AllSheets = true;
                 else
                 {
-                    error = "неизвестный параметр «" + args[i] + "»";
+                    error = string.Format(Loc.T("cli.unknownFlag"), args[i]);
                     return false;
                 }
             }
