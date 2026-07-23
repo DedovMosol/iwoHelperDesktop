@@ -17,6 +17,8 @@ namespace ExcelMerger
         private const int WdSectionBreakNextPage = 2; // каждая PDF-страница — свой раздел (свой размер листа)
         private const int WdCollapseStart = 1;
         private const int WdCollapseEnd = 0;
+        private const int WdStyleNormal = -1;      // wdStyleNormal — базовый стиль абзаца документа
+        private const int WdLineSpaceSingle = 0;   // одинарный межстрочный интервал
         private const double MinColWidthPt = 6;   // защита от вырожденной колонки
         private const string DefaultFontName = "Times New Roman";
         private const double DefaultFontSize = 12;
@@ -42,6 +44,7 @@ namespace ExcelMerger
                     dynamic word = wordObj;
                     dynamic doc = docObj;
                     dynamic sel = word.Selection;
+                    ApplyDocumentDefaults(doc); // единый интервал — детерминизм и плотность born-digital оригинала
                     ListTemplates lists = ListTemplates.Load(word); // галереи нумерованного/маркированного списка
                     var listState = new ListState();
 
@@ -60,7 +63,7 @@ namespace ExcelMerger
                                 if (blk.Table != null)
                                     WriteTable(word, doc, sel, blk.Table);
                                 else
-                                    InsertImage(sel, blk.Image, tempDir, ref imgIndex);
+                                    InsertImage(sel, blk.Image, pages[p].WidthPt, tempDir, ref imgIndex);
                             }
                         }
                         if (progress != null)
@@ -73,6 +76,26 @@ namespace ExcelMerger
             {
                 try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { }
             }
+        }
+
+        /// <summary>
+        /// Единые интервалы документа через стиль «Обычный»: одинарный межстрочный, без отбивки
+        /// до и после абзаца. Иначе .docx наследует умолчания Normal.dotm пользователя (в «офисном»
+        /// шаблоне — 1.08 строки + 8 pt после КАЖДОГО абзаца), из-за чего плотный born-digital
+        /// оригинал (где абзацы разделены красной строкой, а не пустотой) раздувается на лишние
+        /// страницы, а сама разбивка становится машинозависимой. Косметика: сбой стиля не срывает
+        /// сохранение — тогда остаются умолчания шаблона.
+        /// </summary>
+        private static void ApplyDocumentDefaults(dynamic doc)
+        {
+            try
+            {
+                dynamic normal = doc.Styles.Item(WdStyleNormal).ParagraphFormat;
+                normal.SpaceBefore = 0;
+                normal.SpaceAfter = 0;
+                normal.LineSpacingRule = WdLineSpaceSingle;
+            }
+            catch { } // интервалы косметические — при сбое стиля просто наследуем шаблон
         }
 
         private const double RowBandPt = 12; // блоки ближе этого по вертикали — одна «строка-полоса»
@@ -363,10 +386,12 @@ namespace ExcelMerger
 
         /// <summary>
         /// Вставляет изображение inline в текущую позицию и переводит строку; размер — по рамке
-        /// PDF (pt), с защитой пределов. Сбой одной картинки не срывает документ. PNG кладётся во
-        /// временный файл (встраивается в .docx при вставке), временная папка чистится в Write.
+        /// PDF (pt), с защитой пределов. Горизонтально центрированное на странице изображение (герб,
+        /// логотип) выводится по центру, как в оригинале, иначе — по левому краю. Сбой одной картинки
+        /// не срывает документ. PNG кладётся во временный файл (встраивается в .docx при вставке),
+        /// временная папка чистится в Write.
         /// </summary>
-        private static void InsertImage(dynamic sel, OcrImage img, string tempDir, ref int index)
+        private static void InsertImage(dynamic sel, OcrImage img, double pageWidthPt, string tempDir, ref int index)
         {
             if (img == null || img.Png == null || img.Png.Length == 0)
                 return;
@@ -375,7 +400,7 @@ namespace ExcelMerger
             try
             {
                 File.WriteAllBytes(file, img.Png);
-                sel.ParagraphFormat.Alignment = WdAlignLeft;
+                sel.ParagraphFormat.Alignment = IsImageCentered(img.LeftPt, img.WidthPt, pageWidthPt) ? WdAlignCenter : WdAlignLeft;
                 sel.ParagraphFormat.FirstLineIndent = 0;
                 dynamic shape = sel.InlineShapes.AddPicture(file, false, true); // встроить в документ
                 shape.LockAspectRatio = 0; // msoFalse — задаём оба размера
@@ -384,6 +409,30 @@ namespace ExcelMerger
                 sel.TypeParagraph(); // изображение на своей строке
             }
             catch { } // одна картинка не должна сорвать конвертацию
+        }
+
+        // Изображение считаем центрированным, если зазоры до краёв страницы заметны (> этой доли
+        // ширины) и почти равны (разница <= этой доли) — герб/логотип сверху по центру. Иначе левый
+        // край: врезки у поля (leftGap ≈ 0) и печати сбоку не центрируются.
+        private const double ImageCenterMinGapFraction = 0.05;
+        private const double ImageCenterBalanceFraction = 0.06;
+
+        /// <summary>
+        /// Горизонтально ли центрировано изображение на странице: оба зазора до краёв заметны и
+        /// почти равны. leftPt — левый край рамки (pt), widthPt — ширина, pageWidthPt — ширина
+        /// страницы. Вырожденные размеры → не центрируем. Чистая — под тест.
+        /// </summary>
+        internal static bool IsImageCentered(double leftPt, double widthPt, double pageWidthPt)
+        {
+            if (pageWidthPt <= 0 || widthPt <= 0 || widthPt >= pageWidthPt)
+                return false;
+            double leftGap = leftPt;
+            double rightGap = pageWidthPt - (leftPt + widthPt);
+            if (leftGap < 0 || rightGap < 0)
+                return false;
+            double minGap = ImageCenterMinGapFraction * pageWidthPt;
+            double balance = ImageCenterBalanceFraction * pageWidthPt;
+            return leftGap > minGap && rightGap > minGap && Math.Abs(leftGap - rightGap) <= balance;
         }
 
         private static double ClampSize(double pt)

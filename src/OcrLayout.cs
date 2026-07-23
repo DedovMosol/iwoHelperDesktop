@@ -99,11 +99,19 @@ namespace ExcelMerger
         // это центрирование (номер страницы и т.п.), в расчёт красной строки не берём.
         private const double IndentedShare = 0.6;
         private const double MaxIndentFraction = 0.25;
-        // Центрированная строка: левый и правый зазоры до полей заметны (> CenterMinGapFraction
-        // ширины) и почти равны (разница <= CenterBalanceFraction ширины) — так узнаём номер
-        // страницы/заголовок по центру и не выключаем его по ширине с красной строкой.
-        private const double CenterMinGapFraction = 0.12;
+        // Центрированная строка: отступает от ОБОИХ полей (больше CenterInsetEmFactor кегля И
+        // CenterMinInsetFraction ширины) и почти симметрична (|левый−правый| <= CenterBalanceFraction
+        // ширины). Так узнаём и узкую (номер страницы), и ШИРОКУЮ (строка титула) центрированную
+        // строку: у широкой зазоры малы в долях ширины, но симметричны, поэтому порог задан ещё и в
+        // долях кегля. Отличие от красной строки — та упирается в правое поле (правый зазор ≈ 0); от
+        // рваной левой — та стоит у левого поля (левый зазор ≈ 0).
+        private const double CenterInsetEmFactor = 0.5;
+        private const double CenterMinInsetFraction = 0.02;
         private const double CenterBalanceFraction = 0.08;
+        // Прогон по общей оси центра: соседние строки соосны, если их midX расходится не больше чем на
+        // эту долю кегля. Красная строка/короткий хвост justified-абзаца смещают midX сильнее — прогон
+        // на них обрывается, поэтому тело не «прилипает» к центрированному титулу.
+        private const double MidAxisTolEmFactor = 0.4;
         // Надстрочный/подстрочный: слово мельче доминирующего кегля строки и смещено по базовой
         // линии вверх (надстрочный) или вниз (подстрочный) заметно относительно кегля.
         private const double ScriptSizeFactor = 0.85;
@@ -201,39 +209,53 @@ namespace ExcelMerger
             double indentTol = Math.Max(IndentFactor * em, IndentWidthFraction * width);
             double shortTol = ShortLineFraction * width;
 
-            // Разбить на группы строк-абзацев. Дополнительный сигнал — строка начинается с
-            // маркера списка («1.», «•»): каждый пункт становится своим абзацем даже в плотном
-            // одностроковом списке (равный интервал, без отступа), где иначе строки слиплись бы
-            // в один абзац и распознался бы лишь первый маркер.
+            // Центрированность строк (НА УРОВНЕ ПРОГОНА по общей оси центра, см. CenteredRuns) —
+            // сигнал группировки: каждую центрированную строку выносим в СВОЙ абзац, сохраняя
+            // исходную разбивку титула/шапки (двухстрочное название остаётся двумя строками — Word не
+            // сольёт их в одну), и отделяем центрированный блок от обычного текста. При нулевой отбивке
+            // абзацев соседние центрированные абзацы выглядят как исходные центрированные строки.
+            bool[] centered = CenteredRuns(lines, bodyLeft, bodyRight, em, width, gapThreshold);
+
+            // Разбить на группы строк-абзацев. Сигналы разрыва: большой зазор; центрированная строка
+            // (выносится своим абзацем — и её граница с обычным текстом); красная строка и «короткий
+            // хвост» justified; начало пункта списка («1.», «•») — иначе плотный одностроковый список
+            // слипся бы в абзац с единственным маркером. groupCentered хранит однородный флаг
+            // центрирования группы (центрированная строка изолирована, поэтому группа однородна).
             var groups = new List<List<Line>>();
+            var groupCentered = new List<bool>();
             var current = new List<Line>();
             for (int i = 0; i < lines.Count; i++)
             {
                 if (i > 0)
                 {
                     bool gapBreak = lines[i - 1].MidY - lines[i].MidY > gapThreshold;
+                    bool centeredBreak = centered[i] || centered[i - 1]; // центрированная строка — своим абзацем
                     bool indentBreak = lines[i].Left - bodyLeft > indentTol;
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
                     bool listBreak = StartsWithListMarker(lines[i]);
-                    if (gapBreak || indentBreak || shortBreak || listBreak)
+                    if (gapBreak || centeredBreak || indentBreak || shortBreak || listBreak)
                     {
                         groups.Add(current);
+                        groupCentered.Add(centered[i - 1]);
                         current = new List<Line>();
                     }
                 }
                 current.Add(lines[i]);
             }
             groups.Add(current);
+            groupCentered.Add(centered[lines.Count - 1]);
 
             // Абзацы: раны с форматом + выравнивание; сбор отступов первых строк (исключая центрирование).
             double maxIndent = MaxIndentFraction * width;
             var indents = new List<double>();
-            foreach (List<Line> g in groups)
+            for (int gi = 0; gi < groups.Count; gi++)
             {
+                List<Line> g = groups[gi];
                 var para = new OcrParagraph
                 {
                     Runs = BuildRuns(g),
-                    Alignment = DetectAlignment(g, bodyLeft, bodyRight, width, em),
+                    // Центрированность решена на уровне прогона; иначе — выключка или левый край.
+                    Alignment = groupCentered[gi] ? OcrAlignment.Center : DetectAlignment(g, bodyRight, em),
                     TopPt = g[0].Top,
                     LeftPt = g[0].Left
                 };
@@ -245,8 +267,10 @@ namespace ExcelMerger
                     para.ListContentStart = m.ContentStart;
                 }
                 result.Paragraphs.Add(para);
+                // Красную строку меряем ТОЛЬКО по нецентрированным абзацам: у центрированного блока
+                // левый край — это центрирование, а не отступ, и он исказил бы медиану красной строки.
                 double ind = g[0].Left - bodyLeft;
-                if (ind > indentTol && ind <= maxIndent)
+                if (!groupCentered[gi] && ind > indentTol && ind <= maxIndent)
                     indents.Add(ind);
             }
             if (groups.Count >= 2 && indents.Count >= (int)Math.Ceiling(groups.Count * IndentedShare))
@@ -488,26 +512,64 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Выравнивание абзаца из геометрии:
-        ///  • Center — КАЖДАЯ строка с заметными и почти равными полями слева/справа
-        ///    (номер страницы, заголовок по центру);
+        /// Пометить строки, входящие в центрированный прогон. Прогон — максимальная цепочка соседних
+        /// (сверху вниз) строк с общей осью центра (|Δ midX| ≤ MidAxisTolEmFactor кегля) без разрыва
+        /// абзаца (вертикальный зазор ≤ gapThreshold). Прогон считаем центрированным, если в нём есть
+        /// хотя бы одна «плавающая» строка (<see cref="IsCentered"/>): тогда центрированы и его ШИРОКИЕ
+        /// строки, дотягивающиеся до полей (внешне неотличимые от выключки) — общая ось с короткой
+        /// центрированной строкой блока это доказывает. Обычный justified-абзац так не опознаётся: его
+        /// короткий последний хвост прижат влево, а красная строка сдвигает ось полных строк — в обоих
+        /// случаях ось сбивается и прогон обрывается на границе с телом. Чистая — под тест.
+        /// </summary>
+        private static bool[] CenteredRuns(List<Line> lines, double bodyLeft, double bodyRight, double em, double width, double gapThreshold)
+        {
+            int n = lines.Count;
+            var centered = new bool[n];
+            double midTol = MidAxisTolEmFactor * em;
+            int start = 0;
+            while (start < n)
+            {
+                int end = start; // расширяем прогон [start..end] по общей оси, пока нет разрыва абзаца
+                while (end + 1 < n
+                    && Math.Abs(MidX(lines[end + 1]) - MidX(lines[end])) <= midTol
+                    && lines[end].MidY - lines[end + 1].MidY <= gapThreshold)
+                    end++;
+                bool anyFloating = false;
+                for (int i = start; i <= end && !anyFloating; i++)
+                    anyFloating = IsCentered(lines[i].Left - bodyLeft, bodyRight - lines[i].Right, em, width);
+                if (anyFloating)
+                    for (int i = start; i <= end; i++)
+                        centered[i] = true;
+                start = end + 1;
+            }
+            return centered;
+        }
+
+        private static double MidX(Line line) { return (line.Left + line.Right) / 2; }
+
+        /// <summary>
+        /// «Строка плавает по центру»: отступает от ОБОИХ полей больше порога (доля кегля ИЛИ доля
+        /// ширины) и почти симметрична (левый и правый зазоры близки). Ловит и узкую (номер
+        /// страницы), и ШИРОКУЮ (строка титула) центрированную строку. Отличие от красной строки —
+        /// та упирается в правое поле (rightGap ≈ 0); от рваной левой — та у левого поля (leftGap ≈ 0).
+        /// leftGap/rightGap — зазоры до полей тела (pt). Чистая — под тест.
+        /// </summary>
+        internal static bool IsCentered(double leftGap, double rightGap, double em, double width)
+        {
+            double minInset = Math.Max(CenterInsetEmFactor * em, CenterMinInsetFraction * width);
+            double balance = CenterBalanceFraction * width;
+            return leftGap > minInset && rightGap > minInset && Math.Abs(leftGap - rightGap) <= balance;
+        }
+
+        /// <summary>
+        /// Выравнивание НЕцентрированного абзаца из геометрии (центрирование решено раньше — на
+        /// уровне прогона по общей оси, см. <see cref="CenteredRuns"/>):
         ///  • Justify — многострочный абзац, где НЕпоследние строки достают до правого поля
         ///    (последняя строка justified-абзаца всегда рваная, её не учитываем);
         ///  • иначе Left (рваный справа / одиночная строка — визуально как по левому краю).
         /// </summary>
-        private static OcrAlignment DetectAlignment(List<Line> group, double bodyLeft, double bodyRight, double width, double em)
+        private static OcrAlignment DetectAlignment(List<Line> group, double bodyRight, double em)
         {
-            double minGap = CenterMinGapFraction * width;
-            double balance = CenterBalanceFraction * width;
-            bool allCentered = true;
-            foreach (Line ln in group)
-            {
-                double lg = ln.Left - bodyLeft, rg = bodyRight - ln.Right;
-                if (!(lg > minGap && rg > minGap && Math.Abs(lg - rg) <= balance)) { allCentered = false; break; }
-            }
-            if (allCentered)
-                return OcrAlignment.Center;
-
             if (group.Count >= 2)
             {
                 double reachTol = 0.5 * em;

@@ -124,6 +124,8 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
             Run("OcrLayout: рваный абзац по левому краю", TestOcrLeftAligned);
             Run("OcrLayout: центрированная строка", TestOcrCentered);
+            Run("OcrLayout: IsCentered — узкая/широкая/красная строка/рваная/правая", TestIsCenteredPredicate);
+            Run("OcrLayout: центрированный многострочный титул -> один центрированный абзац", TestOcrCenteredBlock);
             Run("OcrLayout: фрагменты слова склеиваются по зазору", TestOcrGlueFragments);
             Run("OcrLayout: узкий настоящий пробел сохранён (не склейка)", TestOcrNarrowSpaceKept);
             Run("OcrLayout: тонкое тире остаётся в строке", TestOcrThinDashStaysOnLine);
@@ -156,6 +158,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: левый сайдбар отделяется от тела (не перемешиваются)", TestSidebarSeparation);
             Run("OcrLayout: одноколоночный текст не делится (сайдбар не срабатывает)", TestNoSidebarSingleColumn);
             Run("WordDocxWriter: порядок чтения (сверху вниз, бок о бок — слева направо)", TestReadingOrder);
+            Run("WordDocxWriter: центрированное изображение (герб) -> по центру, врезка/печать -> нет", TestImageCentered);
             Run("PageRasterizer: рамка PDF (Y-вверх) -> пиксельный кроп, кламп по краю", TestCropRect);
 
             Console.WriteLine();
@@ -1751,6 +1754,48 @@ namespace ExcelMerger.Tests
             AssertEqual(OcrAlignment.Justify, layout.Paragraphs[1].Alignment, "тело по ширине");
         }
 
+        private static void TestIsCenteredPredicate()
+        {
+            // Узкая центрированная (номер страницы): большие симметричные зазоры.
+            AssertTrue(OcrLayout.IsCentered(48, 48, 8, 100), "узкая по центру");
+            // ШИРОКАЯ центрированная строка титула: зазоры малы в долях ширины (~5%), но симметричны —
+            // прежний порог 12% ширины её терял, новый (доля кегля) ловит.
+            AssertTrue(OcrLayout.IsCentered(31, 22, 16, 453), "широкая строка титула по центру");
+            // Красная строка: упирается в правое поле (правый зазор ≈ 0) — не центр.
+            AssertTrue(!OcrLayout.IsCentered(35, 0, 16, 453), "красная строка — не центр");
+            // Рваная левая: стоит у левого поля (левый зазор ≈ 0) — не центр.
+            AssertTrue(!OcrLayout.IsCentered(0, 40, 10, 100), "рваная левая — не центр");
+            // Правое выравнивание: у правого поля (правый зазор ≈ 0), большой левый — не центр.
+            AssertTrue(!OcrLayout.IsCentered(200, 0, 16, 453), "правое выравнивание — не центр");
+            // Несимметричная (левый много больше правого) — не центр, даже если оба > порога.
+            AssertTrue(!OcrLayout.IsCentered(120, 20, 16, 453), "асимметрия — не центр");
+        }
+
+        private static void TestOcrCenteredBlock()
+        {
+            // Типичный центрированный титул документа: ШИРОКИЕ строки дотягиваются до обоих полей
+            // (внешне как justified) и лишь короткий хвост «Sh» явно центрирован. Все строки соосны
+            // (midX=50) -> ВСЕ распознаются центрированными по общей оси. Каждая — своим абзацем
+            // (исходная разбивка сохранена: Word не сольёт их и не перевёрстывает), а не «широкие=тело
+            // + сирота-хвост».
+            var words = new List<PdfWord>
+            {
+                W("Wideoneaa", 2, 200, 96, 8),  // Left2 Right98 mid50: дотягивается до полей (не «плавает»)
+                W("Widetwoaa", 2, 188, 96, 8),  // Left2 Right98 mid50: тоже широкая
+                W("Sh",       35, 176, 30, 8),  // Left35 Right65 mid50: короткая центрированная — доказывает ось
+                W("Bodyoneaa", 2, 150, 96, 8),  // тело: полные строки (задают поля, justified), большой зазор
+                W("Bodytwoaa", 2, 138, 96, 8),
+                W("Bodythree", 2, 126, 96, 8)
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            AssertEqual(4, paras.Count, "3 центрированные строки титула (каждая своим абзацем) + тело");
+            AssertEqual(OcrAlignment.Center, paras[0].Alignment, "широкая строка титула — по центру (по общей оси)");
+            AssertEqual(OcrAlignment.Center, paras[1].Alignment, "вторая широкая строка титула — по центру");
+            AssertEqual(OcrAlignment.Center, paras[2].Alignment, "короткий хвост — по центру");
+            AssertEqual("Wideoneaa", paras[0].Text, "исходная строка сохранена отдельным абзацем (не слита)");
+            AssertEqual(OcrAlignment.Justify, paras[3].Alignment, "тело — выключка, не центр (нет короткой центрированной строки)");
+        }
+
         private static void TestOcrGlueFragments()
         {
             // Почти соприкасающиеся куски одного токена (мизерный зазор < 0.08 кегля) склеиваем
@@ -2318,6 +2363,20 @@ namespace ExcelMerger.Tests
             AssertTrue(WordDocxWriter.CompareReadingOrder(100, 300, 100, 50) > 0, "в одной полосе правый позже левого");
             // Разница по Top больше полосы — X не важен.
             AssertTrue(WordDocxWriter.CompareReadingOrder(200, 900, 100, 0) < 0, "верхний раньше, несмотря на больший X");
+        }
+
+        private static void TestImageCentered()
+        {
+            // Герб сверху по центру A4 (595 pt): left=281, width=64 -> зазоры 281/250, почти равны.
+            AssertTrue(WordDocxWriter.IsImageCentered(281, 64, 595), "герб по центру -> центрируем");
+            // Врезка у левого поля: left=72, width=100 -> правый зазор огромный, асимметрия -> нет.
+            AssertTrue(!WordDocxWriter.IsImageCentered(72, 100, 595), "врезка слева -> не центр");
+            // Печать сбоку справа: left=450, width=100 -> левый зазор огромный -> нет.
+            AssertTrue(!WordDocxWriter.IsImageCentered(450, 100, 595), "печать справа -> не центр");
+            // Изображение во всю ширину -> не центрируем (нет зазоров).
+            AssertTrue(!WordDocxWriter.IsImageCentered(0, 595, 595), "во всю ширину -> не центр");
+            // Вырожденная ширина страницы -> не центрируем (защита от деления/мусора).
+            AssertTrue(!WordDocxWriter.IsImageCentered(10, 20, 0), "ширина страницы 0 -> не центр");
         }
 
         private static void TestHasExtractableContent()

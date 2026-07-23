@@ -48,7 +48,7 @@ namespace ExcelMerger
 
                 try
                 {
-                    doc.SaveAs2(path, WdFormatXmlDocument);
+                    SaveDocx(doc, path);
                 }
                 catch (Exception ex)
                 {
@@ -72,6 +72,26 @@ namespace ExcelMerger
                 }
                 ComSafe.Collect();
                 ComMessageFilter.Revoke();
+            }
+        }
+
+        /// <summary>
+        /// Сохранить .docx: сначала SaveAs2 (Word 2010+), с фолбэком на классический SaveAs.
+        /// На некоторых сборках/состояниях Word позднее связывание не резолвит SaveAs2, и
+        /// dynamic-вызов падает с RuntimeBinderException («__ComObject не содержит определения
+        /// для SaveAs2») — тогда SaveAs, присутствующий во ВСЕХ версиях, отрабатывает штатно.
+        /// Ошибка самой записи (занятый файл и т.п.) приходит COMException-ом и пробрасывается
+        /// наружу как есть — её обернёт вызывающий; фолбэк ловит ТОЛЬКО «метод не найден».
+        /// </summary>
+        private static void SaveDocx(dynamic doc, string path)
+        {
+            try
+            {
+                doc.SaveAs2(path, WdFormatXmlDocument);
+            }
+            catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+            {
+                doc.SaveAs(path, WdFormatXmlDocument); // старые/нестандартные сборки Word без SaveAs2
             }
         }
     }
