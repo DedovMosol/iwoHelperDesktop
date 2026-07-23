@@ -14,13 +14,12 @@ versions follow [SemVer](https://semver.org/).
   starts over correctly. Detection is deliberately strict (marker punctuation + space +
   content) so “2025 г.” or “12.5 %” are never mistaken for a list. The marker classifier is a
   pure, unit‑tested method.
-- **PDF → Word turns a text electronic‑signature seal into an image.** When a seal is drawn
-  as text (“Документ подписан электронной подписью / Сертификат / Владелец / Действителен”)
-  rather than a picture, that region is rendered with the bundled Ghostscript and placed as
-  an image, and its text is removed so it isn’t duplicated. Detection needs all four anchor
-  words in a compact box, so ordinary prose is never affected; if the region can’t be
-  rendered (no Ghostscript) the text is kept unchanged — no regression. Picture seals keep
-  transferring as images as before. The region detector is a pure, unit‑tested method.
+- **PDF → Word turns a text‑drawn electronic‑signature seal into an image.** When a seal is
+  drawn as text rather than a picture, that region is rendered with the bundled Ghostscript
+  and placed as an image, and its text is removed so it isn’t duplicated. Detection needs
+  several anchor words in a compact box, so ordinary prose is never affected; if the region
+  can’t be rendered (no Ghostscript) the text is kept unchanged — no regression. Picture
+  seals keep transferring as images as before. The region detector is a pure, unit‑tested method.
 
 ## [1.16.0] — 2026-07-23
 
