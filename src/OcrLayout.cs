@@ -53,6 +53,11 @@ namespace ExcelMerger
         public double LeftPt;   // левый край абзаца — вторичный порядок (левее — раньше в одной строке-полосе)
         public double RightPt;  // правый край рамки абзаца — для XY-порядка блоков страницы (колонки)
         public double BottomPt; // нижний край рамки абзаца
+        // Рамка КОЛОНКИ абзаца (XY-разрез): центрированный абзац узкой колонки центрируется в ней,
+        // а не по всей странице (блок письма встаёт в свою правую колонку). Full-width колонка
+        // ≈ рамке страницы — отступы не применяются. 0 — колонка не размечена (обычный текст).
+        public double BlockLeftPt;
+        public double BlockRightPt;
 
         // Список: вид маркера в начале абзаца и номер (для нумерованного). None — обычный абзац.
         // ListContentStart — индекс в Text, с которого идёт содержимое (маркер снимается при записи —
@@ -347,7 +352,9 @@ namespace ExcelMerger
                     TopPt = g[0].Top,
                     LeftPt = g[0].Left,
                     RightPt = right,
-                    BottomPt = bottom
+                    BottomPt = bottom,
+                    BlockLeftPt = colLeft,
+                    BlockRightPt = colRight
                 };
                 if (para.Alignment != OcrAlignment.Center)
                 {

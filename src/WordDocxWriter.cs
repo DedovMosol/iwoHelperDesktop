@@ -53,10 +53,14 @@ namespace ExcelMerger
                         if (p > 0)
                             sel.InsertBreak(WdSectionBreakNextPage); // новый раздел = свой размер листа
                         ApplySectionSetup(sel, pages[p]); // размер и поля страницы из источника
+                        // Текстовая область страницы (pt): в неё Word укладывает абзацы, от неё
+                        // считаются отступы конфайна центрированной колонки (см. WriteParagraphInto).
+                        double textLeft = pages[p].LeftMarginPt;
+                        double textRight = pages[p].WidthPt - pages[p].RightMarginPt;
                         foreach (Block blk in OrderedBlocks(pages[p]))
                         {
                             if (blk.Paragraph != null)
-                                WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent, lists, listState);
+                                WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent, lists, listState, textLeft, textRight);
                             else
                             {
                                 ClearInheritedList(sel, listState); // таблица/картинка обрывают список
@@ -246,19 +250,19 @@ namespace ExcelMerger
             band.Clear();
         }
 
-        private static void WriteParagraph(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, ListTemplates lists, ListState state)
+        private static void WriteParagraph(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, ListTemplates lists, ListState state, double textLeftPt, double textRightPt)
         {
             bool asList = lists.Available && paragraph.ListKind != ListKind.None;
             if (asList)
             {
                 // Маркер («1.», «•») снимаем — Word рисует свой; отступ задаёт шаблон списка (indent=0).
-                WriteParagraphInto(sel, doc, paragraph, 0, false, paragraph.ListContentStart);
+                WriteParagraphInto(sel, doc, paragraph, 0, false, paragraph.ListContentStart, textLeftPt, textRightPt);
                 ApplyList(sel, lists, paragraph, state);
             }
             else
             {
                 ClearInheritedList(sel, state); // после пункта списка следующий абзац не должен унаследовать маркер
-                WriteParagraphInto(sel, doc, paragraph, firstLineIndent, false, 0);
+                WriteParagraphInto(sel, doc, paragraph, firstLineIndent, false, 0, textLeftPt, textRightPt);
             }
             sel.TypeParagraph();
         }
@@ -342,14 +346,46 @@ namespace ExcelMerger
             state.PrevKind = ListKind.None;
         }
 
+        // Абзац центрируется в СВОЕЙ колонке (а не по странице), если колонка заметно уже
+        // текстовой области — это правая колонка шапки (блок) или левый блок. Только для
+        // центрированных: у левых/выключенных горизонталь уже задана красной строкой и полем,
+        // а центрированный на всю страницу титул при конфайне в свою рамку центрируется там же.
+        private const double ColumnConfineFraction = 0.72;
+        private const double MinConfineIndentPt = 6; // отступ мельче — колонка практически во всю ширину
+
+        /// <summary>
+        /// Отступы для конфайна центрированного абзаца в его колонку (pt). Возвращает false и
+        /// нулевые отступы, если конфайн не нужен: не центрированный/в ячейке (eligible=false),
+        /// вырожденная область, или колонка почти во всю ширину (полноширинный текст — титул на
+        /// всю страницу центрируется как есть). Иначе левый/правый отступ = смещение колонки от
+        /// краёв текстовой области (мельче MinConfineIndentPt — обнуляется). Чистая — под тест.
+        /// </summary>
+        internal static bool ColumnConfineIndents(bool eligible, double blockLeft, double blockRight,
+            double textLeft, double textRight, out double leftIndent, out double rightIndent)
+        {
+            leftIndent = 0;
+            rightIndent = 0;
+            if (!eligible || textRight <= textLeft)
+                return false;
+            double areaWidth = textRight - textLeft;
+            double colWidth = blockRight - blockLeft;
+            if (colWidth <= 0 || colWidth >= ColumnConfineFraction * areaWidth)
+                return false;
+            double li = blockLeft - textLeft, ri = textRight - blockRight;
+            if (li > MinConfineIndentPt) leftIndent = li;
+            if (ri > MinConfineIndentPt) rightIndent = ri;
+            return leftIndent > 0 || rightIndent > 0;
+        }
+
         /// <summary>
         /// Записать абзац в текущую позицию БЕЗ завершающего перевода строки (ядро — чтобы
         /// переиспользовать и в потоке текста, и в ячейках таблицы, DRY): выравнивание,
         /// красная строка и формат пословно (шрифт, кегль, начертание, над/подстрочный, цвет).
         /// В ячейке (inCell) выключка по ширине заменяется на левый край: короткий текст ячейки
         /// иначе Word растягивает уродливыми пробелами; центрирование (шапки) сохраняется.
+        /// textLeftPt/textRightPt — рамка текстовой области страницы для конфайна колонки.
         /// </summary>
-        private static void WriteParagraphInto(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, bool inCell, int skipChars)
+        private static void WriteParagraphInto(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, bool inCell, int skipChars, double textLeftPt, double textRightPt)
         {
             // Выравнивание из источника; центрированное — без красной строки.
             int align; double indent;
@@ -361,6 +397,16 @@ namespace ExcelMerger
             }
             sel.ParagraphFormat.Alignment = align;
             sel.ParagraphFormat.FirstLineIndent = indent;
+
+            // Конфайн центрированного абзаца в его колонку: блок шапки уходит вправо, блок —
+            // влево, вместо ложного центра по всей странице. Отступы всегда переустанавливаем
+            // (Selection несёт состояние от предыдущего абзаца), 0 — обычный полноширинный случай.
+            double leftIndent, rightIndent;
+            ColumnConfineIndents(paragraph.Alignment == OcrAlignment.Center && !inCell,
+                paragraph.BlockLeftPt, paragraph.BlockRightPt, textLeftPt, textRightPt,
+                out leftIndent, out rightIndent);
+            sel.ParagraphFormat.LeftIndent = leftIndent;
+            sel.ParagraphFormat.RightIndent = rightIndent;
 
             // Формат пословно (ран за раном): шрифт, кегль, полужирный, курсив, над/подстрочный, цвет.
             // skipChars — снять ведущий маркер списка, растянутый по первым ранам (Word рисует свой).
@@ -482,7 +528,7 @@ namespace ExcelMerger
             {
                 if (i > 0)
                     sel.TypeParagraph();
-                WriteParagraphInto(sel, doc, cell.Paragraphs[i], 0, true, 0); // в ячейке: без красной строки, без выключки, без списков
+                WriteParagraphInto(sel, doc, cell.Paragraphs[i], 0, true, 0, 0, 0); // в ячейке: без красной строки, без выключки, без списков, без конфайна
             }
         }
 
