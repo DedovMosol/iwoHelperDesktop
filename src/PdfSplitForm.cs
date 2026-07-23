@@ -17,7 +17,7 @@ namespace ExcelMerger
     /// </summary>
     public class PdfSplitForm : PdfToolFormBase
     {
-        private const string Title = "Разделение PDF";
+        private static string Title { get { return Loc.T("hub.split.name"); } }
         private const int ModeExtract = 0, ModeRanges = 1, ModeEveryN = 2, ModeBookmarks = 3;
 
         // Сетка, зум, сжатие, статус, подсказки и флаг _busy — в базе PdfToolFormBase.
@@ -49,7 +49,7 @@ namespace ExcelMerger
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
             BuildHeaderWithHome(Title,
-                "Извлечение страниц из документа формата *.pdf со сжатием.",
+                Loc.T("split.header.subtitle"),
                 Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
 
             int m = HelpMenu.Height;
@@ -67,18 +67,18 @@ namespace ExcelMerger
             int px = right - panelW + 10; // левый край панели режима
             int pw = panelW - 10;
             _btnOpen = new RoundedButton(false);
-            _btnOpen.Text = "Открыть PDF…";
+            _btnOpen.Text = Loc.T("split.btn.open");
             _btnOpen.SetBounds(px, m + 84, pw, 32);
             _btnOpen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnOpen.Click += OnOpenClick;
-            _tips.SetToolTip(_btnOpen, "Файл также можно перетащить в окно");
+            _tips.SetToolTip(_btnOpen, Loc.T("split.tip.open"));
             Controls.Add(_btnOpen);
 
-            Label lblMode = Ui.Label(this, "Режим:", px, m + 128, Font, Theme.TextPrimary);
+            Label lblMode = Ui.Label(this, Loc.T("split.lbl.mode"), px, m + 128, Font, Theme.TextPrimary);
             lblMode.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _cmbMode = new ComboBox();
             _cmbMode.DropDownStyle = ComboBoxStyle.DropDownList;
-            _cmbMode.Items.AddRange(new object[] { "Извлечь выбранные", "По диапазонам", "Каждые N страниц", "По закладкам" });
+            _cmbMode.Items.AddRange(new object[] { Loc.T("split.mode.extract"), Loc.T("split.mode.ranges"), Loc.T("split.mode.everyN"), Loc.T("split.mode.bookmarks") });
             _cmbMode.SelectedIndex = ModeExtract;
             _cmbMode.SetBounds(px, m + 150, pw, 27);
             _cmbMode.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -96,14 +96,14 @@ namespace ExcelMerger
             Controls.Add(_cmbMode);
 
             // Поля ввода режимов (в одном месте, показываются по режиму).
-            _lblRanges = Ui.Label(this, "Диапазоны (напр. 1-3, 5, 8-):", px, m + 188, Font, Theme.TextMuted);
+            _lblRanges = Ui.Label(this, Loc.T("split.lbl.ranges"), px, m + 188, Font, Theme.TextMuted);
             _lblRanges.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _txtRanges = new TextBox();
             _txtRanges.SetBounds(px, m + 210, pw, 27);
             _txtRanges.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             Controls.Add(_txtRanges);
 
-            _lblN = Ui.Label(this, "Страниц в части:", px, m + 188, Font, Theme.TextMuted);
+            _lblN = Ui.Label(this, Loc.T("split.lbl.n"), px, m + 188, Font, Theme.TextMuted);
             _lblN.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _numN = new NumericUpDown();
             _numN.Minimum = 1;
@@ -120,16 +120,16 @@ namespace ExcelMerger
 
             // Только для «По диапазонам»: собрать все страницы в один файл.
             _chkCombine = new AccentCheckBox();
-            _chkCombine.Text = "Объединить в один файл";
+            _chkCombine.Text = Loc.T("split.chk.combine");
             _chkCombine.SetBounds(px, m + 244, pw, 22);
             _chkCombine.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _chkCombine.ForeColor = Theme.TextPrimary;
-            _tips.SetToolTip(_chkCombine, "Все указанные страницы — в один PDF, а не по файлу на диапазон");
+            _tips.SetToolTip(_chkCombine, Loc.T("split.tip.combine"));
             _chkCombine.CheckedChanged += delegate { UpdateModeInputs(); };
             Controls.Add(_chkCombine);
 
             // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
-            BuildBottomStrip(right, "Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.", 190);
+            BuildBottomStrip(right, Loc.T("split.status.openPdf"), 190);
 
             // Действие — в правом нижнем углу (как «Сохранить PDF» в «Объединении»).
             _btnDo = new RoundedButton(true);
@@ -141,22 +141,7 @@ namespace ExcelMerger
 
         private void ShowHelp()
         {
-            Dialogs.Info(this, Title, "Как пользоваться",
-                "1. Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно; появится сетка страниц.\n" +
-                "2. Выберите режим:\n" +
-                "   • «Извлечь выбранные» — выделите страницы в сетке (Ctrl+A — все) → сохранит их в один PDF;\n" +
-                "   • «По диапазонам» — «1-3, 5, 8-»: каждый диапазон → отдельный файл;\n" +
-                "   • «Каждые N страниц» — равные части (1 — каждая страница отдельно);\n" +
-                "   • «По закладкам» — по одному файлу на закладку верхнего уровня, имена из заголовков.\n" +
-                "3. При необходимости выберите «Сжатие» (по умолчанию «Отлично» — без сжатия): " +
-                "«Хорошо»/«Нормально» уменьшают размер за счёт понижения разрешения изображений " +
-                "(как в Acrobat), текст сохраняется. Требуется Ghostscript.\n" +
-                "4. Нажмите «Извлечь…»/«Разделить…» и укажите имя и папку для результата " +
-                "(при разбиении к имени добавятся номера или метки).\n\n" +
-                "Страницы копируются как есть, без переконвертации. Исходный файл не изменяется; " +
-                "имена не перезаписываются (при совпадении добавляется номер).\n" +
-                "Сжатие меняет содержимое файла, поэтому у подписанных PDF подпись станет " +
-                "недействительной (как и при сжатии в Acrobat) — сжимайте до подписания.");
+            Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("split.help.body"));
         }
 
         // ---------- открытие исходника ----------
@@ -165,8 +150,8 @@ namespace ExcelMerger
         {
             using (var dialog = new OpenFileDialog())
             {
-                dialog.Filter = "Документы PDF (*.pdf)|*.pdf";
-                dialog.Title = "Выберите PDF для разделения";
+                dialog.Filter = Loc.T("common.pdfFilter");
+                dialog.Title = Loc.T("split.pickPdf");
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                     LoadSource(dialog.FileName);
             }
@@ -196,7 +181,7 @@ namespace ExcelMerger
             catch (MergeException ex)
             {
                 Cursor = Cursors.Default;
-                Dialogs.Error(this, Title, "Файл не открыт", ex.Message);
+                Dialogs.Error(this, Title, Loc.T("split.err.fileNotOpened"), ex.Message);
                 return;
             }
             finally
@@ -208,7 +193,7 @@ namespace ExcelMerger
             for (int i = 0; i < _pageCount; i++)
                 pages.Add(new PdfPageRef { SourcePath = path, PageIndex = i });
             _grid.SetPages(pages);
-            SetStatus("Открыт «" + Path.GetFileName(path) + "»: страниц " + _pageCount + ".", Theme.TextMuted);
+            SetStatus(string.Format(Loc.T("split.status.opened"), Path.GetFileName(path), _pageCount), Theme.TextMuted);
             UpdateControls();
         }
 
@@ -222,12 +207,12 @@ namespace ExcelMerger
             _chkCombine.Visible = mode == ModeRanges;
             _lblHint.Visible = mode == ModeExtract || mode == ModeBookmarks;
             if (mode == ModeExtract)
-                _lblHint.Text = "Выделите нужные страницы в сетке (Ctrl+A — все).";
+                _lblHint.Text = Loc.T("split.hint.extract");
             else if (mode == ModeBookmarks)
-                _lblHint.Text = "По одному файлу на закладку верхнего уровня.";
+                _lblHint.Text = Loc.T("split.hint.bookmarks");
             // Извлечение (в т.ч. диапазоны+объединить) даёт один файл; иначе — несколько.
             bool oneFile = mode == ModeExtract || (mode == ModeRanges && _chkCombine.Checked);
-            _btnDo.Text = oneFile ? "Извлечь…" : "Разделить…";
+            _btnDo.Text = oneFile ? Loc.T("split.btn.extract") : Loc.T("split.btn.split");
         }
 
         /// <summary>Фокус в поле ввода текущего режима (Focus() у недоступного поля — no-op).</summary>
@@ -274,7 +259,7 @@ namespace ExcelMerger
                     int[] sel = _grid.GetSelectedIndices();
                     if (sel.Length == 0)
                     {
-                        Dialogs.Error(this, Title, "Не выбраны страницы", "Выделите страницы в сетке (Ctrl+A — все).");
+                        Dialogs.Error(this, Title, Loc.T("split.err.noPages.title"), Loc.T("split.err.noPages.body"));
                         return;
                     }
                     indices = new List<int>(sel);
@@ -282,14 +267,14 @@ namespace ExcelMerger
                 else
                 {
                     try { indices = PageRanges.ToIndices(PageRanges.Parse(_txtRanges.Text, _pageCount)); }
-                    catch (MergeException ex) { Dialogs.Error(this, Title, "Диапазоны заданы неверно", ex.Message); return; }
+                    catch (MergeException ex) { Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message); return; }
                 }
                 string outPath;
                 using (var dialog = new SaveFileDialog())
                 {
-                    dialog.Filter = "Документ PDF (*.pdf)|*.pdf";
+                    dialog.Filter = Loc.T("common.pdfSaveFilter");
                     dialog.FileName = Path.GetFileNameWithoutExtension(src) +
-                        (mode == ModeExtract ? "_выбранные.pdf" : "_объединённые.pdf");
+                        (mode == ModeExtract ? Loc.T("split.suffix.selected") : Loc.T("split.suffix.combined"));
                     dialog.InitialDirectory = Path.GetDirectoryName(src);
                     if (dialog.ShowDialog(this) != DialogResult.OK)
                         return;
@@ -306,7 +291,7 @@ namespace ExcelMerger
             if (mode == ModeRanges)
             {
                 try { ranges = PageRanges.Parse(_txtRanges.Text, _pageCount); }
-                catch (MergeException ex) { Dialogs.Error(this, Title, "Диапазоны заданы неверно", ex.Message); return; }
+                catch (MergeException ex) { Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message); return; }
             }
             else if (mode == ModeEveryN)
             {
@@ -317,8 +302,8 @@ namespace ExcelMerger
             string dir, baseName;
             using (var dialog = new SaveFileDialog())
             {
-                dialog.Filter = "Документ PDF (*.pdf)|*.pdf";
-                dialog.Title = "Базовое имя и папка для частей (к имени добавятся номера)";
+                dialog.Filter = Loc.T("common.pdfSaveFilter");
+                dialog.Title = Loc.T("split.pickBase");
                 dialog.FileName = Path.GetFileNameWithoutExtension(src) + ".pdf";
                 dialog.InitialDirectory = Path.GetDirectoryName(src);
                 dialog.OverwritePrompt = false; // создаются base_1.pdf и т.п., а не сам base.pdf
@@ -360,7 +345,7 @@ namespace ExcelMerger
         {
             _busy = true;
             UpdateControls();
-            SetStatus(openAsFolder ? "Разделение…" : "Извлечение…", Theme.TextMuted);
+            SetStatus(openAsFolder ? Loc.T("split.status.splitting") : Loc.T("split.status.extracting"), Theme.TextMuted);
             BeginProgress();
             Action<int, int> onProgress = UiProgress();
             long sourceSize = SafeLength(_sourcePath); // для подсказки о сжатии (UI-поток, до старта воркера)
@@ -408,8 +393,8 @@ namespace ExcelMerger
             UpdateControls();
             if (error != null)
             {
-                SetStatus("Не выполнено.", Theme.ErrRed);
-                Dialogs.Error(this, Title, openAsFolder ? "Разделение не выполнено" : "Извлечение не выполнено",
+                SetStatus(Loc.T("common.status.notDone"), Theme.ErrRed);
+                Dialogs.Error(this, Title, Loc.T(openAsFolder ? "split.err.splitFailed" : "split.err.extractFailed"),
                     error.Message);
                 return;
             }
@@ -417,13 +402,13 @@ namespace ExcelMerger
                 record(); // успех — учитываем в статистике
             if (compressed > 0)
                 UsageStats.RecordPdfCompress(compressed);
-            string suffix = compressed > 0 ? " · сжато: " + compressed : "";
-            string status = openAsFolder ? ("✓ Создано файлов: " + count + "." + suffix)
-                                          : ("✓ Готово." + suffix);
+            string suffix = compressed > 0 ? string.Format(Loc.T("split.suffix.compressed"), compressed) : "";
+            string status = openAsFolder ? (string.Format(Loc.T("split.status.created"), count) + suffix)
+                                          : (Loc.T("split.status.done") + suffix);
             // Если без сжатия результат вышел почти как исходник (общие ресурсы страниц
             // едут вместе с ними) — ненавязчиво подсказать про «Сжатие».
             if (ShouldSuggestCompression(level, sourceSize, largestOutput))
-                status += " · файл крупный — включите «Сжатие», чтобы уменьшить размер.";
+                status += Loc.T("split.status.largeHint");
             SetStatus(status, Theme.OkGreen);
             try
             {

@@ -125,7 +125,7 @@ namespace ExcelMerger
                     string key = ThumbKey(page);
                     var item = new ListViewItem(MakeLabel(page));
                     item.Tag = page;
-                    item.ToolTipText = page.SourcePath + " — стр. " + (page.PageIndex + 1);
+                    item.ToolTipText = string.Format(Loc.T("grid.pageTip"), page.SourcePath, page.PageIndex + 1);
                     item.ImageKey = _thumbs.Images.ContainsKey(key) ? key : PlaceholderKey;
                     _list.Items.Add(item);
                     IndexItem(key, item);
@@ -503,7 +503,7 @@ namespace ExcelMerger
             string name = Path.GetFileNameWithoutExtension(page.FileName);
             if (name.Length > 18)
                 name = name.Substring(0, 17) + "…";
-            return name + "\nстр. " + (page.PageIndex + 1);
+            return string.Format(Loc.T("grid.pageLabel"), name, page.PageIndex + 1);
         }
 
         private static Bitmap ComposeTile(Bitmap page, Size tile)

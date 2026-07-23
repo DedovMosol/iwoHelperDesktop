@@ -47,10 +47,10 @@ namespace ExcelMerger
         public static void Merge(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null)
         {
             if (order == null || order.Count == 0)
-                throw new MergeException("Нет страниц для объединения.");
+                throw new MergeException(Loc.T("err.pdf.noPages"));
             string lockError = MergeService.CheckOutputWritable(outputPath);
             if (lockError != null)
-                throw new MergeException(lockError.Replace("Итоговый файл", "Файл PDF"));
+                throw new MergeException(Loc.T("err.pdf.fileBusy"));
             EmbeddedAssemblies.Ensure();
             MergeCore(order, outputPath, progress);
         }
@@ -73,7 +73,7 @@ namespace ExcelMerger
                         pages.Add(info);
                     }
                     if (pages.Count == 0)
-                        throw new MergeException("В файле «" + Path.GetFileName(path) + "» нет страниц.");
+                        throw new MergeException(string.Format(Loc.T("err.pdf.noPagesIn"), Path.GetFileName(path)));
                     return pages;
                 }
             }
@@ -83,9 +83,7 @@ namespace ExcelMerger
             }
             catch (Exception ex)
             {
-                throw new MergeException("Не удалось открыть «" + Path.GetFileName(path) +
-                    "»: файл повреждён, защищён паролем или использует неподдерживаемые возможности PDF. (" +
-                    ex.Message + ")");
+                throw new MergeException(string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message));
             }
         }
 
@@ -111,13 +109,12 @@ namespace ExcelMerger
                         }
                         catch (Exception ex)
                         {
-                            throw new MergeException("Не удалось открыть «" + page.FileName + "»: " + ex.Message);
+                            throw new MergeException(string.Format(Loc.T("err.pdf.cantOpenShort"), page.FileName, ex.Message));
                         }
                         sources.Add(key, source);
                     }
                     if (page.PageIndex < 0 || page.PageIndex >= source.PageCount)
-                        throw new MergeException("В «" + page.FileName + "» нет страницы " + (page.PageIndex + 1) +
-                            " — файл изменился после добавления в список.");
+                        throw new MergeException(string.Format(Loc.T("err.pdf.pageGone"), page.FileName, page.PageIndex + 1));
                     output.AddPage(source.Pages[page.PageIndex]);
                     added++;
                     if (progress != null)
@@ -130,7 +127,7 @@ namespace ExcelMerger
                 }
                 catch (Exception ex)
                 {
-                    throw new MergeException("Не удалось сохранить PDF: " + ex.Message);
+                    throw new MergeException(string.Format(Loc.T("err.pdf.saveFailed"), ex.Message));
                 }
             }
             finally

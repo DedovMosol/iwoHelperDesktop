@@ -28,7 +28,7 @@ namespace ExcelMerger
         public static ConvertResult Convert(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null)
         {
             if (order == null || order.Count == 0)
-                throw new MergeException("Не выбрано ни одной страницы для конвертации.");
+                throw new MergeException(Loc.T("err.ocr.noPages"));
 
             // Уникальные источники в порядке первого появления (каждый извлекаем ОДИН раз).
             var sources = new List<string>();
@@ -64,9 +64,7 @@ namespace ExcelMerger
                     withText++;
 
             if (withText == 0)
-                throw new MergeException(
-                    "В выбранных PDF нет извлекаемого текста — похоже, это отсканированные документы (изображения). " +
-                    "Поддержка отсканированных документов в настоящее время недоступна.");
+                throw new MergeException(Loc.T("err.ocr.scanned"));
 
             Action<int, int> writeCb = progress == null ? null : (Action<int, int>)delegate(int d, int t)
             {

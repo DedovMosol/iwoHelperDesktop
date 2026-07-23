@@ -15,7 +15,7 @@ namespace ExcelMerger
     /// </summary>
     public class PdfMergeForm : PdfToolFormBase
     {
-        private const string Title = "Объединение PDF";
+        private static string Title { get { return Loc.T("hub.pdf.name"); } }
 
         private readonly PdfPageOrder _order = new PdfPageOrder();
 
@@ -37,7 +37,7 @@ namespace ExcelMerger
         /// <summary>Во время сохранения окно не закрывается — иначе остался бы зомби-процесс.</summary>
         protected override string BusyMessage
         {
-            get { return "Дождитесь завершения сохранения…"; }
+            get { return Loc.T("common.busySaving"); }
         }
 
         private void BuildUi()
@@ -46,7 +46,7 @@ namespace ExcelMerger
             DragEnter += OnFileDragEnter;
             DragDrop += OnFileDragDrop;
             BuildHeaderWithHome(Title,
-                "Объединение документов формата *.pdf с возможностью изменения порядка страниц и сжатием.",
+                Loc.T("pdf.header.subtitle"),
                 Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
 
             int m = HelpMenu.Height;
@@ -61,23 +61,23 @@ namespace ExcelMerger
             Controls.Add(_grid);
 
             int col = right - 130;
-            _btnAdd = AddButton("Добавить PDF…", col, m + 80, 130, 32);
+            _btnAdd = AddButton(Loc.T("common.addPdf"), col, m + 80, 130, 32);
             _btnAdd.Click += OnAddClick;
-            _tips.SetToolTip(_btnAdd, "Файлы также можно перетащить в окно");
-            _btnUp = AddButton("◀ Раньше", col, m + 124, 130, 30);
+            _tips.SetToolTip(_btnAdd, Loc.T("common.tip.addPdf"));
+            _btnUp = AddButton(Loc.T("common.earlier"), col, m + 124, 130, 30);
             _btnUp.Click += delegate { MoveSelected(false); };
-            _tips.SetToolTip(_btnUp, "Переместить страницу раньше (Alt+←)");
-            _btnDown = AddButton("Позже ▶", col, m + 160, 130, 30);
+            _tips.SetToolTip(_btnUp, Loc.T("common.tip.earlier"));
+            _btnDown = AddButton(Loc.T("common.later"), col, m + 160, 130, 30);
             _btnDown.Click += delegate { MoveSelected(true); };
-            _tips.SetToolTip(_btnDown, "Переместить страницу позже (Alt+→)");
-            _btnRemove = AddButton("Удалить", col, m + 204, 130, 30);
+            _tips.SetToolTip(_btnDown, Loc.T("common.tip.later"));
+            _btnRemove = AddButton(Loc.T("common.remove"), col, m + 204, 130, 30);
             _btnRemove.Click += OnRemoveClick;
-            _tips.SetToolTip(_btnRemove, "Удалить выбранные страницы (Delete)");
+            _tips.SetToolTip(_btnRemove, Loc.T("common.tip.removePages"));
 
-            BuildBottomStrip(right, "Добавьте PDF-файлы — кнопкой или перетащив их в окно.", 190);
+            BuildBottomStrip(right, Loc.T("pdf.status.addPdf"), 190);
 
             var save = new RoundedButton(true);
-            save.Text = "Сохранить PDF…";
+            save.Text = Loc.T("pdf.btn.save");
             save.SetBounds(right - 190, ClientSize.Height - 58, 190, 38);
             save.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             save.Click += OnSaveClick;
@@ -88,21 +88,7 @@ namespace ExcelMerger
 
         private void ShowHelp()
         {
-            Dialogs.Info(this, Title, "Как пользоваться",
-                "1. Добавьте PDF-файлы — кнопкой «Добавить PDF…» или перетащив их в окно.\n" +
-                "2. Появится сетка миниатюр страниц. Масштаб — ползунком внизу или Ctrl+колесо мыши.\n" +
-                "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Раньше» / «Позже ▶».\n" +
-                "   Лишние страницы удаляйте кнопкой «Удалить».\n" +
-                "4. При необходимости выберите «Сжатие» (по умолчанию «Отлично» — без сжатия). " +
-                "«Хорошо»/«Нормально» уменьшают размер за счёт понижения разрешения изображений " +
-                "(как в Acrobat); текст сохраняется. Требуется Ghostscript.\n" +
-                "5. «Сохранить PDF…» соберёт один документ в выбранном порядке.\n\n" +
-                "Горячие клавиши: Delete — удалить выбранные, Alt+←/→ — порядок, " +
-                "Ctrl+A — выделить всё, Ctrl+колесо — масштаб.\n" +
-                "Страницы копируются как есть, без переконвертации — сканы, печати и подписи " +
-                "не искажаются. Битые и защищённые паролем файлы пропускаются с причиной.\n" +
-                "Сжатие меняет содержимое файла, поэтому у подписанных PDF подпись станет " +
-                "недействительной (как и при сжатии в Acrobat) — сжимайте до подписания.");
+            Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("pdf.help.body"));
         }
 
         private Button AddButton(string text, int x, int y, int w, int h)
@@ -121,9 +107,9 @@ namespace ExcelMerger
         {
             using (var dialog = new OpenFileDialog())
             {
-                dialog.Filter = "Документы PDF (*.pdf)|*.pdf";
+                dialog.Filter = Loc.T("common.pdfFilter");
                 dialog.Multiselect = true;
-                dialog.Title = "Выберите PDF-файлы";
+                dialog.Title = Loc.T("common.pickPdf");
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                     AddFiles(dialog.FileNames);
             }
@@ -158,7 +144,7 @@ namespace ExcelMerger
                     }
                     catch (MergeException ex)
                     {
-                        Dialogs.Error(this, Title, "Файл не добавлен", ex.Message);
+                        Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), ex.Message);
                     }
                 }
             }
@@ -169,7 +155,7 @@ namespace ExcelMerger
             if (added > 0)
             {
                 RefreshGrid();
-                SetStatus("Страниц в списке: " + _order.Count + ".", Theme.TextMuted);
+                SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
             }
             UpdateButtons();
         }
@@ -207,7 +193,7 @@ namespace ExcelMerger
                 return;
             _order.RemoveAt(_grid.GetSelectedIndices());
             RefreshGrid();
-            SetStatus("Страниц в списке: " + _order.Count + ".", Theme.TextMuted);
+            SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
             UpdateButtons();
         }
 
@@ -224,8 +210,8 @@ namespace ExcelMerger
             string outputPath;
             using (var dialog = new SaveFileDialog())
             {
-                dialog.Filter = "Документ PDF (*.pdf)|*.pdf";
-                dialog.FileName = "Объединённый.pdf";
+                dialog.Filter = Loc.T("common.pdfSaveFilter");
+                dialog.FileName = Loc.T("pdf.defaultName");
                 dialog.InitialDirectory = Path.GetDirectoryName(_order[0].SourcePath);
                 if (dialog.ShowDialog(this) != DialogResult.OK)
                     return;
@@ -236,7 +222,7 @@ namespace ExcelMerger
             CompressionLevel level = _compress.Level; // читаем с UI-потока до старта воркера
             _busy = true;
             UpdateButtons();
-            SetStatus("Сохранение…", Theme.TextMuted);
+            SetStatus(Loc.T("common.status.saving"), Theme.TextMuted);
             BeginProgress();
             Action<int, int> onProgress = UiProgress();
 
@@ -274,14 +260,14 @@ namespace ExcelMerger
             UpdateButtons();
             if (error != null)
             {
-                SetStatus("PDF не сохранён.", Theme.ErrRed);
-                Dialogs.Error(this, Title, "PDF не сохранён", error.Message);
+                SetStatus(Loc.T("pdf.status.saveFailed"), Theme.ErrRed);
+                Dialogs.Error(this, Title, Loc.T("pdf.err.saveFailed"), error.Message);
                 return;
             }
             UsageStats.RecordPdfMerge();
             if (compressed)
                 UsageStats.RecordPdfCompress();
-            SetStatus("✓ Сохранено страниц: " + pageCount + (compressed ? " · сжато." : "."), Theme.OkGreen);
+            SetStatus(string.Format(Loc.T(compressed ? "pdf.status.savedCompressed" : "pdf.status.saved"), pageCount), Theme.OkGreen);
             try { Process.Start(outputPath); }
             catch { } // нет ассоциации PDF — файл всё равно сохранён
         }

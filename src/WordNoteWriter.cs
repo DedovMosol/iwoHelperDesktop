@@ -22,7 +22,7 @@ namespace ExcelMerger
             if (note == null)
                 throw new ArgumentNullException("note");
 
-            WordCom.WriteDocx(path, "Файл записки", delegate(object wordObj, object docObj)
+            WordCom.WriteDocx(path, Loc.T("word.label.note"), delegate(object wordObj, object docObj)
             {
                 dynamic word = wordObj;
                 dynamic doc = docObj;
