@@ -3,6 +3,35 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.3] — 2026-07-23
+
+### Fixed
+- **PDF → Word: “could not save” on some Word builds.** On a few Word versions/states the
+  late‑bound `SaveAs2` call did not resolve and the conversion ended with an error
+  (“…does not contain a definition for SaveAs2”). The save now falls back to the classic
+  `SaveAs`, which is present in every Word version, so the `.docx` is written normally. A
+  genuine write failure (a file open in another program) is still reported as before.
+- **PDF → Word no longer spills onto extra pages, and pagination is now deterministic.** The
+  produced document set explicit single line spacing with no space before/after paragraphs,
+  instead of inheriting the machine’s `Normal` template (whose “Office” default adds 8 pt
+  after every paragraph and 1.08 line spacing). A dense source that separates paragraphs by a
+  first‑line indent — not by blank space — now keeps its original page count and looks the
+  same on any machine.
+
+### Changed
+- **PDF → Word keeps a centered, multi‑line title centered, line for line.** A heading whose
+  lines are centered about a common axis — even when some lines are wide enough to reach the
+  margins and look justified — is recognised as centered and each source line is kept on its own
+  centred line, matching the original, instead of being split into a left/justified fragment
+  with a stray last word (or collapsed into one re‑wrapped line). Detection is by the shared
+  centre axis plus at least one clearly floating line, so ordinary justified body text (whose
+  short last line hugs the left margin, and whose first line’s indent shifts the axis) is never
+  mistaken for centered. Centered blocks also no longer skew the first‑line‑indent measurement.
+- **PDF → Word centers a horizontally centered image.** An image that sits centered on the page
+  (a logo or emblem with near‑equal left/right margins) is placed centered in Word, as in the
+  source; images anchored to a margin, or stamps and signatures off to one side, stay left as
+  before. The centering test is a pure, unit‑tested method.
+
 ## [1.16.2] — 2026-07-23
 
 ### Added
