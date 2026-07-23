@@ -158,6 +158,11 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: левый сайдбар отделяется от тела (не перемешиваются)", TestSidebarSeparation);
             Run("OcrLayout: одноколоночный текст не делится (сайдбар не срабатывает)", TestNoSidebarSingleColumn);
             Run("SetMargins: поля по словам И картинкам; нижнее — с капом", TestMarginsWithImages);
+            Run("ColumnConfineIndents: правая колонка -> левый отступ; левая -> правый; полная ширина -> нет", TestColumnConfine);
+            Run("WordDocxWriter.HasCyrillic: кириллица / латиница / пусто", TestHasCyrillic);
+            Run("GridDetector: широкий одиночный ряд -> ColSpan во всю ширину", TestGridColSpan);
+            Run("TableDetector: прочерк кусками (коллинеарные) -> LoneLines, не таблица", TestLoneCollinearRule);
+            Run("TableDetector: линия внутри рамки таблицы -> не прочерк (LoneLines пуст)", TestRuleInsideTableExcluded);
             Run("GlyphDedup: сдвоенные глифы схлопываются, слово помечается жирным", TestGlyphDedupDoubled);
             Run("GlyphDedup: настоящие соседние одинаковые символы («77») не склеиваются", TestGlyphDedupRealPair);
             Run("GlyphDedup: единичный дубль чистится, но слово не жирное", TestGlyphDedupSparse);
@@ -1637,7 +1642,7 @@ namespace ExcelMerger.Tests
             AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("PT Astra Serif", "текст", installed, "Times New Roman"), "неустановленный -> fallback");
             // УСТАНОВЛЕННЫЙ, но не Word-родной (Liberation Serif): кириллице — fallback (Word
             // ставит hint=eastAsia и разжижает буквы CJK-выключкой), латинице — оставить.
-            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("Liberation Serif", "Уважаемые", installed, "Times New Roman"), "кириллица вне сейф-листа -> fallback");
+            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("Liberation Serif", "Пример", installed, "Times New Roman"), "кириллица вне сейф-листа -> fallback");
             AssertEqual("Liberation Serif", WordDocxWriter.ResolveFontName("Liberation Serif", "latin only", installed, "Times New Roman"), "латиница может остаться");
             AssertEqual("Calibri Light", WordDocxWriter.ResolveFontName("Calibri Light", "кириллица", installed, "Times New Roman"), "сейф-лист держит кириллицу");
             AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName(null, "т", installed, "Times New Roman"), "null -> fallback");
@@ -2379,6 +2384,91 @@ namespace ExcelMerger.Tests
             AssertEqual(90.0, pt.BottomMarginPt, "нижнее поле ограничено капом");
         }
 
+        private static void TestColumnConfine()
+        {
+            double li, ri;
+            // Правая колонка (блок) на странице textLeft=84..textRight=567: колонка 340..543.
+            bool c1 = WordDocxWriter.ColumnConfineIndents(true, 340, 543, 84, 567, out li, out ri);
+            AssertTrue(c1, "правая колонка конфайнится");
+            AssertEqual(256.0, li, "левый отступ = 340-84");
+            AssertEqual(24.0, ri, "правый отступ = 567-543");
+            // Левая колонка (блок) 104..285.
+            WordDocxWriter.ColumnConfineIndents(true, 104, 285, 84, 567, out li, out ri);
+            AssertEqual(20.0, li, "левый отступ = 104-84");
+            AssertEqual(282.0, ri, "правый отступ = 567-285");
+            // Полноширинный блок (тело) 90..560 — конфайна нет.
+            bool c3 = WordDocxWriter.ColumnConfineIndents(true, 90, 560, 84, 567, out li, out ri);
+            AssertTrue(!c3, "полная ширина -> без конфайна");
+            AssertEqual(0.0, li, "нет левого"); AssertEqual(0.0, ri, "нет правого");
+            // Не центрированный (eligible=false) — не трогаем.
+            bool c4 = WordDocxWriter.ColumnConfineIndents(false, 340, 543, 84, 567, out li, out ri);
+            AssertTrue(!c4, "не центрированный -> без конфайна");
+            // Титул на всю страницу, центрированный узкий блок с почти равными зазорами: остаётся центрированным.
+            WordDocxWriter.ColumnConfineIndents(true, 250, 345, 84, 567, out li, out ri);
+            AssertTrue(Math.Abs(li - ri) < 60, "симметричный центр остаётся ~по центру");
+        }
+
+        private static void TestHasCyrillic()
+        {
+            AssertTrue(WordDocxWriter.HasCyrillic("Текст"), "кириллица");
+            AssertTrue(WordDocxWriter.HasCyrillic("mix Текст 2"), "смешанное — есть кириллица");
+            AssertTrue(!WordDocxWriter.HasCyrillic("Latin 123 %"), "латиница — нет");
+            AssertTrue(!WordDocxWriter.HasCyrillic(""), "пусто — нет");
+        }
+
+        private static void TestGridColSpan()
+        {
+            // Три строки пар + итоговая строка одним широким сегментом во всю ширину -> ColSpan=2.
+            var words = new List<PdfWord>
+            {
+                WS("LblA", 0, 200, 40, 8, 8),  WS("ValA", 100, 200, 40, 8, 8),
+                WS("LblB", 0, 180, 40, 8, 8),  WS("ValB", 100, 180, 40, 8, 8),
+                WS("LblC", 0, 160, 40, 8, 8),  WS("ValC", 100, 160, 40, 8, 8),
+                WS("ИтогоОдно", 0, 140, 140, 8, 8) // одна широкая ячейка от левой до правой колонки
+            };
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEqual(1, r.Tables.Count, "одна сетка");
+            OcrTable t = r.Tables[0];
+            OcrTableRow last = t.Rows[t.Rows.Count - 1];
+            AssertEqual(2, last.Cells[0].ColSpan, "широкий ряд -> ColSpan=2");
+            AssertTrue(last.Cells[1].Covered, "вторая ячейка накрыта");
+        }
+
+        private static void TestLoneCollinearRule()
+        {
+            // Прочерк пунктов, нарисованный тремя кусками на ОДНОЙ оси (дырки под «№»/«от»):
+            // компонент коллинеарен -> куски идут в LoneLines (станут прочерком), а не таблицей.
+            var lines = new List<PdfLine>
+            {
+                new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 10,  Y1 = 100, X2 = 60,  Y2 = 100, Thickness = 1 },
+                new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 80,  Y1 = 100, X2 = 140, Y2 = 100, Thickness = 1 },
+                new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 160, Y1 = 100, X2 = 220, Y2 = 100, Thickness = 1 }
+            };
+            TableDetectResult r = TableDetector.Detect(lines, new List<PdfWord>(), 600, 800);
+            AssertEqual(0, r.Tables.Count, "коллинеарные куски — не таблица");
+            AssertEqual(3, r.LoneLines.Count, "все три куска в LoneLines");
+        }
+
+        private static void TestRuleInsideTableExcluded()
+        {
+            // Сетка-рамка 2x2 (замкнутая) + линия ВНУТРИ неё (поле подписи в ячейке): линия не
+            // должна попасть в LoneLines (иначе прочерк ляжет поверх таблицы отдельным абзацем).
+            var lines = new List<PdfLine>
+            {
+                new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 0,  Y1 = 200, X2 = 200, Y2 = 200, Thickness = 1 },
+                new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 0,  Y1 = 100, X2 = 200, Y2 = 100, Thickness = 1 },
+                new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 0,  Y1 = 0,   X2 = 200, Y2 = 0,   Thickness = 1 },
+                new PdfLine { Orientation = LineOrientation.Vertical,   X1 = 0,  Y1 = 0,   X2 = 0,   Y2 = 200, Thickness = 1 },
+                new PdfLine { Orientation = LineOrientation.Vertical,   X1 = 100, Y1 = 0,  X2 = 100, Y2 = 200, Thickness = 1 },
+                new PdfLine { Orientation = LineOrientation.Vertical,   X1 = 200, Y1 = 0,  X2 = 200, Y2 = 200, Thickness = 1 },
+                // короткая одиночная линия внутри ячейки (поле для подписи)
+                new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 20, Y1 = 50, X2 = 80, Y2 = 50, Thickness = 1 }
+            };
+            TableDetectResult r = TableDetector.Detect(lines, new List<PdfWord>(), 600, 800);
+            AssertEqual(1, r.Tables.Count, "рамка распознана таблицей");
+            AssertEqual(0, r.LoneLines.Count, "линия внутри таблицы не даёт прочерк");
+        }
+
         // ---------- GlyphDedup (сдвоенные глифы псевдо-жирного) ----------
 
         private static GlyphInfo G(string value, double cx, double size)
@@ -2458,13 +2548,14 @@ namespace ExcelMerger.Tests
 
         private static void TestGridReceipt()
         {
-            // Чек: четыре строки «метка … значение» с широким зазором, левые края выровнены.
+            // Форма «метка … значение»: четыре строки с широким зазором, левые края выровнены
+            // в две колонки. Данные полностью синтетические (Lbl/Val), не из реальных документов.
             var words = new List<PdfWord>
             {
-                WS("Плательщик", 0, 200, 50, 8, 8),  WS("Name", 100, 200, 40, 8, 8),
-                WS("Услуга", 0, 180, 35, 8, 8),      WS("Вывоз", 100, 180, 35, 8, 8),
-                WS("Счет", 0, 160, 30, 8, 8),        WS("250003", 100, 160, 40, 8, 8),
-                WS("Сумма", 0, 140, 35, 8, 8),       WS("256,78", 100, 140, 40, 8, 8)
+                WS("LblA", 0, 200, 50, 8, 8),  WS("ValA", 100, 200, 40, 8, 8),
+                WS("LblB", 0, 180, 35, 8, 8),  WS("ValB", 100, 180, 35, 8, 8),
+                WS("LblC", 0, 160, 30, 8, 8),  WS("ValC", 100, 160, 40, 8, 8),
+                WS("LblD", 0, 140, 35, 8, 8),  WS("ValD", 100, 140, 40, 8, 8)
             };
             GridDetectResult r = GridDetector.Detect(words);
             AssertEqual(1, r.Tables.Count, "одна сетка-таблица");
@@ -2473,8 +2564,8 @@ namespace ExcelMerger.Tests
             AssertEqual(2, t.ColumnCount, "две колонки");
             AssertEqual(4, t.Rows.Count, "четыре ряда");
             AssertEqual(0, r.RemainingWords.Count, "все слова в таблице");
-            AssertTrue(t.Rows[0].Cells[0].Paragraphs[0].Text.Contains("Плательщик"), "метка в первой колонке");
-            AssertTrue(t.Rows[0].Cells[1].Paragraphs[0].Text.Contains("Name"), "значение во второй колонке");
+            AssertTrue(t.Rows[0].Cells[0].Paragraphs[0].Text.Contains("LblA"), "метка в первой колонке");
+            AssertTrue(t.Rows[0].Cells[1].Paragraphs[0].Text.Contains("ValA"), "значение во второй колонке");
         }
 
         private static void TestGridJustifiedNegative()

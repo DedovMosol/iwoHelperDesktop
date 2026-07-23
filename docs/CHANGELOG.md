@@ -3,6 +3,34 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.5] — 2026-07-23
+
+### Added
+- **PDF → Word rebuilds label/value forms without any ruling as borderless tables.** A block of
+  rows where each row splits by a wide inner gap into segments whose left edges line up into
+  columns (a receipt-style “label … value” layout with no drawn borders) becomes a real Word
+  table with borders off, so the pairs stay aligned on their own rows instead of being read as
+  one flat stream. Thresholds are strict — ordinary paragraphs, justified text and single
+  “signature … date” rows are left as plain text.
+- **Detail blank lines survive as underscore placeholders.** A standalone horizontal rule
+  (a fill-in line such as `______ №  ______`), including one drawn in several collinear pieces
+  with gaps under the labels, is carried across as an underscore run sized to the line; pieces
+  under a word stay underlines, double-drawn lines are de-duplicated, and a rule inside a table
+  frame is left to the table.
+
+### Fixed
+- **Two-column headers keep each block in its own column.** A centred paragraph that belongs
+  to a narrow column (the recipient block on the right, the header on the left) is now centred
+  **within that column** via left/right indents, instead of on the whole page where the two
+  columns overlapped into one confused centred stack. Full-width content and a page-wide centred
+  title are unaffected.
+- **Installed-but-non-native fonts no longer letter-space cyrillic.** Word tags cyrillic runs set
+  in some installed families with an East-Asian hint and spaces the letters out under CJK
+  justification. Cyrillic text now stays only in Word-native families and otherwise falls back to
+  Times New Roman (a metric twin of the common clones); latin text keeps its original font.
+- **Private-use-area glyphs are dropped.** Field-placeholder and symbol-font glyphs that render as
+  empty boxes outside their font are no longer emitted as garbage.
+
 ## [1.16.4] — 2026-07-23
 
 ### Added

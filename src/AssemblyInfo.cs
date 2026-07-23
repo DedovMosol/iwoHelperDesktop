@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCopyright("© 2026")]
 // Версия — ровно «1.13.5» (без хвостового .0): приложение показывает её через
 // ToString(3), а метаданные exe (File/Product version) читаются как «1.13.5».
-[assembly: AssemblyVersion("1.16.4")]
-[assembly: AssemblyFileVersion("1.16.4")]
-[assembly: AssemblyInformationalVersion("1.16.4")]
+[assembly: AssemblyVersion("1.16.5")]
+[assembly: AssemblyFileVersion("1.16.5")]
+[assembly: AssemblyInformationalVersion("1.16.5")]
 [assembly: ComVisible(false)]
