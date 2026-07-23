@@ -374,7 +374,7 @@ namespace ExcelMerger
                     text = text.Substring(skip);
                     skip = 0;
                 }
-                sel.Font.Name = ResolveFont(run.FontName);
+                sel.Font.Name = ResolveFont(run.FontName, text);
                 sel.Font.Size = FontSize(run.FontSizePt);
                 sel.Font.Bold = run.Bold ? 1 : 0;
                 sel.Font.Italic = run.Italic ? 1 : 0;
@@ -413,7 +413,7 @@ namespace ExcelMerger
             {
                 dynamic wtable = doc.Tables.Add(sel.Range, rows, cols);
                 wtable.AllowAutoFit = false;
-                wtable.Borders.Enable = 1; // все границы
+                wtable.Borders.Enable = table.Borderless ? 0 : 1; // сетка без линовки — без границ
 
                 for (int c = 0; c < cols; c++)
                 {
@@ -554,19 +554,43 @@ namespace ExcelMerger
         /// шрифт, он уводит кириллицу в восточноазиатский фолбэк-слот (rFonts hint="eastAsia"),
         /// и при выключке по ширине раздвигает буквы по правилам CJK — получается «р а з р я д к а»
         /// (а латиница остаётся слитной). Установленный шрифт держит кириллицу в hAnsi — обычная
-        /// выключка. Список шрифтов читается один раз.
+        /// выключка. Но и УСТАНОВЛЕННОГО мало: «не родные» для Word семейства (Liberation Serif
+        /// и т.п.) получают тот же hint="eastAsia" при вводе кириллицы — поэтому кириллический
+        /// текст пишется только шрифтами из сейф-листа Word-родных семейств, прочие уводятся в
+        /// fallback (Liberation Serif — метрический клон Times New Roman, подмена нейтральна).
+        /// Список шрифтов читается один раз.
         /// </summary>
-        private static string ResolveFont(string requested)
+        private static string ResolveFont(string requested, string text)
         {
-            return ResolveFontName(requested, InstalledFonts, DefaultFontName);
+            return ResolveFontName(requested, text, InstalledFonts, DefaultFontName);
         }
 
-        /// <summary>Чистая логика подстановки (под тест): установленный шрифт — оставить, иначе — fallback.</summary>
-        internal static string ResolveFontName(string requested, ICollection<string> installed, string fallback)
+        // Word-родные семейства с полной кириллицей, за которыми Word не замечен в eastAsia-хинте.
+        private static readonly HashSet<string> CyrillicSafeFonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Times New Roman", "Arial", "Calibri", "Calibri Light", "Courier New",
+            "Cambria", "Georgia", "Verdana", "Tahoma", "Segoe UI", "Consolas"
+        };
+
+        /// <summary>Чистая логика подстановки (под тест): установленный — оставить; кириллице — только сейф-лист.</summary>
+        internal static string ResolveFontName(string requested, string text, ICollection<string> installed, string fallback)
         {
             if (string.IsNullOrEmpty(requested))
                 return fallback;
-            return installed != null && installed.Contains(requested) ? requested : fallback;
+            if (installed == null || !installed.Contains(requested))
+                return fallback;
+            return HasCyrillic(text) && !CyrillicSafeFonts.Contains(requested) ? fallback : requested;
+        }
+
+        /// <summary>Есть ли в тексте кириллица (U+0400–U+04FF).</summary>
+        internal static bool HasCyrillic(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+            for (int i = 0; i < text.Length; i++)
+                if (text[i] >= 'Ѐ' && text[i] <= 'ӿ')
+                    return true;
+            return false;
         }
 
         private static readonly HashSet<string> InstalledFonts = LoadInstalledFonts();
