@@ -40,6 +40,20 @@ namespace ExcelMerger
             int writeUnits = order.Count;    // страниц к записи — вторая половина шкалы прогресса
             int totalSources = sources.Count;
 
+            // Быстрая проба: если НИ В ОДНОМ источнике нет текста — «скан» отклоняется сразу,
+            // без дорогого извлечения (полностраничные растры скана не декодируются вовсе).
+            // Смешанный ввод (текст + скан-файл или скан-страницы) идёт полным путём: страницы
+            // без текста переносятся полностраничными картинками, как и раньше.
+            bool anyText = false;
+            foreach (string src in sources)
+                if (PdfTextExtract.AnyPageHasText(src))
+                {
+                    anyText = true;
+                    break;
+                }
+            if (!anyText)
+                throw new MergeException(Loc.T("err.ocr.scanned"));
+
             // Извлечь текст каждого источника (весь файл); кэш по пути. Прогресс извлечения —
             // первая половина шкалы, по долям источников (внутри источника — по его страницам).
             var bySource = new Dictionary<string, List<PdfPageText>>(StringComparer.OrdinalIgnoreCase);

@@ -3,6 +3,49 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.4] — 2026-07-23
+
+### Added
+- **PDF → Word reads multi‑column layouts in the correct order.** Pages are decomposed by a
+  recursive XY‑cut over the empty gutters (horizontal bands into “floors”, a full‑height gap
+  inside a floor into columns), and each block is laid out with its own column geometry. A
+  two‑column header now comes out as coherent blocks — the left column in full, then the
+  right one — instead of lines from both columns interleaved one after another. The same cut
+  orders whole page blocks (paragraphs, tables, images), so a picture that belongs to the left
+  column stays with it. Single‑column pages are a single block and read exactly as before.
+- **Pseudo‑bold text (drawn twice with a ~0.3 pt offset) is de‑duplicated and set in real
+  bold.** Some generators imitate bold by painting every glyph twice; extraction used to
+  produce doubled letters (“74” became “7744”), and the doubling also hid the intended weight.
+  Duplicate glyphs are now dropped (the tolerance is far below the advance of genuinely
+  repeated characters, so “77” is never collapsed) and the affected words are written bold.
+- **Rotated edge text is filtered out.** Vertical strings along a page edge (common on
+  documents) used to shred into dozens of single‑character paragraphs wedged between normal
+  lines; text that is not horizontal is now skipped entirely.
+
+### Fixed
+- **First‑line indent survives a header.** The indent share used to be measured against
+  all paragraphs of a page, so a dozen short header lines diluted it below the threshold
+  and the body lost its indent. The share is now measured among justified paragraphs (with the
+  old page‑wide rule as a fallback for ragged‑right documents).
+- **Page margins account for images.** Margins were computed from words only: a logo
+  above the first line was pushed out of the top margin and shifted the whole page down by its
+  height, and a stamp below the last line inflated the bottom margin up to half a page — which,
+  combined with inline image insertion, spilled a one‑page document onto a second page. Margins
+  now cover words and images, and the bottom margin is capped (it only limits page fill, so
+  the cap cannot hurt fidelity).
+- **Inside a table cell, “label … value” rows are no longer split into separate columns** by
+  the new column detection: cell content is laid out without the vertical cut.
+- **Reading order of adjacent text lines no longer flips.** Blocks used to be grouped into a
+  “row band” by the closeness of their tops (±12 pt), which could reorder two neighbouring
+  lines by their left edges; a band now requires a real vertical overlap of at least half the
+  smaller height (as with words within a line), so stacked lines always read top to bottom
+  while genuinely side‑by‑side tables and images still read left to right.
+
+### Changed
+- **A scanned PDF is rejected instantly.** The scan check now runs before any page image is
+  decoded: a 15 MB scan is turned down in ~0.1 s without ~18 MB of raster data ever being
+  built, instead of ~3 s of wasted decoding.
+
 ## [1.16.3] — 2026-07-23
 
 ### Fixed

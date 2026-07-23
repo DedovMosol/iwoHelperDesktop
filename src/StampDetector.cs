@@ -150,8 +150,7 @@ namespace ExcelMerger
         {
             var hs = new List<double>(ws.Count);
             foreach (PdfWord w in ws) hs.Add(w.Height);
-            hs.Sort();
-            return hs.Count == 0 ? 0 : hs[(hs.Count - 1) / 2];
+            return MathUtil.Median(hs);
         }
     }
 }

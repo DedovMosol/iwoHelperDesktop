@@ -64,6 +64,34 @@ namespace ExcelMerger
             return ExtractCore(path, progress);
         }
 
+        /// <summary>
+        /// Есть ли хоть на одной странице файла текст (буквы). Дёшево: буквы разбираются вместе
+        /// со страницей, картинки НЕ декодируются (15-МБ скан — ~0.1 с против ~3 с и ~18 МБ
+        /// полного извлечения). Ошибка чтения — true: пусть полноценное извлечение упадёт со
+        /// своим понятным сообщением, проба не должна маскировать причину.
+        /// </summary>
+        public static bool AnyPageHasText(string path)
+        {
+            EmbeddedAssemblies.Ensure();
+            return AnyPageHasTextCore(path);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool AnyPageHasTextCore(string path)
+        {
+            try
+            {
+                using (UglyToad.PdfPig.PdfDocument doc = UglyToad.PdfPig.PdfDocument.Open(path))
+                {
+                    foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
+                        if (page.Letters != null && page.Letters.Count > 0)
+                            return true;
+                    return false;
+                }
+            }
+            catch { return true; }
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<PdfPageText> ExtractCore(string path, Action<int, int> progress)
         {
@@ -83,12 +111,21 @@ namespace ExcelMerger
                             bool bold = false, italic = false;
                             int color = 0;
                             string family = null;
+                            string text = w.Text;
                             if (w.Letters != null && w.Letters.Count > 0)
                             {
                                 UglyToad.PdfPig.Content.Letter first = w.Letters[0];
+                                // Повёрнутый текст (вертикальные служебные строки билетов) в поток
+                                // не пускаем: построчная сборка рассыпала бы его на посимвольные
+                                // «абзацы», вклинивающиеся между обычными строками.
+                                if (first.TextOrientation != UglyToad.PdfPig.Content.TextOrientation.Horizontal)
+                                    continue;
+                                bool pseudoBold;
+                                text = DedupDoubledGlyphs(w.Letters, text, out pseudoBold);
                                 size = first.PointSize;
                                 string fn = first.FontName ?? "";
-                                bold = fn.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0;
+                                // Жирность — из имени шрифта ИЛИ из двойной отрисовки (псевдо-жирный).
+                                bold = pseudoBold || fn.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0;
                                 italic = fn.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0
                                       || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0;
                                 color = ColorArgb(first.Color);
@@ -96,7 +133,7 @@ namespace ExcelMerger
                             }
                             words.Add(new PdfWord
                             {
-                                Text = w.Text,
+                                Text = text,
                                 Left = bb.Left,
                                 Right = bb.Right,
                                 Bottom = bb.Bottom,
@@ -127,10 +164,10 @@ namespace ExcelMerger
                             Lines = lines,
                             Tables = det.Tables
                         };
-                        SetMargins(pt, words, page.Width, page.Height);
                         pt.Images = ExtractImages(page, path);
                         if (stampImage != null)
                             pt.Images.Add(stampImage); // штамп — в общий поток изображений (порядок по TopPt)
+                        SetMargins(pt, words, pt.Images, page.Width, page.Height);
                         pages.Add(pt);
                         if (progress != null)
                             progress(pages.Count, pageCount);
@@ -142,6 +179,42 @@ namespace ExcelMerger
             {
                 throw new MergeException(string.Format(Loc.T("err.ocr.extractFailed"), Path.GetFileName(path), ex.Message));
             }
+        }
+
+        /// <summary>
+        /// Снять сдвоенные глифы «псевдо-жирного» с букв слова (чистая логика — в
+        /// <see cref="GlyphDedup"/>): текст пересобирается из оставшихся букв, pseudoBold —
+        /// двойная отрисовка была массовой (слово визуально жирное). Без дублей текст
+        /// возвращается как есть. Вызывать из ядра — тело ссылается на типы PdfPig.
+        /// </summary>
+        private static string DedupDoubledGlyphs(System.Collections.Generic.IReadOnlyList<UglyToad.PdfPig.Content.Letter> letters,
+            string text, out bool pseudoBold)
+        {
+            pseudoBold = false;
+            if (letters.Count < 2)
+                return text;
+            var glyphs = new GlyphInfo[letters.Count];
+            for (int i = 0; i < letters.Count; i++)
+            {
+                UglyToad.PdfPig.Content.Letter l = letters[i];
+                UglyToad.PdfPig.Core.PdfRectangle r = l.GlyphRectangle;
+                glyphs[i] = new GlyphInfo
+                {
+                    Value = l.Value,
+                    CenterX = (r.Left + r.Right) / 2,
+                    CenterY = (r.Bottom + r.Top) / 2,
+                    SizePt = l.PointSize
+                };
+            }
+            int dropped;
+            List<int> keep = GlyphDedup.Keep(glyphs, out dropped);
+            if (dropped == 0)
+                return text;
+            var sb = new System.Text.StringBuilder(keep.Count);
+            foreach (int k in keep)
+                sb.Append(letters[k].Value);
+            pseudoBold = GlyphDedup.LooksBold(keep.Count, dropped);
+            return sb.ToString();
         }
 
         /// <summary>
@@ -432,11 +505,20 @@ namespace ExcelMerger
             // иначе диагональ/кривая — не линовка
         }
 
-        /// <summary>Поля страницы из рамок текста (pt, ось Y вверх). Пустая страница — поля 0.</summary>
-        private static void SetMargins(PdfPageText pt, List<PdfWord> words, double pageW, double pageH)
+        // Кап нижнего поля: поле снизу не позиционирует контент (в отличие от верхнего), а лишь
+        // ограничивает заполнение листа. «Честное» огромное поле (у счёта текст кончается на
+        // середине листа → 336 pt) вместе с inline-вставкой наложенных печатей/подписей
+        // выталкивало документ на лишнюю страницу; кап безопасен — раньше листа разрыв не случится.
+        private const double BottomMarginMaxPt = 90;
+
+        /// <summary>
+        /// Поля страницы из рамок СОДЕРЖИМОГО — слов И изображений (pt, ось Y вверх). Только по
+        /// словам поля врут в обе стороны: логотип НАД первым словом «выталкивается» из верхнего
+        /// поля и сдвигает весь вывод вниз на свою высоту, а печать/подписи НИЖЕ последней
+        /// строки раздували нижнее поле до полустраницы. Пустая страница — поля 0. Чистая — под тест.
+        /// </summary>
+        internal static void SetMargins(PdfPageText pt, List<PdfWord> words, List<OcrImage> images, double pageW, double pageH)
         {
-            if (words.Count == 0)
-                return;
             double minL = double.MaxValue, maxR = double.MinValue, minB = double.MaxValue, maxT = double.MinValue;
             foreach (PdfWord w in words)
             {
@@ -445,10 +527,21 @@ namespace ExcelMerger
                 if (w.Bottom < minB) minB = w.Bottom;
                 if (w.Top > maxT) maxT = w.Top;
             }
+            if (images != null)
+                foreach (OcrImage img in images)
+                {
+                    double right = img.LeftPt + img.WidthPt, bottom = img.TopPt - img.HeightPt;
+                    if (img.LeftPt < minL) minL = img.LeftPt;
+                    if (right > maxR) maxR = right;
+                    if (bottom < minB) minB = bottom;
+                    if (img.TopPt > maxT) maxT = img.TopPt;
+                }
+            if (maxR < minL)
+                return; // ни слов, ни картинок — поля 0
             pt.LeftMarginPt = minL;
             pt.RightMarginPt = pageW - maxR;
             pt.TopMarginPt = pageH - maxT;
-            pt.BottomMarginPt = minB;
+            pt.BottomMarginPt = Math.Min(minB, BottomMarginMaxPt);
         }
 
         /// <summary>Цвет буквы PdfPig → 0xRRGGBB; null/чёрный → 0.</summary>
