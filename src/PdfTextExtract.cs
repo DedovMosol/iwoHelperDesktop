@@ -384,7 +384,12 @@ namespace ExcelMerger
                         if (b.Width <= 0 || b.Height <= 0)
                             continue;
 
-                        byte[] png = EncodePng(img);
+                        // Картинка с мягкой маской (SMask/Mask) — прозрачность: PdfPig её игнорирует
+                        // и заливает прозрачные области ЧЁРНЫМ (в Word получается чёрный фон у логотипа/
+                        // печати). Такую переносим рендер-кропом страницы Ghostscript-ом — он композитит
+                        // маску на белое, как она выглядит на странице. Прямой декод для неё пропускаем.
+                        bool masked = HasSoftMask(img);
+                        byte[] png = masked ? null : EncodePng(img);
                         // Декодер не справился (null) или выдал одноцветный мусор (напр. штрих-код
                         // чёрным ящиком) — фолбэк: рендерим страницу Ghostscript-ом и вырезаем картинку
                         // по её рамке. Так переносится любая картинка, как она выглядит.
@@ -395,9 +400,13 @@ namespace ExcelMerger
                                 pageRaster = PageRasterizer.RenderPage(pdfPath, page.Number);
                                 rasterTried = true;
                             }
-                            png = PageRasterizer.CropRegion(pageRaster, page.Width, page.Height,
+                            byte[] cropped = PageRasterizer.CropRegion(pageRaster, page.Width, page.Height,
                                 b.Left, b.Top, b.Width, b.Height);
-                            if (png == null || IsSolidColor(png))
+                            if (cropped != null && !IsSolidColor(cropped))
+                                png = cropped;
+                            else if (masked && (png == null || png.Length == 0))
+                                png = EncodePng(img); // нет Ghostscript — маскированную берём как есть (может быть чёрный фон), лучше чем терять
+                            if (png == null || png.Length == 0 || IsSolidColor(png))
                                 continue; // и фолбэк не помог (нет GS / область пустая) — пропускаем
                         }
 
@@ -419,6 +428,31 @@ namespace ExcelMerger
                     pageRaster.Dispose();
             }
             return result;
+        }
+
+        /// <summary>
+        /// Есть ли у картинки мягкая маска прозрачности (ключи SMask/Mask в словаре). PdfPig
+        /// такую маску не применяет — прозрачные области выходят чёрными. Сбой доступа к словарю —
+        /// считаем, что маски нет (обычный путь). Вызывать из ядра — тело ссылается на типы PdfPig.
+        /// </summary>
+        private static bool HasSoftMask(UglyToad.PdfPig.Content.IPdfImage img)
+        {
+            try
+            {
+                // Словарь картинки и его ключи — типы вендоренной сборки Tokens (не в ссылках проекта),
+                // поэтому через dynamic; ключ — NameToken, сравниваем по строковому виду («SMask»/«Mask»).
+                dynamic dict = img.ImageDictionary;
+                if (dict == null)
+                    return false;
+                foreach (dynamic kv in dict.Data)
+                {
+                    string k = kv.Key.ToString();
+                    if (k == "SMask" || k == "Mask")
+                        return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         private const double StampCropPadPt = 6.0; // отступ кропа, чтобы захватить рамку печати вокруг текста

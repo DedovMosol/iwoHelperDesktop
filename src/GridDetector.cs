@@ -30,6 +30,8 @@ namespace ExcelMerger
         private const int MinColumns = 2;
         private const int MinColumnSupport = 2;        // колонку образуют минимум два сегмента
         private const double MaxStraySegmentShare = 0.2; // больше выбросов мимо колонок — не сетка
+        private const double RowSpacingMinFactor = 0.4;   // зазор сверх типичного шага больше этой доли -> интервал группы
+        private const double RowSpacingMaxFactor = 3.0;   // кап интервала (доля типичного шага)
 
         /// <summary>Слова страницы → сетки-таблицы (Borderless) и остаток. Чистая — под тест.</summary>
         public static GridDetectResult Detect(IList<PdfWord> words)
@@ -185,6 +187,14 @@ namespace ExcelMerger
                 table.ColumnWidthsPt.Add(Math.Max(1, colRight - columns[c]));
             }
 
+            // Типичный шаг строк окна — чтобы вернуть группировку: где исходный зазор заметно
+            // больше типичного (пустая строка между группами полей чека), добавим интервал после
+            // строки. Иначе безлиновочная сетка выходит равномерно-плотной, теряя разбивку на группы.
+            var pitches = new List<double>();
+            for (int i = start; i < end; i++)
+                pitches.Add(lines[i].MidY - lines[i + 1].MidY);
+            double typicalPitch = MathUtil.Median(pitches);
+
             // Строки: сегменты раскладываются по колонкам; одиночный сегмент, накрывающий
             // соседние колонки (итоговая строка чека во всю ширину), получает colspan.
             for (int i = start; i <= end; i++)
@@ -228,6 +238,14 @@ namespace ExcelMerger
                             consumed.Add(w);
                     }
                     row.Cells.Add(cell);
+                }
+                // Лишний интервал перед следующей строкой (сверх типичного шага) = пустой промежуток
+                // группы в исходнике. Порог и кап — от шума и патологий.
+                if (i < end && typicalPitch > 0)
+                {
+                    double extra = (lines[i].MidY - lines[i + 1].MidY) - typicalPitch;
+                    if (extra > RowSpacingMinFactor * typicalPitch)
+                        row.SpaceAfterPt = Math.Min(extra, RowSpacingMaxFactor * typicalPitch);
                 }
                 table.Rows.Add(row);
             }

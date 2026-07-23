@@ -28,6 +28,24 @@ namespace ExcelMerger
     }
 
     /// <summary>
+    /// Узел дерева XY-разреза. Лист (<see cref="IsLeaf"/>) несёт метки боксов и рамку колонки;
+    /// внутренний узел несёт детей — либо ЭТАЖИ (стек сверху вниз, <see cref="SideBySide"/>=false),
+    /// либо КОЛОНКИ (бок о бок слева направо, SideBySide=true). Дерево нужно рендеру блоков, чтобы
+    /// выводить side-by-side колонки таблицей (шапка письма), а не стеком; порядок чтения (плоские
+    /// листья) из него получается обходом в порядке детей — совпадает с <see cref="XyCut.Order"/>.
+    /// </summary>
+    internal sealed class CutNode
+    {
+        public List<int> Tags;          // лист: метки боксов в порядке чтения; null — внутренний узел
+        public double ColumnLeft;
+        public double ColumnRight;
+        public List<CutNode> Children;  // внутренний узел: дети; null — лист
+        public bool SideBySide;         // внутренний: true — колонки (бок о бок), false — этажи (стек)
+
+        public bool IsLeaf { get { return Tags != null; } }
+    }
+
+    /// <summary>
     /// Рекурсивный XY-разрез — порядок чтения многоколоночной вёрстки. Область режется по
     /// пустым полосам: сначала ГОРИЗОНТАЛЬНЫЕ (пустые полосы во всю ширину делят её на этажи
     /// сверху вниз), затем в каждом этаже — ВЕРТИКАЛЬНЫЕ (пустые просветы во всю высоту этажа
@@ -44,7 +62,7 @@ namespace ExcelMerger
         // каждый уровень разреза строго уменьшает области, но ограничим явно.
         private const int MaxDepth = 8;
 
-        /// <summary>Параметры и результат одного разреза — чтобы не тянуть шесть аргументов по рекурсии.</summary>
+        /// <summary>Параметры одного разреза — чтобы не тянуть шесть аргументов по рекурсии.</summary>
         private sealed class CutContext
         {
             public IList<CutBox> Boxes;
@@ -52,22 +70,33 @@ namespace ExcelMerger
             public double VGapMin;          // минимальная ширина пустого просвета для колонки
             public double MinColumnExtent;  // колонка ниже этого по высоте — не колонка (подпись/дата в одной строке)
             public int MinColumnItems;      // и колонка из меньшего числа элементов — не колонка
-            public List<CutLeaf> Leaves;
         }
 
         /// <summary>
-        /// Разрезать боксы на блоки в порядке чтения. hGapMin/vGapMin — минимальные пустые
-        /// полосы (pt) для горизонтального/вертикального разреза; minColumnExtent и
-        /// minColumnItems — защита от ложных колонок (широкий пробел одной строки — «подпись …
-        /// дата» — не делит её на столбики: каждая колонка обязана быть достаточно высокой и
-        /// содержать несколько элементов, иначе вертикальный разрез отклоняется целиком).
+        /// Разрезать боксы на блоки в порядке чтения (плоские листья). Флэттен дерева
+        /// <see cref="OrderTree"/> в порядке детей — совпадает с прежним обходом. Параметры — см. OrderTree.
         /// </summary>
         public static List<CutLeaf> Order(IList<CutBox> boxes, double hGapMin, double vGapMin,
             double minColumnExtent, int minColumnItems)
         {
             var leaves = new List<CutLeaf>();
+            CutNode root = OrderTree(boxes, hGapMin, vGapMin, minColumnExtent, minColumnItems);
+            if (root != null)
+                Flatten(root, leaves);
+            return leaves;
+        }
+
+        /// <summary>
+        /// Разрезать боксы в ДЕРЕВО (<see cref="CutNode"/>): этажи (стек) и колонки (бок о бок).
+        /// hGapMin/vGapMin — минимальные пустые полосы (pt) для горизонтального/вертикального
+        /// разреза; minColumnExtent и minColumnItems — защита от ложных колонок (широкий пробел
+        /// одной строки — «подпись … дата» — не делит её на столбики). Пустой ввод — null.
+        /// </summary>
+        public static CutNode OrderTree(IList<CutBox> boxes, double hGapMin, double vGapMin,
+            double minColumnExtent, int minColumnItems)
+        {
             if (boxes == null || boxes.Count == 0)
-                return leaves;
+                return null;
             var all = new List<int>(boxes.Count);
             for (int i = 0; i < boxes.Count; i++)
                 all.Add(i);
@@ -77,48 +106,59 @@ namespace ExcelMerger
                 HGapMin = hGapMin,
                 VGapMin = vGapMin,
                 MinColumnExtent = minColumnExtent,
-                MinColumnItems = minColumnItems,
-                Leaves = leaves
+                MinColumnItems = minColumnItems
             };
             double left, right;
             HorizontalBounds(boxes, all, out left, out right);
-            CutFloors(ctx, all, MaxDepth, left, right);
-            return leaves;
+            return CutFloors(ctx, all, MaxDepth, left, right);
         }
 
-        /// <summary>Этажи области (сверху вниз); в каждом — попытка колонок. Нет этажей — сразу колонки.</summary>
-        private static void CutFloors(CutContext ctx, List<int> items, int depth, double colLeft, double colRight)
+        /// <summary>Листья дерева в порядке чтения (обход в порядке детей).</summary>
+        private static void Flatten(CutNode node, List<CutLeaf> acc)
+        {
+            if (node.IsLeaf)
+            {
+                var leaf = new CutLeaf { ColumnLeft = node.ColumnLeft, ColumnRight = node.ColumnRight };
+                leaf.Tags.AddRange(node.Tags);
+                acc.Add(leaf);
+                return;
+            }
+            foreach (CutNode child in node.Children)
+                Flatten(child, acc);
+        }
+
+        /// <summary>Этажи области (сверху вниз): узел-стек. Нет этажей — сразу колонки.</summary>
+        private static CutNode CutFloors(CutContext ctx, List<int> items, int depth, double colLeft, double colRight)
         {
             List<List<int>> floors = depth > 0 ? SplitAtGaps(ctx.Boxes, items, true, ctx.HGapMin) : null;
             if (floors == null)
-            {
-                CutColumns(ctx, items, depth, colLeft, colRight);
-                return;
-            }
+                return CutColumns(ctx, items, depth, colLeft, colRight);
+            var node = new CutNode { SideBySide = false, Children = new List<CutNode>(floors.Count) };
             foreach (List<int> floor in floors)
-                CutColumns(ctx, floor, depth - 1, colLeft, colRight);
+                node.Children.Add(CutColumns(ctx, floor, depth - 1, colLeft, colRight));
+            return node;
         }
 
-        /// <summary>Колонки этажа (слева направо); внутри колонки — снова этажи. Нет колонок — лист.</summary>
-        private static void CutColumns(CutContext ctx, List<int> items, int depth, double colLeft, double colRight)
+        /// <summary>Колонки этажа (слева направо): узел side-by-side. Нет колонок — лист.</summary>
+        private static CutNode CutColumns(CutContext ctx, List<int> items, int depth, double colLeft, double colRight)
         {
             List<List<int>> columns = depth > 0 ? SplitColumns(ctx, items) : null;
             if (columns == null)
             {
-                var leaf = new CutLeaf { ColumnLeft = colLeft, ColumnRight = colRight };
-                leaf.Tags.Capacity = items.Count;
+                var leaf = new CutNode { Tags = new List<int>(items.Count), ColumnLeft = colLeft, ColumnRight = colRight };
                 foreach (int i in items)
                     leaf.Tags.Add(ctx.Boxes[i].Tag);
-                ctx.Leaves.Add(leaf);
-                return;
+                return leaf;
             }
+            var node = new CutNode { SideBySide = true, Children = new List<CutNode>(columns.Count) };
             foreach (List<int> column in columns)
             {
                 // Новая колонка — новая опорная рамка для геометрии её содержимого.
                 double left, right;
                 HorizontalBounds(ctx.Boxes, column, out left, out right);
-                CutFloors(ctx, column, depth - 1, left, right);
+                node.Children.Add(CutFloors(ctx, column, depth - 1, left, right));
             }
+            return node;
         }
 
         /// <summary>

@@ -66,6 +66,12 @@
       <HintPath>build\pdfpig\UglyToad.PdfPig.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Tokens: тип DictionaryToken у IPdfImage.ImageDictionary (проверка SMask-прозрачности).
+         Только компиляция — сборка уже вшита ресурсом ниже и резолвится в рантайме. -->
+    <Reference Include="UglyToad.PdfPig.Tokens">
+      <HintPath>build\pdfpig\UglyToad.PdfPig.Tokens.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <!-- System.Memory нужен на этапе КОМПИЛЯЦИИ: тип ReadOnlyMemory в IPdfImage.RawBytes.
          Сама сборка уже вшита ресурсом (build\pdfpig\*.dll) и резолвится в рантайме. -->
     <Reference Include="System.Memory">
