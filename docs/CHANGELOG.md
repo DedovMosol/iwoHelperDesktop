@@ -6,6 +6,12 @@ versions follow [SemVer](https://semver.org/).
 ## [1.16.3] — 2026-07-23
 
 ### Fixed
+- **PDF merge/split: “could not save … a file with a user‑mapped section open.”** Saving the
+  result under the **same name** as one of the PDFs shown in the thumbnail grid failed, because
+  the thumbnail engine (`Windows.Data.Pdf`) loaded each displayed file straight from disk and
+  kept it memory‑mapped, so Windows blocked overwriting it. Thumbnails are now rendered from an
+  in‑memory copy, so a file shown in the grid is never locked on disk and can be overwritten by
+  the merge/split output. A regression guard covers this in the thumbnail self‑check.
 - **PDF → Word: “could not save” on some Word builds.** On a few Word versions/states the
   late‑bound `SaveAs2` call did not resolve and the conversion ended with an error
   (“…does not contain a definition for SaveAs2”). The save now falls back to the classic

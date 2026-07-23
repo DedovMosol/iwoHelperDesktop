@@ -205,15 +205,18 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Проверка, что рендер миниатюр на фоновом MTA-потоке (как в приложении)
-        /// не роняет процесс при выходе. Само наличие рендера не требуется
-        /// (на Windows Server движка PDF может не быть — это штатный фолбэк);
-        /// проверяется только чистое завершение. 0 = процесс завершился нормально.
+        /// Проверка рендера миниатюр на фоновом MTA-потоке (как в приложении): (1) процесс не
+        /// роняется при выходе; (2) РЕГРЕССИЯ ERROR_USER_MAPPED_FILE — пока рендерер жив (документ в
+        /// кэше), исходный файл НЕ отображён в память, поэтому его можно перезаписать под тем же
+        /// именем (иначе объединение/разделение не сохранит итог поверх показанного файла). Само
+        /// наличие рендера не требуется (на Windows Server движка PDF может не быть — штатный фолбэк):
+        /// если рендер не случился, файл и не грузился. 0 = ок; 1 = отрендеренный файл остался замаплен.
         /// </summary>
         private static int RunThumbCheck()
         {
             AttachConsole(-1);
             bool rendered = false;
+            bool overwritable = true; // по умолчанию — если рендер не случился, файл не мапился
             var worker = new System.Threading.Thread(delegate()
             {
                 string pdf = Path.Combine(Path.GetTempPath(), "thumbchk_" + Guid.NewGuid().ToString("N") + ".pdf");
@@ -224,6 +227,14 @@ namespace ExcelMerger
                     {
                         using (System.Drawing.Bitmap bmp = renderer.Render(pdf, 0, 100))
                             rendered = bmp != null;
+                        // Пока рендерер жив, перезаписать файл на месте (ровно та операция, что делает
+                        // сохранение объединения). Если WinRT держит файл замапленным — бросит
+                        // ERROR_USER_MAPPED_FILE, и overwritable=false.
+                        if (rendered)
+                        {
+                            try { PdfProbe.WriteOnePagePdf(pdf); }
+                            catch { overwritable = false; }
+                        }
                     }
                 }
                 catch { }
@@ -231,10 +242,13 @@ namespace ExcelMerger
             });
             worker.IsBackground = false; // дать потоку завершиться штатно
             worker.Start();
-            worker.Join();
-            WriteConsole("THUMBCHECK OK (rendered=" + rendered + ")");
-            FastExit.Now(0); // избегаем сбоя WinRT-финализации при выгрузке
-            return 0;
+            worker.Join(); // синхронизация: rendered/overwritable читаем после завершения потока
+            int code = rendered && !overwritable ? 1 : 0;
+            WriteConsole(code == 0
+                ? "THUMBCHECK OK (rendered=" + rendered + ", overwritable=" + overwritable + ")"
+                : "THUMBCHECK FAIL: отрендеренный файл остался замаплен (нельзя сохранить итог под тем же именем)");
+            FastExit.Now(code); // избегаем сбоя WinRT-финализации при выгрузке
+            return code; // недостижимо
         }
 
         /// <summary>
