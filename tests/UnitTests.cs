@@ -157,7 +157,19 @@ namespace ExcelMerger.Tests
             Run("UnderlineDetector: линия во всю ширину (разделитель) -> не подчёркнуто", TestUnderlineWideRule);
             Run("OcrLayout: левый сайдбар отделяется от тела (не перемешиваются)", TestSidebarSeparation);
             Run("OcrLayout: одноколоночный текст не делится (сайдбар не срабатывает)", TestNoSidebarSingleColumn);
-            Run("WordDocxWriter: порядок чтения (сверху вниз, бок о бок — слева направо)", TestReadingOrder);
+            Run("SetMargins: поля по словам И картинкам; нижнее — с капом", TestMarginsWithImages);
+            Run("GlyphDedup: сдвоенные глифы схлопываются, слово помечается жирным", TestGlyphDedupDoubled);
+            Run("GlyphDedup: настоящие соседние одинаковые символы («77») не склеиваются", TestGlyphDedupRealPair);
+            Run("GlyphDedup: единичный дубль чистится, но слово не жирное", TestGlyphDedupSparse);
+            Run("XyCut: колонки с общими базовыми линиями — левая целиком раньше правой", TestXyCutColumns);
+            Run("XyCut: этаж под колонками выводится после обеих колонок", TestXyCutFloorsThenColumns);
+            Run("XyCut: широкий пробел одной строки («подпись … дата») — не колонки", TestXyCutGuardSingleLine);
+            Run("XyCut: колонка из одного элемента — разрез отклонён", TestXyCutGuardThinColumn);
+            Run("OcrLayout: двухколоночная шапка — абзацы колонок не смешаны, левая раньше", TestOcrTwoColumnsSeparated);
+            Run("OcrLayout: ячейка таблицы (splitColumns=false) — «метка … число» одной строкой", TestOcrCellNoColumns);
+            Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
+            Run("WordDocxWriter.OrderedBlocks: колонки блоков — левая целиком раньше правой", TestOrderedBlocksColumns);
+            Run("WordDocxWriter: полоса по перекрытию — бок о бок слева направо, стопка строк сверху вниз", TestOrderedBlocksBands);
             Run("WordDocxWriter: центрированное изображение (логотип) -> по центру, врезка/печать -> нет", TestImageCentered);
             Run("PageRasterizer: рамка PDF (Y-вверх) -> пиксельный кроп, кламп по краю", TestCropRect);
 
@@ -2338,6 +2350,247 @@ namespace ExcelMerger.Tests
             AssertTrue(paras[0].Text.Contains("one") && paras[0].Text.Contains("four"), "все слова в одном абзаце");
         }
 
+        private static void TestMarginsWithImages()
+        {
+            // Логотип НАД первым словом и печать НИЖЕ последней строки должны входить в поля:
+            // только по словам верхнее поле сдвигало весь вывод вниз на высоту логотипа, а нижнее
+            // раздувалось до полустраницы (и выталкивало счёт на второй лист) — его ждёт кап.
+            var pt = new PdfPageText();
+            var words = new List<PdfWord> { W("x", 100, 700, 200, 10) };       // 100..300, 700..710
+            var images = new List<OcrImage>
+            {
+                new OcrImage { LeftPt = 180, TopPt = 785, WidthPt = 72, HeightPt = 77 },  // логотип выше слова
+                new OcrImage { LeftPt = 120, TopPt = 325, WidthPt = 113, HeightPt = 25 }  // печать на середине листа
+            };
+            PdfTextExtract.SetMargins(pt, words, images, 595, 842);
+            AssertEqual(57.0, pt.TopMarginPt, "верхнее поле — от логотипа, а не от первого слова");
+            AssertEqual(100.0, pt.LeftMarginPt, "левое поле — минимум по контенту");
+            AssertEqual(295.0, pt.RightMarginPt, "правое поле — от самого правого края контента");
+            AssertEqual(90.0, pt.BottomMarginPt, "нижнее поле ограничено капом");
+        }
+
+        // ---------- GlyphDedup (сдвоенные глифы псевдо-жирного) ----------
+
+        private static GlyphInfo G(string value, double cx, double size)
+        {
+            return new GlyphInfo { Value = value, CenterX = cx, CenterY = 100, SizePt = size };
+        }
+
+        private static string KeptText(IList<GlyphInfo> glyphs, List<int> keep)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (int k in keep) sb.Append(glyphs[k].Value);
+            return sb.ToString();
+        }
+
+        private static void TestGlyphDedupDoubled()
+        {
+            // «№74» отрисовано дважды со смещением 0.3 pt (как в ж/д билете, кегль 8.4):
+            // буквы в слове идут парами. Остаётся «№74», слово — жирное.
+            var glyphs = new List<GlyphInfo>
+            {
+                G("№", 10.0, 8.4), G("№", 10.3, 8.4),
+                G("7", 16.0, 8.4), G("7", 16.3, 8.4),
+                G("4", 21.0, 8.4), G("4", 21.3, 8.4)
+            };
+            int dropped;
+            List<int> keep = GlyphDedup.Keep(glyphs, out dropped);
+            AssertEqual("№74", KeptText(glyphs, keep), "дубли схлопнуты");
+            AssertEqual(3, dropped, "выброшено три дубля");
+            AssertTrue(GlyphDedup.LooksBold(keep.Count, dropped), "массовая двойная отрисовка = жирный");
+        }
+
+        private static void TestGlyphDedupRealPair()
+        {
+            // Настоящее «77»: одинаковые цифры на шаге ~половины кегля — НЕ дубль.
+            var glyphs = new List<GlyphInfo> { G("7", 10.0, 8.4), G("7", 14.2, 8.4) };
+            int dropped;
+            List<int> keep = GlyphDedup.Keep(glyphs, out dropped);
+            AssertEqual(2, keep.Count, "обе семёрки на месте");
+            AssertEqual(0, dropped, "дублей нет");
+        }
+
+        private static void TestGlyphDedupSparse()
+        {
+            // Один случайный дубль в обычном слове: текст чистится, но слово НЕ жирное.
+            var glyphs = new List<GlyphInfo>
+            {
+                G("с", 10, 10), G("л", 15, 10), G("л", 15.2, 10), G("о", 20, 10),
+                G("в", 25, 10), G("а", 30, 10), G("м", 35, 10), G("и", 40, 10)
+            };
+            int dropped;
+            List<int> keep = GlyphDedup.Keep(glyphs, out dropped);
+            AssertEqual("словами", KeptText(glyphs, keep), "дубль вычищен");
+            AssertEqual(1, dropped, "один дубль");
+            AssertTrue(!GlyphDedup.LooksBold(keep.Count, dropped), "единичный дубль — не жирный");
+        }
+
+        // ---------- XyCut (порядок чтения многоколоночной вёрстки) ----------
+
+        /// <summary>Бокс разреза: left/bottom — левый нижний угол (Y вверх), +ширина/высота.</summary>
+        private static CutBox CB(int tag, double left, double bottom, double width, double height)
+        {
+            return new CutBox { Tag = tag, Left = left, Right = left + width, Bottom = bottom, Top = bottom + height };
+        }
+
+        private static string TagsOf(CutLeaf leaf)
+        {
+            var parts = new List<string>();
+            foreach (int t in leaf.Tags) parts.Add(t.ToString());
+            return string.Join(",", parts);
+        }
+
+        private static void TestXyCutColumns()
+        {
+            // Две колонки, строки на ОБЩИХ базовых линиях (сортировка по Top их перемежает).
+            var boxes = new[]
+            {
+                CB(0, 0, 200, 40, 10),   CB(1, 100, 200, 40, 10),
+                CB(2, 0, 180, 40, 10),   CB(3, 100, 180, 40, 10),
+                CB(4, 0, 160, 45, 10),   CB(5, 100, 160, 40, 10)
+            };
+            List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
+            AssertEqual(2, leaves.Count, "два листа-колонки");
+            AssertEqual("0,2,4", TagsOf(leaves[0]), "левая колонка целиком раньше");
+            AssertEqual("1,3,5", TagsOf(leaves[1]), "правая колонка после");
+            AssertEqual(0.0, leaves[0].ColumnLeft, "рамка левой колонки: левый край");
+            AssertEqual(45.0, leaves[0].ColumnRight, "рамка левой колонки: правый край");
+            AssertEqual(100.0, leaves[1].ColumnLeft, "рамка правой колонки: левый край");
+        }
+
+        private static void TestXyCutFloorsThenColumns()
+        {
+            // Колонки + полноширинная строка ниже: сначала обе колонки, потом нижний этаж.
+            var boxes = new[]
+            {
+                CB(0, 0, 200, 40, 10),   CB(1, 100, 200, 40, 10),
+                CB(2, 0, 180, 40, 10),   CB(3, 100, 180, 40, 10),
+                CB(4, 0, 160, 45, 10),   CB(5, 100, 160, 40, 10),
+                CB(6, 0, 100, 140, 10)   // пустая полоса 160-110=50 над ней -> свой этаж
+            };
+            List<CutLeaf> leaves = XyCut.Order(boxes, 20, 30, 25, 2);
+            AssertEqual(3, leaves.Count, "две колонки + нижний этаж");
+            AssertEqual("0,2,4", TagsOf(leaves[0]), "левая колонка");
+            AssertEqual("1,3,5", TagsOf(leaves[1]), "правая колонка");
+            AssertEqual("6", TagsOf(leaves[2]), "нижний этаж последним");
+        }
+
+        private static void TestXyCutGuardSingleLine()
+        {
+            // «(подпись) …| (дата)»: широкий пробел ЕСТЬ, но колонки высотой в одну строку —
+            // разрез отклоняется, страница не читается «столбиками из одиночных слов».
+            var boxes = new[] { CB(0, 0, 100, 60, 10), CB(1, 300, 100, 40, 10) };
+            List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
+            AssertEqual(1, leaves.Count, "одна строка не делится на колонки");
+            AssertEqual("0,1", TagsOf(leaves[0]), "оба элемента в одном листе");
+        }
+
+        private static void TestXyCutGuardThinColumn()
+        {
+            // Справа один-единственный бокс: колонка из одного элемента — не колонка.
+            var boxes = new[]
+            {
+                CB(0, 0, 200, 40, 10),
+                CB(2, 0, 180, 40, 10),
+                CB(1, 100, 190, 40, 10)
+            };
+            List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
+            AssertEqual(1, leaves.Count, "колонка из одного элемента отклонена");
+        }
+
+        private static void TestOcrTwoColumnsSeparated()
+        {
+            // Двухколоночная шапка: строки колонок на общих базовых линиях. Абзацы не должны
+            // перемешаться (прежняя сортировка по Top читала «через строку»), левая — раньше.
+            var words = new List<PdfWord>
+            {
+                W("L1a", 0, 200, 35, 10), W("L1b", 40, 200, 35, 10),
+                W("R1a", 200, 200, 35, 10), W("R1b", 240, 200, 35, 10),
+                W("L2a", 0, 180, 35, 10), W("L2b", 40, 180, 35, 10),
+                W("R2a", 200, 180, 35, 10), W("R2b", 240, 180, 35, 10)
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            AssertEqual(2, paras.Count, "по абзацу на колонку");
+            AssertTrue(paras[0].Text.Contains("L1a") && paras[0].Text.Contains("L2b"), "левая колонка собрана целиком");
+            AssertTrue(!paras[0].Text.Contains("R1a"), "в левой нет слов правой");
+            AssertTrue(paras[1].Text.Contains("R1a") && paras[1].Text.Contains("R2b"), "правая колонка собрана целиком");
+            AssertTrue(!paras[1].Text.Contains("L1a"), "в правой нет слов левой");
+        }
+
+        private static void TestOcrCellNoColumns()
+        {
+            // Ячейка «Итого: … 112» с широким зазором между меткой и числом на КАЖДОЙ строке:
+            // без запрета колонок вертикальный разрез растащил бы метки и числа в два столбика.
+            var words = new List<PdfWord>
+            {
+                W("Итого:", 0, 200, 40, 10),   W("112", 200, 200, 30, 10),
+                W("НДС:", 0, 180, 40, 10),     W("20", 200, 180, 30, 10),
+                W("Всего:", 0, 160, 40, 10),   W("113", 200, 160, 30, 10)
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words, false).Paragraphs;
+            foreach (OcrParagraph p in paras)
+            {
+                bool label = p.Text.Contains("Итого") || p.Text.Contains("НДС") || p.Text.Contains("Всего");
+                bool number = p.Text.Contains("112") || p.Text.Contains("20") || p.Text.Contains("113");
+                AssertTrue(label == number, "метка и её число не разлучены: " + p.Text);
+            }
+        }
+
+        private static void TestOcrIndentWithHeader()
+        {
+            // Шапка (две колонки коротких рваных строк) над justified-телом с красной строкой:
+            // строки шапки не должны размыть долю отступов — отступ тела обязан сохраниться
+            // (гейт по justified-группам; раньше многострочная шапка обнуляла красную строку).
+            var words = new List<PdfWord>
+            {
+                // шапка: левая колонка (рваная справа)
+                W("H1a", 0, 300, 35, 10), W("H1b", 40, 300, 20, 10),
+                W("H2a", 0, 280, 35, 10), W("H2b", 40, 280, 35, 10),
+                // шапка: правая колонка (рваная)
+                W("A1a", 200, 300, 35, 10), W("A1b", 240, 300, 20, 10),
+                W("A2a", 200, 280, 35, 10), W("A2b", 240, 280, 30, 10),
+                // тело: justified с отступом 15 во всю ширину страницы (как в настоящем письме
+                // тело — самая широкая зона; рамка колонки этажа тела = рамка страницы)
+                W("B1a", 15, 200, 255, 10),
+                W("B2", 0, 188, 270, 10),
+                W("B3", 0, 176, 90, 10),
+                W("C1", 15, 160, 255, 10),
+                W("C2", 0, 148, 80, 10)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEqual(15.0, layout.FirstLineIndentPt, "красная строка тела пережила шапку");
+        }
+
+        private static OcrParagraph Para(string text, double left, double bottom, double width, double height)
+        {
+            var p = new OcrParagraph
+            {
+                TopPt = bottom + height,
+                LeftPt = left,
+                RightPt = left + width,
+                BottomPt = bottom
+            };
+            p.Runs.Add(new OcrRun { Text = text });
+            return p;
+        }
+
+        private static void TestOrderedBlocksColumns()
+        {
+            // Страница: две колонки абзацев (перекрываются по вертикали) + полноширинный абзац
+            // ниже. Порядок блоков: левая колонка целиком, правая целиком, затем нижний.
+            var page = new PdfPageText();
+            page.Paragraphs.Add(Para("L1", 100, 650, 200, 50));
+            page.Paragraphs.Add(Para("R1", 340, 640, 220, 50));
+            page.Paragraphs.Add(Para("L2", 100, 590, 200, 50));
+            page.Paragraphs.Add(Para("R2", 340, 580, 220, 50));
+            page.Paragraphs.Add(Para("F", 100, 500, 460, 40)); // этаж ниже (зазор 580-540=40)
+            List<WordDocxWriter.Block> blocks = WordDocxWriter.OrderedBlocks(page);
+            var order = new List<string>();
+            foreach (WordDocxWriter.Block b in blocks)
+                order.Add(b.Paragraph.Text);
+            AssertEqual("L1,L2,R1,R2,F", string.Join(",", order), "колонки целиком, потом нижний этаж");
+        }
+
         private static void TestCropRect()
         {
             // Страница 500×1000 pt отрендерена в 1000×2000 px (2 px/pt). Картинка Y-вверх:
@@ -2353,16 +2606,22 @@ namespace ExcelMerger.Tests
             AssertTrue(c.Y >= 0 && c.Y + c.Height <= 2000, "по вертикали в пределах");
         }
 
-        private static void TestReadingOrder()
+        private static void TestOrderedBlocksBands()
         {
-            // Выше по странице (больший Top) — раньше.
-            AssertTrue(WordDocxWriter.CompareReadingOrder(200, 0, 100, 0) < 0, "верхний блок раньше нижнего");
-            AssertTrue(WordDocxWriter.CompareReadingOrder(100, 0, 200, 0) > 0, "нижний блок позже верхнего");
-            // Одна строка-полоса (|dTop| <= 12): левее — раньше (таблицы бок о бок).
-            AssertTrue(WordDocxWriter.CompareReadingOrder(100, 50, 105, 300) < 0, "в одной полосе левый раньше правого");
-            AssertTrue(WordDocxWriter.CompareReadingOrder(100, 300, 100, 50) > 0, "в одной полосе правый позже левого");
-            // Разница по Top больше полосы — X не важен.
-            AssertTrue(WordDocxWriter.CompareReadingOrder(200, 900, 100, 0) < 0, "верхний раньше, несмотря на больший X");
+            // Соседние СТРОКИ (не перекрываются по вертикали, верхи ближе 12pt): строго сверху
+            // вниз — полоса «по близости верхов» переставляла бы их по X (пункты блока
+            // читались снизу вверх). Плюс пара сильно перекрытых блоков бок о бок: слева направо.
+            var page = new PdfPageText();
+            page.Paragraphs.Add(Para("upper", 20, 592, 200, 8));  // 592..600
+            page.Paragraphs.Add(Para("lower", 10, 580, 200, 8));  // 580..588, верхи различаются на 12
+            page.Paragraphs.Add(Para("right", 340, 450, 100, 100)); // бок о бок с left, перекрытие полное
+            page.Paragraphs.Add(Para("left", 20, 450, 100, 100));
+            List<WordDocxWriter.Block> blocks = WordDocxWriter.OrderedBlocks(page);
+            var order = new List<string>();
+            foreach (WordDocxWriter.Block b in blocks)
+                order.Add(b.Paragraph.Text);
+            AssertEqual("upper,lower,left,right", string.Join(",", order),
+                "строки сверху вниз, перекрытые бок о бок — слева направо");
         }
 
         private static void TestImageCentered()

@@ -98,44 +98,152 @@ namespace ExcelMerger
             catch { } // интервалы косметические — при сбое стиля просто наследуем шаблон
         }
 
-        private const double RowBandPt = 12; // блоки ближе этого по вертикали — одна «строка-полоса»
+        // Порядок блоков страницы (XY-разрез, XyCut): этаж — пустая полоса заметно шире
+        // межстрочной (иначе этажи режут каждый абзац, что безвредно, но просветы колонок
+        // ищутся в слишком мелких этажах); колонка — просвет уже канала двухколоночной шапки
+        // (≈22pt с учётом картинки, пересекающей канал), но шире любых межсловных зазоров.
+        // Колонка обязана быть существенной — см. параметры XyCut.Order.
+        private const double BlockFloorGapPt = 14;
+        private const double BlockColumnGapPt = 18;
+        private const double BlockColumnMinExtentPt = 24;
+        private const int BlockColumnMinItems = 2;
 
         /// <summary>Блок содержимого страницы: абзац, таблица или изображение (одно из полей задано).</summary>
-        private sealed class Block
+        internal sealed class Block
         {
             public OcrParagraph Paragraph;
             public OcrTable Table;
             public OcrImage Image;
-            public double Top;  // верх блока (Y, ось вверх) — основной порядок чтения
-            public double Left; // левый край — вторичный порядок для блоков в одной строке-полосе
+            public double Top;    // верх блока (Y, ось вверх) — основной порядок чтения внутри листа разреза
+            public double Left;   // левый край — вторичный порядок для блоков в одной строке-полосе
+            public double Right;  // правый/нижний края рамки — для XY-разреза страницы на этажи и колонки
+            public double Bottom;
         }
 
-        /// <summary>Абзацы, таблицы и изображения страницы в порядке чтения (сверху вниз, затем слева направо).</summary>
-        private static List<Block> OrderedBlocks(PdfPageText page)
+        /// <summary>
+        /// Абзацы, таблицы и изображения страницы в порядке чтения: XY-разрез рамок блоков
+        /// (<see cref="XyCut"/>) даёт этажи и колонки — левая колонка выводится ЦЕЛИКОМ раньше
+        /// правой (сортировка по Top перемежала бы их строки); внутри листа разреза — прежний
+        /// порядок «сверху вниз, в одной полосе слева направо». Одноколоночная страница — один
+        /// лист, порядок эквивалентен прежнему. Чистая — под тест.
+        /// </summary>
+        internal static List<Block> OrderedBlocks(PdfPageText page)
         {
             var blocks = new List<Block>();
             if (page.Paragraphs != null)
                 foreach (OcrParagraph par in page.Paragraphs)
-                    blocks.Add(new Block { Paragraph = par, Top = par.TopPt, Left = par.LeftPt });
+                    blocks.Add(new Block
+                    {
+                        Paragraph = par,
+                        Top = par.TopPt,
+                        Left = par.LeftPt,
+                        Right = par.RightPt,
+                        Bottom = par.BottomPt
+                    });
             if (page.Tables != null)
                 foreach (OcrTable table in page.Tables)
-                    blocks.Add(new Block { Table = table, Top = table.TopPt, Left = table.LeftPt });
+                    blocks.Add(new Block
+                    {
+                        Table = table,
+                        Top = table.TopPt,
+                        Left = table.LeftPt,
+                        Right = table.RightPt,
+                        Bottom = table.BottomPt
+                    });
             if (page.Images != null)
                 foreach (OcrImage img in page.Images)
-                    blocks.Add(new Block { Image = img, Top = img.TopPt, Left = img.LeftPt });
-            blocks.Sort(delegate(Block a, Block b) { return CompareReadingOrder(a.Top, a.Left, b.Top, b.Left); });
-            return blocks;
+                    blocks.Add(new Block
+                    {
+                        Image = img,
+                        Top = img.TopPt,
+                        Left = img.LeftPt,
+                        Right = img.LeftPt + img.WidthPt,
+                        Bottom = img.TopPt - img.HeightPt
+                    });
+
+            var boxes = new CutBox[blocks.Count];
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                Block b = blocks[i];
+                // Защита от некорректной рамки (правее левого, ниже верхнего) — не ломаем разрез.
+                double right = b.Right > b.Left ? b.Right : b.Left;
+                double bottom = b.Bottom <= b.Top ? b.Bottom : b.Top;
+                boxes[i] = new CutBox { Left = b.Left, Right = right, Bottom = bottom, Top = b.Top, Tag = i };
+            }
+            List<CutLeaf> leaves = XyCut.Order(boxes, BlockFloorGapPt, BlockColumnGapPt,
+                BlockColumnMinExtentPt, BlockColumnMinItems);
+
+            var ordered = new List<Block>(blocks.Count);
+            foreach (CutLeaf leaf in leaves)
+            {
+                var group = new List<Block>(leaf.Tags.Count);
+                foreach (int tag in leaf.Tags)
+                    group.Add(blocks[tag]);
+                OrderWithinLeaf(group, ordered);
+            }
+            return ordered;
         }
 
         /// <summary>
-        /// Порядок чтения: сверху вниз (больше Top — выше — раньше); блоки в одной строке-полосе
-        /// (|разница Top| ≤ RowBandPt, напр. таблицы бок о бок) — слева направо. Чистая — под тест.
+        /// Порядок блоков внутри листа разреза: сверху вниз; блоки одной «строки-полосы» —
+        /// слева направо. Полоса собирается по РЕАЛЬНОМУ вертикальному перекрытию рамок не
+        /// меньше половины меньшей высоты (как строки из слов в OcrLayout): таблицы/печати бок
+        /// о бок перекрыты сильно и читаются слева направо, а соседние СТРОКИ текста не
+        /// перекрываются вовсе — полоса «по близости верхов» здесь переставляла бы их местами
+        /// (пункты блока читались снизу вверх). Вырожденная высота (линейка) — по знаку
+        /// перекрытия. Добавляет блоки листа в ordered.
         /// </summary>
-        internal static int CompareReadingOrder(double aTop, double aLeft, double bTop, double bLeft)
+        private static void OrderWithinLeaf(List<Block> group, List<Block> ordered)
         {
-            if (Math.Abs(aTop - bTop) > RowBandPt)
-                return bTop.CompareTo(aTop); // ось Y вверх: больший Top — выше — раньше
-            return aLeft.CompareTo(bLeft);   // одна полоса — левее раньше
+            group.Sort(delegate(Block a, Block b)
+            {
+                int c = b.Top.CompareTo(a.Top); // ось Y вверх: больший Top — выше — раньше
+                return c != 0 ? c : a.Left.CompareTo(b.Left);
+            });
+            var band = new List<Block>();
+            double bandTop = 0, bandBottom = 0;
+            foreach (Block blk in group)
+            {
+                double top = blk.Top;
+                double bottom = blk.Bottom <= top ? blk.Bottom : top; // защита от некорректной рамки
+                if (band.Count > 0 && BandOverlaps(bandTop, bandBottom, top, bottom))
+                {
+                    if (top > bandTop) bandTop = top;
+                    if (bottom < bandBottom) bandBottom = bottom;
+                }
+                else
+                {
+                    FlushBand(band, ordered);
+                    bandTop = top;
+                    bandBottom = bottom;
+                }
+                band.Add(blk);
+            }
+            FlushBand(band, ordered);
+        }
+
+        /// <summary>Перекрывается ли рамка [bottom..top] с полосой не меньше чем на половину меньшей высоты.</summary>
+        private static bool BandOverlaps(double bandTop, double bandBottom, double top, double bottom)
+        {
+            double overlap = Math.Min(bandTop, top) - Math.Max(bandBottom, bottom);
+            double minH = Math.Min(bandTop - bandBottom, top - bottom);
+            if (minH <= 0)
+                return overlap > 0; // вырожденная высота — достаточно пересечения по знаку
+            return overlap >= 0.5 * minH;
+        }
+
+        /// <summary>Высыпать полосу в порядок чтения: слева направо (при равенстве — выше раньше).</summary>
+        private static void FlushBand(List<Block> band, List<Block> ordered)
+        {
+            if (band.Count == 0)
+                return;
+            band.Sort(delegate(Block a, Block b)
+            {
+                int c = a.Left.CompareTo(b.Left);
+                return c != 0 ? c : b.Top.CompareTo(a.Top);
+            });
+            ordered.AddRange(band);
+            band.Clear();
         }
 
         private static void WriteParagraph(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, ListTemplates lists, ListState state)
@@ -514,15 +622,6 @@ namespace ExcelMerger
             return m < 0 ? 0 : (m > max ? max : m);
         }
 
-        private static double Median(List<double> values)
-        {
-            if (values.Count == 0)
-                return 0;
-            var copy = new List<double>(values);
-            copy.Sort();
-            return copy[(copy.Count - 1) / 2];
-        }
-
         /// <summary>0xRRGGBB → WdColor (BGR-порядок), как ожидает Word.Font.Color.</summary>
         private static int ToBgr(int argb)
         {
@@ -540,7 +639,7 @@ namespace ExcelMerger
             foreach (PdfPageText page in pages)
                 if (page.FirstLineIndentPt > 0)
                     vals.Add(page.FirstLineIndentPt);
-            return Median(vals);
+            return MathUtil.Median(vals);
         }
     }
 }

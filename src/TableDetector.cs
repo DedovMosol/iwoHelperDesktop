@@ -141,7 +141,7 @@ namespace ExcelMerger
             OcrTableCell[,] origin = BuildCells(xs, ys, vlines, hlines, cols, rows);
             AssignWords(origin, xs, ys, cols, rows, allWords, consumed);
 
-            var table = new OcrTable { TopPt = top, LeftPt = left };
+            var table = new OcrTable { TopPt = top, LeftPt = left, RightPt = right, BottomPt = bottom };
             for (int c = 0; c < cols; c++)
                 table.ColumnWidthsPt.Add(xs[c + 1] - xs[c]);
             for (int r = 0; r < rows; r++)
@@ -222,7 +222,8 @@ namespace ExcelMerger
             {
                 OcrTableCell cell = origin[kv.Key / cols, kv.Key % cols];
                 if (cell != null)
-                    cell.Paragraphs = OcrLayout.Analyze(kv.Value).Paragraphs;
+                    // Без поиска колонок: «метка … число» ячейки — одна строка, а не два столбика.
+                    cell.Paragraphs = OcrLayout.Analyze(kv.Value, false).Paragraphs;
             }
         }
 

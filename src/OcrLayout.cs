@@ -49,8 +49,10 @@ namespace ExcelMerger
     {
         public List<OcrRun> Runs = new List<OcrRun>();
         public OcrAlignment Alignment = OcrAlignment.Justify;
-        public double TopPt;  // верх абзаца (Y первой строки, ось вверх) — для порядка с изображениями
-        public double LeftPt; // левый край абзаца — вторичный порядок (левее — раньше в одной строке-полосе)
+        public double TopPt;    // верх абзаца (Y первой строки, ось вверх) — для порядка с изображениями
+        public double LeftPt;   // левый край абзаца — вторичный порядок (левее — раньше в одной строке-полосе)
+        public double RightPt;  // правый край рамки абзаца — для XY-порядка блоков страницы (колонки)
+        public double BottomPt; // нижний край рамки абзаца
 
         // Список: вид маркера в начале абзаца и номер (для нумерованного). None — обычный абзац.
         // ListContentStart — индекс в Text, с которого идёт содержимое (маркер снимается при записи —
@@ -72,10 +74,10 @@ namespace ExcelMerger
     }
 
     /// <summary>
-    /// Порядок чтения born-digital PDF: слова с рамками → строки → абзацы
-    /// (сверху вниз, слева направо). Рассчитан на одноколоночную вёрстку (типичный
-    /// экспорт из Word); многоколоночную сюда не тащим — это отдельная задача
-    /// (PdfPig DLA). Чистая логика без типов PdfPig — покрыта юнит-тестами.
+    /// Порядок чтения born-digital PDF: слова с рамками → блоки страницы (XY-разрез:
+    /// этажи и колонки, <see cref="XyCut"/>) → строки → абзацы (сверху вниз, слева направо;
+    /// левая колонка целиком раньше правой). Одноколоночная страница — один блок, разбор
+    /// эквивалентен прежнему построчному. Чистая логика без типов PdfPig — покрыта юнит-тестами.
     /// </summary>
     internal static class OcrLayout
     {
@@ -123,13 +125,22 @@ namespace ExcelMerger
         // зазора: в узких шрифтах (напр. Calibri Light) пробел ≈ 0.18 кегля, поэтому прежние 0.2
         // роняли настоящие пробелы и слепляли слова («СЛОВОСЛОВО»). 0.08 надёжно ниже.
         private const double SpaceGapFactor = 0.08;
-        // Разделение узкой левой колонки-сайдбара от тела. Внутристрочный зазор больше
-        // ColumnGapFactor×em — граница колонок; сайдбар-сегмент начинается левее поля тела не
-        // меньше чем на SidebarBodyGapFactor×em; активируется, только если так делятся ≥ MinSplitLines
-        // строк (иначе одноколоночный текст — не трогаем) и обе части существенны.
-        private const double ColumnGapFactor = 3.0;
-        private const double SidebarBodyGapFactor = 2.0;
-        private const int MinSplitLines = 2;
+        // Разрез страницы на блоки (XyCut). Просвет колонок — в долях кегля (у шапки письма
+        // канал ≈29–42pt при кегле ~11, у justified-текста межсловные зазоры < 0.4 кегля —
+        // запас многократный). Колонка обязана быть высокой (не «подпись … дата» одной строки)
+        // и непустой. Нижний порог пустой полосы этажа — от вырожденных метрик.
+        private const double ColumnGapEmFactor = 2.5;
+        private const double ColumnMinExtentEmFactor = 2.2;
+        private const int ColumnMinWords = 2;
+        private const double MinCutGapPt = 2.0;
+        // Порог пустой полосы этажа — от ТИПИЧНОГО просвета между рамками соседних строк
+        // (не от шага базовых линий: при разнородных кеглях шапки и тела связь «шаг − высота»
+        // рассыпается, и порог задирается выше зазоров между зонами шапки — у письма зоны
+        // 18.7–26.4pt при межстрочных 12.8pt). Плюс нижняя планка в долях кегля: этаж,
+        // нарезанный ПО СТРОКАМ плотного текста, схлопнул бы зону колонок (в этаже из одной
+        // строки вертикальному просвету не хватает высоты MinColumnExtent).
+        private const double FloorGapFactor = 1.35;
+        private const double FloorMinEmFactor = 1.2;
 
         /// <summary>Итог разбора страницы: абзацы и измеренный отступ первой строки (0 — без красной строки).</summary>
         internal sealed class OcrPageLayout
@@ -161,41 +172,113 @@ namespace ExcelMerger
         /// </summary>
         public static OcrPageLayout Analyze(IList<PdfWord> words)
         {
-            List<Line> lines = ToLines(words);
-            // Левая узкая колонка-сайдбар (метки/даты резюме и т.п.) сбивает геометрию тела и
-            // «влезает» в его строки. Если она распознана — тело и сайдбар разбираются ОТДЕЛЬНО
-            // (у каждого своя геометрия), а абзацы сводятся по вертикали в OrderedBlocks (по TopPt).
-            ColumnSplit split = TrySplitSidebar(lines);
-            if (split != null)
-            {
-                OcrPageLayout body = AnalyzeLines(ToLines(split.Body));
-                OcrPageLayout side = AnalyzeLines(ToLines(split.Sidebar));
-                var merged = new OcrPageLayout { FirstLineIndentPt = body.FirstLineIndentPt };
-                merged.Paragraphs.AddRange(body.Paragraphs);
-                merged.Paragraphs.AddRange(side.Paragraphs); // порядок неважен — OrderedBlocks сортирует по TopPt
-                return merged;
-            }
-            return AnalyzeLines(lines);
+            return Analyze(words, true);
         }
 
-        /// <summary>Разбор уже сгруппированных строк в абзацы (ядро Analyze без разделения колонок).</summary>
-        private static OcrPageLayout AnalyzeLines(List<Line> lines)
+        /// <summary>
+        /// Разбор с управлением колонками: содержимое ЯЧЕЙКИ таблицы разбирается БЕЗ поиска
+        /// колонок (splitColumns=false) — у ячейки многоколоночной вёрстки не бывает, а «метка
+        /// слева … число справа» через широкий зазор — одна строка, которую вертикальный разрез
+        /// растащил бы на столбики («Итого:»-метки отдельно от сумм). Этажи (горизонтальные
+        /// разрезы) остаются — они совпадают с разрывами абзацев и безвредны.
+        /// </summary>
+        internal static OcrPageLayout Analyze(IList<PdfWord> words, bool splitColumns)
         {
             var result = new OcrPageLayout();
-            if (lines.Count == 0)
+            if (words == null || words.Count == 0)
                 return result;
+
+            // Метрики страницы для порогов разреза — по строкам ВСЕЙ страницы. В многоколоночной
+            // вёрстке строки соседних колонок перемежаются и типичный шаг занижается — это лишь
+            // добавляет горизонтальных разрезов (безвредно: порядок этажей совпадает с «сверху
+            // вниз»), а колонки ищутся внутри каждого этажа по своим просветам.
+            List<Line> pageLines = ToLines(words);
+            var pageHeights = new List<double>(pageLines.Count);
+            foreach (Line ln in pageLines)
+                pageHeights.Add(ln.Height);
+            double em = MathUtil.Median(pageHeights);
+            if (em <= 0) em = 1;
+            // Порог этажа — по типичному просвету между рамками строк: этаж появляется на
+            // полосах заметно шире межстрочных (границы зон и абзацев). Разрез, совпадающий с
+            // разрывом абзаца, безвреден — те же абзацы получаются поблочно (покрыто тестами).
+            double hGapMin = pageLines.Count < 2
+                ? double.MaxValue
+                : Math.Max(MinCutGapPt,
+                    Math.Max(FloorGapFactor * TypicalLineGap(pageLines), FloorMinEmFactor * em));
+
+            var boxes = new CutBox[words.Count];
+            for (int i = 0; i < words.Count; i++)
+            {
+                PdfWord w = words[i];
+                boxes[i] = new CutBox { Left = w.Left, Right = w.Right, Bottom = w.Bottom, Top = w.Top, Tag = i };
+            }
+            // Запрет колонок = «бесконечный» просвет: этажи режутся как обычно, колонки — никогда.
+            double vGapMin = splitColumns ? ColumnGapEmFactor * em : double.MaxValue;
+            List<CutLeaf> leaves = XyCut.Order(boxes, hGapMin, vGapMin,
+                ColumnMinExtentEmFactor * em, ColumnMinWords);
+
+            // Красная строка решается по ВСЕЙ странице (группы всех блоков разом): у отдельного
+            // этажа/колонки абзацев мало, порознь порог IndentedShare не набирался бы.
+            var stats = new IndentStats();
+            foreach (CutLeaf leaf in leaves)
+            {
+                var regionWords = new List<PdfWord>(leaf.Tags.Count);
+                foreach (int tag in leaf.Tags)
+                    regionWords.Add(words[tag]);
+                AnalyzeRegion(ToLines(regionWords), leaf.ColumnLeft, leaf.ColumnRight,
+                    result.Paragraphs, stats);
+            }
+            result.FirstLineIndentPt = stats.DocumentIndent();
+            return result;
+        }
+
+        /// <summary>
+        /// Сбор отступов первых строк по странице для решения о красной строке. Основной
+        /// признак — доля отступов среди JUSTIFIED-групп: красная строка — атрибут выключенного
+        /// по ширине тела, а шапки/блокы (короткие Left-строки) её долю иначе размывают —
+        /// двухколоночное письмо теряло отступ тела из-за полутора десятков строк блока.
+        /// Фолбэк — прежняя доля по всем группам: рваный справа (ragged) документ с отступами
+        /// не имеет justified-групп, но отступ у него настоящий.
+        /// </summary>
+        private sealed class IndentStats
+        {
+            public int Groups;            // все группы страницы
+            public int JustifiedGroups;   // из них — с выключкой по ширине
+            public readonly List<double> Indents = new List<double>();          // отступы некентрированных групп
+            public readonly List<double> JustifiedIndents = new List<double>(); // из них — у justified-групп
+
+            /// <summary>Отступ красной строки страницы; 0 — не воспроизводим (см. описание класса).</summary>
+            public double DocumentIndent()
+            {
+                if (JustifiedGroups >= 2 && JustifiedIndents.Count >= (int)Math.Ceiling(JustifiedGroups * IndentedShare))
+                    return MathUtil.Median(JustifiedIndents);
+                if (Groups >= 2 && Indents.Count >= (int)Math.Ceiling(Groups * IndentedShare))
+                    return MathUtil.Median(Indents);
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Разбор строк одного блока (этаж/колонка XY-разреза) в абзацы (порядок чтения внутри
+        /// блока). colLeft/colRight — рамка КОЛОНКИ блока: центрирование, красная строка и
+        /// выключка считаются от полей колонки, а не от рамки самого блока — узкий блок (одна
+        /// центрированная строка титула, отрезанная этажом) иначе терял бы центрирование.
+        /// Абзацы добавляются в paragraphs; отступы первых строк и число групп копятся в stats
+        /// (красную строку решает Analyze по всем блокам страницы).
+        /// </summary>
+        private static void AnalyzeRegion(List<Line> lines, double colLeft, double colRight,
+            List<OcrParagraph> paragraphs, IndentStats stats)
+        {
+            if (lines.Count == 0)
+                return;
             MarkScripts(lines); // пометить надстрочные/подстрочные слова
 
-            // Геометрия страницы: левое/правое поле, типичный кегль, признак выключки.
-            double bodyLeft = double.MaxValue, bodyRight = double.MinValue;
+            // Геометрия блока: поля колонки, типичный кегль блока, признак выключки.
+            double bodyLeft = colLeft, bodyRight = colRight;
             var heights = new List<double>(lines.Count);
             foreach (Line ln in lines)
-            {
-                if (ln.Left < bodyLeft) bodyLeft = ln.Left;
-                if (ln.Right > bodyRight) bodyRight = ln.Right;
                 heights.Add(ln.Height);
-            }
-            double em = Median(heights);
+            double em = MathUtil.Median(heights);
             if (em <= 0) em = 1;
             double width = bodyRight - bodyLeft;
             if (width <= 0) width = 1;
@@ -247,17 +330,24 @@ namespace ExcelMerger
 
             // Абзацы: раны с форматом + выравнивание; сбор отступов первых строк (исключая центрирование).
             double maxIndent = MaxIndentFraction * width;
-            var indents = new List<double>();
             for (int gi = 0; gi < groups.Count; gi++)
             {
                 List<Line> g = groups[gi];
+                double right = double.MinValue, bottom = double.MaxValue;
+                foreach (Line ln in g)
+                {
+                    if (ln.Right > right) right = ln.Right;
+                    if (ln.Bottom < bottom) bottom = ln.Bottom;
+                }
                 var para = new OcrParagraph
                 {
                     Runs = BuildRuns(g),
                     // Центрированность решена на уровне прогона; иначе — выключка или левый край.
                     Alignment = groupCentered[gi] ? OcrAlignment.Center : DetectAlignment(g, bodyRight, em),
                     TopPt = g[0].Top,
-                    LeftPt = g[0].Left
+                    LeftPt = g[0].Left,
+                    RightPt = right,
+                    BottomPt = bottom
                 };
                 if (para.Alignment != OcrAlignment.Center)
                 {
@@ -266,118 +356,20 @@ namespace ExcelMerger
                     para.ListNumber = m.Number;
                     para.ListContentStart = m.ContentStart;
                 }
-                result.Paragraphs.Add(para);
+                paragraphs.Add(para);
                 // Красную строку меряем ТОЛЬКО по нецентрированным абзацам: у центрированного блока
                 // левый край — это центрирование, а не отступ, и он исказил бы медиану красной строки.
+                if (para.Alignment == OcrAlignment.Justify)
+                    stats.JustifiedGroups++;
                 double ind = g[0].Left - bodyLeft;
                 if (!groupCentered[gi] && ind > indentTol && ind <= maxIndent)
-                    indents.Add(ind);
-            }
-            if (groups.Count >= 2 && indents.Count >= (int)Math.Ceiling(groups.Count * IndentedShare))
-                result.FirstLineIndentPt = Median(indents);
-
-            return result;
-        }
-
-        /// <summary>Слова левого сайдбара и тела после разделения колонок.</summary>
-        private sealed class ColumnSplit
-        {
-            public List<PdfWord> Sidebar;
-            public List<PdfWord> Body;
-        }
-
-        /// <summary>
-        /// Распознать узкую левую колонку-сайдбар и вернуть слова тела/сайдбара, иначе null.
-        /// Признак: в строках есть большие внутренние зазоры (сайдбар-сегмент слева + тело справа);
-        /// поле тела — минимальный левый край сегментов ПОСЛЕ зазора; сайдбар — сегменты, начатые
-        /// заметно левее поля тела. Активируется только при ≥ MinSplitLines делящихся строках и
-        /// существенности обеих частей — иначе (одноколоночный текст) вернём null. Чистая — под тест.
-        /// </summary>
-        private static ColumnSplit TrySplitSidebar(List<Line> lines)
-        {
-            if (lines.Count < 4)
-                return null;
-            var heights = new List<double>(lines.Count);
-            foreach (Line ln in lines) heights.Add(ln.Height);
-            double em = Median(heights);
-            if (em <= 0)
-                return null;
-            double gapTol = ColumnGapFactor * em;
-
-            // Сегменты каждой строки (разрыв по зазору > gapTol) и левые края «правых» сегментов.
-            var segments = new List<Segment>();     // все сегменты всех строк
-            var afterGapLefts = new List<double>();  // левые края сегментов, перед которыми был зазор
-            int splitLines = 0;
-            foreach (Line ln in lines)
-            {
-                List<Segment> segs = SplitLineByGaps(ln, gapTol);
-                if (segs.Count > 1)
                 {
-                    splitLines++;
-                    for (int i = 1; i < segs.Count; i++)
-                        afterGapLefts.Add(segs[i].Left);
+                    stats.Indents.Add(ind);
+                    if (para.Alignment == OcrAlignment.Justify)
+                        stats.JustifiedIndents.Add(ind);
                 }
-                segments.AddRange(segs);
             }
-            if (splitLines < MinSplitLines || afterGapLefts.Count == 0)
-                return null;
-
-            double bodyLeft = Min(afterGapLefts);
-            double threshold = bodyLeft - SidebarBodyGapFactor * em;
-
-            var sidebar = new List<PdfWord>();
-            var body = new List<PdfWord>();
-            foreach (Segment s in segments)
-                (s.Left < threshold ? sidebar : body).AddRange(s.Words);
-
-            // Обе части должны быть существенны, иначе это не сайдбар-раскладка.
-            if (sidebar.Count < 3 || body.Count < 10)
-                return null;
-            return new ColumnSplit { Sidebar = sidebar, Body = body };
-        }
-
-        /// <summary>Отрезок строки без больших внутренних зазоров: левый край и его слова.</summary>
-        private sealed class Segment
-        {
-            public double Left;
-            public readonly List<PdfWord> Words = new List<PdfWord>();
-        }
-
-        /// <summary>Разбить строку на сегменты там, где зазор между соседними словами больше gapTol.</summary>
-        private static List<Segment> SplitLineByGaps(Line line, double gapTol)
-        {
-            var result = new List<Segment>();
-            var cur = new Segment { Left = line.Words[0].Left };
-            cur.Words.Add(line.Words[0]);
-            for (int i = 1; i < line.Words.Count; i++)
-            {
-                double gap = line.Words[i].Left - line.Words[i - 1].Right;
-                if (gap > gapTol)
-                {
-                    result.Add(cur);
-                    cur = new Segment { Left = line.Words[i].Left };
-                }
-                cur.Words.Add(line.Words[i]);
-            }
-            result.Add(cur);
-            return result;
-        }
-
-        private static double Min(List<double> values)
-        {
-            double m = double.MaxValue;
-            for (int i = 0; i < values.Count; i++) if (values[i] < m) m = values[i];
-            return m;
-        }
-
-        /// <summary>Медиана (нижняя при чётном числе). Чистая.</summary>
-        private static double Median(List<double> values)
-        {
-            if (values.Count == 0)
-                return 0;
-            var copy = new List<double>(values);
-            copy.Sort();
-            return copy[(copy.Count - 1) / 2];
+            stats.Groups += groups.Count;
         }
 
         /// <summary>
@@ -496,8 +488,8 @@ namespace ExcelMerger
                 var heights = new List<double>(ln.Words.Count);
                 var bottoms = new List<double>(ln.Words.Count);
                 foreach (PdfWord w in ln.Words) { heights.Add(w.Height); bottoms.Add(w.Bottom); }
-                double domH = Median(heights);
-                double domBottom = Median(bottoms);
+                double domH = MathUtil.Median(heights);
+                double domBottom = MathUtil.Median(bottoms);
                 if (domH <= 0)
                     continue;
                 foreach (PdfWord w in ln.Words)
@@ -689,6 +681,23 @@ namespace ExcelMerger
                     return c != 0 ? c : string.CompareOrdinal(a.Text ?? "", b.Text ?? "");
                 });
             return result;
+        }
+
+        /// <summary>
+        /// Типичный ПРОСВЕТ между рамками соседних строк (низ верхней − верх нижней), нижняя
+        /// медиана положительных: перекрытия (строки соседних колонок на близких высотах) и
+        /// слипшиеся рамки в счёт не идут. 0 — просветов нет (одна строка/сплошные перекрытия).
+        /// </summary>
+        private static double TypicalLineGap(List<Line> lines)
+        {
+            var gaps = new List<double>(lines.Count);
+            for (int i = 1; i < lines.Count; i++)
+            {
+                double gap = lines[i - 1].Bottom - lines[i].Top;
+                if (gap > 0)
+                    gaps.Add(gap);
+            }
+            return MathUtil.Median(gaps);
         }
 
         /// <summary>
