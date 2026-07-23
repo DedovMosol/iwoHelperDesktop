@@ -20,6 +20,9 @@ namespace ExcelMerger
     public sealed class OcrTableRow
     {
         public List<OcrTableCell> Cells = new List<OcrTableCell>();
+        // Доп. интервал после строки (pt) — для безлиновочных сеток, где исходник группирует
+        // поля пустыми промежутками (чек): равномерная плотная сетка иначе теряет группировку.
+        public double SpaceAfterPt;
     }
 
     /// <summary>

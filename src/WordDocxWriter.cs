@@ -57,8 +57,15 @@ namespace ExcelMerger
                         // считаются отступы конфайна центрированной колонки (см. WriteParagraphInto).
                         double textLeft = pages[p].LeftMarginPt;
                         double textRight = pages[p].WidthPt - pages[p].RightMarginPt;
-                        foreach (Block blk in OrderedBlocks(pages[p]))
+                        foreach (PageItem item in OrderedItems(pages[p]))
                         {
+                            if (item.IsBand)
+                            {
+                                ClearInheritedList(sel, listState); // таблица обрывает список
+                                WriteColumnBand(word, doc, sel, item, textLeft, textRight, tempDir, ref imgIndex);
+                                continue;
+                            }
+                            Block blk = item.Single;
                             if (blk.Paragraph != null)
                                 WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent, lists, listState, textLeft, textRight);
                             else
@@ -110,7 +117,11 @@ namespace ExcelMerger
         private const double BlockFloorGapPt = 14;
         private const double BlockColumnGapPt = 18;
         private const double BlockColumnMinExtentPt = 24;
-        private const int BlockColumnMinItems = 2;
+        // На уровне БЛОКОВ достаточно ОДНОГО существенного блока в колонке: «подпись слева —
+        // Ф.И.О. справа» и «Приложения: — список справа» — это одиночные (но высокие) блоки
+        // рядом. Одиночную короткую строку («(подпись) … (дата)») по-прежнему отсекает высотный
+        // гейт BlockColumnMinExtentPt. Словный уровень (OcrLayout) держит свой порог в 2 слова.
+        private const int BlockColumnMinItems = 1;
 
         /// <summary>Блок содержимого страницы: абзац, таблица или изображение (одно из полей задано).</summary>
         internal sealed class Block
@@ -124,46 +135,39 @@ namespace ExcelMerger
             public double Bottom;
         }
 
+        /// <summary>Элемент вывода страницы: одиночный блок ИЛИ side-by-side полоса колонок.</summary>
+        internal sealed class PageItem
+        {
+            public Block Single;               // одиночный блок (Columns == null)
+            public List<List<Block>> Columns;  // полоса: колонки блоков слева направо, внутри — сверху вниз
+            public double[] ColLeft;           // левые/правые границы колонок (pt) — для ширин ячеек
+            public double[] ColRight;
+            public bool IsBand { get { return Columns != null; } }
+        }
+
         /// <summary>
-        /// Абзацы, таблицы и изображения страницы в порядке чтения: XY-разрез рамок блоков
-        /// (<see cref="XyCut"/>) даёт этажи и колонки — левая колонка выводится ЦЕЛИКОМ раньше
-        /// правой (сортировка по Top перемежала бы их строки); внутри листа разреза — прежний
-        /// порядок «сверху вниз, в одной полосе слева направо». Одноколоночная страница — один
-        /// лист, порядок эквивалентен прежнему. Чистая — под тест.
+        /// Элементы страницы в порядке чтения (XY-дерево, <see cref="XyCut"/>). Обычный узел даёт
+        /// одиночные блоки; узел «бок о бок» (колонки этажа) с пригодным содержимым — одну полосу
+        /// (её рендер — безграничная таблица, колонки сидят рядом, как двухколоночная шапка), иначе
+        /// раскрывается последовательно. Одноколоночная страница — цепочка одиночных блоков, порядок
+        /// эквивалентен прежнему. Чистая — под тест.
         /// </summary>
-        internal static List<Block> OrderedBlocks(PdfPageText page)
+        internal static List<PageItem> OrderedItems(PdfPageText page)
         {
             var blocks = new List<Block>();
             if (page.Paragraphs != null)
                 foreach (OcrParagraph par in page.Paragraphs)
-                    blocks.Add(new Block
-                    {
-                        Paragraph = par,
-                        Top = par.TopPt,
-                        Left = par.LeftPt,
-                        Right = par.RightPt,
-                        Bottom = par.BottomPt
-                    });
+                    blocks.Add(new Block { Paragraph = par, Top = par.TopPt, Left = par.LeftPt, Right = par.RightPt, Bottom = par.BottomPt });
             if (page.Tables != null)
                 foreach (OcrTable table in page.Tables)
-                    blocks.Add(new Block
-                    {
-                        Table = table,
-                        Top = table.TopPt,
-                        Left = table.LeftPt,
-                        Right = table.RightPt,
-                        Bottom = table.BottomPt
-                    });
+                    blocks.Add(new Block { Table = table, Top = table.TopPt, Left = table.LeftPt, Right = table.RightPt, Bottom = table.BottomPt });
             if (page.Images != null)
                 foreach (OcrImage img in page.Images)
-                    blocks.Add(new Block
-                    {
-                        Image = img,
-                        Top = img.TopPt,
-                        Left = img.LeftPt,
-                        Right = img.LeftPt + img.WidthPt,
-                        Bottom = img.TopPt - img.HeightPt
-                    });
+                    blocks.Add(new Block { Image = img, Top = img.TopPt, Left = img.LeftPt, Right = img.LeftPt + img.WidthPt, Bottom = img.TopPt - img.HeightPt });
+
+            var items = new List<PageItem>(blocks.Count);
+            if (blocks.Count == 0)
+                return items;
 
             var boxes = new CutBox[blocks.Count];
             for (int i = 0; i < blocks.Count; i++)
@@ -174,18 +178,95 @@ namespace ExcelMerger
                 double bottom = b.Bottom <= b.Top ? b.Bottom : b.Top;
                 boxes[i] = new CutBox { Left = b.Left, Right = right, Bottom = bottom, Top = b.Top, Tag = i };
             }
-            List<CutLeaf> leaves = XyCut.Order(boxes, BlockFloorGapPt, BlockColumnGapPt,
+            CutNode root = XyCut.OrderTree(boxes, BlockFloorGapPt, BlockColumnGapPt,
                 BlockColumnMinExtentPt, BlockColumnMinItems);
+            WalkNode(root, blocks, items);
+            return items;
+        }
 
-            var ordered = new List<Block>(blocks.Count);
-            foreach (CutLeaf leaf in leaves)
+        /// <summary>Обход XY-дерева в элементы: лист → блоки; узел «бок о бок» → полоса (если пригоден); иначе вглубь.</summary>
+        private static void WalkNode(CutNode node, List<Block> blocks, List<PageItem> items)
+        {
+            if (node.IsLeaf)
             {
-                var group = new List<Block>(leaf.Tags.Count);
-                foreach (int tag in leaf.Tags)
-                    group.Add(blocks[tag]);
-                OrderWithinLeaf(group, ordered);
+                foreach (Block b in LeafBlocks(node, blocks))
+                    items.Add(new PageItem { Single = b });
+                return;
             }
+            if (node.SideBySide)
+            {
+                PageItem band = TryBuildBand(node, blocks);
+                if (band != null)
+                {
+                    items.Add(band);
+                    return;
+                }
+            }
+            foreach (CutNode child in node.Children)
+                WalkNode(child, blocks, items);
+        }
+
+        /// <summary>Блоки листа в порядке чтения (та же логика полос, что и раньше).</summary>
+        private static List<Block> LeafBlocks(CutNode leaf, List<Block> blocks)
+        {
+            var group = new List<Block>(leaf.Tags.Count);
+            foreach (int tag in leaf.Tags)
+                group.Add(blocks[tag]);
+            var ordered = new List<Block>(group.Count);
+            OrderWithinLeaf(group, ordered);
             return ordered;
+        }
+
+        /// <summary>Все блоки поддерева в порядке чтения (обход в порядке детей: этажи сверху вниз, колонки слева направо).</summary>
+        private static List<Block> CollectBlocks(CutNode node, List<Block> blocks)
+        {
+            if (node.IsLeaf)
+                return LeafBlocks(node, blocks);
+            var result = new List<Block>();
+            foreach (CutNode child in node.Children)
+                result.AddRange(CollectBlocks(child, blocks));
+            return result;
+        }
+
+        /// <summary>
+        /// Построить side-by-side полосу из узла-колонок, если она пригодна: ≥2 колонок, ни в одной
+        /// нет ТАБЛИЦЫ (вложенную рамочную таблицу в ячейку шапки не тащим) и минимум в двух колонках
+        /// есть абзац (чисто-картиночные пары — не шапка). Иначе null (обход раскроет последовательно).
+        /// </summary>
+        private static PageItem TryBuildBand(CutNode node, List<Block> blocks)
+        {
+            int n = node.Children.Count;
+            if (n < 2)
+                return null;
+            var cols = new List<List<Block>>(n);
+            var colLeft = new double[n];
+            var colRight = new double[n];
+            int columnsWithText = 0;
+            for (int c = 0; c < n; c++)
+            {
+                List<Block> col = CollectBlocks(node.Children[c], blocks);
+                if (col.Count == 0)
+                    return null;
+                bool hasText = false;
+                double left = double.MaxValue, right = double.MinValue;
+                foreach (Block b in col)
+                {
+                    if (b.Table != null)
+                        return null; // рамочная таблица в колонке — полосу не строим
+                    if (b.Paragraph != null)
+                        hasText = true;
+                    if (b.Left < left) left = b.Left;
+                    if (b.Right > right) right = b.Right;
+                }
+                if (hasText)
+                    columnsWithText++;
+                cols.Add(col);
+                colLeft[c] = left;
+                colRight[c] = right;
+            }
+            if (columnsWithText < 2)
+                return null;
+            return new PageItem { Columns = cols, ColLeft = colLeft, ColRight = colRight };
         }
 
         /// <summary>
@@ -476,7 +557,7 @@ namespace ExcelMerger
                         OcrTableCell cell = row.Cells[c];
                         if (cell.Covered || cell.Paragraphs == null || cell.Paragraphs.Count == 0)
                             continue;
-                        WriteCell(word, doc, wtable, r + 1, c + 1, cell); // Word адресует ячейки с 1
+                        WriteCell(word, doc, wtable, r + 1, c + 1, cell, row.SpaceAfterPt); // Word адресует ячейки с 1
                     }
                 }
 
@@ -517,8 +598,12 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Записать абзацы ячейки в её начало (не трогая маркер конца ячейки).</summary>
-        private static void WriteCell(dynamic word, dynamic doc, dynamic wtable, int row, int col, OcrTableCell cell)
+        /// <summary>
+        /// Записать абзацы ячейки в её начало (не трогая маркер конца ячейки). spaceAfterPt —
+        /// доп. интервал после последнего абзаца ячейки: у безлиновочной сетки так возвращается
+        /// пустой промежуток между группами полей (см. GridDetector); 0 — обычный случай.
+        /// </summary>
+        private static void WriteCell(dynamic word, dynamic doc, dynamic wtable, int row, int col, OcrTableCell cell, double spaceAfterPt)
         {
             dynamic cellRange = wtable.Cell(row, col).Range;
             cellRange.Collapse(WdCollapseStart); // в начало ячейки, чтобы не съесть маркер ячейки
@@ -530,6 +615,8 @@ namespace ExcelMerger
                     sel.TypeParagraph();
                 WriteParagraphInto(sel, doc, cell.Paragraphs[i], 0, true, 0, 0, 0); // в ячейке: без красной строки, без выключки, без списков, без конфайна
             }
+            if (spaceAfterPt > 0)
+                try { sel.ParagraphFormat.SpaceAfter = spaceAfterPt; } catch { } // интервал группы после строки-сетки
         }
 
         /// <summary>Ширина колонки в pt с нижней защитой (вырожденную колонку Word рисует криво).</summary>
@@ -547,22 +634,149 @@ namespace ExcelMerger
         /// </summary>
         private static void InsertImage(dynamic sel, OcrImage img, double pageWidthPt, string tempDir, ref int index)
         {
+            if (InsertImageCore(sel, img, tempDir, ref index, IsImageCentered(img.LeftPt, img.WidthPt, pageWidthPt)))
+                try { sel.TypeParagraph(); } catch { } // изображение на своей строке
+        }
+
+        /// <summary>
+        /// Ядро вставки inline-картинки в текущую позицию (БЕЗ завершающего перевода строки — им
+        /// управляет вызывающий: поток текста ставит абзац, ячейка полосы — сама). centered —
+        /// выравнивание абзаца картинки (в ячейке логотип/логотип центрируется). Возвращает true, если
+        /// картинка вставлена. Сбой одной картинки не срывает документ. DRY: общее ядро для потока и ячеек.
+        /// </summary>
+        private static bool InsertImageCore(dynamic sel, OcrImage img, string tempDir, ref int index, bool centered,
+            double leftIndent = 0, double rightIndent = 0)
+        {
             if (img == null || img.Png == null || img.Png.Length == 0)
-                return;
+                return false;
             string file = Path.Combine(tempDir, "img_" + index + ".png");
             index++;
             try
             {
                 File.WriteAllBytes(file, img.Png);
-                sel.ParagraphFormat.Alignment = IsImageCentered(img.LeftPt, img.WidthPt, pageWidthPt) ? WdAlignCenter : WdAlignLeft;
+                sel.ParagraphFormat.Alignment = centered ? WdAlignCenter : WdAlignLeft;
                 sel.ParagraphFormat.FirstLineIndent = 0;
+                sel.ParagraphFormat.LeftIndent = leftIndent;   // конфайн в колонку (логотип над блоком), 0 — обычно
+                sel.ParagraphFormat.RightIndent = rightIndent;
                 dynamic shape = sel.InlineShapes.AddPicture(file, false, true); // встроить в документ
                 shape.LockAspectRatio = 0; // msoFalse — задаём оба размера
                 shape.Width = ClampSize(img.WidthPt);
                 shape.Height = ClampSize(img.HeightPt);
-                sel.TypeParagraph(); // изображение на своей строке
+                return true;
             }
-            catch { } // одна картинка не должна сорвать конвертацию
+            catch { return false; } // одна картинка не должна сорвать конвертацию
+        }
+
+        /// <summary>
+        /// Вывести side-by-side полосу колонок безграничной таблицей 1×N: колонки сидят рядом (как
+        /// двухколоночная шапка — блок слева, блок справа), логотип/логотип центрируется в своей
+        /// ячейке над блоком. Ширины ячеек — по границам колонок (середина зазора между соседними),
+        /// от полей текстовой области. В ячейке абзацы центрируются в её ширине (DRY: тот же
+        /// <see cref="WriteParagraphInto"/> с inCell), картинки — <see cref="InsertImageCore"/>.
+        /// Сбой построения таблицы не срывает документ: колонки выводятся последовательно (фолбэк).
+        /// </summary>
+        private static void WriteColumnBand(dynamic word, dynamic doc, dynamic sel, PageItem band,
+            double textLeftPt, double textRightPt, string tempDir, ref int index)
+        {
+            int n = band.Columns.Count;
+
+            // Ведущая картинка колонки, стоящая ВЫШЕ всего текста полосы (логотип над блоком), выносится
+            // НАД таблицей и центрируется над своей колонкой — тогда строки колонок в таблице
+            // выравниваются по верху текста (блок встаёт вровень с блоком, а не с логотипом сверху).
+            double textTop = double.MinValue;
+            foreach (List<Block> col0 in band.Columns)
+                foreach (Block bb in col0)
+                    if (bb.Paragraph != null && bb.Top > textTop)
+                        textTop = bb.Top;
+            for (int c = 0; c < n; c++)
+            {
+                List<Block> col = band.Columns[c];
+                while (col.Count > 0 && col[0].Image != null && col[0].Bottom >= textTop)
+                {
+                    double li, ri;
+                    ColumnConfineIndents(true, band.ColLeft[c], band.ColRight[c], textLeftPt, textRightPt, out li, out ri);
+                    if (InsertImageCore(sel, col[0].Image, tempDir, ref index, true, li, ri))
+                        try { sel.TypeParagraph(); } catch { }
+                    col.RemoveAt(0);
+                }
+            }
+
+            double[] widths = BandColumnWidths(band, textLeftPt, textRightPt);
+            try
+            {
+                dynamic wtable = doc.Tables.Add(sel.Range, 1, n);
+                wtable.AllowAutoFit = false;
+                wtable.Borders.Enable = 0; // полоса без видимых границ
+                for (int c = 0; c < n; c++)
+                {
+                    try { wtable.Columns[c + 1].Width = ColWidth(widths[c]); }
+                    catch { }
+                }
+                for (int c = 0; c < n; c++)
+                {
+                    dynamic cellRange = wtable.Cell(1, c + 1).Range;
+                    cellRange.Collapse(WdCollapseStart);
+                    cellRange.Select();
+                    dynamic cellSel = word.Selection;
+                    List<Block> col = band.Columns[c];
+                    for (int i = 0; i < col.Count; i++)
+                    {
+                        if (i > 0)
+                            cellSel.TypeParagraph(); // каждый блок колонки — своим абзацем
+                        Block b = col[i];
+                        if (b.Paragraph != null)
+                            WriteParagraphInto(cellSel, doc, b.Paragraph, 0, true, 0, 0, 0); // центрируется в ячейке
+                        else if (b.Image != null)
+                            InsertImageCore(cellSel, b.Image, tempDir, ref index, true); // логотип по центру ячейки
+                    }
+                }
+                sel.Start = wtable.Range.End;
+                sel.Collapse(WdCollapseEnd);
+                sel.TypeParagraph(); // отделить полосу от следующего блока
+            }
+            catch
+            {
+                // Таблицу построить не удалось — выводим колонки просто по очереди (без выравнивания вбок).
+                foreach (List<Block> col in band.Columns)
+                    foreach (Block b in col)
+                    {
+                        try
+                        {
+                            if (b.Paragraph != null) { WriteParagraphInto(sel, doc, b.Paragraph, 0, false, 0, textLeftPt, textRightPt); sel.TypeParagraph(); }
+                            else if (b.Image != null) InsertImage(sel, b.Image, textRightPt + textLeftPt, tempDir, ref index);
+                        }
+                        catch { }
+                    }
+            }
+        }
+
+        /// <summary>
+        /// Ширины ячеек полосы (pt): граница между соседними колонками — середина зазора между их
+        /// рамками, крайние — по полям текстовой области. Так центрирование в ячейке совпадает с
+        /// исходным центром колонки. Вырожденные поля — фолбэк на рамки самих колонок. Чистая — под тест.
+        /// </summary>
+        internal static double[] BandColumnWidths(PageItem band, double textLeftPt, double textRightPt)
+        {
+            int n = band.Columns.Count;
+            double left = textLeftPt, right = textRightPt;
+            if (right <= left)
+            {
+                left = band.ColLeft[0];
+                right = band.ColRight[n - 1];
+                if (right <= left) right = left + n * MinColWidthPt;
+            }
+            var bound = new double[n + 1];
+            bound[0] = left;
+            bound[n] = right;
+            for (int c = 1; c < n; c++)
+                bound[c] = (band.ColRight[c - 1] + band.ColLeft[c]) / 2;
+            var widths = new double[n];
+            for (int c = 0; c < n; c++)
+            {
+                double w = bound[c + 1] - bound[c];
+                widths[c] = w > MinColWidthPt ? w : MinColWidthPt;
+            }
+            return widths;
         }
 
         // Изображение считаем центрированным, если зазоры до краёв страницы заметны (> этой доли

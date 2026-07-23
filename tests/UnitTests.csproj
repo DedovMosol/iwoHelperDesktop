@@ -38,6 +38,10 @@
     <Reference Include="UglyToad.PdfPig.Core">
       <HintPath>..\build\pdfpig\UglyToad.PdfPig.Core.dll</HintPath>
     </Reference>
+    <!-- Tokens: тип DictionaryToken у IPdfImage.ImageDictionary (см. src\PdfTextExtract.cs) -->
+    <Reference Include="UglyToad.PdfPig.Tokens">
+      <HintPath>..\build\pdfpig\UglyToad.PdfPig.Tokens.dll</HintPath>
+    </Reference>
     <!-- System.Memory: тип ReadOnlyMemory в IPdfImage.RawBytes (см. src\PdfTextExtract.cs) -->
     <Reference Include="System.Memory">
       <HintPath>..\build\pdfpig\System.Memory.dll</HintPath>

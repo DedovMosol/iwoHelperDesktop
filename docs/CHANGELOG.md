@@ -3,6 +3,25 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.6] — 2026-07-23
+
+### Added
+- **Two-column headers are laid out side by side.** A header area that the reading-order
+  analysis splits into columns (a header on the left, an recipient block on the right) is now
+  emitted as a borderless Word table, so the columns sit next to each other exactly as in the
+  original — a logo is centred above its column, and the right-hand block lines up with the top of
+  the left one — instead of being stacked one under another. Single-column pages and page-wide
+  content are unaffected.
+- **Label/value forms keep their vertical grouping.** In a borderless grid (a receipt), extra
+  space between groups of fields is measured from the source and reproduced as spacing after the
+  row, instead of collapsing every row to a uniform tight pitch.
+
+### Fixed
+- **Images with a soft transparency mask no longer come out on a black background.** The raw
+  decoder ignores such a mask and fills the transparent areas of a logo or a stamp with black.
+  The image is now rendered from the page instead, compositing the mask onto white as it looks
+  on the page.
+
 ## [1.16.5] — 2026-07-23
 
 ### Added

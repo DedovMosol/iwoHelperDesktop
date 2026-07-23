@@ -161,6 +161,7 @@ namespace ExcelMerger.Tests
             Run("ColumnConfineIndents: правая колонка -> левый отступ; левая -> правый; полная ширина -> нет", TestColumnConfine);
             Run("WordDocxWriter.HasCyrillic: кириллица / латиница / пусто", TestHasCyrillic);
             Run("GridDetector: широкий одиночный ряд -> ColSpan во всю ширину", TestGridColSpan);
+            Run("GridDetector: увеличенный зазор между группами -> интервал после строки", TestGridRowSpacing);
             Run("TableDetector: прочерк кусками (коллинеарные) -> LoneLines, не таблица", TestLoneCollinearRule);
             Run("TableDetector: линия внутри рамки таблицы -> не прочерк (LoneLines пуст)", TestRuleInsideTableExcluded);
             Run("GlyphDedup: сдвоенные глифы схлопываются, слово помечается жирным", TestGlyphDedupDoubled);
@@ -179,8 +180,9 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: двухколоночная шапка — абзацы колонок не смешаны, левая раньше", TestOcrTwoColumnsSeparated);
             Run("OcrLayout: ячейка таблицы (splitColumns=false) — «метка … число» одной строкой", TestOcrCellNoColumns);
             Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
-            Run("WordDocxWriter.OrderedBlocks: колонки блоков — левая целиком раньше правой", TestOrderedBlocksColumns);
-            Run("WordDocxWriter: полоса по перекрытию — бок о бок слева направо, стопка строк сверху вниз", TestOrderedBlocksBands);
+            Run("WordDocxWriter.OrderedItems: колонки -> side-by-side полоса (левая|правая), нижний одиночный", TestOrderedItemsColumns);
+            Run("WordDocxWriter.OrderedItems: внутри листа — строки сверху вниз, бок о бок слева направо", TestOrderedItemsWithinLeaf);
+            Run("WordDocxWriter.BandColumnWidths: границы ячеек по середине зазора колонок", TestBandColumnWidths);
             Run("WordDocxWriter: центрированное изображение (логотип) -> по центру, врезка/печать -> нет", TestImageCentered);
             Run("PageRasterizer: рамка PDF (Y-вверх) -> пиксельный кроп, кламп по краю", TestCropRect);
 
@@ -2434,6 +2436,27 @@ namespace ExcelMerger.Tests
             AssertTrue(last.Cells[1].Covered, "вторая ячейка накрыта");
         }
 
+        private static void TestGridRowSpacing()
+        {
+            // Пять строк пар: шаг 20, но перед последней зазор 32 (пустой промежуток группы, но в
+            // пределах одного окна сетки). Ожидаем интервал после 4-й строки (~зазор минус шаг), у остальных 0.
+            var words = new List<PdfWord>
+            {
+                WS("LblA", 0, 300, 40, 8, 8),  WS("ValA", 100, 300, 40, 8, 8),
+                WS("LblB", 0, 280, 40, 8, 8),  WS("ValB", 100, 280, 40, 8, 8),
+                WS("LblC", 0, 260, 40, 8, 8),  WS("ValC", 100, 260, 40, 8, 8),
+                WS("LblD", 0, 240, 40, 8, 8),  WS("ValD", 100, 240, 40, 8, 8),
+                WS("LblE", 0, 208, 40, 8, 8),  WS("ValE", 100, 208, 40, 8, 8) // зазор 32 перед этой
+            };
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEqual(1, r.Tables.Count, "одна сетка");
+            OcrTable t = r.Tables[0];
+            AssertEqual(5, t.Rows.Count, "пять строк");
+            AssertTrue(t.Rows[3].SpaceAfterPt > 10, "перед пустым промежутком — интервал после строки: " + t.Rows[3].SpaceAfterPt);
+            AssertEqual(0.0, t.Rows[0].SpaceAfterPt, "у плотных строк интервала нет");
+            AssertEqual(0.0, t.Rows[4].SpaceAfterPt, "последняя строка без интервала");
+        }
+
         private static void TestLoneCollinearRule()
         {
             // Прочерк пунктов, нарисованный тремя кусками на ОДНОЙ оси (дырки под «№»/«от»):
@@ -2773,21 +2796,31 @@ namespace ExcelMerger.Tests
             return p;
         }
 
-        private static void TestOrderedBlocksColumns()
+        private static string ColText(List<WordDocxWriter.Block> col)
         {
-            // Страница: две колонки абзацев (перекрываются по вертикали) + полноширинный абзац
-            // ниже. Порядок блоков: левая колонка целиком, правая целиком, затем нижний.
+            var t = new List<string>();
+            foreach (WordDocxWriter.Block b in col) t.Add(b.Paragraph != null ? b.Paragraph.Text : "<img>");
+            return string.Join(",", t);
+        }
+
+        private static void TestOrderedItemsColumns()
+        {
+            // Две колонки абзацев (перекрываются по вертикали, широкий просвет между ними) +
+            // полноширинный абзац ниже. Ожидаем: одна side-by-side полоса (левая|правая колонка),
+            // затем одиночный нижний блок — а НЕ перемешанные строки.
             var page = new PdfPageText();
-            page.Paragraphs.Add(Para("L1", 100, 650, 200, 50));
-            page.Paragraphs.Add(Para("R1", 340, 640, 220, 50));
-            page.Paragraphs.Add(Para("L2", 100, 590, 200, 50));
-            page.Paragraphs.Add(Para("R2", 340, 580, 220, 50));
-            page.Paragraphs.Add(Para("F", 100, 500, 460, 40)); // этаж ниже (зазор 580-540=40)
-            List<WordDocxWriter.Block> blocks = WordDocxWriter.OrderedBlocks(page);
-            var order = new List<string>();
-            foreach (WordDocxWriter.Block b in blocks)
-                order.Add(b.Paragraph.Text);
-            AssertEqual("L1,L2,R1,R2,F", string.Join(",", order), "колонки целиком, потом нижний этаж");
+            page.Paragraphs.Add(Para("L1", 100, 650, 180, 50)); // правый край 280
+            page.Paragraphs.Add(Para("R1", 340, 640, 200, 50)); // просвет 340-280=60
+            page.Paragraphs.Add(Para("L2", 100, 590, 180, 50));
+            page.Paragraphs.Add(Para("R2", 340, 580, 200, 50));
+            page.Paragraphs.Add(Para("F", 100, 500, 440, 40)); // этаж ниже (зазор 580-540=40)
+            List<WordDocxWriter.PageItem> items = WordDocxWriter.OrderedItems(page);
+            AssertEqual(2, items.Count, "полоса + нижний блок");
+            AssertTrue(items[0].IsBand, "первый элемент — side-by-side полоса");
+            AssertEqual(2, items[0].Columns.Count, "две колонки в полосе");
+            AssertEqual("L1,L2", ColText(items[0].Columns[0]), "левая колонка целиком");
+            AssertEqual("R1,R2", ColText(items[0].Columns[1]), "правая колонка целиком");
+            AssertTrue(!items[1].IsBand && items[1].Single.Paragraph.Text == "F", "нижний — одиночный блок");
         }
 
         private static void TestCropRect()
@@ -2805,22 +2838,40 @@ namespace ExcelMerger.Tests
             AssertTrue(c.Y >= 0 && c.Y + c.Height <= 2000, "по вертикали в пределах");
         }
 
-        private static void TestOrderedBlocksBands()
+        private static void TestBandColumnWidths()
         {
-            // Соседние СТРОКИ (не перекрываются по вертикали, верхи ближе 12pt): строго сверху
-            // вниз — полоса «по близости верхов» переставляла бы их по X (пункты блока
-            // читались снизу вверх). Плюс пара сильно перекрытых блоков бок о бок: слева направо.
+            // Колонки [100..280] и [340..540] на текстовой области 84..567: граница = середина
+            // зазора (280+340)/2=310; ширины ячеек = 310-84 и 567-310.
+            var band = new WordDocxWriter.PageItem
+            {
+                Columns = new List<List<WordDocxWriter.Block>> { new List<WordDocxWriter.Block>(), new List<WordDocxWriter.Block>() },
+                ColLeft = new double[] { 100, 340 },
+                ColRight = new double[] { 280, 540 }
+            };
+            double[] w = WordDocxWriter.BandColumnWidths(band, 84, 567);
+            AssertEqual(2, w.Length, "две ширины");
+            AssertEqual(226.0, w[0], "левая ячейка = 310-84");
+            AssertEqual(257.0, w[1], "правая ячейка = 567-310");
+        }
+
+        private static void TestOrderedItemsWithinLeaf()
+        {
+            // Внутри ОДНОГО листа (узкий просвет — не колонки): соседние строки строго сверху вниз
+            // (не переставлять по X), а перекрытые бок о бок блоки с узким зазором — слева направо.
             var page = new PdfPageText();
             page.Paragraphs.Add(Para("upper", 20, 592, 200, 8));  // 592..600
-            page.Paragraphs.Add(Para("lower", 10, 580, 200, 8));  // 580..588, верхи различаются на 12
-            page.Paragraphs.Add(Para("right", 340, 450, 100, 100)); // бок о бок с left, перекрытие полное
-            page.Paragraphs.Add(Para("left", 20, 450, 100, 100));
-            List<WordDocxWriter.Block> blocks = WordDocxWriter.OrderedBlocks(page);
+            page.Paragraphs.Add(Para("lower", 10, 580, 200, 8));  // 580..588 (не перекрыты по вертикали)
+            page.Paragraphs.Add(Para("right", 232, 450, 100, 100)); // левый край 232
+            page.Paragraphs.Add(Para("left", 20, 450, 200, 100));   // правый край 220, зазор 12 < порога колонки
+            List<WordDocxWriter.PageItem> items = WordDocxWriter.OrderedItems(page);
             var order = new List<string>();
-            foreach (WordDocxWriter.Block b in blocks)
-                order.Add(b.Paragraph.Text);
+            foreach (WordDocxWriter.PageItem it in items)
+            {
+                AssertTrue(!it.IsBand, "узкий зазор — не полоса, всё одиночными блоками");
+                order.Add(it.Single.Paragraph.Text);
+            }
             AssertEqual("upper,lower,left,right", string.Join(",", order),
-                "строки сверху вниз, перекрытые бок о бок — слева направо");
+                "строки сверху вниз, перекрытые бок о бок (узкий зазор) — слева направо");
         }
 
         private static void TestImageCentered()
