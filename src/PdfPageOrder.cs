@@ -9,7 +9,12 @@ namespace ExcelMerger
     /// </summary>
     public class PdfPageOrder
     {
+        private const int UndoLimit = 50; // хватает на сессию правок и не копит память
+
         private readonly List<PdfPageRef> _items = new List<PdfPageRef>();
+        // Стек снимков ПОРЯДКА для Ctrl+Z: копии списка ссылок. Ссылки общие с сеткой,
+        // поэтому откатывается только порядок/состав — повороты страниц не трогаются.
+        private readonly List<List<PdfPageRef>> _undo = new List<List<PdfPageRef>>();
 
         public int Count
         {
@@ -21,10 +26,40 @@ namespace ExcelMerger
             get { return _items[index]; }
         }
 
-        /// <summary>Очистить список (например, при открытии другого документа).</summary>
+        /// <summary>Есть что откатывать (для доступности Ctrl+Z).</summary>
+        public bool CanUndo
+        {
+            get { return _undo.Count > 0; }
+        }
+
+        /// <summary>
+        /// Снимок порядка ПЕРЕД пользовательским жестом (один жест — один снимок:
+        /// форма зовёт перед добавлением, переносом, удалением, вставкой). Стек ограничен.
+        /// </summary>
+        public void Checkpoint()
+        {
+            _undo.Add(new List<PdfPageRef>(_items));
+            if (_undo.Count > UndoLimit)
+                _undo.RemoveAt(0);
+        }
+
+        /// <summary>Откатить последний жест (Ctrl+Z). false — откатывать нечего.</summary>
+        public bool Undo()
+        {
+            if (_undo.Count == 0)
+                return false;
+            List<PdfPageRef> snapshot = _undo[_undo.Count - 1];
+            _undo.RemoveAt(_undo.Count - 1);
+            _items.Clear();
+            _items.AddRange(snapshot);
+            return true;
+        }
+
+        /// <summary>Очистить список (например, при открытии другого документа). История отката тоже очищается.</summary>
         public void Clear()
         {
             _items.Clear();
+            _undo.Clear();
         }
 
         /// <summary>Все страницы документа добавляются в конец списка по порядку.</summary>

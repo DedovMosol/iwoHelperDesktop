@@ -112,7 +112,10 @@ namespace ExcelMerger.Tests
             Run("ListReorder.MoveRange: перенос набора и позиция вставки", TestMoveRange);
             Run("ListReorder: AdjustedInsertIndex и NormalizeIndices", TestMoveRangeHelpers);
             Run("PdfPageOrder: InsertDocument/InsertAt в позицию с клампом", TestPdfOrderInsertAt);
-            Run("ThumbZoom.RenderWidthFor: DPI и границы", TestRenderWidthFor);
+            Run("ThumbZoom.RenderWidthFor: DPI, база и крупный зум, границы", TestRenderWidthFor);
+            Run("ThumbZoom.CellSize: ячейка с полосой номера, максимум 400", TestThumbZoomCell);
+            Run("PdfPageGrid.TileRectFromIcon: плитка по центру иконной зоны", TestTileRectFromIcon);
+            Run("PdfPageOrder: Checkpoint/Undo, лимит, повороты не откатываются", TestPdfOrderUndo);
             Run("ThumbZoom.PageCacheCapacity: бюджет → ёмкость с границами", TestPageCacheCapacity);
             Run("PdfPageGrid: PageLabel (позиция/исходная), TileKey с поворотом, FlipFor", TestGridLabelTileKey);
             Run("PdfPageGrid.PasteIndex: каретка, выделение, конец", TestPasteIndex);
@@ -120,6 +123,11 @@ namespace ExcelMerger.Tests
             Run("PdfSplitService.RotationAt: карта поворотов и границы", TestRotationAt);
             Run("Merge (живой): /Rotate пишется и складывается с исходным", TestMergeRotationLive);
             Run("SplitByRanges (живой): карта поворотов по индексу страницы", TestSplitRotationLive);
+            Run("PageRotation: MapPoint/MapBox по углам, Inverse, At, свап размеров", TestPageRotationMap);
+            Run("PageRotation.RotatePage: слова, линии H<->V, картинки (рамки+пиксели)", TestPageRotationRotatePage);
+            Run("PdfTextExtract.ApplyUnderscoreHeights: прочерк растёт, слово не трогается", TestUnderscoreHeights);
+            Run("PdfToWordService.BuildRotations: первый экземпляр решает, рост карты, null", TestBuildRotations);
+            Run("PDF->Word (живой): боковой текст выправляется поворотом страницы", TestExtractRotationLive);
             Run("PdfDrop.ExtractPaths: фильтр .pdf, несуществующие, пустой дроп", TestPdfDropExtract);
             Run("PdfPageGrid.DropInsertIndex: позиция дропа по метке/в конец", TestDropInsertIndex);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
@@ -565,13 +573,12 @@ namespace ExcelMerger.Tests
             AssertEqual(160, s.Width, "ширина");
             AssertTrue(s.Height > s.Width, "высота больше ширины (портрет): " + s.Height);
 
-            // Регрессия: плитка не должна превышать лимит ImageList (256×256)
-            // даже на максимуме масштаба — иначе WinForms бросает исключение.
-            System.Drawing.Size max = ThumbZoom.TileSize(ThumbZoom.MaxWidth);
-            AssertTrue(max.Width <= 256 && max.Height <= 256,
-                "плитка в пределах 256: " + max.Width + "x" + max.Height);
+            // Сетка owner-draw: лимита ImageList 256×256 больше нет, но ширина клампится
+            // диапазоном масштаба [MinWidth..MaxWidth].
             System.Drawing.Size over = ThumbZoom.TileSize(10000);
-            AssertTrue(over.Width <= 256 && over.Height <= 256, "кламп сверх лимита");
+            AssertEqual(ThumbZoom.MaxWidth, over.Width, "кламп к максимуму масштаба");
+            System.Drawing.Size under = ThumbZoom.TileSize(1);
+            AssertEqual(ThumbZoom.MinWidth, under.Width, "кламп к минимуму масштаба");
         }
 
         // ---------- ListReorder ----------
@@ -3354,12 +3361,80 @@ namespace ExcelMerger.Tests
 
         private static void TestRenderWidthFor()
         {
-            AssertEqual(300, ThumbZoom.RenderWidthFor(96), "100% DPI — прежние 300");
-            AssertEqual(357, ThumbZoom.RenderWidthFor(120), "125% DPI");
-            AssertEqual(428, ThumbZoom.RenderWidthFor(144), "150% DPI");
-            AssertEqual(570, ThumbZoom.RenderWidthFor(192), "200% DPI");
-            AssertEqual(640, ThumbZoom.RenderWidthFor(384), "потолок 640");
-            AssertEqual(300, ThumbZoom.RenderWidthFor(0), "мусорный DPI — минимум");
+            // Базовый рендер (до обычного масштаба BaseWidth = 190).
+            AssertEqual(300, ThumbZoom.RenderWidthFor(96, ThumbZoom.BaseWidth), "база, 100% DPI — прежние 300");
+            AssertEqual(357, ThumbZoom.RenderWidthFor(120, ThumbZoom.BaseWidth), "база, 125% DPI");
+            AssertEqual(428, ThumbZoom.RenderWidthFor(144, ThumbZoom.BaseWidth), "база, 150% DPI");
+            // Увеличенный рендер (крупный зум до MaxWidth = 400).
+            AssertEqual(600, ThumbZoom.RenderWidthFor(96, ThumbZoom.MaxWidth), "крупный, 100% DPI");
+            AssertEqual(640, ThumbZoom.RenderWidthFor(144, ThumbZoom.MaxWidth), "крупный, 150% DPI — потолок 640");
+            AssertEqual(300, ThumbZoom.RenderWidthFor(0, ThumbZoom.BaseWidth), "мусорный DPI — минимум");
+            AssertTrue(ThumbZoom.RenderWidthFor(96, ThumbZoom.MaxWidth) >= ThumbZoom.MaxWidth,
+                "рендер не меньше самой крупной плитки");
+        }
+
+        private static void TestThumbZoomCell()
+        {
+            System.Drawing.Size tile = ThumbZoom.TileSize(200);
+            System.Drawing.Size cell = ThumbZoom.CellSize(200);
+            AssertTrue(cell.Width > tile.Width, "ячейка шире плитки (поля)");
+            AssertTrue(cell.Height > tile.Height + 15, "в ячейке есть полоса под номер");
+            System.Drawing.Size max = ThumbZoom.TileSize(ThumbZoom.MaxWidth);
+            AssertEqual(ThumbZoom.MaxWidth, max.Width, "максимум 400 доступен (лимита ImageList больше нет)");
+            AssertTrue(max.Height > 256, "высота плитки на максимуме больше прежнего лимита 256");
+        }
+
+        private static void TestTileRectFromIcon()
+        {
+            // Иконная зона 256×256 в ячейке; плитка 300×390 крупнее — рисуется вокруг её центра
+            // по X и от её верха по Y (хитбокс остаётся 256, клики по кольцу компенсируются).
+            var icon = new System.Drawing.Rectangle(100, 50, 256, 256);
+            System.Drawing.Rectangle tile = PdfPageGrid.TileRectFromIcon(icon, new System.Drawing.Size(300, 390));
+            AssertEqual(icon.Left + 128 - 150, tile.Left, "плитка центрирована по иконной зоне");
+            AssertEqual(icon.Top, tile.Top, "плитка от верха иконной зоны");
+            AssertEqual(300, tile.Width, "ширина плитки");
+            AssertEqual(390, tile.Height, "высота плитки");
+
+            // Плитка меньше иконной зоны (обычный масштаб) — тоже по центру.
+            System.Drawing.Rectangle small = PdfPageGrid.TileRectFromIcon(icon, new System.Drawing.Size(100, 130));
+            AssertEqual(icon.Left + 128 - 50, small.Left, "малая плитка по центру");
+        }
+
+        private static void TestPdfOrderUndo()
+        {
+            var order = new PdfPageOrder();
+            order.AddDocument("x.pdf", 3);
+            AssertTrue(!order.CanUndo, "изначально откатывать нечего");
+            AssertTrue(!order.Undo(), "Undo без снимков — false");
+
+            order.Checkpoint();
+            order.Move(0, 3); // [1,2,0]
+            AssertEqual(0, order[2].PageIndex, "порядок изменился (страница 0 в конце)");
+            AssertEqual(1, order[0].PageIndex, "порядок изменился (страница 1 в начале)");
+            AssertTrue(order.CanUndo, "есть снимок");
+            AssertTrue(order.Undo(), "откат удался");
+            AssertEqual(0, order[0].PageIndex, "порядок восстановлен");
+            AssertTrue(!order.CanUndo, "снимок израсходован");
+
+            // Повороты живут в ссылках и откатом ПОРЯДКА не трогаются (осознанно).
+            order.Checkpoint();
+            order[0].Rotation = 90;
+            order.RemoveAt(new[] { 2 });
+            order.Undo();
+            AssertEqual(3, order.Count, "состав восстановлен");
+            AssertEqual(90, order[0].Rotation, "поворот не откатывается (общие ссылки)");
+
+            // Лимит стека: старые снимки уходят, свежие живут.
+            for (int i = 0; i < 60; i++)
+                order.Checkpoint();
+            int undone = 0;
+            while (order.Undo())
+                undone++;
+            AssertEqual(50, undone, "стек ограничен 50 снимками");
+
+            order.Checkpoint();
+            order.Clear();
+            AssertTrue(!order.CanUndo, "Clear очищает и историю отката");
         }
 
         private static void TestPageCacheCapacity()
@@ -3380,10 +3455,10 @@ namespace ExcelMerger.Tests
             AssertTrue(PdfPageGrid.TileKey(page).EndsWith("|r90"), "плитка с поворотом");
             AssertTrue(PdfPageGrid.TileKey(page).StartsWith(PdfPageGrid.ThumbKey(page)),
                 "ключ плитки начинается с ключа страницы");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate90FlipNone, PdfPageGrid.FlipFor(90), "90");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate180FlipNone, PdfPageGrid.FlipFor(180), "180");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate270FlipNone, PdfPageGrid.FlipFor(270), "270");
-            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone, PdfPageGrid.FlipFor(0), "0");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate90FlipNone, PageRotation.FlipFor(90), "90");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate180FlipNone, PageRotation.FlipFor(180), "180");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate270FlipNone, PageRotation.FlipFor(270), "270");
+            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone, PageRotation.FlipFor(0), "0");
         }
 
         private static void TestPasteIndex()
@@ -3411,6 +3486,7 @@ namespace ExcelMerger.Tests
             AssertEqual(PdfToolFormBase.PageKeyAction.RotateLeft,
                 K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Subtract), "Ctrl+Shift+Num−");
             AssertEqual(PdfToolFormBase.PageKeyAction.CancelClipboard, K(System.Windows.Forms.Keys.Escape), "Esc");
+            AssertEqual(PdfToolFormBase.PageKeyAction.Undo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Z), "Ctrl+Z");
             AssertEqual(PdfToolFormBase.PageKeyAction.None, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Q), "чужая клавиша");
         }
 
@@ -3481,6 +3557,180 @@ namespace ExcelMerger.Tests
                     AssertEqual(90, doc.Pages[0].Rotate, "поворот из карты");
                     AssertEqual(0, doc.Pages[1].Rotate, "вторая без поворота");
                 }
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { }
+            }
+        }
+
+        private static void TestPageRotationMap()
+        {
+            double x, y;
+            // Страница 400×600, нижний-левый угол (0,0): при 90° CW уходит в верхний-левый.
+            PageRotation.MapPoint(0, 0, 90, 400, 600, out x, out y);
+            AssertTrue(x == 0 && y == 400, "90°: НЛ -> ВЛ (0,400), получено (" + x + "," + y + ")");
+            PageRotation.MapPoint(0, 0, 180, 400, 600, out x, out y);
+            AssertTrue(x == 400 && y == 600, "180°: НЛ -> ВП");
+            PageRotation.MapPoint(0, 0, 270, 400, 600, out x, out y);
+            AssertTrue(x == 600 && y == 0, "270°: НЛ -> НП");
+            PageRotation.MapPoint(10, 20, 0, 400, 600, out x, out y);
+            AssertTrue(x == 10 && y == 20, "0°: тождество");
+
+            // Прямоугольник нормализуется (min/max по повёрнутым углам).
+            double l, b, r, t;
+            PageRotation.MapBox(10, 20, 110, 70, 90, 400, 600, out l, out b, out r, out t);
+            AssertTrue(l == 20 && r == 70, "90°: X из прежних Y");
+            AssertTrue(b == 290 && t == 390, "90°: Y из W−X");
+
+            // Обратный поворот возвращает точку на место (композиция — тождество).
+            double ix, iy;
+            PageRotation.MapPoint(33, 44, 90, 400, 600, out x, out y);
+            PageRotation.MapPoint(x, y, PageRotation.Inverse(90), 600, 400, out ix, out iy);
+            AssertTrue(Math.Abs(ix - 33) < 1e-9 && Math.Abs(iy - 44) < 1e-9, "инверсия 90°");
+
+            AssertEqual(270, PageRotation.Inverse(90), "Inverse(90)");
+            AssertEqual(180, PageRotation.Inverse(180), "Inverse(180)");
+            AssertEqual(0, PageRotation.Inverse(0), "Inverse(0)");
+            AssertTrue(PageRotation.SwapsDimensions(90) && PageRotation.SwapsDimensions(270), "свап 90/270");
+            AssertTrue(!PageRotation.SwapsDimensions(0) && !PageRotation.SwapsDimensions(180), "нет свапа 0/180");
+            AssertEqual(90, PageRotation.At(new[] { 0, 90 }, 1), "At по индексу");
+            AssertEqual(0, PageRotation.At(null, 3), "At без карты");
+        }
+
+        private static byte[] MakeTinyPng(int w, int h)
+        {
+            using (var bmp = new System.Drawing.Bitmap(w, h))
+            {
+                bmp.SetPixel(0, 0, System.Drawing.Color.Red);
+                bmp.SetPixel(w - 1, h - 1, System.Drawing.Color.Blue);
+                using (var ms = new MemoryStream())
+                {
+                    bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    return ms.ToArray();
+                }
+            }
+        }
+
+        private static void TestPageRotationRotatePage()
+        {
+            var word = new PdfWord { Text = "w", Left = 10, Right = 110, Bottom = 20, Top = 70, FontSizePt = 10 };
+            var line = new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 10, Y1 = 500, X2 = 200, Y2 = 500, Thickness = 1 };
+            var img = new OcrImage { Png = MakeTinyPng(20, 10), LeftPt = 50, TopPt = 400, WidthPt = 100, HeightPt = 40 };
+            var words = new List<PdfWord> { word };
+            var lines = new List<PdfLine> { line };
+            var images = new List<OcrImage> { img };
+            double w = 400, h = 600;
+
+            PageRotation.RotatePage(words, lines, images, 90, ref w, ref h);
+            AssertTrue(w == 600 && h == 400, "размеры страницы поменялись местами");
+            AssertTrue(word.Left == 20 && word.Right == 70, "слово: X из прежних Y");
+            AssertTrue(word.Bottom == 290 && word.Top == 390, "слово: Y из W−X");
+            AssertEqual(LineOrientation.Vertical, line.Orientation, "горизонталь стала вертикалью");
+            AssertTrue(Math.Abs(line.Position - 500) < 1e-9, "постоянная координата линии сохранилась");
+            AssertTrue(img.WidthPt == 40 && img.HeightPt == 100, "рамка картинки повёрнута");
+            using (var ms = new MemoryStream(img.Png))
+            using (var bmp = new System.Drawing.Bitmap(ms))
+                AssertTrue(bmp.Width == 10 && bmp.Height == 20, "пиксели картинки повёрнуты");
+
+            // rotation == 0 — строгий no-op.
+            var word2 = new PdfWord { Left = 1, Right = 2, Bottom = 3, Top = 4 };
+            double w2 = 100, h2 = 200;
+            PageRotation.RotatePage(new List<PdfWord> { word2 }, null, null, 0, ref w2, ref h2);
+            AssertTrue(word2.Left == 1 && word2.Top == 4 && w2 == 100 && h2 == 200, "0°: ничего не тронуто");
+        }
+
+        private static void TestUnderscoreHeights()
+        {
+            var rule = new PdfWord { Text = "____", Left = 0, Right = 50, Bottom = 100, Top = 101, FontSizePt = 12 };
+            var normal = new PdfWord { Text = "№", Left = 0, Right = 10, Bottom = 100, Top = 101, FontSizePt = 12 };
+            PdfTextExtract.ApplyUnderscoreHeights(new List<PdfWord> { rule, normal });
+            AssertTrue(rule.Top > 100 + 0.3 * 12, "прочерку дана виртуальная высота");
+            AssertTrue(Math.Abs(normal.Top - 101) < 1e-9, "обычное слово не тронуто");
+        }
+
+        private static void TestBuildRotations()
+        {
+            AssertTrue(PdfToWordService.BuildRotations(new List<PdfPageRef>()) == null, "пусто — null");
+            var order = new List<PdfPageRef>
+            {
+                new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0 },                  // первый экземпляр: без поворота
+                new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0, Rotation = 90 },   // дубль игнорируется (первый решил)
+                new PdfPageRef { SourcePath = "a.pdf", PageIndex = 2, Rotation = 180 },  // регистр пути не важен
+                new PdfPageRef { SourcePath = "B.pdf", PageIndex = 1, Rotation = 270 }
+            };
+            var maps = PdfToWordService.BuildRotations(order);
+            AssertTrue(maps != null, "карта построена");
+            AssertTrue(maps.ContainsKey("A.pdf"), "источник A");
+            AssertEqual(0, PageRotation.At(maps["A.pdf"], 0), "первый экземпляр (без поворота) решил");
+            AssertEqual(180, PageRotation.At(maps["A.pdf"], 2), "страница 3 источника A");
+            AssertEqual(270, PageRotation.At(maps["B.pdf"], 1), "источник B");
+            AssertTrue(PdfToWordService.BuildRotations(
+                new List<PdfPageRef> { new PdfPageRef { SourcePath = "x.pdf", PageIndex = 5 } }) == null,
+                "нет ненулевых поворотов — null");
+        }
+
+        /// <summary>
+        /// Живая калибровка поворота «PDF → Word»: PdfSharp рисует текст, повёрнутый на
+        /// странице по часовой (+90 в Y-вниз GDI = по часовой в вьюере) и против; пользователь
+        /// выправляет такой текст поворотом страницы в ПРОТИВОПОЛОЖНУЮ сторону. Проверяется и
+        /// прежнее поведение: без поворота боковой текст в поток не попадает.
+        /// </summary>
+        private static void TestExtractRotationLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_rotw_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string path = Path.Combine(dir, "sideways.pdf");
+                using (var doc = new PdfDocument())
+                {
+                    PdfPage page = doc.AddPage();
+                    page.Width = 400;
+                    page.Height = 600;
+                    using (XGraphics gfx = XGraphics.FromPdfPage(page))
+                    {
+                        var font = new XFont("Arial", 14);
+                        gfx.RotateAtTransform(90, new XPoint(200, 300)); // текст «лежит» по часовой
+                        gfx.DrawString("SIDEWAYSCW", font, XBrushes.Black, 120, 300);
+                    }
+                    PdfPage page2 = doc.AddPage();
+                    page2.Width = 400;
+                    page2.Height = 600;
+                    using (XGraphics gfx2 = XGraphics.FromPdfPage(page2))
+                    {
+                        var font = new XFont("Arial", 14);
+                        gfx2.RotateAtTransform(-90, new XPoint(200, 300)); // «лежит» против часовой
+                        gfx2.DrawString("SIDEWAYSCCW", font, XBrushes.Black, 120, 300);
+                    }
+                    doc.Save(path);
+                }
+
+                // Сравнение без пробелов: PdfPig сегментирует БОКОВОЙ текст на слова чуть
+                // иначе (рамка первого глифа шире — «S IDEWAYSCW»); буквы и порядок целы,
+                // а лишний пробел внутри слова — артефакт сегментации PdfPig, не поворота.
+                Func<PdfPageText, string> squash = delegate(PdfPageText p) { return p.Text.Replace(" ", ""); };
+
+                // Без поворота: боковой текст отфильтрован (прежнее поведение — регрессии нет).
+                List<PdfPageText> plain = PdfTextExtract.Extract(path);
+                AssertTrue(squash(plain[0]).IndexOf("SIDEWAYSCW", StringComparison.Ordinal) < 0,
+                    "без поворота боковой текст не извлекается");
+
+                // Текст, лежащий ПО часовой, выправляется поворотом страницы ПРОТИВ часовой (270° CW).
+                List<PdfPageText> fixedCw = PdfTextExtract.Extract(path, null, new[] { 270, 0 });
+                AssertTrue(squash(fixedCw[0]).IndexOf("SIDEWAYSCW", StringComparison.Ordinal) >= 0,
+                    "270°: текст по часовой стал строками, получено: «" + fixedCw[0].Text + "»");
+                AssertTrue(Math.Abs(fixedCw[0].WidthPt - 600) < 1 && Math.Abs(fixedCw[0].HeightPt - 400) < 1,
+                    "270°: размеры страницы поменялись местами");
+                AssertTrue(squash(fixedCw[1]).IndexOf("SIDEWAYSCCW", StringComparison.Ordinal) < 0,
+                    "вторая страница без поворота — её боковой текст не извлечён");
+
+                // Текст против часовой — поворотом по часовой (90° CW).
+                List<PdfPageText> fixedCcw = PdfTextExtract.Extract(path, null, new[] { 0, 90 });
+                AssertTrue(squash(fixedCcw[1]).IndexOf("SIDEWAYSCCW", StringComparison.Ordinal) >= 0,
+                    "90°: текст против часовой стал строками, получено: «" + fixedCcw[1].Text + "»");
+                AssertTrue(Math.Abs(fixedCcw[1].WidthPt - 600) < 1 && Math.Abs(fixedCcw[1].HeightPt - 400) < 1,
+                    "90°: размеры страницы поменялись местами");
             }
             finally
             {

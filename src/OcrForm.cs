@@ -53,7 +53,7 @@ namespace ExcelMerger
             _grid = new PdfPageGrid();
             _grid.AllowReorder = true; // перестановка страниц перетаскиванием
             _grid.ShowPositionNumbers = true; // под плиткой — позиция в итоговом документе
-            // AllowRotate НЕ включаем: текстовый конвейер PDF → Word повороты не потребляет.
+            _grid.AllowRotate = true; // страница выправляется ДО анализа макета (боковой текст станет строками)
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _grid.ReorderRequested += OnReorder;
@@ -134,6 +134,7 @@ namespace ExcelMerger
                 return;
             int added = 0;
             int firstAdded = -1;
+            bool checkpointed = false; // снимок для Ctrl+Z — только если реально что-то добавилось
             int at = insertAt < 0 || insertAt > _order.Count ? _order.Count : insertAt;
             Cursor = Cursors.WaitCursor;
             try
@@ -143,6 +144,11 @@ namespace ExcelMerger
                     try
                     {
                         int pages = PdfMergeService.LoadPages(path).Count;
+                        if (!checkpointed)
+                        {
+                            _order.Checkpoint();
+                            checkpointed = true;
+                        }
                         int landed = _order.InsertDocument(at, path, pages);
                         if (firstAdded < 0)
                             firstAdded = landed;
@@ -257,6 +263,7 @@ namespace ExcelMerger
         {
             if (_busy)
                 return;
+            _order.Checkpoint();
             _order.Move(from, to);
             RefreshGrid();
             _grid.SelectIndex(to > from ? to - 1 : to); // выделить страницу на новом месте
@@ -267,6 +274,7 @@ namespace ExcelMerger
         {
             if (_busy)
                 return;
+            _order.Checkpoint();
             int landed = _order.MoveRange(indices, insertAt);
             if (landed < 0)
                 return;
@@ -279,6 +287,7 @@ namespace ExcelMerger
         {
             if (_busy || pages == null || pages.Length == 0)
                 return;
+            _order.Checkpoint();
             int landed = _order.InsertAt(insertAt, pages);
             RefreshGrid();
             _grid.SelectRange(landed, pages.Length);
@@ -291,9 +300,11 @@ namespace ExcelMerger
             if (_busy || _grid.SelectedCount != 1)
                 return;
             int index = _grid.GetSelectedIndices()[0];
+            bool willMove = later ? index < _order.Count - 1 : index > 0;
+            if (!willMove)
+                return; // уже с краю — снимок для Ctrl+Z не нужен
+            _order.Checkpoint();
             int moved = later ? _order.MoveDown(index) : _order.MoveUp(index);
-            if (moved == index)
-                return; // уже с краю
             RefreshGrid();
             _grid.SelectIndex(moved);
         }
@@ -302,15 +313,26 @@ namespace ExcelMerger
         {
             if (_busy || _grid.SelectedCount == 0)
                 return;
+            _order.Checkpoint();
             _order.RemoveAt(_grid.GetSelectedIndices());
             RefreshGrid();
             SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
             UpdateControls();
         }
 
-        // Горячие клавиши сетки (Delete, Alt+←/→, Ctrl+A, Enter) — в базе PdfToolFormBase.
+        // Горячие клавиши сетки (Delete, Alt+←/→, Ctrl+X/C/V/Z, Ctrl+A, Enter) — в базе PdfToolFormBase.
         protected override void RemoveSelectedPages() { OnRemoveClick(this, EventArgs.Empty); }
         protected override void MoveSelectedPage(bool later) { MoveSelected(later); }
+
+        /// <summary>Ctrl+Z: откат последнего изменения порядка (перенос, удаление, вставка, добавление).</summary>
+        protected override void UndoOrder()
+        {
+            if (_busy || !_order.Undo())
+                return;
+            RefreshGrid();
+            SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
+            UpdateControls();
+        }
 
         /// <summary>Имя .docx по умолчанию: из одного файла — его имя; из нескольких — «Объединённый».</summary>
         private static string DefaultOutputName(List<PdfPageRef> order)

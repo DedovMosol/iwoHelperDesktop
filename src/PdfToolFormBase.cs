@@ -252,7 +252,7 @@ namespace ExcelMerger
         internal enum PageKeyAction
         {
             None, Remove, MoveEarlier, MoveLater, SelectAll, Swallow,
-            Cut, Copy, Paste, GoTo, RotateRight, RotateLeft, CancelClipboard
+            Cut, Copy, Paste, GoTo, RotateRight, RotateLeft, CancelClipboard, Undo
         }
 
         internal static PageKeyAction ClassifyPageKey(Keys keyData)
@@ -264,6 +264,7 @@ namespace ExcelMerger
             if (keyData == (Keys.Control | Keys.X)) return PageKeyAction.Cut;
             if (keyData == (Keys.Control | Keys.C)) return PageKeyAction.Copy;
             if (keyData == (Keys.Control | Keys.V)) return PageKeyAction.Paste;
+            if (keyData == (Keys.Control | Keys.Z)) return PageKeyAction.Undo;
             if (keyData == (Keys.Control | Keys.G)) return PageKeyAction.GoTo;
             // Поворот как в Acrobat: Ctrl+Shift+«+»/«−» (основной ряд и цифровой блок).
             if (keyData == (Keys.Control | Keys.Shift | Keys.Oemplus) ||
@@ -310,6 +311,9 @@ namespace ExcelMerger
                     case PageKeyAction.Paste:
                         if (_grid.AllowReorder) { _grid.PasteClipboard(); return true; }
                         break;
+                    case PageKeyAction.Undo:
+                        if (_grid.AllowReorder) { UndoOrder(); return true; }
+                        break;
                     case PageKeyAction.GoTo:
                         ShowGoToPage();
                         return true;
@@ -332,13 +336,15 @@ namespace ExcelMerger
 
         /// <summary>
         /// Подключить события контекстного меню сетки к обработчикам формы (единая
-        /// обвязка, DRY): «Удалить» — как клавиша Delete, «Перейти…» — как Ctrl+G.
-        /// Вызывать в BuildUi наследника сразу после создания _grid.
+        /// обвязка, DRY): «Удалить» — как клавиша Delete, «Перейти…» — как Ctrl+G,
+        /// «Переместить после страницы N…» — диалог формы. Вызывать в BuildUi
+        /// наследника сразу после создания _grid.
         /// </summary>
         protected void WireGridMenu()
         {
             _grid.DeleteRequested += delegate { if (_grid.AllowReorder) RemoveSelectedPages(); };
             _grid.GoToRequested += delegate { ShowGoToPage(); };
+            _grid.MoveAfterRequested += delegate { ShowMoveAfterPages(); };
         }
 
         /// <summary>Диалог «Перейти к странице» (Ctrl+G и контекстное меню): выделяет и показывает её.</summary>
@@ -346,10 +352,30 @@ namespace ExcelMerger
         {
             if (_grid == null || _grid.Count == 0)
                 return;
-            int page = GoToPageDialog.Show(this, _grid.Count);
+            int page = NumberPromptDialog.Show(this, Loc.T("goto.title"),
+                string.Format(Loc.T("goto.prompt"), _grid.Count), Loc.T("goto.ok"), 1, _grid.Count, 1);
             if (page > 0)
                 _grid.SelectIndex(page - 1);
         }
+
+        /// <summary>
+        /// Диалог «Переместить после страницы N…»: выбранные страницы встают сразу за
+        /// страницей N (0 — в самое начало). Перенос идёт тем же событием, что и вставка
+        /// вырезанных, — форма правит модель.
+        /// </summary>
+        protected void ShowMoveAfterPages()
+        {
+            if (_grid == null || !_grid.AllowReorder || _grid.Locked || _grid.SelectedCount == 0)
+                return;
+            int n = NumberPromptDialog.Show(this, Loc.T("moveafter.title"),
+                string.Format(Loc.T("moveafter.prompt"), _grid.Count), Loc.T("moveafter.ok"),
+                0, _grid.Count, 0);
+            if (n >= 0)
+                _grid.MoveSelectedTo(n); // «после страницы N» = вставка перед позицией N
+        }
+
+        /// <summary>Откат последнего изменения порядка (Ctrl+Z). Переопределяют формы с моделью порядка.</summary>
+        protected virtual void UndoOrder() { }
 
         /// <summary>Удалить выбранные страницы (Delete). Зовётся только при AllowReorder.</summary>
         protected virtual void RemoveSelectedPages() { }

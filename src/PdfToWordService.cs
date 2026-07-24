@@ -54,6 +54,11 @@ namespace ExcelMerger
             if (!anyText)
                 throw new MergeException(Loc.T("err.ocr.scanned"));
 
+            // Повороты страниц из сетки: карта по источнику (индекс страницы → градусы).
+            // Дубли одной страницы делят ОДНО извлечение — поворот берётся у первого
+            // экземпляра в порядке (устройство кэша ниже, второй дубль наследует).
+            Dictionary<string, int[]> rotationsBySource = BuildRotations(order);
+
             // Извлечь текст каждого источника (весь файл); кэш по пути. Прогресс извлечения —
             // первая половина шкалы, по долям источников (внутри источника — по его страницам).
             var bySource = new Dictionary<string, List<PdfPageText>>(StringComparer.OrdinalIgnoreCase);
@@ -67,7 +72,10 @@ namespace ExcelMerger
                     double overall = totalSources > 0 ? (idx + frac) / totalSources : 1.0;
                     progress((int)(overall * writeUnits), 2 * writeUnits);
                 };
-                bySource[src] = PdfTextExtract.Extract(src, extractCb);
+                int[] rotations = null;
+                if (rotationsBySource != null)
+                    rotationsBySource.TryGetValue(src, out rotations);
+                bySource[src] = PdfTextExtract.Extract(src, extractCb, rotations);
             }
 
             List<PdfPageText> pages = Assemble(bySource, order);
@@ -101,6 +109,38 @@ namespace ExcelMerger
                             if (cell.Paragraphs != null && cell.Paragraphs.Count > 0)
                                 return true;
             return false;
+        }
+
+        /// <summary>
+        /// Карта поворотов по источникам из ссылок порядка: SourcePath → массив по индексу
+        /// страницы (градусы по часовой). Первый экземпляр страницы в порядке решает (в том
+        /// числе решает «без поворота»); null — поворотов нет вовсе. Чистая — под тест.
+        /// </summary>
+        internal static Dictionary<string, int[]> BuildRotations(IList<PdfPageRef> order)
+        {
+            Dictionary<string, int[]> result = null;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // «src|idx»: первый экземпляр решает
+            foreach (PdfPageRef r in order)
+            {
+                if (r == null || r.SourcePath == null || r.PageIndex < 0)
+                    continue;
+                if (!seen.Add(r.SourcePath.ToLowerInvariant() + "|" + r.PageIndex))
+                    continue;
+                if (r.Rotation == 0)
+                    continue;
+                if (result == null)
+                    result = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
+                int[] map;
+                if (!result.TryGetValue(r.SourcePath, out map) || map.Length <= r.PageIndex)
+                {
+                    var grown = new int[r.PageIndex + 1];
+                    if (map != null)
+                        Array.Copy(map, grown, map.Length);
+                    result[r.SourcePath] = map = grown;
+                }
+                map[r.PageIndex] = r.Rotation;
+            }
+            return result;
         }
 
         /// <summary>
