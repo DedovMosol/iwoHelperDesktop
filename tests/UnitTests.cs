@@ -116,6 +116,7 @@ namespace ExcelMerger.Tests
             Run("ThumbZoom.CellSize: ячейка с полосой номера, максимум 400", TestThumbZoomCell);
             Run("PdfPageGrid.TileRectFromIcon: плитка по центру иконной зоны", TestTileRectFromIcon);
             Run("PdfPageGrid.HoverRotateButtons: два чипа у нижней кромки, без пересечений", TestHoverRotateButtons);
+            Run("PdfPageGrid.CellRectFromTile: ячейка накрывает плитку и чипы на максимуме зума", TestCellRectCoversChips);
             Run("PdfPageOrder: Checkpoint/Undo, лимит, повороты не откатываются", TestPdfOrderUndo);
             Run("ThumbZoom.PageCacheCapacity: бюджет → ёмкость с границами", TestPageCacheCapacity);
             Run("PdfPageGrid: PageLabel (позиция/исходная), TileKey с поворотом, FlipFor", TestGridLabelTileKey);
@@ -3413,6 +3414,38 @@ namespace ExcelMerger.Tests
             int center = tile.Left + tile.Width / 2;
             AssertTrue(Math.Abs((b[0].Left + b[1].Right) / 2 - center) <= 1, "пара по центру плитки");
             AssertTrue(b[0].Bottom < tile.Bottom, "над нижней кромкой (зазор)");
+        }
+
+        /// <summary>
+        /// Регрессия «чипы поворота съедаются при увеличении»: нативные границы элемента
+        /// ограничены иконной зоной 256, поэтому инвалидация идёт полной ЯЧЕЙКОЙ —
+        /// она обязана накрывать плитку целиком и hover-кнопки у её нижней кромки
+        /// даже на максимальном зуме (плитка 400 больше хитбокса 256).
+        /// </summary>
+        private static void TestCellRectCoversChips()
+        {
+            var icon = new System.Drawing.Rectangle(100, 50, 256, 256); // нативная иконная зона (потолок 256)
+            System.Drawing.Size tileSz = ThumbZoom.TileSize(ThumbZoom.MaxWidth);   // 400×520
+            System.Drawing.Size cellSz = ThumbZoom.CellSize(ThumbZoom.MaxWidth);
+            System.Drawing.Rectangle tile = PdfPageGrid.TileRectFromIcon(icon, tileSz);
+            System.Drawing.Rectangle cell = PdfPageGrid.CellRectFromTile(tile, cellSz, 4);
+
+            AssertTrue(cell.Contains(tile), "ячейка накрывает плитку целиком");
+            AssertTrue(tile.Bottom > icon.Bottom, "плитка на максимуме выходит за нативные границы (сама причина бага)");
+            System.Drawing.Rectangle[] chips = PdfPageGrid.HoverRotateButtons(tile, 24, 6);
+            AssertTrue(cell.Contains(chips[0]) && cell.Contains(chips[1]),
+                "hover-кнопки внутри инвалидируемой ячейки");
+            AssertEqual(cellSz.Width, cell.Width, "ширина ячейки — из ThumbZoom.CellSize");
+            AssertEqual(cellSz.Height, cell.Height, "высота ячейки — из ThumbZoom.CellSize");
+            AssertEqual(tile.Top - 4, cell.Top, "верхний отступ ячейки соблюдён");
+
+            // И на обычном масштабе геометрия согласована так же.
+            System.Drawing.Size tileDef = ThumbZoom.TileSize(ThumbZoom.DefaultWidth);
+            System.Drawing.Rectangle tileD = PdfPageGrid.TileRectFromIcon(
+                new System.Drawing.Rectangle(0, 0, tileDef.Width, tileDef.Height), tileDef);
+            System.Drawing.Rectangle cellD = PdfPageGrid.CellRectFromTile(tileD, ThumbZoom.CellSize(ThumbZoom.DefaultWidth), 4);
+            AssertTrue(cellD.Contains(PdfPageGrid.HoverRotateButtons(tileD, 24, 6)[1]),
+                "чипы внутри ячейки и на обычном масштабе");
         }
 
         private static void TestPdfOrderUndo()

@@ -38,6 +38,12 @@ versions follow [SemVer](https://semver.org/).
   names (`iwoHelperDesktop-setup.exe`, `iwoHelperDesktop-setup-x86.exe`), so the four
   buttons always fetch the latest build instead of opening the releases page.
 
+### Fixed
+- **The rotate chips are no longer clipped at large zoom.** Tiles bigger than the
+  native 256 px item bounds were repainted only inside those bounds, so the ↺/↻
+  buttons at the bottom of the tile (and the selection ring) could vanish. Repaints
+  now invalidate the full grid cell with the same geometry the painter uses.
+
 ## [1.17.0] — 2026-07-24
 
 ### Added

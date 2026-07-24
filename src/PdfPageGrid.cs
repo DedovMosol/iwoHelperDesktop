@@ -172,7 +172,14 @@ namespace ExcelMerger
             _list.OwnerDraw = true;
             _list.DrawItem += OnDrawItem;
             _list.HandleCreated += delegate { ApplyIconSpacing(); };
-            _list.SelectedIndexChanged += delegate { var h = SelectionChanged; if (h != null) h(this, EventArgs.Empty); };
+            _list.SelectedIndexChanged += delegate
+            {
+                // Нативная инвалидация выделения покрывает лишь нативные границы (≤ 256):
+                // при крупном зуме рамка выделения и подпись шире — перерисовать всё видимое.
+                _list.Invalidate();
+                var h = SelectionChanged;
+                if (h != null) h(this, EventArgs.Empty);
+            };
             _list.AllowDrop = true;
             _list.ItemDrag += OnItemDrag;
             _list.DragEnter += OnListDragEnter;
@@ -334,7 +341,7 @@ namespace ExcelMerger
             RedrawItemsOf(pageKey);
         }
 
-        /// <summary>Перерисовать элементы страницы (адресно, по индексной карте).</summary>
+        /// <summary>Перерисовать элементы страницы (адресно, по индексной карте; полными ячейками).</summary>
         private void RedrawItemsOf(string pageKey)
         {
             if (!_list.IsHandleCreated)
@@ -342,8 +349,7 @@ namespace ExcelMerger
             List<ListViewItem> items;
             if (_itemsByKey.TryGetValue(pageKey, out items))
                 foreach (ListViewItem item in items)
-                    if (item.Index >= 0)
-                        _list.RedrawItems(item.Index, item.Index, true);
+                    InvalidateItem(item.Index);
         }
 
         /// <summary>Регистрирует элемент под ключом страницы (один ключ — несколько элементов при повторах страницы).</summary>
@@ -396,6 +402,42 @@ namespace ExcelMerger
             return new Rectangle(centerX - tilePx.Width / 2, iconRect.Top, tilePx.Width, tilePx.Height);
         }
 
+        /// <summary>
+        /// Рамка ЯЧЕЙКИ вокруг плитки — единая геометрия для отрисовки И инвалидации:
+        /// при крупном зуме плитка больше нативных границ элемента (иконная зона ≤ 256),
+        /// поэтому перерисовывать надо именно ячейку, иначе низ плитки с hover-кнопками
+        /// не попадает в регион отрисовки и «съедается». Чистая — под тест.
+        /// </summary>
+        internal static Rectangle CellRectFromTile(Rectangle tileRect, Size cellPx, int topPad)
+        {
+            return new Rectangle(
+                tileRect.Left - (cellPx.Width - tileRect.Width) / 2,
+                tileRect.Top - topPad,
+                cellPx.Width,
+                cellPx.Height);
+        }
+
+        /// <summary>Рамки плитки и ячейки элемента (по нативной иконной зоне). Только с созданным handle.</summary>
+        private void ItemGeometry(int index, out Rectangle tileRect, out Rectangle cellRect)
+        {
+            Size tileLogical = ThumbZoom.TileSize(_tileWidth);
+            var tilePx = new Size(Px(tileLogical.Width), Px(tileLogical.Height));
+            Size cellLogical = ThumbZoom.CellSize(_tileWidth);
+            var cellPx = new Size(Px(cellLogical.Width), Px(cellLogical.Height));
+            tileRect = TileRectFromIcon(_list.GetItemRect(index, ItemBoundsPortion.Icon), tilePx);
+            cellRect = CellRectFromTile(tileRect, cellPx, Px(4));
+        }
+
+        /// <summary>Перерисовать ПОЛНУЮ ячейку элемента (RedrawItems инвалидирует лишь нативные границы ≤ 256).</summary>
+        private void InvalidateItem(int index)
+        {
+            if (!_list.IsHandleCreated || index < 0 || index >= _list.Items.Count)
+                return;
+            Rectangle tile, cell;
+            ItemGeometry(index, out tile, out cell);
+            _list.Invalidate(cell);
+        }
+
         private void OnDrawItem(object sender, DrawListViewItemEventArgs e)
         {
             // Ошибка в отрисовке не должна валить процесс паint-штормом — рисуем, что смогли.
@@ -413,12 +455,9 @@ namespace ExcelMerger
 
             // Геометрия — от нативной иконной зоны (якорь ячейки), а не от e.Bounds:
             // при плитке крупнее 256 нативные границы элемента меньше нарисованного.
-            Rectangle iconRect = _list.GetItemRect(e.ItemIndex, ItemBoundsPortion.Icon);
-            Size tilePx = new Size(Px(ThumbZoom.TileSize(_tileWidth).Width), Px(ThumbZoom.TileSize(_tileWidth).Height));
-            Rectangle tileRect = TileRectFromIcon(iconRect, tilePx);
-            Size cellPx = new Size(Px(ThumbZoom.CellSize(_tileWidth).Width), Px(ThumbZoom.CellSize(_tileWidth).Height));
-            var cell = new Rectangle(tileRect.Left - (cellPx.Width - tilePx.Width) / 2,
-                tileRect.Top - Px(4), cellPx.Width, cellPx.Height);
+            // Та же геометрия используется инвалидацией (InvalidateItem) — DRY.
+            Rectangle tileRect, cell;
+            ItemGeometry(e.ItemIndex, out tileRect, out cell);
 
             using (var back = new SolidBrush(_list.BackColor))
                 g.FillRectangle(back, cell);
@@ -501,9 +540,9 @@ namespace ExcelMerger
 
         private Rectangle[] HoverRotateButtonsFor(int index)
         {
-            Size tilePx = new Size(Px(ThumbZoom.TileSize(_tileWidth).Width), Px(ThumbZoom.TileSize(_tileWidth).Height));
-            Rectangle tileRect = TileRectFromIcon(_list.GetItemRect(index, ItemBoundsPortion.Icon), tilePx);
-            return HoverRotateButtons(tileRect, Px(24), Px(6));
+            Rectangle tile, cell;
+            ItemGeometry(index, out tile, out cell);
+            return HoverRotateButtons(tile, Px(24), Px(6));
         }
 
         private void DrawHoverRotateButtons(Graphics g, Rectangle tileRect)
@@ -535,19 +574,15 @@ namespace ExcelMerger
             return true;
         }
 
-        /// <summary>Сменить плитку под курсором и перерисовать прежнюю/новую (для hover-кнопок).</summary>
+        /// <summary>Сменить плитку под курсором и перерисовать прежнюю/новую (полными ячейками — hover-кнопки у низа плитки).</summary>
         private void SetHotIndex(int index)
         {
             if (index == _hotIndex)
                 return;
             int old = _hotIndex;
             _hotIndex = index;
-            if (!_list.IsHandleCreated)
-                return;
-            if (old >= 0 && old < _list.Items.Count)
-                _list.RedrawItems(old, old, true);
-            if (_hotIndex >= 0 && _hotIndex < _list.Items.Count)
-                _list.RedrawItems(_hotIndex, _hotIndex, true);
+            InvalidateItem(old);
+            InvalidateItem(_hotIndex);
         }
 
         /// <summary>Бейдж угла поворота («90°») в правом верхнем углу плитки.</summary>
