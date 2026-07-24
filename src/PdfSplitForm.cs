@@ -23,6 +23,9 @@ namespace ExcelMerger
         // Сетка, зум, сжатие, статус, подсказки и флаг _busy — в базе PdfToolFormBase.
         private string _sourcePath;
         private int _pageCount;
+        // Страницы исходника, показанные сеткой: сетка мутирует их Rotation при повороте,
+        // отсюда форма собирает карту поворотов для записи (все режимы разделения).
+        private List<PdfPageRef> _pages = new List<PdfPageRef>();
 
         private Button _btnOpen;
         private ComboBox _cmbMode;
@@ -59,9 +62,17 @@ namespace ExcelMerger
 
             _grid = new PdfPageGrid();
             _grid.AllowReorder = false; // разделение не меняет порядок исходника
+            _grid.AllowRotate = true;   // но поворот страниц в ИТОГОВЫХ файлах — можно
+            // ShowPositionNumbers = false: под плиткой — номер исходной страницы.
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _grid.SelectionChanged += delegate { UpdateControls(); };
+            _grid.FilesDropped += delegate(string[] paths, int insertAt)
+            {
+                if (!_busy && paths.Length > 0)
+                    LoadSource(paths[0]); // разделение работает с одним документом
+            };
+            WireGridMenu();
             Controls.Add(_grid);
 
             int px = right - panelW + 10; // левый край панели режима
@@ -189,10 +200,10 @@ namespace ExcelMerger
                 Cursor = Cursors.Default;
             }
             _sourcePath = path;
-            var pages = new List<PdfPageRef>();
+            _pages = new List<PdfPageRef>();
             for (int i = 0; i < _pageCount; i++)
-                pages.Add(new PdfPageRef { SourcePath = path, PageIndex = i });
-            _grid.SetPages(pages);
+                _pages.Add(new PdfPageRef { SourcePath = path, PageIndex = i });
+            _grid.SetPages(_pages);
             SetStatus(string.Format(Loc.T("split.status.opened"), Path.GetFileName(path), _pageCount), Theme.TextMuted);
             UpdateControls();
         }
@@ -227,6 +238,7 @@ namespace ExcelMerger
         private void UpdateControls()
         {
             bool loaded = _sourcePath != null;
+            _grid.Locked = _busy; // поворот и дроп — только вне операции
             _compress.Enabled = !_busy;
             _btnOpen.Enabled = !_busy;
             _cmbMode.Enabled = !_busy && loaded;
@@ -249,6 +261,7 @@ namespace ExcelMerger
             bool combine = mode == ModeRanges && _chkCombine.Checked;
             string src = _sourcePath;
             CompressionLevel level = _compress.Level; // с UI-потока до старта воркера
+            int[] rotations = CurrentRotations();     // снимок поворотов — тоже до старта воркера
 
             // Один файл: «Извлечь выбранные» ИЛИ «По диапазонам» + объединить.
             if (mode == ModeExtract || combine)
@@ -280,7 +293,7 @@ namespace ExcelMerger
                         return;
                     outPath = dialog.FileName;
                 }
-                RunSplit(delegate(Action<int, int> pr) { PdfSplitService.Extract(src, indices, outPath, pr); return new List<string> { outPath }; },
+                RunSplit(delegate(Action<int, int> pr) { PdfSplitService.Extract(src, indices, outPath, pr, rotations); return new List<string> { outPath }; },
                     level, outPath, false, UsageStats.RecordPdfExtract);
                 return;
             }
@@ -320,21 +333,41 @@ namespace ExcelMerger
             switch (mode)
             {
                 case ModeRanges:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName, pr); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName, pr, rotations); };
                     record = UsageStats.RecordPdfSplitRanges;
                     break;
                 case ModeEveryN:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName, pr); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName, pr, rotations); };
                     record = UsageStats.RecordPdfSplitEveryN;
                     break;
                 case ModeBookmarks:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByBookmarks(src, dir, baseName, pr); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByBookmarks(src, dir, baseName, pr, rotations); };
                     record = UsageStats.RecordPdfSplitBookmarks;
                     break;
                 default:
                     return;
             }
             RunSplit(work, level, dir, true, record);
+        }
+
+        /// <summary>
+        /// Карта поворотов по индексу исходной страницы (для всех режимов записи);
+        /// null — поворотов нет. Снимается на UI-потоке ДО старта воркера, а во время
+        /// операции сетка заблокирована (Locked) — карта не меняется под ногами.
+        /// </summary>
+        private int[] CurrentRotations()
+        {
+            if (_pages == null || _pages.Count == 0)
+                return null;
+            bool any = false;
+            var rotations = new int[_pageCount];
+            foreach (PdfPageRef page in _pages)
+                if (page.PageIndex >= 0 && page.PageIndex < rotations.Length && page.Rotation != 0)
+                {
+                    rotations[page.PageIndex] = page.Rotation;
+                    any = true;
+                }
+            return any ? rotations : null;
         }
 
         /// <summary>

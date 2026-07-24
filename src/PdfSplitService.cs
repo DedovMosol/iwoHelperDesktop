@@ -18,47 +18,57 @@ namespace ExcelMerger
     /// </summary>
     public static class PdfSplitService
     {
+        // Во всех методах rotations — дополнительные повороты страниц ПО ИНДЕКСУ ИСХОДНОЙ
+        // страницы (0/90/180/270 по часовой; null или короче документа — без поворота).
+        // Единая конвенция на все режимы, чтобы форма собирала одну карту.
+
         /// <summary>Извлечь выбранные страницы (индексы с нуля) в один новый PDF. progress — «сделано/всего» частей (здесь одна).</summary>
-        public static void Extract(string sourcePath, IList<int> pageIndices, string outputPath, Action<int, int> progress = null)
+        public static void Extract(string sourcePath, IList<int> pageIndices, string outputPath, Action<int, int> progress = null, IList<int> rotations = null)
         {
             if (pageIndices == null || pageIndices.Count == 0)
                 throw new MergeException(Loc.T("err.split.noPages"));
             // Переиспользуем протестированное ядро объединения: набор страниц → один файл.
             var order = new List<PdfPageRef>();
             foreach (int idx in pageIndices)
-                order.Add(new PdfPageRef { SourcePath = sourcePath, PageIndex = idx });
+                order.Add(new PdfPageRef { SourcePath = sourcePath, PageIndex = idx, Rotation = RotationAt(rotations, idx) });
             PdfMergeService.Merge(order, outputPath);
             if (progress != null)
                 progress(1, 1); // одна часть (один итоговый файл)
         }
 
         /// <summary>Разбить по диапазонам («1-3, 5, 8-») — каждый диапазон в свой файл. progress — «сделано/всего» частей.</summary>
-        public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress = null)
+        public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null)
         {
             if (ranges == null || ranges.Count == 0)
                 throw new MergeException(Loc.T("err.split.noRanges"));
             EmbeddedAssemblies.Ensure();
-            return SplitRangesCore(sourcePath, ranges, outDir, baseName, progress);
+            return SplitRangesCore(sourcePath, ranges, outDir, baseName, progress, rotations);
         }
 
         /// <summary>Разбить на части по n страниц (n=1 — каждая страница отдельным файлом). progress — «сделано/всего» частей.</summary>
-        public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress = null)
+        public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null)
         {
             if (n < 1)
                 throw new MergeException(Loc.T("err.split.badN"));
             EmbeddedAssemblies.Ensure();
-            return SplitEveryNCore(sourcePath, n, outDir, baseName, progress);
+            return SplitEveryNCore(sourcePath, n, outDir, baseName, progress, rotations);
         }
 
         /// <summary>Разбить по закладкам верхнего уровня — файлы именуются заголовками. progress — «сделано/всего» частей.</summary>
-        public static List<string> SplitByBookmarks(string sourcePath, string outDir, string baseName, Action<int, int> progress = null)
+        public static List<string> SplitByBookmarks(string sourcePath, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null)
         {
             EmbeddedAssemblies.Ensure();
-            return SplitBookmarksCore(sourcePath, outDir, baseName, progress);
+            return SplitBookmarksCore(sourcePath, outDir, baseName, progress, rotations);
+        }
+
+        /// <summary>Поворот страницы pageIndex из карты (вне карты — 0). Чистая — под тест.</summary>
+        internal static int RotationAt(IList<int> rotations, int pageIndex)
+        {
+            return rotations != null && pageIndex >= 0 && pageIndex < rotations.Count ? rotations[pageIndex] : 0;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress)
+        private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress, IList<int> rotations)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
@@ -68,7 +78,7 @@ namespace ExcelMerger
                     if (r.Start < 0 || r.End >= source.PageCount)
                         throw new MergeException(string.Format(Loc.T("err.split.rangeOutside"), r.Label, source.PageCount));
                     string path = UniquePath(outDir, baseName + "_" + r.Label);
-                    WriteRange(source, r, path);
+                    WriteRange(source, r, path, rotations);
                     created.Add(path);
                     if (progress != null)
                         progress(created.Count, ranges.Count);
@@ -78,7 +88,7 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress)
+        private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress, IList<int> rotations)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
@@ -88,7 +98,7 @@ namespace ExcelMerger
                 foreach (PageRange r in chunks)
                 {
                     string path = UniquePath(outDir, baseName + Loc.T("split.partInfix") + part);
-                    WriteRange(source, r, path);
+                    WriteRange(source, r, path, rotations);
                     created.Add(path);
                     part++;
                     if (progress != null)
@@ -99,7 +109,7 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName, Action<int, int> progress)
+        private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName, Action<int, int> progress, IList<int> rotations)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
@@ -129,7 +139,7 @@ namespace ExcelMerger
                     if (start > end)
                         continue; // две закладки на одной странице — пустой раздел пропускаем
                     string path = UniquePath(outDir, baseName + "_" + Sanitize(marks[m].Value));
-                    WriteRange(source, new PageRange(start, end), path);
+                    WriteRange(source, new PageRange(start, end), path, rotations);
                     created.Add(path);
                     if (progress != null)
                         progress(created.Count, marks.Count);
@@ -138,12 +148,17 @@ namespace ExcelMerger
             return created;
         }
 
-        private static void WriteRange(PdfDocument source, PageRange r, string path)
+        private static void WriteRange(PdfDocument source, PageRange r, string path, IList<int> rotations)
         {
             using (PdfDocument outDoc = new PdfDocument())
             {
                 for (int i = r.Start; i <= r.End; i++)
-                    outDoc.AddPage(source.Pages[i]);
+                {
+                    PdfPage copied = outDoc.AddPage(source.Pages[i]);
+                    int extra = RotationAt(rotations, i);
+                    if (extra != 0) // поворот пользователя поверх собственного /Rotate страницы
+                        copied.Rotate = PdfPageRef.ComposeRotation(copied.Rotate, extra);
+                }
                 try
                 {
                     outDoc.Save(path);
