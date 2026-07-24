@@ -23,9 +23,33 @@ if (-not $Dest) {
 
 function Find-GsRoot {
     $roots = @()
+
+    # 1) Registry first - reliable regardless of the install drive (software on this
+    #    kind of machine may live outside %ProgramFiles%, e.g. on another disk). The
+    #    32-bit GS on a 64-bit Windows registers under WOW6432Node; GS_DLL points at
+    #    bin\gsdll<NN>.dll, two levels below the root we need.
+    $regBases = if ($Arch -eq 'x86') {
+        @('HKLM:\SOFTWARE\WOW6432Node\GPL Ghostscript', 'HKLM:\SOFTWARE\WOW6432Node\Artifex Ghostscript')
+    } else {
+        @('HKLM:\SOFTWARE\GPL Ghostscript', 'HKLM:\SOFTWARE\Artifex Ghostscript')
+    }
+    foreach ($rb in $regBases) {
+        Get-ChildItem $rb -ErrorAction SilentlyContinue | ForEach-Object {
+            $dllPath = (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).GS_DLL
+            if ($dllPath) {
+                $r = Split-Path (Split-Path $dllPath)
+                if (Test-Path (Join-Path $r "bin\$dllName")) { $roots += $r }
+            }
+        }
+    }
+
+    # 2) Fallback - Program Files on every LOCAL drive (network drives are skipped:
+    #    scanning a dead share hangs) plus the user profile.
     $bases = @()
-    if ($env:ProgramFiles) { $bases += (Join-Path $env:ProgramFiles 'gs') }
-    if (${env:ProgramFiles(x86)}) { $bases += (Join-Path ${env:ProgramFiles(x86)} 'gs') }
+    foreach ($d in ([IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'Fixed' -and $_.IsReady })) {
+        $bases += (Join-Path $d.Name 'Program Files\gs')
+        $bases += (Join-Path $d.Name 'Program Files (x86)\gs')
+    }
     if ($env:USERPROFILE) { $bases += $env:USERPROFILE }
     foreach ($b in $bases) {
         if (Test-Path $b) {
@@ -34,8 +58,10 @@ function Find-GsRoot {
             }
         }
     }
-    # Newest version (sort by name: gs10.07 > gs10.05 > gs9.56).
-    return ($roots | Sort-Object -Descending | Select-Object -First 1)
+
+    # Newest version by the FOLDER name (gs10.07 > gs10.05 > gs9.56) - a full-path sort
+    # would compare drive letters first and could prefer an older install.
+    return ($roots | Sort-Object { Split-Path $_ -Leaf } -Descending -Unique | Select-Object -First 1)
 }
 
 if (-not $Source) { $Source = Find-GsRoot }
