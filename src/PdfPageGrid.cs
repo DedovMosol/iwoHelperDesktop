@@ -87,7 +87,7 @@ namespace ExcelMerger
             _list.Scrolled += delegate { ScheduleVisibleUpdate(); };
             _list.Resize += delegate { ScheduleVisibleUpdate(); };
             _list.SelectedIndexChanged += delegate { ScheduleVisibleUpdate(); }; // навигация клавишами
-            EnableDoubleBuffer(_list);
+            Ui.EnableDoubleBuffer(_list);
             Controls.Add(_list);
 
             // Троттлинг: события прокрутки сливаются в одно обновление видимых миниатюр.
@@ -543,14 +543,6 @@ namespace ExcelMerger
                     g.DrawRectangle(pen, x, y, w, h);
             }
             return bmp;
-        }
-
-        private static void EnableDoubleBuffer(ListView list)
-        {
-            var p = typeof(ListView).GetProperty("DoubleBuffered",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            if (p != null)
-                p.SetValue(list, true, null);
         }
 
         /// <summary>Останавливает фоновый поток рендера — вызывать при закрытии окна.</summary>

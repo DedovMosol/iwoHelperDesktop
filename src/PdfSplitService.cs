@@ -148,7 +148,7 @@ namespace ExcelMerger
                 {
                     outDoc.Save(path);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (MergeException.ShouldWrap(ex))
                 {
                     throw new MergeException(string.Format(Loc.T("err.split.saveFailed"), Path.GetFileName(path), ex.Message));
                 }
@@ -161,7 +161,7 @@ namespace ExcelMerger
             {
                 return PdfReader.Open(path, PdfDocumentOpenMode.Import);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (MergeException.ShouldWrap(ex))
             {
                 throw new MergeException(string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message));
             }
