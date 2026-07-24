@@ -65,7 +65,8 @@ namespace ExcelMerger
         private readonly ScrollList _list = new ScrollList();
         // ПУСТОЙ ImageList задаёт нативной ListView размер «иконной зоны» (якорь отрисовки
         // и хитбокс кликов): min(плитка, 256) — выше 256 WinForms не пускает. Плитки крупнее
-        // рисуются поверх, а клики по их внешнему кольцу компенсирует OnListMouseDown.
+        // рисуются поверх, а клики по их внешнему кольцу компенсируются в MouseUp
+        // (нативный сброс выделения при клике «в пустоту» идёт ПОСЛЕ managed MouseDown).
         private readonly ImageList _metrics = new ImageList();
         private System.Windows.Forms.Timer _visibleTimer;
         private readonly LruCache<CachedPage> _pageCache;
@@ -106,6 +107,9 @@ namespace ExcelMerger
         private int _caretIndex = -1;
         private bool _caretAfter;
         private bool _hoverMark; // метка показана как подсветка наведения (не каретка)
+        // Плитка под курсором: на ней рисуются hover-кнопки поворота ↺/↻ (как в Acrobat DC).
+        private int _hotIndex = -1;
+        private Font _chipFont;
 
         // Автопрокрутка при перетаскивании у края сетки.
         private System.Windows.Forms.Timer _dragScrollTimer;
@@ -142,6 +146,11 @@ namespace ExcelMerger
         public event EventHandler GoToRequested;
         /// <summary>«Переместить после страницы N…» из контекстного меню (диалог показывает форма).</summary>
         public event EventHandler MoveAfterRequested;
+        /// <summary>
+        /// Сейчас будут повёрнуты страницы (клавиши, меню или hover-кнопка): формы с моделью
+        /// порядка делают снимок для Ctrl+Z. Поднимается ДО мутации поворотов.
+        /// </summary>
+        public event EventHandler BeforeRotate;
 
         public PdfPageGrid()
         {
@@ -151,6 +160,7 @@ namespace ExcelMerger
             _pageCache = new LruCache<CachedPage>(
                 ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderHi), OnPageEvicted);
             _badgeFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+            _chipFont = new Font("Segoe UI Symbol", 9.5f); // глифы ↺/↻ hover-кнопок поворота
             _metrics.ColorDepth = ColorDepth.Depth32Bit;
             _list.Dock = DockStyle.Fill;
             _list.View = View.LargeIcon;
@@ -162,7 +172,6 @@ namespace ExcelMerger
             _list.OwnerDraw = true;
             _list.DrawItem += OnDrawItem;
             _list.HandleCreated += delegate { ApplyIconSpacing(); };
-            _list.MouseDown += OnListMouseDown;
             _list.SelectedIndexChanged += delegate { var h = SelectionChanged; if (h != null) h(this, EventArgs.Empty); };
             _list.AllowDrop = true;
             _list.ItemDrag += OnItemDrag;
@@ -173,7 +182,7 @@ namespace ExcelMerger
             _list.MouseWheel += OnListMouseWheel;
             _list.MouseUp += OnListMouseUp;
             _list.MouseMove += OnListMouseMove;
-            _list.MouseLeave += delegate { ClearHoverMark(); };
+            _list.MouseLeave += delegate { ClearHoverMark(); SetHotIndex(-1); };
             _list.Scrolled += delegate { ScheduleVisibleUpdate(); };
             _list.Resize += delegate { ScheduleVisibleUpdate(); };
             _list.SelectedIndexChanged += delegate { ScheduleVisibleUpdate(); }; // навигация клавишами
@@ -232,6 +241,7 @@ namespace ExcelMerger
                     ClearClipboard();
             }
             ClearCaret();
+            _hotIndex = -1; // индексы элементов сейчас пересоберутся
 
             _list.BeginUpdate();
             _list.Items.Clear();         // после очистки ни один элемент не ссылается на плитки
@@ -436,6 +446,10 @@ namespace ExcelMerger
             if (page != null && page.Rotation != 0)
                 DrawRotationBadge(g, tileRect, page.Rotation);
 
+            // Hover-кнопки поворота на плитке под курсором (как в Acrobat DC).
+            if (e.ItemIndex == _hotIndex && AllowRotate && !Locked)
+                DrawHoverRotateButtons(g, tileRect);
+
             // Подпись-номер в полосе под плиткой.
             var labelRect = new Rectangle(cell.X, tileRect.Bottom + Px(2), cell.Width, cell.Bottom - tileRect.Bottom - Px(2));
             Color labelColor = page != null && _cutRefs.Contains(page) ? SystemColors.GrayText : ForeColor;
@@ -444,22 +458,6 @@ namespace ExcelMerger
 
             if (e.Item.Focused && _list.Focused)
                 ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(tileRect, Px(6), Px(6)));
-        }
-
-        /// <summary>
-        /// Компенсация хитбокса при крупных плитках: клик БЕЗ модификаторов по нарисованной
-        /// плитке, но мимо нативной иконной зоны (её предел 256), выделяет страницу как
-        /// обычный клик. Ctrl/Shift-клики по «кольцу» уходят в нативную обработку.
-        /// </summary>
-        private void OnListMouseDown(object sender, MouseEventArgs e)
-        {
-            if (e.Button != MouseButtons.Left || ModifierKeys != Keys.None)
-                return;
-            if (_list.HitTest(e.Location).Item != null)
-                return; // нативный хит — стандартная обработка
-            int index = FindTileHit(e.Location);
-            if (index >= 0)
-                SelectIndex(index);
         }
 
         /// <summary>Индекс элемента, в НАРИСОВАННУЮ плитку которого попадает точка; -1 — мимо всех.</summary>
@@ -483,6 +481,73 @@ namespace ExcelMerger
                 if (TileRectFromIcon(_list.GetItemRect(i, ItemBoundsPortion.Icon), tilePx).Contains(pt))
                     return i;
             return -1;
+        }
+
+        /// <summary>
+        /// Рамки двух hover-кнопок поворота (↺ влево, ↻ вправо) у нижней кромки плитки,
+        /// по центру, не пересекаются. Чистая — под тест.
+        /// </summary>
+        internal static Rectangle[] HoverRotateButtons(Rectangle tileRect, int diameter, int gap)
+        {
+            int totalW = diameter * 2 + gap;
+            int x = tileRect.Left + (tileRect.Width - totalW) / 2;
+            int y = tileRect.Bottom - diameter - gap;
+            return new[]
+            {
+                new Rectangle(x, y, diameter, diameter),
+                new Rectangle(x + diameter + gap, y, diameter, diameter)
+            };
+        }
+
+        private Rectangle[] HoverRotateButtonsFor(int index)
+        {
+            Size tilePx = new Size(Px(ThumbZoom.TileSize(_tileWidth).Width), Px(ThumbZoom.TileSize(_tileWidth).Height));
+            Rectangle tileRect = TileRectFromIcon(_list.GetItemRect(index, ItemBoundsPortion.Icon), tilePx);
+            return HoverRotateButtons(tileRect, Px(24), Px(6));
+        }
+
+        private void DrawHoverRotateButtons(Graphics g, Rectangle tileRect)
+        {
+            Rectangle[] buttons = HoverRotateButtons(tileRect, Px(24), Px(6));
+            string[] glyphs = { "↺", "↻" }; // ↺ влево, ↻ вправо
+            SmoothingMode prev = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            for (int i = 0; i < 2; i++)
+            {
+                using (var fill = new SolidBrush(Color.FromArgb(200, 40, 40, 40)))
+                    g.FillEllipse(fill, buttons[i]);
+                TextRenderer.DrawText(g, glyphs[i], _chipFont, buttons[i], Color.White,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            }
+            g.SmoothingMode = prev;
+        }
+
+        /// <summary>Клик по hover-кнопке поворота: вращает страницу ПОД кнопкой. true — клик обработан.</summary>
+        private bool TryHoverRotateClick(Point pt)
+        {
+            if (_hotIndex < 0 || _hotIndex >= _list.Items.Count || !AllowRotate || Locked)
+                return false;
+            Rectangle[] buttons = HoverRotateButtonsFor(_hotIndex);
+            int delta = buttons[0].Contains(pt) ? -90 : (buttons[1].Contains(pt) ? 90 : 0);
+            if (delta == 0)
+                return false;
+            RotateItems(new[] { _hotIndex }, delta);
+            return true;
+        }
+
+        /// <summary>Сменить плитку под курсором и перерисовать прежнюю/новую (для hover-кнопок).</summary>
+        private void SetHotIndex(int index)
+        {
+            if (index == _hotIndex)
+                return;
+            int old = _hotIndex;
+            _hotIndex = index;
+            if (!_list.IsHandleCreated)
+                return;
+            if (old >= 0 && old < _list.Items.Count)
+                _list.RedrawItems(old, old, true);
+            if (_hotIndex >= 0 && _hotIndex < _list.Items.Count)
+                _list.RedrawItems(_hotIndex, _hotIndex, true);
         }
 
         /// <summary>Бейдж угла поворота («90°») в правом верхнем углу плитки.</summary>
@@ -823,9 +888,22 @@ namespace ExcelMerger
         {
             if (e.Button != MouseButtons.Left)
                 return;
-            if (_list.HitTest(e.Location).Item != null || FindTileHit(e.Location) >= 0)
+            if (TryHoverRotateClick(e.Location))
+                return; // клик пришёлся в hover-кнопку поворота
+            if (_list.HitTest(e.Location).Item != null)
             {
-                ClearCaret(); // клик по плитке (включая «кольцо» крупной): якорь вставки — выделение
+                ClearCaret(); // клик по плитке: якорь вставки — выделение
+                return;
+            }
+            int ringHit = FindTileHit(e.Location);
+            if (ringHit >= 0)
+            {
+                // «Кольцо» крупной плитки вне нативного хитбокса (его предел 256): нативная
+                // обработка уже сбросила выделение на MouseDown — выделяем страницу здесь,
+                // как обычный клик (модификаторные клики по кольцу не эмулируем).
+                ClearCaret();
+                if (!Locked && ModifierKeys == Keys.None)
+                    SelectIndex(ringHit);
                 return;
             }
             if (_list.Items.Count == 0 || !AllowReorder || Locked)
@@ -848,17 +926,25 @@ namespace ExcelMerger
             ShowMark(index, after, SystemColors.Highlight);
         }
 
-        /// <summary>Подсветка зазора при наведении: светлая метка там, куда лёг бы клик каретки.</summary>
+        /// <summary>
+        /// Наведение: плитка под курсором получает hover-кнопки поворота, а зазор —
+        /// светлую метку там, куда лёг бы клик каретки.
+        /// </summary>
         private void OnListMouseMove(object sender, MouseEventArgs e)
         {
+            // Плитка под курсором (нативный хит или «кольцо» крупной плитки).
+            ListViewHitTestInfo hit = _list.HitTest(e.Location);
+            int hot = hit.Item != null ? hit.Item.Index : FindTileHit(e.Location);
+            SetHotIndex(e.Button == MouseButtons.None && !Locked ? hot : -1);
+
             if (Locked || !AllowReorder || _caretIndex >= 0 || _list.Items.Count == 0 || e.Button != MouseButtons.None)
             {
                 ClearHoverMark();
                 return;
             }
-            if (_list.HitTest(e.Location).Item != null || FindTileHit(e.Location) >= 0)
+            if (hot >= 0)
             {
-                ClearHoverMark(); // курсор над плиткой (включая «кольцо» крупной) — не над зазором
+                ClearHoverMark(); // курсор над плиткой — не над зазором
                 return;
             }
             int index = _list.InsertionMark.NearestIndex(e.Location);
@@ -929,8 +1015,11 @@ namespace ExcelMerger
 
         private void RotateItems(int[] indices, int delta)
         {
-            if (Locked || !AllowRotate)
+            if (Locked || !AllowRotate || indices.Length == 0)
                 return;
+            var hb = BeforeRotate; // формы с моделью порядка снимают чекпойнт для Ctrl+Z
+            if (hb != null)
+                hb(this, EventArgs.Empty);
             var pageKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (int index in indices)
             {
@@ -1367,6 +1456,8 @@ namespace ExcelMerger
                     _menu.Dispose(); // ContextMenuStrip не дочерний контрол — сам не освободится
                 if (_badgeFont != null)
                     _badgeFont.Dispose();
+                if (_chipFont != null)
+                    _chipFont.Dispose();
                 _metrics.Dispose(); // пустой ImageList метрик (не дочерний компонент)
                 _shuttingDown = true;    // вытеснение при Clear только освобождает bitmap
                 _pageCache.Clear();

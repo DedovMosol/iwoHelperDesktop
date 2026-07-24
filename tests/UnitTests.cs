@@ -115,6 +115,7 @@ namespace ExcelMerger.Tests
             Run("ThumbZoom.RenderWidthFor: DPI, база и крупный зум, границы", TestRenderWidthFor);
             Run("ThumbZoom.CellSize: ячейка с полосой номера, максимум 400", TestThumbZoomCell);
             Run("PdfPageGrid.TileRectFromIcon: плитка по центру иконной зоны", TestTileRectFromIcon);
+            Run("PdfPageGrid.HoverRotateButtons: два чипа у нижней кромки, без пересечений", TestHoverRotateButtons);
             Run("PdfPageOrder: Checkpoint/Undo, лимит, повороты не откатываются", TestPdfOrderUndo);
             Run("ThumbZoom.PageCacheCapacity: бюджет → ёмкость с границами", TestPageCacheCapacity);
             Run("PdfPageGrid: PageLabel (позиция/исходная), TileKey с поворотом, FlipFor", TestGridLabelTileKey);
@@ -3400,6 +3401,20 @@ namespace ExcelMerger.Tests
             AssertEqual(icon.Left + 128 - 50, small.Left, "малая плитка по центру");
         }
 
+        private static void TestHoverRotateButtons()
+        {
+            var tile = new System.Drawing.Rectangle(100, 50, 132, 172);
+            System.Drawing.Rectangle[] b = PdfPageGrid.HoverRotateButtons(tile, 24, 6);
+            AssertEqual(2, b.Length, "две кнопки");
+            AssertTrue(!b[0].IntersectsWith(b[1]), "кнопки не пересекаются");
+            AssertTrue(tile.Contains(b[0]) && tile.Contains(b[1]), "кнопки внутри плитки");
+            AssertEqual(b[0].Y, b[1].Y, "на одной высоте");
+            AssertTrue(b[0].Right < b[1].Left, "левая левее правой");
+            int center = tile.Left + tile.Width / 2;
+            AssertTrue(Math.Abs((b[0].Left + b[1].Right) / 2 - center) <= 1, "пара по центру плитки");
+            AssertTrue(b[0].Bottom < tile.Bottom, "над нижней кромкой (зазор)");
+        }
+
         private static void TestPdfOrderUndo()
         {
             var order = new PdfPageOrder();
@@ -3416,13 +3431,28 @@ namespace ExcelMerger.Tests
             AssertEqual(0, order[0].PageIndex, "порядок восстановлен");
             AssertTrue(!order.CanUndo, "снимок израсходован");
 
-            // Повороты живут в ссылках и откатом ПОРЯДКА не трогаются (осознанно).
+            // Повороты входят в снимок: откат возвращает и порядок, и углы (в общие ссылки).
             order.Checkpoint();
             order[0].Rotation = 90;
             order.RemoveAt(new[] { 2 });
             order.Undo();
             AssertEqual(3, order.Count, "состав восстановлен");
-            AssertEqual(90, order[0].Rotation, "поворот не откатывается (общие ссылки)");
+            AssertEqual(0, order[0].Rotation, "поворот откатился вместе с жестом");
+            AssertTrue(order.CanRedo, "после отката доступен возврат");
+            AssertTrue(order.Redo(), "возврат удался");
+            AssertEqual(2, order.Count, "состав вернулся");
+            AssertEqual(90, order[0].Rotation, "поворот вернулся");
+            order.Undo(); // назад к трём страницам без поворота — для следующих проверок
+
+            // Новый жест обнуляет ветку возврата (как в любом редакторе).
+            order.Checkpoint();
+            order.Move(0, 2);
+            order.Undo();
+            AssertTrue(order.CanRedo, "возврат доступен после отката");
+            order.Checkpoint();
+            order.Move(0, 2);
+            AssertTrue(!order.CanRedo, "новый жест очистил ветку возврата");
+            order.Undo();
 
             // Лимит стека: старые снимки уходят, свежие живут.
             for (int i = 0; i < 60; i++)
@@ -3487,6 +3517,9 @@ namespace ExcelMerger.Tests
                 K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Subtract), "Ctrl+Shift+Num−");
             AssertEqual(PdfToolFormBase.PageKeyAction.CancelClipboard, K(System.Windows.Forms.Keys.Escape), "Esc");
             AssertEqual(PdfToolFormBase.PageKeyAction.Undo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Z), "Ctrl+Z");
+            AssertEqual(PdfToolFormBase.PageKeyAction.Redo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Y), "Ctrl+Y");
+            AssertEqual(PdfToolFormBase.PageKeyAction.Redo,
+                K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Z), "Ctrl+Shift+Z");
             AssertEqual(PdfToolFormBase.PageKeyAction.None, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Q), "чужая клавиша");
         }
 

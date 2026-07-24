@@ -37,10 +37,16 @@ $installer = Join-Path $root ("dist\iwoHelperDesktop-setup-$ver3.exe")
 $installer86 = Join-Path $root ("dist\iwoHelperDesktop-setup-$ver3-x86.exe")
 foreach ($p in @($installer, $installer86)) { if (-not (Test-Path $p)) { throw "missing installer $p" } }
 
-# The portable x86 asset gets an explicit name on the release page (the signature made
-# by make_installer survives the copy).
+# Release assets use STABLE names (no version in the file name): the README download
+# buttons point at releases/latest/download/<name> and always fetch the newest build.
+# The version lives in the tag, the release title and the files' VersionInfo.
+# Signatures made by make_installer survive the copies.
 $exe86 = Join-Path $root 'dist\iwoHelperDesktop-x86.exe'
 Copy-Item $exe86src $exe86 -Force
+$setupStable = Join-Path $root 'dist\iwoHelperDesktop-setup.exe'
+$setupStable86 = Join-Path $root 'dist\iwoHelperDesktop-setup-x86.exe'
+Copy-Item $installer $setupStable -Force
+Copy-Item $installer86 $setupStable86 -Force
 
 # 3. Release notes from the CHANGELOG section for this version
 $notes = Join-Path $root ("dist\release-notes-$ver3.md")
@@ -57,13 +63,13 @@ foreach ($line in $changelog) {
 if ($section.Count -eq 0) { throw "no [$ver3] section in docs\CHANGELOG.md" }
 $body = "# iwo Helper Desktop $tag`r`n" + (($section -join "`r`n").Trim()) + "`r`n`r`n" +
     "**Files:** ``iwoHelperDesktop.exe`` / ``iwoHelperDesktop-x86.exe`` - portable " +
-    "(single file, 64-bit / 32-bit); ``iwoHelperDesktop-setup-$ver3.exe`` / " +
-    "``iwoHelperDesktop-setup-$ver3-x86.exe`` - installers with bundled Ghostscript " +
+    "(single file, 64-bit / 32-bit); ``iwoHelperDesktop-setup.exe`` / " +
+    "``iwoHelperDesktop-setup-x86.exe`` - installers with bundled Ghostscript " +
     "(per-user install, no administrator rights). Take x64 unless your Windows is 32-bit."
 [IO.File]::WriteAllText($notes, $body, (New-Object Text.UTF8Encoding($false)))
 Write-Host "Release notes: $notes"
 
-$assets = @($exe, $exe86, $installer, $installer86)
+$assets = @($exe, $exe86, $setupStable, $setupStable86)
 
 # 4. Publish
 if (-not $Publish) {

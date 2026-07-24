@@ -252,7 +252,7 @@ namespace ExcelMerger
         internal enum PageKeyAction
         {
             None, Remove, MoveEarlier, MoveLater, SelectAll, Swallow,
-            Cut, Copy, Paste, GoTo, RotateRight, RotateLeft, CancelClipboard, Undo
+            Cut, Copy, Paste, GoTo, RotateRight, RotateLeft, CancelClipboard, Undo, Redo
         }
 
         internal static PageKeyAction ClassifyPageKey(Keys keyData)
@@ -265,6 +265,9 @@ namespace ExcelMerger
             if (keyData == (Keys.Control | Keys.C)) return PageKeyAction.Copy;
             if (keyData == (Keys.Control | Keys.V)) return PageKeyAction.Paste;
             if (keyData == (Keys.Control | Keys.Z)) return PageKeyAction.Undo;
+            // Возврат отката — оба общепринятых сочетания.
+            if (keyData == (Keys.Control | Keys.Y) ||
+                keyData == (Keys.Control | Keys.Shift | Keys.Z)) return PageKeyAction.Redo;
             if (keyData == (Keys.Control | Keys.G)) return PageKeyAction.GoTo;
             // Поворот как в Acrobat: Ctrl+Shift+«+»/«−» (основной ряд и цифровой блок).
             if (keyData == (Keys.Control | Keys.Shift | Keys.Oemplus) ||
@@ -313,6 +316,9 @@ namespace ExcelMerger
                         break;
                     case PageKeyAction.Undo:
                         if (_grid.AllowReorder) { UndoOrder(); return true; }
+                        break;
+                    case PageKeyAction.Redo:
+                        if (_grid.AllowReorder) { RedoOrder(); return true; }
                         break;
                     case PageKeyAction.GoTo:
                         ShowGoToPage();
@@ -376,6 +382,9 @@ namespace ExcelMerger
 
         /// <summary>Откат последнего изменения порядка (Ctrl+Z). Переопределяют формы с моделью порядка.</summary>
         protected virtual void UndoOrder() { }
+
+        /// <summary>Возврат отката (Ctrl+Y / Ctrl+Shift+Z). Переопределяют формы с моделью порядка.</summary>
+        protected virtual void RedoOrder() { }
 
         /// <summary>Удалить выбранные страницы (Delete). Зовётся только при AllowReorder.</summary>
         protected virtual void RemoveSelectedPages() { }

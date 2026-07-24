@@ -63,6 +63,7 @@ namespace ExcelMerger
             _grid.MoveRangeRequested += OnMoveRange;
             _grid.InsertPagesRequested += OnInsertPages;
             _grid.FilesDropped += delegate(string[] paths, int insertAt) { AddFiles(paths, insertAt); };
+            _grid.BeforeRotate += delegate { _order.Checkpoint(); }; // повороты — в историю Ctrl+Z
             WireGridMenu();
             Controls.Add(_grid);
 
@@ -253,10 +254,20 @@ namespace ExcelMerger
         protected override void RemoveSelectedPages() { OnRemoveClick(this, EventArgs.Empty); }
         protected override void MoveSelectedPage(bool later) { MoveSelected(later); }
 
-        /// <summary>Ctrl+Z: откат последнего изменения порядка (перенос, удаление, вставка, добавление).</summary>
+        /// <summary>Ctrl+Z: откат последнего жеста (перенос, удаление, вставка, добавление, поворот).</summary>
         protected override void UndoOrder()
         {
             if (_busy || !_order.Undo())
+                return;
+            RefreshGrid();
+            SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
+            UpdateButtons();
+        }
+
+        /// <summary>Ctrl+Y / Ctrl+Shift+Z: возврат откаченного жеста.</summary>
+        protected override void RedoOrder()
+        {
+            if (_busy || !_order.Redo())
                 return;
             RefreshGrid();
             SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
