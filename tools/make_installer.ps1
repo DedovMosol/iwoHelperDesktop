@@ -1,16 +1,22 @@
 # Local build of the SIGNED iwo Helper Desktop installer with bundled Ghostscript.
 # Steps: build.cmd -> sign the exe -> stage_gs.ps1 -> ISCC -> sign setup.exe.
-# Signing uses a self-signed certificate (tools\sign.ps1), locally only (the cert lives
-# in Cert:\CurrentUser\My and is not on CI). Requires an installed Inno Setup 6 (ISCC.exe)
-# and Ghostscript (for staging). Child .ps1 scripts run in a separate process, otherwise
-# their `exit` would terminate this script too.
+# -Arch x86 builds the 32-bit package (exe from dist\x86, 32-bit Ghostscript, the
+# -x86 suffix in the setup name); default is x64. Signing uses a self-signed
+# certificate (tools\sign.ps1), locally only (the cert lives in Cert:\CurrentUser\My
+# and is not on CI). Requires an installed Inno Setup 6 (ISCC.exe) and a Ghostscript
+# of the SAME bitness (for staging). Child .ps1 scripts run in a separate process,
+# otherwise their `exit` would terminate this script too.
 param(
     [switch]$SkipBuild,
-    [string]$Iscc
+    [string]$Iscc,
+    [ValidateSet('x64', 'x86')]
+    [string]$Arch = 'x64'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
-$exe = Join-Path $root 'dist\iwoHelperDesktop.exe'
+$distDir = if ($Arch -eq 'x86') { 'dist\x86' } else { 'dist' }
+$suffix = if ($Arch -eq 'x86') { '-x86' } else { '' }
+$exe = Join-Path $root "$distDir\iwoHelperDesktop.exe"
 $ps = (Get-Process -Id $PID).Path  # current PowerShell host
 
 function Invoke-Child([string]$script, [string[]]$scriptArgs) {
@@ -53,9 +59,9 @@ function Find-Iscc {
     return $null
 }
 
-# 1. Build the application
+# 1. Build the application (per architecture)
 if (-not $SkipBuild) {
-    & (Join-Path $root 'build.cmd')
+    & (Join-Path $root 'build.cmd') $Arch
     if ($LASTEXITCODE -ne 0) { throw 'build.cmd failed' }
 }
 if (-not (Test-Path $exe)) { throw "missing $exe (build first)" }
@@ -63,8 +69,8 @@ if (-not (Test-Path $exe)) { throw "missing $exe (build first)" }
 # 2. Sign the exe (the installer embeds the already-signed file)
 Invoke-Child (Join-Path $PSScriptRoot 'sign.ps1') @('-ExePath', $exe)
 
-# 3. Stage the bundled Ghostscript
-Invoke-Child (Join-Path $PSScriptRoot 'stage_gs.ps1') @()
+# 3. Stage the bundled Ghostscript of the matching bitness
+Invoke-Child (Join-Path $PSScriptRoot 'stage_gs.ps1') @('-Arch', $Arch)
 
 # 4. Version (3 components) from the exe version - single source of truth
 $ver = (Get-Item $exe).VersionInfo.FileVersion   # e.g. 1.13.0.0
@@ -76,10 +82,10 @@ if (-not $Iscc) {
     Write-Host 'ISCC.exe (Inno Setup) not found. Install it: https://jrsoftware.org/isdl.php'
     exit 1
 }
-& $Iscc "/DAppVersion=$ver3" (Join-Path $root 'installer\iwoHelperDesktop.iss')
+& $Iscc "/DAppVersion=$ver3" "/DArch=$Arch" (Join-Path $root 'installer\iwoHelperDesktop.iss')
 if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }
 
-$setup = Join-Path $root ("dist\iwoHelperDesktop-setup-$ver3.exe")
+$setup = Join-Path $root ("dist\iwoHelperDesktop-setup-$ver3$suffix.exe")
 if (-not (Test-Path $setup)) { throw "installer was not created: $setup" }
 
 # 6. Sign the installer

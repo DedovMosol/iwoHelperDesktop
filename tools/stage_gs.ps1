@@ -1,13 +1,25 @@
-# Copies a minimal Ghostscript runtime into installer\gs\ for bundling in the installer.
-# Needed: bin\gsdll64.dll (engine) + bin\gswin64c.exe (loader) + lib\ + Resource\ +
-# iccprofiles\ (no gsdll64.lib - that is an import lib, not needed at runtime). Source is
-# an installed GS (Program Files\gs\gs* or %USERPROFILE%\gs*); can be set via -Source.
-# installer\gs\ is in .gitignore (large binaries are not committed to the repo).
+# Copies a minimal Ghostscript runtime into installer\gs\ (x64) or installer\gs32\ (x86)
+# for bundling in the matching installer. Needed: bin\gsdll64.dll|gsdll32.dll (engine) +
+# bin\gswin64c.exe|gswin32c.exe (loader) + lib\ + Resource\ + iccprofiles\ (no import
+# .lib - not needed at runtime). Source is an installed GS of the SAME bitness
+# (Program Files\gs\gs*, Program Files (x86)\gs\gs* or %USERPROFILE%\gs*); can be set
+# via -Source. Both staging dirs are in .gitignore (large binaries are not committed).
 param(
     [string]$Source,
-    [string]$Dest = (Join-Path (Split-Path $PSScriptRoot) 'installer\gs')
+    [string]$Dest,
+    [ValidateSet('x64', 'x86')]
+    [string]$Arch = 'x64'
 )
 $ErrorActionPreference = 'Stop'
+
+# Per-bitness file names and staging dir: the app looks for gswin64c.exe AND gswin32c.exe
+# next to itself, so each installer bundles the binaries matching its package.
+$dllName = if ($Arch -eq 'x86') { 'gsdll32.dll' } else { 'gsdll64.dll' }
+$exeName = if ($Arch -eq 'x86') { 'gswin32c.exe' } else { 'gswin64c.exe' }
+if (-not $Dest) {
+    $dirName = if ($Arch -eq 'x86') { 'installer\gs32' } else { 'installer\gs' }
+    $Dest = Join-Path (Split-Path $PSScriptRoot) $dirName
+}
 
 function Find-GsRoot {
     $roots = @()
@@ -18,7 +30,7 @@ function Find-GsRoot {
     foreach ($b in $bases) {
         if (Test-Path $b) {
             Get-ChildItem -LiteralPath $b -Directory -Filter 'gs*' -ErrorAction SilentlyContinue | ForEach-Object {
-                if (Test-Path (Join-Path $_.FullName 'bin\gsdll64.dll')) { $roots += $_.FullName }
+                if (Test-Path (Join-Path $_.FullName "bin\$dllName")) { $roots += $_.FullName }
             }
         }
     }
@@ -28,24 +40,24 @@ function Find-GsRoot {
 
 if (-not $Source) { $Source = Find-GsRoot }
 if (-not $Source -or -not (Test-Path $Source)) {
-    Write-Host 'Ghostscript not found. Install it: https://ghostscript.com/releases/gsdnld.html'
-    Write-Host 'or pass -Source <gs root, e.g. C:\Program Files\gs\gs10.07>.'
+    Write-Host "Ghostscript ($Arch) not found. Install the matching build: https://ghostscript.com/releases/gsdnld.html"
+    Write-Host "or pass -Source <gs root, e.g. C:\Program Files\gs\gs10.07>."
     exit 1
 }
 
-$dll = Join-Path $Source 'bin\gsdll64.dll'
-$exe = Join-Path $Source 'bin\gswin64c.exe'
+$dll = Join-Path $Source "bin\$dllName"
+$exe = Join-Path $Source "bin\$exeName"
 if (-not (Test-Path $dll) -or -not (Test-Path $exe)) {
-    Write-Host "Source has no bin\gsdll64.dll / bin\gswin64c.exe: $Source"
+    Write-Host "Source has no bin\$dllName / bin\$exeName (need a $Arch Ghostscript): $Source"
     exit 1
 }
 
-Write-Host "Ghostscript source: $Source"
+Write-Host "Ghostscript source ($Arch): $Source"
 if (Test-Path $Dest) { Remove-Item $Dest -Recurse -Force }
 New-Item -ItemType Directory -Path (Join-Path $Dest 'bin') -Force | Out-Null
 
-Copy-Item $dll (Join-Path $Dest 'bin\gsdll64.dll') -Force
-Copy-Item $exe (Join-Path $Dest 'bin\gswin64c.exe') -Force
+Copy-Item $dll (Join-Path $Dest "bin\$dllName") -Force
+Copy-Item $exe (Join-Path $Dest "bin\$exeName") -Force
 foreach ($sub in @('lib', 'Resource', 'iccprofiles')) {
     $s = Join-Path $Source $sub
     if (Test-Path $s) {
@@ -62,5 +74,5 @@ foreach ($lic in @('LICENSE', 'doc\COPYING', 'COPYING')) {
 }
 
 $size = [math]::Round(((Get-ChildItem $Dest -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
-Write-Host "Ghostscript staged in $Dest ($size MB)."
+Write-Host "Ghostscript ($Arch) staged in $Dest ($size MB)."
 exit 0

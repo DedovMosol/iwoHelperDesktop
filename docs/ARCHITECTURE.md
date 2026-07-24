@@ -48,8 +48,9 @@ The guiding principles, in priority order:
 - **Offline and private.** No telemetry, no background network. The only network call is
   the manual update check. Files are written only to user-chosen folders and `%APPDATA%`.
 - **Zero footprint.** Target machines have nothing installed: .NET Framework 4.8 ships
-  with Windows 10/11, Office is driven late-bound (no interop assemblies), managed
-  libraries are embedded into the single exe, installs are per-user without admin.
+  with Windows 10/11 (one-time install on Windows 8.1), Office is driven late-bound (no
+  interop assemblies), managed libraries are embedded into the single exe, installs are
+  per-user without admin. Both x64 and x86 packages are published.
 - **Fidelity first.** PDF pages are copied without recompression; PDF → Word reproduces
   the source layout (columns, tables, spacing, fonts) rather than dumping plain text.
 - **Survive real-world input.** Broken, password-protected and hostile files are detected
@@ -77,7 +78,7 @@ flowchart LR
 | Microsoft Word | COM, late-bound | writing `.docx` (cover note, PDF → Word) | Excel Digest note, PDF → Word |
 | PdfSharp (MIT) | embedded assembly | PDF page copy for merge/split | PDF Merge/Split |
 | PdfPig (Apache 2.0) | embedded assemblies | glyph-level text extraction | PDF → Word |
-| `Windows.Data.Pdf` (WinRT) | OS component | rendering page thumbnails | all PDF tools |
+| `Windows.Data.Pdf` (WinRT) | OS component (Windows 8.1+) | rendering page thumbnails | all PDF tools |
 | Ghostscript (AGPL) | separate process | image downsampling, raster fallbacks | compression (optional), PDF → Word stamps |
 | GitHub Releases API | HTTPS, manual | latest version tag | update check only |
 
@@ -85,10 +86,16 @@ Excel and Word are **optional**: PDF Merge, Split and Compression run without an
 
 ## Tech stack and constraints
 
-- **C# 7.3 on .NET Framework 4.8, WinForms, x64 only.** net48 is preinstalled since
-  Windows 10 1903, so nothing needs installing. `LangVersion` is pinned — do not use
-  newer syntax. x64 is explicit (`Prefer32Bit=false`): the installer bundles a 64-bit
-  Ghostscript, and a silently 32-bit process would break compression in the field.
+- **C# 7.3 on .NET Framework 4.8, WinForms.** net48 is preinstalled since Windows 10
+  1903 and installs once on Windows 8.1 (the installer checks), so target machines need
+  nothing else. `LangVersion` is pinned — do not use newer syntax. The minimum OS is
+  **Windows 8.1** — the oldest Windows with `Windows.Data.Pdf` (thumbnails).
+- **Two explicit architecture builds, no AnyCPU.** The default build is x64
+  (`dist\iwoHelperDesktop.exe`); `-p:Arch=x86` / `build.cmd x86` produces the 32-bit exe
+  in `dist\x86\` with its own `obj\x86\` (a shared `obj` would let MSBuild's incremental
+  clean delete the other arch's output). Office COM and Ghostscript run out-of-process,
+  so the tool set does not depend on the app's bitness; a 32-bit process only halves the
+  thumbnail document cache (~2 GB address space, each shown PDF is held in memory).
 - **One exe.** All managed dependencies (`build/PdfSharp.dll`, `build/pdfpig/*` — 12
   PdfPig assemblies plus net48 polyfills such as `System.Memory`) are embedded as
   resources and resolved by name at runtime by `src/EmbeddedAssemblies.cs`. This also
@@ -355,16 +362,23 @@ needs Office gets a `verify` script.
 
 ## Build, CI and release
 
-- **Build:** `build.cmd` → `dotnet build -c Release` → single `dist\iwoHelperDesktop.exe`
-  (embedded resources included). Needs only the .NET SDK.
-- **CI** (`.github/workflows/ci.yml`, windows-latest): build → unit tests → GUI smoke →
-  embedded-dependency probes → Ghostscript round-trip → installer compile check (Inno
-  Setup, version taken from the built exe) → artifacts. CI never releases.
+- **Build:** `build.cmd [x86]` → `dotnet build -c Release [-p:Arch=x86]` → single
+  `dist\iwoHelperDesktop.exe` (x86: `dist\x86\iwoHelperDesktop.exe`), embedded resources
+  included. Needs only the .NET SDK.
+- **CI** (`.github/workflows/ci.yml`, windows-latest, an x64/x86 matrix): per
+  architecture — build → unit tests → GUI smoke → embedded-dependency probes (the
+  32-bit exe runs under WOW64) → Ghostscript round-trip → installer compile check (Inno
+  Setup, `/DArch`, version taken from the built exe) → artifacts. CI never releases.
+- **Installer** (`installer/iwoHelperDesktop.iss`): one script, `/DArch=x64|x86` selects
+  the exe, the bundled Ghostscript (`installer\gs\` or `installer\gs32\`) and the `-x86`
+  file-name suffix. `MinVersion=6.3` (Windows 8.1); `[Code]` verifies .NET Framework 4.8
+  and opens the download page when missing.
 - **Release** (local, maintainer-only — the self-signed certificate lives on one
   machine): bump `src/AssemblyInfo.cs`, add a CHANGELOG section, then
-  `tools\make_release.ps1 -Publish` chains build → sign exe → `stage_gs.ps1` → ISCC →
-  sign installer → tag `vX.Y.Z` → GitHub release with CHANGELOG-derived notes.
-  Step-by-step: [RELEASING](RELEASING.md).
+  `tools\make_release.ps1 -Publish` runs `make_installer.ps1` per architecture (build →
+  sign exe → `stage_gs.ps1 -Arch` → ISCC → sign installer), checks that both exe
+  versions match, then tag `vX.Y.Z` → GitHub release with four assets and
+  CHANGELOG-derived notes. Step-by-step: [RELEASING](RELEASING.md).
 - **Versioning:** SemVer; `docs/CHANGELOG.md` follows Keep a Changelog and is the single
   source of release notes.
 
@@ -376,9 +390,9 @@ needs Office gets a `verify` script.
 | `tests/` | `UnitTests.cs` + runner project, `verify*.ps1` integration scripts, corpus generators. |
 | `tools/` | Maintainer scripts: `make_release.ps1`, `make_installer.ps1`, `sign.ps1`, `stage_gs.ps1`, `make_wizard_images.ps1`. |
 | `build/` | Build inputs: icon, manifest, vendored `PdfSharp.dll`, `pdfpig/*`. |
-| `installer/` | Inno Setup script + wizard images; `gs/` is staged locally and gitignored. |
+| `installer/` | Inno Setup script + wizard images; `gs/` and `gs32/` are staged locally and gitignored. |
 | `docs/` | This file, `CHANGELOG.md`, `PRIVACY.md`, `RELEASING.md`, screenshots. |
-| `dist/` | Build output (gitignored). |
+| `dist/` | Build output (gitignored); `dist\x86\` holds the 32-bit build. |
 | `.github/workflows/` | `ci.yml`. |
 
 ## Extension points
@@ -397,7 +411,8 @@ needs Office gets a `verify` script.
 
 | Decision | Why |
 |---|---|
-| .NET Framework 4.8, not .NET 8 | Preinstalled on every target machine — a portable exe with zero prerequisites. |
+| .NET Framework 4.8, not .NET 8 | Preinstalled on Windows 10/11 (one-time install on 8.1) — a portable exe with zero prerequisites. |
+| Two explicit arch builds (x64 + x86), no AnyCPU | Each package bundles a Ghostscript of its bitness and states what it is; deliberate builds beat `Prefer32Bit` surprises. |
 | Late-bound COM, no interop assemblies | Builds without Office; version-independent; one exe. |
 | Word writes the `.docx` (COM), not an OOXML library | Native list numbering, spacing and font substitution; fewer dependencies; the file behaves as if typed in Word. |
 | Managed deps embedded as resources | Single-file distribution without ILMerge; resolver also kills binding-redirect pain. |
