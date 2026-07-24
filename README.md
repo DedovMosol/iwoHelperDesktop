@@ -17,6 +17,8 @@
 [![Installer](https://img.shields.io/badge/Download-Installer%20x64-0F6CBD?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
 [![Portable](https://img.shields.io/badge/Download-Portable%20x64-107C41?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)
 
+📐 [Architecture](docs/ARCHITECTURE.md) · 🤝 [Contributing](CONTRIBUTING.md) · 📋 [Changelog](docs/CHANGELOG.md) · 🔒 [Privacy](docs/PRIVACY.md)
+
 </div>
 
 ## What is iwo Helper Desktop?
@@ -117,13 +119,9 @@ Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET F
 <details>
 <summary><b>Signing, installer, release, CI and tests</b></summary>
 
-- **Sign the exe:** `powershell -NoProfile -File tools\sign.ps1` — self‑signed cert in `Cert:\CurrentUser\My` (SHA256 + timestamp).
-- **Installer:** `powershell -NoProfile -File tools\make_installer.ps1` — builds/signs the exe, stages bundled Ghostscript (`tools\stage_gs.ps1`), compiles `installer\iwoHelperDesktop.iss` (Inno Setup), signs the setup. Wizard images come from `tools\make_wizard_images.ps1`.
-- **Release:** `powershell -NoProfile -File tools\make_release.ps1 -Publish` — builds/signs both artifacts, notes from the CHANGELOG, creates the GitHub release. See [docs/RELEASING.md](docs/RELEASING.md).
-- **CI** (`.github/workflows/ci.yml`): on every push — build, unit tests, GUI smoke, a Ghostscript round‑trip (`--gscheck`), and an installer compile check. Releases are cut locally (self‑signed cert lives only on the maintainer’s machine).
-- **Tests:** `tests\build_tests.cmd` (unit, no Office), and `tests\run_all.cmd` (full pyramid, needs Excel/Word). Repository layout, corpus and maintainer notes are in [docs/](docs/).
-
-**Maintainer note:** Office COM is used through late binding (`dynamic`). Never perform dynamic operations on a closed COM object (store the reference in an `object` before `Close`/`Quit`) — a dynamic bind on a dead object crashes with `COMException 0x80010114`. Text into Excel cells must go through `CellText.EscapeValues`.
+- **Tests:** `tests\build_tests.cmd` (unit, no Office — what CI runs), and `tests\run_all.cmd` (full pyramid, needs Excel/Word).
+- **Signing / installer / release:** `tools\sign.ps1`, `tools\make_installer.ps1`, `tools\make_release.ps1 -Publish` — the step‑by‑step guide is [docs/RELEASING.md](docs/RELEASING.md). Releases are cut locally (the signing cert lives only on the maintainer’s machine); CI validates every push (build, unit tests, GUI smoke, dependency probes, installer compile).
+- **Internals** — how the shell, the Office COM layer and the pipelines fit together, with the code map and the COM ground rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Contributor workflow: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 </details>
 
@@ -143,4 +141,4 @@ Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open pro
 
 ## ⚖️ License
 
-[MIT](LICENSE) © 2026 **Dodonov Andrey** ([DedovMosol](https://github.com/DedovMosol)) · full history in [docs/CHANGELOG.md](docs/CHANGELOG.md) · [Privacy Policy](docs/PRIVACY.md)
+[MIT](LICENSE) © 2026 **Dodonov Andrey** ([DedovMosol](https://github.com/DedovMosol))
