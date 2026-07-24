@@ -79,7 +79,9 @@ jobs:
             ForEach-Object { Join-Path $_.FullName 'ISCC.exe' } | Where-Object { Test-Path $_ } |
             Sort-Object -Descending | Select-Object -First 1
           if (-not $iscc) { Write-Host 'ISCC.exe не найден'; exit 1 }
-          & $iscc /DAppVersion=ci .\installer\iwoHelperDesktop.iss
+          # Без /DAppVersion: версия берётся из собранного dist\iwoHelperDesktop.exe
+          # (фолбэк в .iss). Нечисловое значение (как раньше "ci") ломает VersionInfoVersion.
+          & $iscc .\installer\iwoHelperDesktop.iss
           if ($LASTEXITCODE -ne 0) { Write-Host "iscc exit=$LASTEXITCODE"; exit 1 }
 
       - name: Артефакт сборки
