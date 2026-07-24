@@ -82,8 +82,21 @@ namespace ExcelMerger
         {
             if (string.IsNullOrEmpty(Text))
                 return;
+            // Кэш ширин на отрисовку: каждое слово меряется один раз, а не трижды
+            // (перенос, сумма строки, позиция при выводе) — GDI-measure недёшев.
+            var widths = new Dictionary<string, int>();
+            Func<string, int> measure = delegate(string s)
+            {
+                int v;
+                if (!widths.TryGetValue(s, out v))
+                {
+                    v = MeasureWord(s);
+                    widths[s] = v;
+                }
+                return v;
+            };
             int space = SpaceWidth();
-            List<List<string>> lines = Wrap(Text, Width, MeasureWord, space);
+            List<List<string>> lines = Wrap(Text, Width, measure, space);
             int lh = LineHeight();
             int y = 0;
             for (int i = 0; i < lines.Count; i++)
@@ -92,7 +105,7 @@ namespace ExcelMerger
                 bool last = i == lines.Count - 1;
                 int totalWords = 0;
                 foreach (string w in line)
-                    totalWords += MeasureWord(w);
+                    totalWords += measure(w);
 
                 int x = 0;
                 int gap = space;
@@ -102,7 +115,7 @@ namespace ExcelMerger
                 foreach (string w in line)
                 {
                     TextRenderer.DrawText(e.Graphics, w, Font, new Point(x, y), ForeColor, TextFormatFlags.NoPadding);
-                    x += MeasureWord(w) + gap;
+                    x += measure(w) + gap;
                 }
                 y += lh;
             }

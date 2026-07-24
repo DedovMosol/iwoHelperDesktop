@@ -32,30 +32,40 @@ namespace ExcelMerger
         private static string ShowVistaDialog(IWin32Window owner, string title, string initialDir)
         {
             var dialog = (IFileOpenDialog)new FileOpenDialogRCW();
-            uint options;
-            dialog.GetOptions(out options);
-            dialog.SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-            dialog.SetTitle(title);
-
-            if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
+            IShellItem folder = null;
+            IShellItem item = null;
+            try
             {
-                IShellItem folder;
-                Guid shellItemGuid = typeof(IShellItem).GUID;
-                if (SHCreateItemFromParsingName(initialDir, IntPtr.Zero, ref shellItemGuid, out folder) == 0)
-                    dialog.SetFolder(folder);
+                uint options;
+                dialog.GetOptions(out options);
+                dialog.SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+                dialog.SetTitle(title);
+
+                if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
+                {
+                    Guid shellItemGuid = typeof(IShellItem).GUID;
+                    if (SHCreateItemFromParsingName(initialDir, IntPtr.Zero, ref shellItemGuid, out folder) == 0)
+                        dialog.SetFolder(folder);
+                }
+
+                int hr = dialog.Show(owner != null ? owner.Handle : IntPtr.Zero);
+                if (hr != 0)
+                    return null; // отмена
+
+                dialog.GetResult(out item);
+                IntPtr pszPath;
+                item.GetDisplayName(SIGDN_FILESYSPATH, out pszPath);
+                string path = Marshal.PtrToStringUni(pszPath);
+                Marshal.FreeCoTaskMem(pszPath);
+                return path;
             }
-
-            int hr = dialog.Show(owner != null ? owner.Handle : IntPtr.Zero);
-            if (hr != 0)
-                return null; // отмена
-
-            IShellItem item;
-            dialog.GetResult(out item);
-            IntPtr pszPath;
-            item.GetDisplayName(SIGDN_FILESYSPATH, out pszPath);
-            string path = Marshal.PtrToStringUni(pszPath);
-            Marshal.FreeCoTaskMem(pszPath);
-            return path;
+            finally
+            {
+                // Диалог — одноразовый COM-объект: освобождаем детерминированно, не дожидаясь GC.
+                ComSafe.Release(item);
+                ComSafe.Release(folder);
+                ComSafe.Release(dialog);
+            }
         }
 
         private const uint FOS_PICKFOLDERS = 0x00000020;

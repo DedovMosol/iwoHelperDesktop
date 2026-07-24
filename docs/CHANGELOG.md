@@ -3,6 +3,54 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.8] — 2026-07-24
+
+### Added
+- **A date/number overlay stamped over a form transfers cleanly.** A low image placed
+  over a `______ № ______` form (the number/date overlay of a tracking system) is carried
+  as the image it is: the form placeholders underneath are not duplicated as text, and
+  invisible white marks around such overlays are dropped. White or invisible text is
+  kept when it sits on a real backdrop (a scan image, a dark filled panel), so OCR layers and
+  light-on-dark headers are unaffected.
+- **Single-row side-by-side zones are laid out next to each other.** Pieces of one line
+  separated by a huge gap (details on the left, a side note on the right; a signature
+  caption and a date) become columns of a borderless row band instead of gluing into one
+  string or stacking under each other. Inside table cells the line stays whole.
+- **A column that starts lower keeps its height.** In a side-by-side band, a column whose
+  content begins below the top of the band (a name opposite the last line of a multi-line
+  signature) is offset by the source distance instead of floating up to the first row.
+- **Contact block at the bottom of a sparse page stays at the bottom.** The between-block
+  spacing cap is raised (the pagination guard still prevents extra pages).
+
+### Fixed
+- **Switching the UI language keeps you in your window.** Windows are rebuilt with the active
+  one last, so the tool chooser no longer pops up on top of the tool you switched the
+  language from. A busy window (operation running) is simply raised back on top.
+- **A numbered list that starts above one keeps its numbering.** For a list beginning at
+  «5.» the start value is set on the applied list template (the document copy, not the
+  user's gallery), and consecutive items no longer re-apply the template — Word used to
+  renumber such lists from 1.
+- **The installer's file properties now show the real version.** `VersionInfo*` resources
+  of the setup executable carried 0.0.0.0 and an empty description.
+- **First-line indents are now per paragraph, from the source.** A document-wide indent is
+  applied only to paragraphs whose first line was actually indented; footnotes, contact
+  lines and flush-left details no longer inherit a false indent. In documents without a
+  common indent, an actually indented paragraph keeps its own.
+- **Narrow right-hand notes keep their horizontal position.** A left-aligned paragraph that
+  starts deep inside the text area (an recipient name, a corner mark) is anchored at its
+  source position instead of jumping to the left margin.
+- **A list item whose Word list template failed to apply keeps its marker.** The stripped
+  `1.` / `•` is put back as text instead of silently losing the number.
+- **Mixed-alphabet compound words keep their hyphen** at a line break (Cyrillic on either
+  side of the break).
+- **Footnote marks in short lines are recognised.** The dominant font size of a line is now
+  taken from its widest word, so a two-word line («№ 250» + a small mark) resolves correctly.
+- **Ruling connectivity is found via a spatial grid.** Densely dashed borders (thousands of
+  strokes) no longer cost a quadratic pass during extraction.
+- Small ones: the signature/stamp column split tolerates a narrower channel, the folder
+  picker releases its COM objects deterministically, the justified label measures each word
+  once per paint, and the tool cards reuse a cached title font.
+
 ## [1.16.7] — 2026-07-24
 
 ### Added

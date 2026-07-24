@@ -57,7 +57,7 @@ namespace ExcelMerger
                         // считаются отступы конфайна центрированной колонки (см. WriteParagraphInto).
                         double textLeft = pages[p].LeftMarginPt;
                         double textRight = pages[p].WidthPt - pages[p].RightMarginPt;
-                        List<PageItem> items = OrderedItems(pages[p]);
+                        List<PageItem> items = CoalesceRowBands(OrderedItems(pages[p]));
                         double typicalGap = TypicalItemGap(items);
                         PageItem prev = null;
                         foreach (PageItem item in items)
@@ -127,7 +127,9 @@ namespace ExcelMerger
         // (≈22pt с учётом картинки, пересекающей канал), но шире любых межсловных зазоров.
         // Колонка обязана быть существенной — см. параметры XyCut.Order.
         private const double BlockFloorGapPt = 14;
-        private const double BlockColumnGapPt = 18;
+        // Канал 12 pt: между колонкой подписи и штампом рядом бывает всего ~17 pt, а
+        // межсловные зазоры текста на порядок уже — ложных колонок канал не даёт.
+        private const double BlockColumnGapPt = 12;
         private const double BlockColumnMinExtentPt = 24;
         // На уровне БЛОКОВ достаточно ОДНОГО существенного блока в колонке: «подпись слева —
         // Ф.И.О. справа» и «Приложения: — список справа» — это одиночные (но высокие) блоки
@@ -162,9 +164,11 @@ namespace ExcelMerger
         // Воспроизведение ВЕРТИКАЛЬНЫХ зазоров между блоками: исходник разделяет зоны пустыми
         // строками («(по списку)» ниже блока, подпись ниже текста), а вывод впритык терял
         // этот ритм. Лишний зазор (сверх типичного межблочного) добавляется интервалом перед
-        // блоком; порог отсеивает шум обычной вёрстки, кап — страховка от «пустой полустраницы».
+        // блоком; порог отсеивает шум обычной вёрстки. Кап пропускает и «составителя у нижнего
+        // края» почти пустой страницы (сотни pt), а от патологий страхует демпфер
+        // <see cref="FitSpacingToPages"/>: интервалы никогда не выталкивают лишнюю страницу.
         private const double MinBlockGapExtraPt = 6;
-        private const double BlockGapCapPt = 120;
+        private const double BlockGapCapPt = 400;
 
         /// <summary>
         /// Элементы страницы в порядке чтения (XY-дерево, <see cref="XyCut"/>). Обычный узел даёт
@@ -203,6 +207,74 @@ namespace ExcelMerger
                 BlockColumnMinExtentPt, BlockColumnMinItems);
             WalkNode(root, blocks, items);
             return items;
+        }
+
+        /// <summary>
+        /// Собрать подряд идущие ОДИНОЧНЫЕ блоки одной «строки» (взаимное вертикальное
+        /// перекрытие ≥ половины меньшей высоты, зазор по X не меньше блочного канала, без
+        /// пересечений по X) в side-by-side полосу: пункты слева и боковая метка справа,
+        /// «(подпись) … (дата)», штамп-картинка рядом с блоком. XyCut такие полосы не
+        /// строит — у одиночной строки не хватает высоты на колонку. Требуется хотя бы один
+        /// абзац в полосе (двум соседним картинкам полоса не нужна). Чистая — под тест.
+        /// </summary>
+        internal static List<PageItem> CoalesceRowBands(List<PageItem> items)
+        {
+            var result = new List<PageItem>(items.Count);
+            int i = 0;
+            while (i < items.Count)
+            {
+                int j = i;
+                while (j + 1 < items.Count && RowNeighbours(items[j], items[j + 1]))
+                    j++;
+                if (j == i)
+                {
+                    result.Add(items[i]);
+                    i++;
+                    continue;
+                }
+                bool anyText = false;
+                for (int k = i; k <= j && !anyText; k++)
+                    anyText = items[k].Single.Paragraph != null;
+                if (!anyText)
+                {
+                    for (int k = i; k <= j; k++)
+                        result.Add(items[k]);
+                    i = j + 1;
+                    continue;
+                }
+                var band = new PageItem
+                {
+                    Columns = new List<List<Block>>(j - i + 1),
+                    ColLeft = new double[j - i + 1],
+                    ColRight = new double[j - i + 1],
+                    Top = double.MinValue,
+                    Bottom = double.MaxValue
+                };
+                for (int k = i; k <= j; k++)
+                {
+                    Block b = items[k].Single;
+                    band.Columns.Add(new List<Block> { b });
+                    band.ColLeft[k - i] = b.Left;
+                    band.ColRight[k - i] = Math.Max(b.Right, b.Left);
+                    if (items[k].Top > band.Top) band.Top = items[k].Top;
+                    if (items[k].Bottom < band.Bottom) band.Bottom = items[k].Bottom;
+                }
+                result.Add(band);
+                i = j + 1;
+            }
+            return result;
+        }
+
+        /// <summary>Соседи ли по «строке»: одиночные абзац/картинка, сильное вертикальное перекрытие, канал по X.</summary>
+        private static bool RowNeighbours(PageItem left, PageItem right)
+        {
+            if (left.IsBand || right.IsBand || left.Single.Table != null || right.Single.Table != null)
+                return false;
+            double overlap = Math.Min(left.Top, right.Top) - Math.Max(left.Bottom, right.Bottom);
+            double minH = Math.Min(left.Top - left.Bottom, right.Top - right.Bottom);
+            if (minH <= 0 ? overlap < 0 : overlap < 0.5 * minH)
+                return false; // не одна «строка»
+            return right.Single.Left - Math.Max(left.Single.Right, left.Single.Left) >= BlockColumnGapPt;
         }
 
         /// <summary>
@@ -403,8 +475,9 @@ namespace ExcelMerger
             bool asList = lists.Available && paragraph.ListKind != ListKind.None;
             if (asList)
             {
-                // Маркер («1.», «•») снимаем — Word рисует свой; отступ задаёт шаблон списка (indent=0).
-                WriteParagraphInto(sel, doc, paragraph, 0, false, paragraph.ListContentStart, textLeftPt, textRightPt, spaceBeforePt);
+                // Маркер («1.», «•») снимаем — Word рисует свой; отступ задаёт шаблон списка
+                // (indent=0, и привязка по факту пункту не нужна — иначе сдвиг задвоился бы).
+                WriteParagraphInto(sel, doc, paragraph, 0, false, paragraph.ListContentStart, textLeftPt, textRightPt, spaceBeforePt, false);
                 ApplyList(sel, lists, paragraph, state);
             }
             else
@@ -510,18 +583,49 @@ namespace ExcelMerger
         {
             bool continuePrev;
             if (p.ListKind == ListKind.Numbered)
-            {
                 continuePrev = state.LastNumber > 0 && p.ListNumber == state.LastNumber + 1;
-                state.LastNumber = p.ListNumber;
-            }
             else
-            {
                 continuePrev = state.PrevKind == ListKind.Bulleted;
+
+            // Пункт СРАЗУ за пунктом того же вида уже унаследовал список от TypeParagraph —
+            // переприменение шаблона не нужно: оно и лишние COM-вызовы, и сбивает StartAt
+            // рестартованного не с «1.» списка. Шаблон применяется только на старте списка и
+            // при возврате к нему после вложенного обычного текста.
+            if (continuePrev && state.PrevKind == p.ListKind)
+            {
+                if (p.ListKind == ListKind.Numbered)
+                    state.LastNumber = p.ListNumber;
+                return;
             }
+
             dynamic tmpl = p.ListKind == ListKind.Numbered ? lists.Number : lists.Bullet;
-            try { sel.Range.ListFormat.ApplyListTemplateWithLevel(tmpl, continuePrev, WdListApplyToWholeList, WdWord10ListBehavior, 1); }
+            bool applied = false;
+            try
+            {
+                sel.Range.ListFormat.ApplyListTemplateWithLevel(tmpl, continuePrev, WdListApplyToWholeList, WdWord10ListBehavior, 1);
+                // Список, начинающийся НЕ с «1.» («5. 6. 7.» — продолжение из другого
+                // документа): Word при рестарте всегда нумерует с единицы, поэтому стартовый
+                // номер задаётся явно. Правится шаблон ПРИМЕНЁННОГО списка (его копия в
+                // документе), а не галерея пользователя.
+                if (!continuePrev && p.ListKind == ListKind.Numbered && p.ListNumber > 1)
+                    try { sel.Range.ListFormat.ListTemplate.ListLevels.Item(1).StartAt = p.ListNumber; }
+                    catch { } // не удалось задать старт — список остаётся с «1.», текст цел
+                applied = true;
+            }
             catch { }
-            state.PrevKind = p.ListKind;
+            if (applied)
+            {
+                if (p.ListKind == ListKind.Numbered)
+                    state.LastNumber = p.ListNumber;
+                state.PrevKind = p.ListKind;
+                return;
+            }
+            // Шаблон не применился, а маркер уже снят с текста — вернуть «1.»/«•» в начало
+            // абзаца, иначе пункт молча теряет номер. Состояние списка не трогаем: этот абзац
+            // остался обычным текстом.
+            try { sel.Paragraphs.Item(1).Range.InsertBefore(p.Text.Substring(0, p.ListContentStart)); }
+            catch { } // и вернуть не вышло — хуже прежнего (маркер терялся молча) не стало
+            state.PrevKind = ListKind.None;
         }
 
         /// <summary>
@@ -550,6 +654,41 @@ namespace ExcelMerger
         // а центрированный на всю страницу титул при конфайне в свою рамку центрируется там же.
         private const double ColumnConfineFraction = 0.72;
         private const double MinConfineIndentPt = 6; // отступ мельче — колонка практически во всю ширину
+
+        // Горизонтальная привязка НЕцентрированного абзаца по ФАКТУ его первой строки:
+        // глубже четверти области — это позиция узкой колонки (боковая метка справа) → левый
+        // отступ абзаца; мельче — вопрос красной строки: документный отступ ставится, только
+        // если первая строка РЕАЛЬНО отступала (сноски и «исп./тел.» стоят с края — без
+        // отступа), а в документе без общего отступа берётся фактический отступ абзаца.
+        private const double AnchorLeftMinFraction = 0.25;
+        private const double MinFactIndentPt = 6; // мельче — шум измерения, не отступ
+
+        /// <summary>
+        /// Привязка по факту (см. константы выше): factInset — отступ первой строки абзаца от
+        /// левого края текстовой области (pt), documentIndent — красная строка документа (0 —
+        /// нет). Возвращает красную строку и левый отступ абзаца. Чистая — под тест.
+        /// </summary>
+        internal static void AnchorIndents(double factInset, double areaWidth, double documentIndent,
+            out double firstLineIndent, out double leftIndent)
+        {
+            firstLineIndent = 0;
+            leftIndent = 0;
+            if (areaWidth <= 0)
+                return;
+            if (factInset >= AnchorLeftMinFraction * areaWidth)
+            {
+                leftIndent = factInset; // столбик/метка на своей позиции
+                return;
+            }
+            if (documentIndent > 0)
+            {
+                if (factInset >= 0.5 * documentIndent)
+                    firstLineIndent = documentIndent;
+                return;
+            }
+            if (factInset >= MinFactIndentPt)
+                firstLineIndent = factInset; // документ без общего отступа — по факту абзаца
+        }
 
         /// <summary>
         /// Отступы для конфайна центрированного абзаца в его колонку (pt). Возвращает false и
@@ -583,7 +722,7 @@ namespace ExcelMerger
         /// иначе Word растягивает уродливыми пробелами; центрирование (шапки) сохраняется.
         /// textLeftPt/textRightPt — рамка текстовой области страницы для конфайна колонки.
         /// </summary>
-        private static void WriteParagraphInto(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, bool inCell, int skipChars, double textLeftPt, double textRightPt, double spaceBeforePt = 0)
+        private static void WriteParagraphInto(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, bool inCell, int skipChars, double textLeftPt, double textRightPt, double spaceBeforePt = 0, bool anchor = true)
         {
             // Выравнивание из источника; центрированное — без красной строки.
             int align; double indent;
@@ -593,11 +732,6 @@ namespace ExcelMerger
                 case OcrAlignment.Left: align = WdAlignLeft; indent = firstLineIndent; break;
                 default: align = inCell ? WdAlignLeft : WdAlignJustify; indent = inCell ? 0 : firstLineIndent; break;
             }
-            sel.ParagraphFormat.Alignment = align;
-            sel.ParagraphFormat.FirstLineIndent = indent;
-            // Интервал перед абзацем ставим ВСЕГДА (0 — обычный случай): Selection наследует
-            // прямое форматирование предыдущего абзаца, и без сброса зазор «поехал» бы дальше.
-            sel.ParagraphFormat.SpaceBefore = spaceBeforePt;
 
             // Конфайн центрированного абзаца в его колонку: блок шапки уходит вправо, блок —
             // влево, вместо ложного центра по всей странице. Отступы всегда переустанавливаем
@@ -606,6 +740,27 @@ namespace ExcelMerger
             ColumnConfineIndents(paragraph.Alignment == OcrAlignment.Center && !inCell,
                 paragraph.BlockLeftPt, paragraph.BlockRightPt, textLeftPt, textRightPt,
                 out leftIndent, out rightIndent);
+
+            // Привязка НЕцентрированного абзаца по факту первой строки: красная строка — только
+            // если она реально отступала, глубокий старт — позиция колонки (боковая метка). В ячейке
+            // (textLeft/Right нулевые) и у пунктов списка (anchor=false) не применяется.
+            if (anchor && !inCell && paragraph.Alignment != OcrAlignment.Center)
+            {
+                double anchorFli, anchorLeft;
+                AnchorIndents(paragraph.LeftPt - textLeftPt, textRightPt - textLeftPt, indent,
+                    out anchorFli, out anchorLeft);
+                if (textRightPt > textLeftPt)
+                {
+                    indent = anchorFli;
+                    leftIndent = anchorLeft;
+                }
+            }
+
+            sel.ParagraphFormat.Alignment = align;
+            sel.ParagraphFormat.FirstLineIndent = indent;
+            // Интервал перед абзацем ставим ВСЕГДА (0 — обычный случай): Selection наследует
+            // прямое форматирование предыдущего абзаца, и без сброса зазор «поехал» бы дальше.
+            sel.ParagraphFormat.SpaceBefore = spaceBeforePt;
             sel.ParagraphFormat.LeftIndent = leftIndent;
             sel.ParagraphFormat.RightIndent = rightIndent;
 
@@ -879,6 +1034,15 @@ namespace ExcelMerger
                     cellRange.Select();
                     dynamic cellSel = word.Selection;
                     List<Block> col = band.Columns[c];
+                    // Колонка, начинающаяся НИЖЕ верха текстов полосы (Ф.И.О. напротив последней
+                    // строки многострочной подписи), опускается интервалом перед первым блоком —
+                    // ячейки выравниваются по верху, и без этого она всплывала на первую строку.
+                    double colTop = double.MinValue;
+                    foreach (Block b in col)
+                        if (b.Top > colTop) colTop = b.Top;
+                    double topInset = textTop - colTop;
+                    if (topInset < MinBlockGapExtraPt) topInset = 0;
+                    else if (topInset > BlockGapCapPt) topInset = BlockGapCapPt;
                     for (int i = 0; i < col.Count; i++)
                     {
                         if (i > 0)
@@ -886,7 +1050,7 @@ namespace ExcelMerger
                         Block b = col[i];
                         // Пустой промежуток исходника внутри колонки («(по списку)» ниже блока)
                         // возвращаем интервалом перед блоком — той же формулой, что и в потоке.
-                        double extra = i == 0 ? 0
+                        double extra = i == 0 ? topInset
                             : ExtraGapPt(Math.Min(col[i - 1].Bottom, col[i - 1].Top) - b.Top, typicalGapPt);
                         if (b.Paragraph != null)
                             WriteParagraphInto(cellSel, doc, b.Paragraph, 0, true, 0, 0, 0, extra); // центрируется в ячейке
