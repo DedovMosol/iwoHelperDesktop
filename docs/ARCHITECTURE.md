@@ -137,7 +137,8 @@ are conceptual.
 `HeaderBand` (gradient window header), `ChoiceCard`, `RoundedButton`, `AccentCheckBox`,
 `JustifiedLabel`, `WindowChrome` (title-bar colouring), `WindowFlasher` (completion
 flash), `TaskbarProgress` (`ITaskbarList3`), `MessageForm`/`Dialogs` (branded message
-boxes), `AboutForm`, `StatsForm`, `FolderPicker`, `CompressionPicker`, `ThumbZoom`.
+boxes), `GoToPageDialog` (Ctrl+G), `AboutForm`, `StatsForm`, `FolderPicker`,
+`CompressionPicker`, `ThumbZoom` (tile sizing, DPI render width, page-cache capacity).
 
 ### Excel Digest
 
@@ -165,9 +166,9 @@ boxes), `AboutForm`, `StatsForm`, `FolderPicker`, `CompressionPicker`, `ThumbZoo
 | File | Responsibility |
 |---|---|
 | `EmbeddedAssemblies.cs` | Runtime resolver for the embedded PdfSharp/PdfPig assemblies. |
-| `PdfToolFormBase.cs` | Base class of all PDF tool windows: thumbnail grid, zoom slider, compression picker, status/progress strip, drag-and-drop, hotkeys, background-work lifecycle. |
-| `PdfPageGrid.cs`, `PdfPageOrder.cs` | Virtualized thumbnail grid with selection/reordering; the page-order model (`PdfPageRef` = source file + page index) shared by merge and PDF → Word. |
-| `PdfThumbnailRenderer.cs`, `LruCache.cs` | WinRT rendering **from memory** (see invariants), LRU of open documents (6) and rendered tiles. |
+| `PdfToolFormBase.cs` | Base class of all PDF tool windows: thumbnail grid, zoom slider, compression picker, status/progress strip, drag-and-drop, the shared grid hotkeys (`ClassifyPageKey`: Ctrl+A/X/C/V/G, Alt+←/→, Delete, Esc, Ctrl+Shift+«+»/«−»), background-work lifecycle. |
+| `PdfPageGrid.cs`, `PdfPageOrder.cs` | The thumbnail grid subsystem: lazy visible-only rendering, page-number captions (position or source page), an in-window page buffer (cut/copy/paste) with an insertion caret, drag reorder with edge auto-scroll, file drop with an insert position, per-page rotation, a context menu, `Locked` gating during operations. The page-order model (`PdfPageRef` = source file + page index + rotation) is shared by merge and PDF → Word; the grid mutates only `Rotation` of the shared refs and requests order changes via events. |
+| `PdfThumbnailRenderer.cs`, `LruCache.cs` | WinRT rendering **from memory** (see invariants) at a DPI-scaled width; LRU of open documents (6, halved on x86) and a byte-budgeted LRU of rendered pages (192 MB, 48 MB on x86) — an evicted page re-renders when shown again. |
 | `Ghostscript.cs` | Locates gs (bundled → registry → `Program Files` → user profile → `PATH`) and runs it with a timeout. |
 | `PdfCompression.cs` | `pdfwrite` downsampling (`/ebook`, `/screen`), PDF 1.4 output; the result replaces the original only if it is a valid PDF **and** strictly smaller. |
 | `PageRasterizer.cs` | Renders a page region to PNG via gs — the raster fallback used for soft-masked images and text stamps. |
@@ -210,7 +211,12 @@ top-level bookmarks). Both compress optionally and never modify the source.
   never from a file path: `LoadFromFileAsync` keeps the file memory-mapped, which would
   make a shown file impossible to overwrite (`ERROR_USER_MAPPED_FILE`).
 - **Sources are never modified.** Every tool writes new files; compression replaces its
-  own output only after validation.
+  own output only after validation. Page rotation is a property of the page **in the
+  model** (`PdfPageRef.Rotation`) — it is composed with the page's own `/Rotate` when
+  the output is written, never applied to the source.
+- **Thumbnail memory is bounded.** Rendered pages live in a byte-budgeted LRU (halved
+  in a 32-bit process); tile keys include the rotation, so duplicated pages can carry
+  different rotations. An evicted page silently re-renders when scrolled into view.
 - **User-visible strings go through `Loc.T`** (both languages); *generated documents*
   (cover note, TOC sheet, reports) are deliberately Russian regardless of UI language —
   they follow the Russian document layout (a fixed layout).
@@ -246,7 +252,10 @@ wording into the list UI, the report and the cover note.
 PdfSharp opens sources read-only and copies page objects as-is — scans, stamps and
 signatures are not re-encoded. The thumbnail grid renders through WinRT in a background
 thread with an LRU document cache; merge writes pages in the exact shown order (across
-files), split writes selections/ranges/every-N/bookmark chapters. Optional Ghostscript
+files), split writes selections/ranges/every-N/bookmark chapters. User-assigned page
+rotation travels with the page: merge reads it from each `PdfPageRef`, split takes a
+rotation map keyed by source page index (one convention for all four modes), and both
+compose it with the page's own `/Rotate` in the output. Optional Ghostscript
 compression runs per output file with validation before replacing.
 
 ### PDF → Word
@@ -418,5 +427,6 @@ needs Office gets a `verify` script.
 | Managed deps embedded as resources | Single-file distribution without ILMerge; resolver also kills binding-redirect pain. |
 | WinRT for thumbnails, loaded from memory | In-box rasterizer (no native deps); memory loading avoids the user-mapped-file lock on shown files. |
 | Ghostscript as a child process | Acrobat-grade downsampling; AGPL stays outside the MIT process boundary; graceful absence. |
+| The page buffer is in-window, not the system clipboard | Cut/copy/paste operate on page refs that only mean something inside one grid — same model as Acrobat's organizer. |
 | Custom exe test runner | Zero test-framework dependencies on net48; trivially runs anywhere, including CI. |
 | Releases cut locally, CI validates only | Signing certificate never leaves the maintainer's machine. |

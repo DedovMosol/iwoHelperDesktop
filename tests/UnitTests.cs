@@ -106,6 +106,22 @@ namespace ExcelMerger.Tests
             Run("LruCache: ключи регистронезависимы (пути файлов)", TestLruCaseInsensitive);
             Run("LruCache: Clear освобождает все элементы", TestLruClear);
             Run("LruCache: ёмкость < 1 запрещена", TestLruCapacityGuard);
+            Run("LruCache: TryPeek не освежает, Remove без onEvict, KeysSnapshot", TestLruPeekRemove);
+            Run("PdfPageRef.ComposeRotation: нормализация в {0,90,180,270}", TestRotationCompose);
+            Run("PdfPageRef.Clone: независимый снимок страницы", TestPageRefClone);
+            Run("ListReorder.MoveRange: перенос набора и позиция вставки", TestMoveRange);
+            Run("ListReorder: AdjustedInsertIndex и NormalizeIndices", TestMoveRangeHelpers);
+            Run("PdfPageOrder: InsertDocument/InsertAt в позицию с клампом", TestPdfOrderInsertAt);
+            Run("ThumbZoom.RenderWidthFor: DPI и границы", TestRenderWidthFor);
+            Run("ThumbZoom.PageCacheCapacity: бюджет → ёмкость с границами", TestPageCacheCapacity);
+            Run("PdfPageGrid: PageLabel (позиция/исходная), TileKey с поворотом, FlipFor", TestGridLabelTileKey);
+            Run("PdfPageGrid.PasteIndex: каретка, выделение, конец", TestPasteIndex);
+            Run("PdfToolFormBase.ClassifyPageKey: буфер, поворот, Ctrl+G, Esc", TestClassifyClipboardKeys);
+            Run("PdfSplitService.RotationAt: карта поворотов и границы", TestRotationAt);
+            Run("Merge (живой): /Rotate пишется и складывается с исходным", TestMergeRotationLive);
+            Run("SplitByRanges (живой): карта поворотов по индексу страницы", TestSplitRotationLive);
+            Run("PdfDrop.ExtractPaths: фильтр .pdf, несуществующие, пустой дроп", TestPdfDropExtract);
+            Run("PdfPageGrid.DropInsertIndex: позиция дропа по метке/в конец", TestDropInsertIndex);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
             Run("PdfPageGrid.StaleKeys: вытесняются только отсутствующие в keep", TestGridStaleKeys);
             Run("PdfPageGrid.LowerBound: бинарный поиск по монотонному предикату", TestLowerBound);
@@ -3219,6 +3235,319 @@ namespace ExcelMerger.Tests
                 _failed++;
                 Console.WriteLine("FAIL  " + name + " — " + ex.Message);
             }
+        }
+
+        // ---------- буфер страниц, поворот, кэш миниатюр (1.17.0) ----------
+
+        private static void TestLruPeekRemove()
+        {
+            var evicted = new List<string>();
+            var lru = new LruCache<string>(2, delegate(string val) { evicted.Add(val); });
+            lru.Add("a", "A");
+            lru.Add("b", "B");
+            string v;
+            AssertTrue(lru.TryPeek("a", out v) && v == "A", "TryPeek видит значение");
+            lru.Add("c", "C"); // peek НЕ освежил «a» — вытесняется именно он
+            AssertEqual(1, evicted.Count, "одно вытеснение");
+            AssertEqual("A", evicted[0], "вытеснен несвежий после peek");
+            AssertTrue(!lru.TryPeek("a", out v), "вытесненный изъят");
+
+            AssertTrue(lru.Remove("b", out v) && v == "B", "Remove возвращает значение");
+            AssertEqual(1, evicted.Count, "Remove не зовёт onEvict");
+            AssertEqual(1, lru.Count, "после Remove остался один");
+            List<string> keys = lru.KeysSnapshot();
+            AssertTrue(keys.Count == 1 && string.Equals(keys[0], "c", StringComparison.OrdinalIgnoreCase),
+                "KeysSnapshot отражает содержимое");
+            AssertTrue(!lru.Remove("nope", out v), "Remove отсутствующего — false");
+        }
+
+        private static void TestRotationCompose()
+        {
+            AssertEqual(90, PdfPageRef.ComposeRotation(0, 90), "0+90");
+            AssertEqual(0, PdfPageRef.ComposeRotation(270, 90), "270+90 → 0");
+            AssertEqual(270, PdfPageRef.ComposeRotation(0, -90), "0−90 → 270");
+            AssertEqual(0, PdfPageRef.ComposeRotation(180, 180), "180+180 → 0");
+            AssertEqual(180, PdfPageRef.ComposeRotation(90, 90), "90+90");
+            AssertEqual(90, PdfPageRef.ComposeRotation(90, 45), "не кратный 90 срезается вниз");
+            AssertEqual(270, PdfPageRef.ComposeRotation(-90, 0), "отрицательный исходный");
+        }
+
+        private static void TestPageRefClone()
+        {
+            var page = new PdfPageRef { SourcePath = "C:\\a.pdf", PageIndex = 3, Rotation = 90 };
+            PdfPageRef clone = page.Clone();
+            AssertTrue(!ReferenceEquals(page, clone), "новый экземпляр");
+            AssertEqual(page.SourcePath, clone.SourcePath, "путь");
+            AssertEqual(page.PageIndex, clone.PageIndex, "индекс");
+            AssertEqual(page.Rotation, clone.Rotation, "поворот скопирован");
+            clone.Rotation = 180;
+            AssertEqual(90, page.Rotation, "оригинал не задет");
+        }
+
+        private static List<string> FiveLetters()
+        {
+            return new List<string> { "a", "b", "c", "d", "e" };
+        }
+
+        private static void TestMoveRange()
+        {
+            List<string> list = FiveLetters();
+            AssertEqual(0, ListReorder.MoveRange(list, new[] { 2, 3 }, 0), "перенос к началу: индекс");
+            AssertEqual("c,d,a,b,e", string.Join(",", list), "перенос к началу: порядок");
+
+            list = FiveLetters();
+            AssertEqual(3, ListReorder.MoveRange(list, new[] { 0, 1 }, 5), "в конец: индекс");
+            AssertEqual("c,d,e,a,b", string.Join(",", list), "в конец: порядок");
+
+            list = FiveLetters();
+            AssertEqual(1, ListReorder.MoveRange(list, new[] { 1, 2 }, 2), "вставка внутри набора: индекс");
+            AssertEqual("a,b,c,d,e", string.Join(",", list), "вставка внутри набора: порядок не меняется");
+
+            list = FiveLetters();
+            AssertEqual(0, ListReorder.MoveRange(list, new[] { 3, 2 }, 0), "несортированные индексы");
+            AssertEqual("c,d,a,b,e", string.Join(",", list), "несортированные: порядок");
+
+            list = FiveLetters();
+            AssertEqual(0, ListReorder.MoveRange(list, new[] { 2, 2, 3 }, 0), "дубли игнорируются");
+            AssertEqual("c,d,a,b,e", string.Join(",", list), "дубли: порядок");
+
+            list = FiveLetters();
+            AssertEqual(-1, ListReorder.MoveRange(list, new int[0], 2), "пустой набор — -1");
+            AssertEqual(-1, ListReorder.MoveRange(list, new[] { -1, 9 }, 2), "все вне диапазона — -1");
+            AssertEqual("a,b,c,d,e", string.Join(",", list), "список не тронут");
+
+            list = FiveLetters();
+            AssertEqual(4, ListReorder.MoveRange(list, new[] { 0 }, 99), "insertAt клампится к концу");
+            AssertEqual("b,c,d,e,a", string.Join(",", list), "кламп: порядок");
+        }
+
+        private static void TestMoveRangeHelpers()
+        {
+            AssertEqual(3, ListReorder.AdjustedInsertIndex(new List<int> { 1, 3 }, 5), "два изъятых левее");
+            AssertEqual(0, ListReorder.AdjustedInsertIndex(new List<int> { 0, 1, 2 }, 1), "изъятые вокруг цели");
+            AssertEqual(2, ListReorder.AdjustedInsertIndex(new List<int> { 3, 4 }, 2), "изъятые правее не сдвигают");
+            List<int> norm = ListReorder.NormalizeIndices(new[] { 3, 1, 3, -2, 9 }, 5);
+            AssertEqual("1,3", string.Join(",", norm), "сортировка, дубли и границы");
+            AssertEqual(0, ListReorder.NormalizeIndices(null, 5).Count, "null — пусто");
+        }
+
+        private static void TestPdfOrderInsertAt()
+        {
+            var order = new PdfPageOrder();
+            order.AddDocument("x.pdf", 3);
+            AssertEqual(1, order.InsertDocument(1, "y.pdf", 2), "вставка в середину: индекс");
+            AssertEqual(5, order.Count, "стало пять страниц");
+            AssertEqual("y.pdf", order[1].SourcePath, "первая вставленная");
+            AssertEqual("y.pdf", order[2].SourcePath, "вторая вставленная");
+            AssertEqual(1, order[3].PageIndex, "прежняя страница сдвинулась");
+            AssertEqual(5, order.InsertDocument(99, "z.pdf", 1), "кламп к концу");
+            AssertEqual("z.pdf", order[5].SourcePath, "в конец");
+
+            var pages = new List<PdfPageRef> { new PdfPageRef { SourcePath = "p.pdf", PageIndex = 0 } };
+            AssertEqual(0, order.InsertAt(-5, pages), "отрицательный insertAt — в начало");
+            AssertEqual("p.pdf", order[0].SourcePath, "вставлено в начало");
+
+            int landed = order.MoveRange(new[] { 0 }, order.Count);
+            AssertEqual(order.Count - 1, landed, "перенос в конец через модель");
+            AssertEqual("p.pdf", order[order.Count - 1].SourcePath, "перенесён");
+        }
+
+        private static void TestRenderWidthFor()
+        {
+            AssertEqual(300, ThumbZoom.RenderWidthFor(96), "100% DPI — прежние 300");
+            AssertEqual(357, ThumbZoom.RenderWidthFor(120), "125% DPI");
+            AssertEqual(428, ThumbZoom.RenderWidthFor(144), "150% DPI");
+            AssertEqual(570, ThumbZoom.RenderWidthFor(192), "200% DPI");
+            AssertEqual(640, ThumbZoom.RenderWidthFor(384), "потолок 640");
+            AssertEqual(300, ThumbZoom.RenderWidthFor(0), "мусорный DPI — минимум");
+        }
+
+        private static void TestPageCacheCapacity()
+        {
+            AssertEqual(96, ThumbZoom.PageCacheCapacity(48L << 20, 300), "48 МБ при 300 px");
+            AssertEqual(24, ThumbZoom.PageCacheCapacity(1L << 20, 300), "пол — 24");
+            AssertEqual(512, ThumbZoom.PageCacheCapacity(8L << 30, 300), "потолок — 512");
+            AssertTrue(ThumbZoom.PageCacheCapacity(192L << 20, 640) >= 24, "большой рендер не роняет пол");
+        }
+
+        private static void TestGridLabelTileKey()
+        {
+            var page = new PdfPageRef { SourcePath = "C:\\Docs\\a.pdf", PageIndex = 4 };
+            AssertEqual("3", PdfPageGrid.PageLabel(page, 2, true), "режим позиции");
+            AssertEqual("5", PdfPageGrid.PageLabel(page, 2, false), "режим исходной страницы");
+            AssertTrue(PdfPageGrid.TileKey(page).EndsWith("|r0"), "плитка без поворота");
+            page.Rotation = 90;
+            AssertTrue(PdfPageGrid.TileKey(page).EndsWith("|r90"), "плитка с поворотом");
+            AssertTrue(PdfPageGrid.TileKey(page).StartsWith(PdfPageGrid.ThumbKey(page)),
+                "ключ плитки начинается с ключа страницы");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate90FlipNone, PdfPageGrid.FlipFor(90), "90");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate180FlipNone, PdfPageGrid.FlipFor(180), "180");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate270FlipNone, PdfPageGrid.FlipFor(270), "270");
+            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone, PdfPageGrid.FlipFor(0), "0");
+        }
+
+        private static void TestPasteIndex()
+        {
+            AssertEqual(3, PdfPageGrid.PasteIndex(2, true, new int[0], 10), "каретка после плитки 2");
+            AssertEqual(2, PdfPageGrid.PasteIndex(2, false, new int[0], 10), "каретка до плитки 2");
+            AssertEqual(10, PdfPageGrid.PasteIndex(9, true, new int[0], 10), "каретка в конце");
+            AssertEqual(5, PdfPageGrid.PasteIndex(-1, false, new[] { 1, 4 }, 10), "после последнего выбранного");
+            AssertEqual(10, PdfPageGrid.PasteIndex(-1, false, new int[0], 10), "без каретки и выбора — в конец");
+        }
+
+        private static void TestClassifyClipboardKeys()
+        {
+            var K = new Func<System.Windows.Forms.Keys, PdfToolFormBase.PageKeyAction>(PdfToolFormBase.ClassifyPageKey);
+            AssertEqual(PdfToolFormBase.PageKeyAction.Cut, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.X), "Ctrl+X");
+            AssertEqual(PdfToolFormBase.PageKeyAction.Copy, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C), "Ctrl+C");
+            AssertEqual(PdfToolFormBase.PageKeyAction.Paste, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.V), "Ctrl+V");
+            AssertEqual(PdfToolFormBase.PageKeyAction.GoTo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.G), "Ctrl+G");
+            AssertEqual(PdfToolFormBase.PageKeyAction.RotateRight,
+                K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Oemplus), "Ctrl+Shift+«+»");
+            AssertEqual(PdfToolFormBase.PageKeyAction.RotateRight,
+                K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Add), "Ctrl+Shift+Num+");
+            AssertEqual(PdfToolFormBase.PageKeyAction.RotateLeft,
+                K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.OemMinus), "Ctrl+Shift+«−»");
+            AssertEqual(PdfToolFormBase.PageKeyAction.RotateLeft,
+                K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Subtract), "Ctrl+Shift+Num−");
+            AssertEqual(PdfToolFormBase.PageKeyAction.CancelClipboard, K(System.Windows.Forms.Keys.Escape), "Esc");
+            AssertEqual(PdfToolFormBase.PageKeyAction.None, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Q), "чужая клавиша");
+        }
+
+        private static void TestRotationAt()
+        {
+            AssertEqual(0, PdfSplitService.RotationAt(null, 0), "нет карты — 0");
+            AssertEqual(90, PdfSplitService.RotationAt(new[] { 0, 90 }, 1), "по индексу");
+            AssertEqual(0, PdfSplitService.RotationAt(new[] { 0, 90 }, 5), "за пределами — 0");
+            AssertEqual(0, PdfSplitService.RotationAt(new[] { 0, 90 }, -1), "отрицательный — 0");
+        }
+
+        /// <summary>Двухстраничный PDF для проверок поворота; firstPageRotate — собственный /Rotate первой страницы.</summary>
+        private static string MakeTwoPagePdf(string dir, int firstPageRotate)
+        {
+            string path = Path.Combine(dir, "rotsrc.pdf");
+            using (var doc = new PdfDocument())
+            {
+                PdfPage first = doc.AddPage();
+                if (firstPageRotate != 0)
+                    first.Rotate = firstPageRotate;
+                doc.AddPage();
+                doc.Save(path);
+            }
+            return path;
+        }
+
+        private static void TestMergeRotationLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_rot_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = MakeTwoPagePdf(dir, 270);
+                string outPath = Path.Combine(dir, "out.pdf");
+                var order = new List<PdfPageRef>
+                {
+                    new PdfPageRef { SourcePath = src, PageIndex = 0, Rotation = 90 },
+                    new PdfPageRef { SourcePath = src, PageIndex = 1, Rotation = 180 },
+                    new PdfPageRef { SourcePath = src, PageIndex = 1 }
+                };
+                PdfMergeService.Merge(order, outPath);
+                using (PdfDocument doc = PdfReader.Open(outPath, PdfDocumentOpenMode.Import))
+                {
+                    AssertEqual(3, doc.PageCount, "страниц в итоге");
+                    AssertEqual(0, doc.Pages[0].Rotate, "исходные 270 + 90 пользователя = 0");
+                    AssertEqual(180, doc.Pages[1].Rotate, "поворот на 180");
+                    AssertEqual(0, doc.Pages[2].Rotate, "без поворота — как в исходнике");
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { }
+            }
+        }
+
+        private static void TestSplitRotationLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_rot_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = MakeTwoPagePdf(dir, 0);
+                var ranges = new List<PageRange> { new PageRange(0, 1) };
+                List<string> files = PdfSplitService.SplitByRanges(src, ranges, dir, "part", null, new[] { 90, 0 });
+                AssertEqual(1, files.Count, "один файл диапазона");
+                using (PdfDocument doc = PdfReader.Open(files[0], PdfDocumentOpenMode.Import))
+                {
+                    AssertEqual(90, doc.Pages[0].Rotate, "поворот из карты");
+                    AssertEqual(0, doc.Pages[1].Rotate, "вторая без поворота");
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Фильтр перетаскиваемых файлов: берутся только существующие .pdf (регистр
+        /// расширения не важен), прочее отсекается; данные не-FileDrop → пусто.
+        /// Регрессия «файлы над сеткой мертвы» держится именно на этом фильтре.
+        /// DataObject/DragEventArgs — managed, STA-контрол не создаётся.
+        /// </summary>
+        private static void TestPdfDropExtract()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_drop_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string pdf = Path.Combine(dir, "a.pdf");
+                File.WriteAllBytes(pdf, new byte[] { 1 });
+                string pdfUpper = Path.Combine(dir, "B.PDF");
+                File.WriteAllBytes(pdfUpper, new byte[] { 1 });
+                string txt = Path.Combine(dir, "c.txt");
+                File.WriteAllBytes(txt, new byte[] { 1 });
+                string missing = Path.Combine(dir, "ghost.pdf"); // не создаём
+
+                string[] got = PdfDrop.ExtractPaths(MakeFileDrop(new[] { pdf, pdfUpper, txt, missing }));
+                Array.Sort(got);
+                AssertEqual(2, got.Length, "только существующие .pdf (регистр не важен)");
+                AssertTrue(Array.IndexOf(got, pdf) >= 0, "нижний регистр .pdf");
+                AssertTrue(Array.IndexOf(got, pdfUpper) >= 0, "верхний регистр .PDF");
+                AssertTrue(Array.IndexOf(got, txt) < 0, ".txt отсеян");
+                AssertTrue(Array.IndexOf(got, missing) < 0, "несуществующий отсеян");
+
+                AssertEqual(0, PdfDrop.ExtractPaths(MakeFileDrop(new string[0])).Length, "пустой список");
+                AssertEqual(0, PdfDrop.ExtractPaths(null).Length, "null-аргумент");
+
+                var text = new System.Windows.Forms.DataObject(System.Windows.Forms.DataFormats.Text, "hi");
+                var e = new System.Windows.Forms.DragEventArgs(text, 0, 0, 0,
+                    System.Windows.Forms.DragDropEffects.Copy, System.Windows.Forms.DragDropEffects.None);
+                AssertEqual(0, PdfDrop.ExtractPaths(e).Length, "не-FileDrop — пусто");
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { }
+            }
+        }
+
+        private static System.Windows.Forms.DragEventArgs MakeFileDrop(string[] paths)
+        {
+            var data = new System.Windows.Forms.DataObject();
+            data.SetData(System.Windows.Forms.DataFormats.FileDrop, paths);
+            return new System.Windows.Forms.DragEventArgs(data, 0, 0, 0,
+                System.Windows.Forms.DragDropEffects.Copy, System.Windows.Forms.DragDropEffects.None);
+        }
+
+        private static void TestDropInsertIndex()
+        {
+            // Сетка с порядком: вставка по метке (до/после плитки).
+            AssertEqual(2, PdfPageGrid.DropInsertIndex(true, 2, false, 10), "до плитки 2");
+            AssertEqual(3, PdfPageGrid.DropInsertIndex(true, 2, true, 10), "после плитки 2");
+            // Нет метки (курсор в пустоте) — в конец.
+            AssertEqual(10, PdfPageGrid.DropInsertIndex(true, -1, false, 10), "нет метки — в конец");
+            // Сетка без порядка («Разделение») — позиция не важна, всегда в конец.
+            AssertEqual(10, PdfPageGrid.DropInsertIndex(false, 3, true, 10), "без порядка — в конец");
+            AssertEqual(0, PdfPageGrid.DropInsertIndex(true, -1, false, 0), "пустая сетка — 0");
         }
 
         private static void AssertEqual(object expected, object actual, string what)

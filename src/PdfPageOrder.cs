@@ -30,13 +30,48 @@ namespace ExcelMerger
         /// <summary>Все страницы документа добавляются в конец списка по порядку.</summary>
         public void AddDocument(string path, int pageCount)
         {
+            InsertDocument(Count, path, pageCount);
+        }
+
+        /// <summary>
+        /// Страницы документа вставляются подряд ПЕРЕД позицией insertAt (за пределами
+        /// списка — прижимается к краю). Возвращает позицию первой вставленной страницы.
+        /// </summary>
+        public int InsertDocument(int insertAt, string path, int pageCount)
+        {
+            if (insertAt < 0) insertAt = 0;
+            if (insertAt > _items.Count) insertAt = _items.Count;
             for (int i = 0; i < pageCount; i++)
             {
                 var page = new PdfPageRef();
                 page.SourcePath = path;
                 page.PageIndex = i;
-                _items.Add(page);
+                _items.Insert(insertAt + i, page);
             }
+            return insertAt;
+        }
+
+        /// <summary>
+        /// Вставка готовых страниц (вставка из буфера) ПЕРЕД позицией insertAt.
+        /// Возвращает позицию первой вставленной страницы.
+        /// </summary>
+        public int InsertAt(int insertAt, IList<PdfPageRef> pages)
+        {
+            if (insertAt < 0) insertAt = 0;
+            if (insertAt > _items.Count) insertAt = _items.Count;
+            if (pages != null)
+                for (int i = 0; i < pages.Count; i++)
+                    _items.Insert(insertAt + i, pages[i]);
+            return insertAt;
+        }
+
+        /// <summary>
+        /// Перенос набора страниц (вырезать → вставить) ПЕРЕД позицией insertAt в исходной
+        /// нумерации. Возвращает позицию первой перенесённой страницы (-1 — пустой набор).
+        /// </summary>
+        public int MoveRange(IList<int> indices, int insertAt)
+        {
+            return ListReorder.MoveRange(_items, indices, insertAt);
         }
 
         public int MoveUp(int index)

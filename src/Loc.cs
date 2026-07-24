@@ -149,7 +149,18 @@ namespace ExcelMerger
             A("common.no", "Нет", "No");
             A("common.compression", "Сжатие:", "Compression:");
             A("grid.pageTip", "{0} — стр. {1}", "{0} — p. {1}");
-            A("grid.pageLabel", "{0}\nстр. {1}", "{0}\np. {1}");
+            // Контекстное меню сетки страниц (подписи плиток — просто номера, без строк).
+            A("grid.menu.cut", "Вырезать", "Cut");
+            A("grid.menu.copy", "Копировать", "Copy");
+            A("grid.menu.paste", "Вставить", "Paste");
+            A("grid.menu.rotateRight", "Повернуть вправо на 90°", "Rotate right 90°");
+            A("grid.menu.rotateLeft", "Повернуть влево на 90°", "Rotate left 90°");
+            A("grid.menu.delete", "Удалить", "Remove");
+            A("grid.menu.goto", "Перейти к странице…", "Go to page…");
+            A("goto.title", "Перейти к странице", "Go to page");
+            A("goto.prompt", "Страница (1–{0}):", "Page (1–{0}):");
+            A("goto.ok", "Перейти", "Go");
+            A("common.cancel", "Отмена", "Cancel");
             A("common.tip.compression",
                 "«Хорошо»/«Нормально» уменьшают размер, снижая разрешение изображений (как в Acrobat).\n" +
                 "Текст и вектор сохраняются. У подписанных PDF подпись станет недействительной.",

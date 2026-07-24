@@ -52,10 +52,16 @@ namespace ExcelMerger
 
             _grid = new PdfPageGrid();
             _grid.AllowReorder = true; // перестановка страниц перетаскиванием
+            _grid.ShowPositionNumbers = true; // под плиткой — позиция в итоговом документе
+            // AllowRotate НЕ включаем: текстовый конвейер PDF → Word повороты не потребляет.
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _grid.ReorderRequested += OnReorder;
+            _grid.MoveRangeRequested += OnMoveRange;
+            _grid.InsertPagesRequested += OnInsertPages;
+            _grid.FilesDropped += delegate(string[] paths, int insertAt) { AddFiles(paths, insertAt); };
             _grid.SelectionChanged += delegate { UpdateControls(); };
+            WireGridMenu();
             Controls.Add(_grid);
 
             int px = right - panelW + 10;
@@ -118,12 +124,17 @@ namespace ExcelMerger
                 AddFiles(PdfDrop.ExtractPaths(e));
         }
 
-        /// <summary>Добавить PDF-файлы в конец списка страниц (порядок правится в сетке). Ошибка файла — диалог, остальные добавляются.</summary>
-        private void AddFiles(string[] paths)
+        /// <summary>
+        /// Добавить PDF-файлы в конец (кнопка, дроп на окно) или ПЕРЕД позицией insertAt
+        /// (дроп на сетку). Ошибка файла — диалог, остальные добавляются.
+        /// </summary>
+        private void AddFiles(string[] paths, int insertAt = -1)
         {
-            if (paths == null)
+            if (_busy || paths == null)
                 return;
             int added = 0;
+            int firstAdded = -1;
+            int at = insertAt < 0 || insertAt > _order.Count ? _order.Count : insertAt;
             Cursor = Cursors.WaitCursor;
             try
             {
@@ -132,7 +143,10 @@ namespace ExcelMerger
                     try
                     {
                         int pages = PdfMergeService.LoadPages(path).Count;
-                        _order.AddDocument(path, pages); // страницы в исходном порядке; пользователь переставит/удалит
+                        int landed = _order.InsertDocument(at, path, pages);
+                        if (firstAdded < 0)
+                            firstAdded = landed;
+                        at = landed + pages; // следующий файл — сразу за вставленным
                         added += pages;
                     }
                     catch (MergeException ex)
@@ -148,6 +162,8 @@ namespace ExcelMerger
             if (added > 0)
             {
                 RefreshGrid();
+                if (insertAt >= 0)
+                    _grid.SelectRange(firstAdded, added); // показать место вставки дропа
                 SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
             }
             UpdateControls();
@@ -222,6 +238,7 @@ namespace ExcelMerger
         private void UpdateControls()
         {
             bool one = !_busy && _grid.SelectedCount == 1;
+            _grid.Locked = _busy; // правки сетки (буфер, дроп) — только вне операции
             _btnOpen.Enabled = !_busy;
             _btnUp.Enabled = one;
             _btnDown.Enabled = one;
@@ -243,6 +260,30 @@ namespace ExcelMerger
             _order.Move(from, to);
             RefreshGrid();
             _grid.SelectIndex(to > from ? to - 1 : to); // выделить страницу на новом месте
+        }
+
+        /// <summary>Вставка вырезанных страниц (Ctrl+X → Ctrl+V) — перенос набора внутри порядка.</summary>
+        private void OnMoveRange(int[] indices, int insertAt)
+        {
+            if (_busy)
+                return;
+            int landed = _order.MoveRange(indices, insertAt);
+            if (landed < 0)
+                return;
+            RefreshGrid();
+            _grid.SelectRange(landed, indices.Length);
+        }
+
+        /// <summary>Вставка скопированных страниц (Ctrl+C → Ctrl+V) — новые экземпляры в позиции.</summary>
+        private void OnInsertPages(PdfPageRef[] pages, int insertAt)
+        {
+            if (_busy || pages == null || pages.Length == 0)
+                return;
+            int landed = _order.InsertAt(insertAt, pages);
+            RefreshGrid();
+            _grid.SelectRange(landed, pages.Length);
+            SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
+            UpdateControls();
         }
 
         private void MoveSelected(bool later)

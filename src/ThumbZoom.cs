@@ -16,7 +16,9 @@ namespace ExcelMerger
         public const int MinWidth = 96;
         public const int MaxWidth = 190; // 190 × 1.30 = 247 ≤ 256
         public const int DefaultWidth = 132;
-        public const int RenderWidth = 300; // исходная страница — обычный Bitmap, лимита нет
+        private const int MinRenderWidth = 300; // исходная страница — обычный Bitmap, лимита ImageList нет
+        private const int MaxRenderWidth = 640; // потолок памяти: страница ~640×930×4 ≈ 2,4 МБ
+        private const double RenderOversample = 1.5; // запас на даунскейл HighQualityBicubic
         private const double TileAspect = 1.30; // высота = ширина × коэффициент
         private const int WheelStep = 16;       // пикселей ширины на «щелчок» колеса
 
@@ -39,6 +41,36 @@ namespace ExcelMerger
         {
             int notches = wheelDelta / 120; // WHEEL_DELTA
             return Clamp(currentWidth + notches * WheelStep);
+        }
+
+        /// <summary>
+        /// Ширина рендера страницы в ФИЗИЧЕСКИХ пикселях монитора: максимальная плитка ×
+        /// DPI-масштаб × запас на даунскейл. На 100% DPI остаётся прежняя (300), на
+        /// 150% — резче вместо мыла от растяжения. Считается один раз на сетку
+        /// (масштаб плиток пересобирает их из этого рендера без WinRT). Чистая — под тест.
+        /// </summary>
+        public static int RenderWidthFor(int deviceDpi)
+        {
+            if (deviceDpi < 96)
+                deviceDpi = 96;
+            int w = (int)Math.Ceiling(MaxWidth * (deviceDpi / 96.0) * RenderOversample);
+            if (w < MinRenderWidth) return MinRenderWidth;
+            if (w > MaxRenderWidth) return MaxRenderWidth;
+            return w;
+        }
+
+        /// <summary>
+        /// Ёмкость LRU-кэша отрендеренных страниц из бюджета памяти: все записи почти
+        /// одноразмерны (ширина рендера фиксирована на сессию, высота ~×1.45 для A4),
+        /// поэтому счётный предел честно ограничивает байты. Чистая — под тест.
+        /// </summary>
+        public static int PageCacheCapacity(long budgetBytes, int renderWidth)
+        {
+            long perPage = (long)renderWidth * (long)(renderWidth * 1.45) * 4; // 32bpp
+            long capacity = perPage > 0 ? budgetBytes / perPage : 0;
+            if (capacity < 24) return 24;    // видимое окно + запас должны жить в кэше
+            if (capacity > 512) return 512;  // дальше выигрыша нет, а Touch в LRU — O(n)
+            return (int)capacity;
         }
     }
 }

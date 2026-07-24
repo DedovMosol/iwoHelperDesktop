@@ -54,10 +54,16 @@ namespace ExcelMerger
 
             _grid = new PdfPageGrid();
             _grid.AllowReorder = true;
+            _grid.AllowRotate = true;          // поворот пишется в итоговый PDF (/Rotate)
+            _grid.ShowPositionNumbers = true;  // под плиткой — позиция в итоговом наборе
             _grid.SetBounds(20, m + 80, right - 20 - 150, ClientSize.Height - (m + 80) - 152);
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _grid.SelectionChanged += delegate { UpdateButtons(); };
             _grid.ReorderRequested += OnReorder;
+            _grid.MoveRangeRequested += OnMoveRange;
+            _grid.InsertPagesRequested += OnInsertPages;
+            _grid.FilesDropped += delegate(string[] paths, int insertAt) { AddFiles(paths, insertAt); };
+            WireGridMenu();
             Controls.Add(_grid);
 
             int col = right - 130;
@@ -128,9 +134,14 @@ namespace ExcelMerger
                 AddFiles(PdfDrop.ExtractPaths(e));
         }
 
-        private void AddFiles(string[] paths)
+        /// <summary>Добавить файлы в конец (кнопка, дроп на окно) или ПЕРЕД позицией insertAt (дроп на сетку).</summary>
+        private void AddFiles(string[] paths, int insertAt = -1)
         {
+            if (_busy || paths == null)
+                return;
             int added = 0;
+            int firstAdded = -1;
+            int at = insertAt < 0 || insertAt > _order.Count ? _order.Count : insertAt;
             Cursor = Cursors.WaitCursor;
             try
             {
@@ -139,7 +150,10 @@ namespace ExcelMerger
                     try
                     {
                         int pages = PdfMergeService.LoadPages(path).Count;
-                        _order.AddDocument(path, pages);
+                        int landed = _order.InsertDocument(at, path, pages);
+                        if (firstAdded < 0)
+                            firstAdded = landed;
+                        at = landed + pages; // следующий файл — сразу за вставленным
                         added += pages;
                     }
                     catch (MergeException ex)
@@ -155,6 +169,8 @@ namespace ExcelMerger
             if (added > 0)
             {
                 RefreshGrid();
+                if (insertAt >= 0)
+                    _grid.SelectRange(firstAdded, added); // показать место вставки дропа
                 SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
             }
             UpdateButtons();
@@ -173,6 +189,30 @@ namespace ExcelMerger
             RefreshGrid();
             int landed = to > from ? to - 1 : to;
             _grid.SelectIndex(landed);
+        }
+
+        /// <summary>Вставка вырезанных страниц (Ctrl+X → Ctrl+V) — перенос набора внутри порядка.</summary>
+        private void OnMoveRange(int[] indices, int insertAt)
+        {
+            if (_busy)
+                return;
+            int landed = _order.MoveRange(indices, insertAt);
+            if (landed < 0)
+                return;
+            RefreshGrid();
+            _grid.SelectRange(landed, indices.Length);
+        }
+
+        /// <summary>Вставка скопированных страниц (Ctrl+C → Ctrl+V) — новые экземпляры в позиции.</summary>
+        private void OnInsertPages(PdfPageRef[] pages, int insertAt)
+        {
+            if (_busy || pages == null || pages.Length == 0)
+                return;
+            int landed = _order.InsertAt(insertAt, pages);
+            RefreshGrid();
+            _grid.SelectRange(landed, pages.Length);
+            SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
+            UpdateButtons();
         }
 
         private void MoveSelected(bool later)
@@ -275,6 +315,7 @@ namespace ExcelMerger
         private void UpdateButtons()
         {
             bool one = !_busy && _grid.SelectedCount == 1;
+            _grid.Locked = _busy; // правки сетки (буфер, поворот, дроп) — только вне операции
             _compress.Enabled = !_busy;
             _btnAdd.Enabled = !_busy;
             _btnUp.Enabled = one;

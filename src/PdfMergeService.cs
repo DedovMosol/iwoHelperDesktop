@@ -8,15 +8,34 @@ using PdfSharp.Pdf.IO;
 
 namespace ExcelMerger
 {
-    /// <summary>Одна страница одного исходного PDF (индекс с нуля).</summary>
+    /// <summary>
+    /// Одна страница одного исходного PDF (индекс с нуля). Rotation — дополнительный
+    /// поворот по часовой (0/90/180/270), назначенный пользователем в сетке миниатюр;
+    /// при записи складывается с собственным /Rotate исходной страницы.
+    /// Каждая позиция списка страниц — ОТДЕЛЬНЫЙ экземпляр (инвариант моделей):
+    /// копирование страниц идёт через <see cref="Clone"/>, а не общие ссылки.
+    /// </summary>
     public class PdfPageRef
     {
         public string SourcePath;
         public int PageIndex;
+        public int Rotation;
 
         public string FileName
         {
             get { return Path.GetFileName(SourcePath); }
+        }
+
+        public PdfPageRef Clone()
+        {
+            return new PdfPageRef { SourcePath = SourcePath, PageIndex = PageIndex, Rotation = Rotation };
+        }
+
+        /// <summary>Сумма поворотов, нормализованная в {0, 90, 180, 270} (отрицательные допустимы). Чистая — под тест.</summary>
+        internal static int ComposeRotation(int a, int b)
+        {
+            int sum = ((a + b) % 360 + 360) % 360;
+            return sum - sum % 90; // не кратный 90 мусор из чужого PDF срезаем вниз до кратного
         }
     }
 
@@ -115,7 +134,9 @@ namespace ExcelMerger
                     }
                     if (page.PageIndex < 0 || page.PageIndex >= source.PageCount)
                         throw new MergeException(string.Format(Loc.T("err.pdf.pageGone"), page.FileName, page.PageIndex + 1));
-                    output.AddPage(source.Pages[page.PageIndex]);
+                    PdfPage copied = output.AddPage(source.Pages[page.PageIndex]);
+                    if (page.Rotation != 0) // поворот пользователя поверх собственного /Rotate страницы
+                        copied.Rotate = PdfPageRef.ComposeRotation(copied.Rotate, page.Rotation);
                     added++;
                     if (progress != null)
                         progress(added, order.Count);

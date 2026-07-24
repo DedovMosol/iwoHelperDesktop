@@ -249,7 +249,11 @@ namespace ExcelMerger
         }
 
         /// <summary>Действие клавиатуры для сетки страниц. Чистая — под тест.</summary>
-        internal enum PageKeyAction { None, Remove, MoveEarlier, MoveLater, SelectAll, Swallow }
+        internal enum PageKeyAction
+        {
+            None, Remove, MoveEarlier, MoveLater, SelectAll, Swallow,
+            Cut, Copy, Paste, GoTo, RotateRight, RotateLeft, CancelClipboard
+        }
 
         internal static PageKeyAction ClassifyPageKey(Keys keyData)
         {
@@ -257,16 +261,27 @@ namespace ExcelMerger
             if (keyData == (Keys.Alt | Keys.Left)) return PageKeyAction.MoveEarlier;
             if (keyData == (Keys.Alt | Keys.Right)) return PageKeyAction.MoveLater;
             if (keyData == (Keys.Control | Keys.A)) return PageKeyAction.SelectAll;
+            if (keyData == (Keys.Control | Keys.X)) return PageKeyAction.Cut;
+            if (keyData == (Keys.Control | Keys.C)) return PageKeyAction.Copy;
+            if (keyData == (Keys.Control | Keys.V)) return PageKeyAction.Paste;
+            if (keyData == (Keys.Control | Keys.G)) return PageKeyAction.GoTo;
+            // Поворот как в Acrobat: Ctrl+Shift+«+»/«−» (основной ряд и цифровой блок).
+            if (keyData == (Keys.Control | Keys.Shift | Keys.Oemplus) ||
+                keyData == (Keys.Control | Keys.Shift | Keys.Add)) return PageKeyAction.RotateRight;
+            if (keyData == (Keys.Control | Keys.Shift | Keys.OemMinus) ||
+                keyData == (Keys.Control | Keys.Shift | Keys.Subtract)) return PageKeyAction.RotateLeft;
+            if (keyData == Keys.Escape) return PageKeyAction.CancelClipboard;
             if (keyData == Keys.Enter) return PageKeyAction.Swallow;
             return PageKeyAction.None;
         }
 
         /// <summary>
         /// Единые горячие клавиши сетки страниц (одна раскладка на все PDF-инструменты):
-        /// Ctrl+A — выделить всё; в редактируемых сетках (AllowReorder) Delete и Alt+←/→
-        /// правят порядок через виртуальные методы, а Enter гасится, чтобы не жать
-        /// кнопку действия по AcceptButton. В нередактируемой сетке («Разделение»)
-        /// эти клавиши уходят в стандартную обработку, как и раньше.
+        /// Ctrl+A — выделить всё, Ctrl+G — перейти к странице; в редактируемых сетках
+        /// (AllowReorder) Delete, Alt+←/→ и буфер страниц Ctrl+X/C/V правят порядок,
+        /// Esc отменяет вырезание, а Enter гасится, чтобы не жать кнопку действия по
+        /// AcceptButton; при AllowRotate Ctrl+Shift+«+»/«−» поворачивают выбранные.
+        /// Остальное уходит в стандартную обработку, как и раньше.
         /// </summary>
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
@@ -286,12 +301,54 @@ namespace ExcelMerger
                     case PageKeyAction.MoveLater:
                         if (_grid.AllowReorder) { MoveSelectedPage(true); return true; }
                         break;
+                    case PageKeyAction.Cut:
+                        if (_grid.AllowReorder) { _grid.CutSelected(); return true; }
+                        break;
+                    case PageKeyAction.Copy:
+                        if (_grid.AllowReorder) { _grid.CopySelected(); return true; }
+                        break;
+                    case PageKeyAction.Paste:
+                        if (_grid.AllowReorder) { _grid.PasteClipboard(); return true; }
+                        break;
+                    case PageKeyAction.GoTo:
+                        ShowGoToPage();
+                        return true;
+                    case PageKeyAction.RotateRight:
+                        if (_grid.AllowRotate) { _grid.RotateSelected(90); return true; }
+                        break;
+                    case PageKeyAction.RotateLeft:
+                        if (_grid.AllowRotate) { _grid.RotateSelected(-90); return true; }
+                        break;
+                    case PageKeyAction.CancelClipboard:
+                        if (_grid.TryCancelCut()) return true; // иначе Esc идёт дальше (диалоги и т.п.)
+                        break;
                     case PageKeyAction.Swallow:
                         if (_grid.AllowReorder) return true;
                         break;
                 }
             }
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        /// <summary>
+        /// Подключить события контекстного меню сетки к обработчикам формы (единая
+        /// обвязка, DRY): «Удалить» — как клавиша Delete, «Перейти…» — как Ctrl+G.
+        /// Вызывать в BuildUi наследника сразу после создания _grid.
+        /// </summary>
+        protected void WireGridMenu()
+        {
+            _grid.DeleteRequested += delegate { if (_grid.AllowReorder) RemoveSelectedPages(); };
+            _grid.GoToRequested += delegate { ShowGoToPage(); };
+        }
+
+        /// <summary>Диалог «Перейти к странице» (Ctrl+G и контекстное меню): выделяет и показывает её.</summary>
+        protected void ShowGoToPage()
+        {
+            if (_grid == null || _grid.Count == 0)
+                return;
+            int page = GoToPageDialog.Show(this, _grid.Count);
+            if (page > 0)
+                _grid.SelectIndex(page - 1);
         }
 
         /// <summary>Удалить выбранные страницы (Delete). Зовётся только при AllowReorder.</summary>

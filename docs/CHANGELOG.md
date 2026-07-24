@@ -3,6 +3,40 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.0] — 2026-07-24
+
+### Added
+- **Page numbers under thumbnails.** In PDF Merge and PDF → Word the tile caption is the
+  page's position in the future document, in PDF Split it is the original page number.
+  The file name moved to the tooltip, so the number is finally readable at a glance.
+- **Cut, copy and paste pages.** Ctrl+X / Ctrl+C / Ctrl+V (and the context menu) move or
+  duplicate the selected pages inside the window's page buffer — the precise way to move
+  a long range: select 300–350 with Shift+Click, Ctrl+X, click the gap after page 2 (an
+  insertion caret appears), Ctrl+V. Cut pages stay dimmed in place until pasted, Esc
+  cancels. Pasting lands at the caret, after the selection, or at the end.
+- **Drop PDF files straight onto the page grid.** The grid accepts dropped files
+  everywhere, and in Merge and PDF → Word the pages are inserted AT the drop position
+  (the insertion bar shows where) instead of always appending to the end.
+- **Rotate pages in Merge and Split.** Right-click → rotate right/left 90°, or
+  Ctrl+Shift+«+» / Ctrl+Shift+«−» — per selected page, as in Acrobat. The rotation is
+  written into the produced PDF (all Split modes included) and composes with the page's
+  own rotation. The source file is never modified.
+- **Go to page (Ctrl+G).** Jumps the grid to a page by number — no scrolling through
+  hundreds of thumbnails.
+- **Auto-scroll while dragging.** Dragging pages (or files) near the top or bottom edge
+  of the grid scrolls it — long upward drags no longer require dropping midway.
+
+### Changed
+- **Thumbnails are sharper on high-DPI displays.** Pages render in physical pixels
+  (scaled by the monitor's DPI) instead of a fixed width, so tiles are no longer blurry
+  at 125–150% scaling. At 100% nothing changes.
+
+### Fixed
+- **Large PDFs no longer accumulate memory while browsing thumbnails.** Rendered pages
+  now live in a bounded LRU cache sized from a byte budget (halved in the 32-bit build),
+  and an evicted page re-renders when shown again. Previously a 300-page document could
+  pin hundreds of megabytes until the window closed.
+
 ## [1.16.9] — 2026-07-24
 
 ### Added

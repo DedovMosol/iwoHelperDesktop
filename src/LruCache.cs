@@ -45,6 +45,33 @@ namespace ExcelMerger
             return false;
         }
 
+        /// <summary>Значение по ключу БЕЗ освежения (порядок вытеснения не меняется).</summary>
+        public bool TryPeek(string key, out TValue value)
+        {
+            return _map.TryGetValue(key, out value);
+        }
+
+        /// <summary>
+        /// Изъять элемент БЕЗ вызова onEvict (освобождение — на вызывающем: он же
+        /// выполняет и сопутствующую очистку). false — ключа нет.
+        /// </summary>
+        public bool Remove(string key, out TValue value)
+        {
+            if (!_map.TryGetValue(key, out value))
+                return false;
+            _map.Remove(key);
+            LinkedListNode<string> node = Find(key);
+            if (node != null)
+                _order.Remove(node);
+            return true;
+        }
+
+        /// <summary>Снимок ключей (для перебора с изменением кэша по ходу).</summary>
+        public List<string> KeysSnapshot()
+        {
+            return new List<string>(_map.Keys);
+        }
+
         /// <summary>
         /// Кладёт значение. Существующий ключ — замена значения и подъём в свежие
         /// (прежнее значение не освобождается: замена в приложении не используется).
