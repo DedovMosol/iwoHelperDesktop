@@ -12,23 +12,26 @@ namespace ExcelMerger
     /// Переиспользуемая сетка миниатюр страниц PDF: фоновый рендер (Windows.Data.Pdf),
     /// масштаб (Ctrl+колесо и SetTileWidth), мультивыбор, при AllowReorder —
     /// перетаскивание, буфер страниц (вырезать/копировать/вставить) с кареткой вставки
-    /// и автопрокруткой у краёв, при AllowRotate — поворот выбранных страниц; дроп
-    /// PDF-файлов прямо на сетку (с позицией вставки). Модель порядка страниц держит
-    /// владелец (форма): сетка мутирует только Rotation ссылок (общих с моделью), а
-    /// перестановки/вставки запрашивает событиями. Общая для «Объединения»,
-    /// «Разделения» и «PDF → Word» (DRY).
+    /// и автопрокруткой у краёв, при AllowRotate — поворот выбранных или всех страниц
+    /// с бейджем угла на плитке; дроп PDF-файлов прямо на сетку (с позицией вставки).
+    /// Модель порядка страниц держит владелец (форма): сетка мутирует только Rotation
+    /// ссылок (общих с моделью), а перестановки/вставки запрашивает событиями. Общая
+    /// для «Объединения», «Разделения» и «PDF → Word» (DRY).
     ///
-    /// Память: отрендеренные страницы живут в LRU-кэше, ёмкость которого посчитана из
-    /// байтового бюджета (на x86 — вдвое меньше): большой документ не накапливает
-    /// сотни мегабайт, вытесненная страница перерендеривается при следующем показе.
+    /// Отрисовка — OWNER-DRAW: плитки, подписи-номера, выделение и приглушение
+    /// вырезанных рисуются в DrawItem, шаг ячеек задаёт LVM_SETICONSPACING. Это
+    /// снимает лимит ImageList 256×256 — масштаб до 400 px. Память ограничена:
+    /// отрендеренные страницы живут в LRU-кэше с байтовым бюджетом (на x86 — вдвое
+    /// меньше), плитки существуют только для закэшированных страниц; при крупном зуме
+    /// видимые страницы дорендериваются в увеличенную ширину (прогрессивно).
     /// </summary>
     public class PdfPageGrid : UserControl
     {
-        private const string PlaceholderKey = "__ph";
         private const int EnqueueBuffer = 16;   // докачивать миниатюры чуть за пределами видимого
         private const int DragEdgePx = 28;      // зона автопрокрутки у верх/низ края при перетаскивании
         private static readonly long PageCacheBudget =
             IntPtr.Size == 8 ? 192L << 20 : 48L << 20; // x86: адресное пространство ~2 ГБ
+        private static readonly Color HoverMarkColor = Color.FromArgb(185, 185, 185);
 
         /// <summary>ListView, извещающий о прокрутке — для ленивого рендера видимых страниц.</summary>
         private sealed class ScrollList : ListView
@@ -46,31 +49,43 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Отрендеренная страница в LRU: ключ хранится в значении, чтобы вытеснение знало, чьи плитки снимать.</summary>
+        /// <summary>Отрендеренная страница в LRU: ключ — для снятия плиток при вытеснении, Width — ширина рендера.</summary>
         private sealed class CachedPage
         {
             public string Key;
             public Bitmap Bmp;
+            public int Width;
         }
 
         [DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-        private const int LVM_SCROLL = 0x1014; // прокрутка LargeIcon на dy пикселей
+        private const int LVM_SCROLL = 0x1014;         // прокрутка LargeIcon на dy пикселей
+        private const int LVM_SETICONSPACING = 0x1035; // шаг ячеек сетки (cx, cy) в пикселях
 
         private readonly ScrollList _list = new ScrollList();
+        // ПУСТОЙ ImageList задаёт нативной ListView размер «иконной зоны» (якорь отрисовки
+        // и хитбокс кликов): min(плитка, 256) — выше 256 WinForms не пускает. Плитки крупнее
+        // рисуются поверх, а клики по их внешнему кольцу компенсирует OnListMouseDown.
+        private readonly ImageList _metrics = new ImageList();
         private System.Windows.Forms.Timer _visibleTimer;
         private readonly LruCache<CachedPage> _pageCache;
-        private readonly int _renderWidth; // физические пиксели с учётом DPI; постоянен на жизнь сетки
+        // Плитки текущего масштаба по ключу «страница|поворот»: составляются лениво при
+        // отрисовке из кэша страниц, живут только для закэшированных страниц. UI-поток.
+        private readonly Dictionary<string, Bitmap> _tiles =
+            new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+        private readonly int _renderBase; // ширина рендера для обычного масштаба (физ. пиксели)
+        private readonly int _renderHi;   // для крупного зума (> ThumbZoom.BaseWidth)
+        private volatile int _renderTarget; // читает фоновый воркер в момент рендера
         private bool _shuttingDown;        // Dispose: вытеснение не трогает UI, только освобождает bitmap
         // Ключи страниц, показываемых сейчас (обновляется в SetPages, только UI-поток).
         // Поздний результат рендера уже снятой страницы отбрасывается по этому набору.
         private HashSet<string> _currentKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        // Элементы списка по ключу СТРАНИЦЫ (без поворота): готовый рендер проставляется
+        // Элементы списка по ключу СТРАНИЦЫ (без поворота): готовый рендер перерисовывает
         // адресно, без прохода по всем элементам (иначе рендер документа — O(n²)). Только UI-поток.
         private readonly Dictionary<string, List<ListViewItem>> _itemsByKey =
             new Dictionary<string, List<ListViewItem>>(StringComparer.OrdinalIgnoreCase);
-        private ImageList _thumbs;
         private int _tileWidth = ThumbZoom.DefaultWidth;
+        private Font _badgeFont;
 
         private readonly object _qLock = new object();
         private readonly Queue<PdfPageRef> _thumbQueue = new Queue<PdfPageRef>();
@@ -86,9 +101,11 @@ namespace ExcelMerger
         private readonly HashSet<PdfPageRef> _cutRefs = new HashSet<PdfPageRef>();
 
         // Каретка вставки: клик в зазор между плитками ставит её (показывается штатным
-        // InsertionMark). Сбрасывается при любой пересборке содержимого.
+        // InsertionMark цветом выделения). До клика зазор ПОДСВЕЧИВАЕТСЯ при наведении
+        // светлой меткой. Сбрасывается при любой пересборке содержимого и drag-сессией.
         private int _caretIndex = -1;
         private bool _caretAfter;
+        private bool _hoverMark; // метка показана как подсветка наведения (не каретка)
 
         // Автопрокрутка при перетаскивании у края сетки.
         private System.Windows.Forms.Timer _dragScrollTimer;
@@ -96,12 +113,13 @@ namespace ExcelMerger
         private bool _dragHasFiles; // в текущей drag-сессии тянут PDF-файлы (решено в DragEnter)
 
         private ContextMenuStrip _menu;
-        private ToolStripMenuItem _miCut, _miCopy, _miPaste, _miRotateRight, _miRotateLeft, _miDelete, _miGoTo;
+        private ToolStripMenuItem _miCut, _miCopy, _miPaste, _miMoveAfter, _miRotate, _miRotateRight, _miRotateLeft,
+            _miRotateAllRight, _miRotateAllLeft, _miDelete, _miGoTo;
 
         /// <summary>Разрешить перетаскивание/буфер страниц для смены порядка (для «Объединения» и «PDF → Word»).</summary>
         public bool AllowReorder { get; set; }
 
-        /// <summary>Разрешить поворот выбранных страниц (для «Объединения» и «Разделения»; в «PDF → Word» поворота нет).</summary>
+        /// <summary>Разрешить поворот страниц (все три PDF-инструмента; в «PDF → Word» страница выправляется до анализа).</summary>
         public bool AllowRotate { get; set; }
 
         /// <summary>Идёт фоновая операция формы: правки (буфер, поворот, перетаскивание, дроп) заблокированы.</summary>
@@ -122,21 +140,29 @@ namespace ExcelMerger
         public event EventHandler DeleteRequested;
         /// <summary>«Перейти к странице…» из контекстного меню (диалог показывает форма).</summary>
         public event EventHandler GoToRequested;
+        /// <summary>«Переместить после страницы N…» из контекстного меню (диалог показывает форма).</summary>
+        public event EventHandler MoveAfterRequested;
 
         public PdfPageGrid()
         {
-            _renderWidth = ThumbZoom.RenderWidthFor(DeviceDpi);
+            _renderBase = ThumbZoom.RenderWidthFor(DeviceDpi, ThumbZoom.BaseWidth);
+            _renderHi = ThumbZoom.RenderWidthFor(DeviceDpi, ThumbZoom.MaxWidth);
+            _renderTarget = _renderBase;
             _pageCache = new LruCache<CachedPage>(
-                ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderWidth), OnPageEvicted);
-            _thumbs = NewImageList(_tileWidth);
+                ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderHi), OnPageEvicted);
+            _badgeFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+            _metrics.ColorDepth = ColorDepth.Depth32Bit;
             _list.Dock = DockStyle.Fill;
             _list.View = View.LargeIcon;
-            _list.LargeImageList = _thumbs;
+            _list.LargeImageList = _metrics;
             _list.MultiSelect = true;
             _list.HideSelection = false;
-            _list.LabelWrap = true;
             _list.BorderStyle = BorderStyle.FixedSingle;
             _list.BackColor = Color.FromArgb(250, 250, 250);
+            _list.OwnerDraw = true;
+            _list.DrawItem += OnDrawItem;
+            _list.HandleCreated += delegate { ApplyIconSpacing(); };
+            _list.MouseDown += OnListMouseDown;
             _list.SelectedIndexChanged += delegate { var h = SelectionChanged; if (h != null) h(this, EventArgs.Empty); };
             _list.AllowDrop = true;
             _list.ItemDrag += OnItemDrag;
@@ -146,6 +172,8 @@ namespace ExcelMerger
             _list.DragLeave += delegate { _list.InsertionMark.Index = -1; StopDragScroll(); };
             _list.MouseWheel += OnListMouseWheel;
             _list.MouseUp += OnListMouseUp;
+            _list.MouseMove += OnListMouseMove;
+            _list.MouseLeave += delegate { ClearHoverMark(); };
             _list.Scrolled += delegate { ScheduleVisibleUpdate(); };
             _list.Resize += delegate { ScheduleVisibleUpdate(); };
             _list.SelectedIndexChanged += delegate { ScheduleVisibleUpdate(); }; // навигация клавишами
@@ -214,15 +242,11 @@ namespace ExcelMerger
                 for (int i = 0; i < pages.Count; i++)
                 {
                     PdfPageRef page = pages[i];
-                    string key = ThumbKey(page);
                     var item = new ListViewItem(PageLabel(page, i, ShowPositionNumbers));
                     item.Tag = page;
                     item.ToolTipText = string.Format(Loc.T("grid.pageTip"), page.SourcePath, page.PageIndex + 1);
-                    if (_cutRefs.Contains(page))
-                        item.ForeColor = SystemColors.GrayText;
                     _list.Items.Add(item);
-                    IndexItem(key, item);
-                    EnsureTile(item); // плитка из кэша, если страница уже отрендерена; иначе заглушка
+                    IndexItem(ThumbKey(page), item);
                 }
             }
             _list.EndUpdate();
@@ -270,36 +294,46 @@ namespace ExcelMerger
 
         /// <summary>
         /// Вытеснение страницы LRU-кэшем (переполнение бюджета): освободить bitmap,
-        /// снять её плитки и вернуть элементам заглушку — при следующем показе страница
-        /// перерендерится (заявки в _thumbRequested на неё уже нет). Только UI-поток.
+        /// снять её плитки — при следующем показе страница перерендерится (заявки в
+        /// _thumbRequested на неё уже нет). Только UI-поток.
         /// </summary>
         private void OnPageEvicted(CachedPage page)
         {
             page.Bmp.Dispose();
             if (_shuttingDown)
-                return; // Dispose: ImageList и элементы освобождаются целиком
+                return; // Dispose: всё остальное освобождается целиком
             RemoveTilesOf(page.Key);
             // Если вытесненная страница ещё видна (кэш меньше видимого окна — крайний
             // случай), заявка на перерендер уйдёт ближайшим тиком, а не ждёт скролла.
             ScheduleVisibleUpdate();
         }
 
-        /// <summary>Снять из ImageList все плитки страницы (все её повороты) и вернуть её элементам заглушку.</summary>
+        /// <summary>Снять плитки страницы (все её повороты) и перерисовать её элементы (появится заглушка).</summary>
         private void RemoveTilesOf(string pageKey)
         {
             string prefix = pageKey + "|r";
             var stale = new List<string>();
-            foreach (string imageKey in _thumbs.Images.Keys)
-                if (imageKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    stale.Add(imageKey);
-            foreach (string imageKey in stale)
-                _thumbs.Images.RemoveByKey(imageKey);
+            foreach (KeyValuePair<string, Bitmap> kv in _tiles)
+                if (kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    stale.Add(kv.Key);
+            foreach (string tileKey in stale)
+            {
+                _tiles[tileKey].Dispose();
+                _tiles.Remove(tileKey);
+            }
+            RedrawItemsOf(pageKey);
+        }
 
+        /// <summary>Перерисовать элементы страницы (адресно, по индексной карте).</summary>
+        private void RedrawItemsOf(string pageKey)
+        {
+            if (!_list.IsHandleCreated)
+                return;
             List<ListViewItem> items;
             if (_itemsByKey.TryGetValue(pageKey, out items))
                 foreach (ListViewItem item in items)
-                    if (item.ImageKey != PlaceholderKey)
-                        item.ImageKey = PlaceholderKey;
+                    if (item.Index >= 0)
+                        _list.RedrawItems(item.Index, item.Index, true);
         }
 
         /// <summary>Регистрирует элемент под ключом страницы (один ключ — несколько элементов при повторах страницы).</summary>
@@ -312,6 +346,198 @@ namespace ExcelMerger
                 _itemsByKey[key] = items;
             }
             items.Add(item);
+        }
+
+        // ---------- отрисовка (owner-draw) ----------
+
+        /// <summary>Логические пиксели → физические (сетка живёт в физических: и ячейки, и плитки).</summary>
+        private int Px(int logical)
+        {
+            return (int)Math.Round(logical * (DeviceDpi / 96.0));
+        }
+
+        /// <summary>
+        /// Настроить геометрию под текущий масштаб: иконная зона (хитбокс) —
+        /// min(плитка, 256), шаг ячеек — LVM_SETICONSPACING; затем переразложить.
+        /// </summary>
+        private void ApplyIconSpacing()
+        {
+            if (!_list.IsHandleCreated)
+                return;
+            Size tile = ThumbZoom.TileSize(_tileWidth);
+            _metrics.ImageSize = new Size(
+                Math.Min(256, Px(tile.Width)),
+                Math.Min(256, Px(tile.Height)));
+            Size cell = ThumbZoom.CellSize(_tileWidth);
+            int cx = Px(cell.Width), cy = Px(cell.Height);
+            SendMessage(_list.Handle, LVM_SETICONSPACING, IntPtr.Zero, (IntPtr)((cy << 16) | (cx & 0xFFFF)));
+            _list.ArrangeIcons();
+            _list.Invalidate();
+        }
+
+        /// <summary>
+        /// Рамка ПЛИТКИ по нативной иконной зоне элемента: горизонтально по её центру,
+        /// вертикально от её верха (иконная зона может быть меньше плитки — хитбокс
+        /// ограничен 256). Чистая — под тест.
+        /// </summary>
+        internal static Rectangle TileRectFromIcon(Rectangle iconRect, Size tilePx)
+        {
+            int centerX = iconRect.Left + iconRect.Width / 2;
+            return new Rectangle(centerX - tilePx.Width / 2, iconRect.Top, tilePx.Width, tilePx.Height);
+        }
+
+        private void OnDrawItem(object sender, DrawListViewItemEventArgs e)
+        {
+            // Ошибка в отрисовке не должна валить процесс паint-штормом — рисуем, что смогли.
+            try
+            {
+                DrawItemCore(e);
+            }
+            catch { }
+        }
+
+        private void DrawItemCore(DrawListViewItemEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            var page = e.Item.Tag as PdfPageRef;
+
+            // Геометрия — от нативной иконной зоны (якорь ячейки), а не от e.Bounds:
+            // при плитке крупнее 256 нативные границы элемента меньше нарисованного.
+            Rectangle iconRect = _list.GetItemRect(e.ItemIndex, ItemBoundsPortion.Icon);
+            Size tilePx = new Size(Px(ThumbZoom.TileSize(_tileWidth).Width), Px(ThumbZoom.TileSize(_tileWidth).Height));
+            Rectangle tileRect = TileRectFromIcon(iconRect, tilePx);
+            Size cellPx = new Size(Px(ThumbZoom.CellSize(_tileWidth).Width), Px(ThumbZoom.CellSize(_tileWidth).Height));
+            var cell = new Rectangle(tileRect.Left - (cellPx.Width - tilePx.Width) / 2,
+                tileRect.Top - Px(4), cellPx.Width, cellPx.Height);
+
+            using (var back = new SolidBrush(_list.BackColor))
+                g.FillRectangle(back, cell);
+
+            bool selected = e.Item.Selected;
+            if (selected)
+            {
+                Rectangle sel = Rectangle.Inflate(tileRect, Px(4), Px(4));
+                using (var brush = new SolidBrush(Color.FromArgb(45, SystemColors.Highlight)))
+                    g.FillRectangle(brush, sel);
+                using (var pen = new Pen(SystemColors.Highlight))
+                    g.DrawRectangle(pen, sel.X, sel.Y, sel.Width - 1, sel.Height - 1);
+            }
+
+            Bitmap tile = page != null ? GetTile(page) : null;
+            if (tile != null)
+                g.DrawImage(tile, tileRect.Location); // плитка составлена ровно под tileRect
+            else
+                DrawPlaceholder(g, tileRect);
+
+            if (page != null && _cutRefs.Contains(page))
+                using (var dim = new SolidBrush(Color.FromArgb(150, _list.BackColor)))
+                    g.FillRectangle(dim, tileRect); // вырезанные приглушены до вставки (Esc — отмена)
+
+            if (page != null && page.Rotation != 0)
+                DrawRotationBadge(g, tileRect, page.Rotation);
+
+            // Подпись-номер в полосе под плиткой.
+            var labelRect = new Rectangle(cell.X, tileRect.Bottom + Px(2), cell.Width, cell.Bottom - tileRect.Bottom - Px(2));
+            Color labelColor = page != null && _cutRefs.Contains(page) ? SystemColors.GrayText : ForeColor;
+            TextRenderer.DrawText(g, e.Item.Text, Font, labelRect, labelColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+
+            if (e.Item.Focused && _list.Focused)
+                ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(tileRect, Px(6), Px(6)));
+        }
+
+        /// <summary>
+        /// Компенсация хитбокса при крупных плитках: клик БЕЗ модификаторов по нарисованной
+        /// плитке, но мимо нативной иконной зоны (её предел 256), выделяет страницу как
+        /// обычный клик. Ctrl/Shift-клики по «кольцу» уходят в нативную обработку.
+        /// </summary>
+        private void OnListMouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || ModifierKeys != Keys.None)
+                return;
+            if (_list.HitTest(e.Location).Item != null)
+                return; // нативный хит — стандартная обработка
+            int index = FindTileHit(e.Location);
+            if (index >= 0)
+                SelectIndex(index);
+        }
+
+        /// <summary>Индекс элемента, в НАРИСОВАННУЮ плитку которого попадает точка; -1 — мимо всех.</summary>
+        private int FindTileHit(Point pt)
+        {
+            int count = _list.Items.Count;
+            if (count == 0)
+                return -1;
+            Size tilePx = new Size(Px(ThumbZoom.TileSize(_tileWidth).Width), Px(ThumbZoom.TileSize(_tileWidth).Height));
+            if (tilePx.Width <= _metrics.ImageSize.Width && tilePx.Height <= _metrics.ImageSize.Height)
+                return -1; // плитка целиком в хитбоксе — компенсация не нужна
+            // Кандидаты — только видимые (окно по бинарному поиску, как у ленивого рендера).
+            int first, last;
+            VisibleRange(count,
+                delegate(int i) { return _list.Items[i].Bounds.Top; },
+                delegate(int i) { return _list.Items[i].Bounds.Bottom; },
+                _list.ClientSize.Height, out first, out last);
+            if (first > last)
+                return -1;
+            for (int i = Math.Max(0, first - 2); i <= Math.Min(count - 1, last + 2); i++)
+                if (TileRectFromIcon(_list.GetItemRect(i, ItemBoundsPortion.Icon), tilePx).Contains(pt))
+                    return i;
+            return -1;
+        }
+
+        /// <summary>Бейдж угла поворота («90°») в правом верхнем углу плитки.</summary>
+        private void DrawRotationBadge(Graphics g, Rectangle tileRect, int rotation)
+        {
+            string text = rotation + "°";
+            Size sz = TextRenderer.MeasureText(g, text, _badgeFont, Size.Empty, TextFormatFlags.NoPadding);
+            int padX = Px(4), padY = Px(2);
+            var badge = new Rectangle(tileRect.Right - sz.Width - 2 * padX - Px(3), tileRect.Y + Px(3),
+                sz.Width + 2 * padX, sz.Height + 2 * padY);
+            using (var brush = new SolidBrush(Color.FromArgb(190, 40, 40, 40)))
+                g.FillRectangle(brush, badge);
+            TextRenderer.DrawText(g, text, _badgeFont, badge, Color.White,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        }
+
+        private static void DrawPlaceholder(Graphics g, Rectangle tileRect)
+        {
+            int w = (int)((tileRect.Height - 24) * 0.72f);
+            int h = tileRect.Height - 24;
+            if (w < 8 || h < 8)
+                return;
+            int x = tileRect.X + (tileRect.Width - w) / 2;
+            int y = tileRect.Y + 12;
+            using (var b = new SolidBrush(Color.White))
+                g.FillRectangle(b, x, y, w, h);
+            using (var pen = new Pen(Color.FromArgb(205, 205, 205)))
+                g.DrawRectangle(pen, x, y, w, h);
+        }
+
+        /// <summary>
+        /// Плитка страницы С ЕЁ поворотом: из словаря, либо составляется лениво из кэша
+        /// отрендеренных страниц; страницы нет в кэше — null (рисуется заглушка, рендер докачает).
+        /// </summary>
+        private Bitmap GetTile(PdfPageRef page)
+        {
+            string tileKey = TileKey(page);
+            Bitmap tile;
+            if (_tiles.TryGetValue(tileKey, out tile))
+                return tile;
+            CachedPage cached;
+            if (!_pageCache.TryPeek(ThumbKey(page), out cached))
+                return null;
+            Size logical = ThumbZoom.TileSize(_tileWidth);
+            tile = ComposeTile(cached.Bmp, new Size(Px(logical.Width), Px(logical.Height)), page.Rotation);
+            _tiles[tileKey] = tile;
+            return tile;
+        }
+
+        /// <summary>Сбросить все плитки (смена масштаба): пересоставятся лениво при отрисовке.</summary>
+        private void ClearTiles()
+        {
+            foreach (Bitmap tile in _tiles.Values)
+                tile.Dispose();
+            _tiles.Clear();
         }
 
         // ---------- ленивый рендер видимых ----------
@@ -442,14 +668,20 @@ namespace ExcelMerger
 
         public int TileWidth { get { return _tileWidth; } }
 
-        /// <summary>Задать масштаб плиток и пересобрать их из кэша (без повторного WinRT).</summary>
+        /// <summary>
+        /// Задать масштаб плиток: плитки пересоставляются из кэша лениво при отрисовке;
+        /// при крупном зуме видимые страницы дорендериваются в увеличенную ширину.
+        /// </summary>
         public void SetTileWidth(int width)
         {
             width = ThumbZoom.Clamp(width);
             if (width == _tileWidth)
                 return;
             _tileWidth = width;
-            RebuildTiles();
+            _renderTarget = width > ThumbZoom.BaseWidth ? _renderHi : _renderBase;
+            ClearTiles();
+            ApplyIconSpacing();
+            ScheduleVisibleUpdate(); // дорендер видимых при переходе в крупный зум
         }
 
         // ---------- буфер страниц (вырезать/копировать/вставить) ----------
@@ -475,8 +707,8 @@ namespace ExcelMerger
                     continue;
                 _clipboard.Add(page);
                 _cutRefs.Add(page);
-                _list.Items[index].ForeColor = SystemColors.GrayText;
             }
+            _list.Invalidate(); // приглушение рисуется в DrawItem
         }
 
         /// <summary>Копировать выбранные: в буфере — снимки страниц (с текущим поворотом).</summary>
@@ -512,7 +744,7 @@ namespace ExcelMerger
                 for (int i = 0; i < _list.Items.Count; i++)
                     if (_cutRefs.Contains(_list.Items[i].Tag as PdfPageRef))
                         indices.Add(i);
-                CancelCut();      // цвет возвращаем сразу: даже если перенос не состоится, серых плиток не останется
+                CancelCut();      // приглушение снимаем сразу: даже если перенос не состоится, серых плиток не останется
                 ClearClipboard();
                 if (indices.Count == 0)
                     return;
@@ -531,6 +763,22 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>
+        /// Перенести ВЫБРАННЫЕ страницы ПЕРЕД позицией insertAt («после страницы N» = N):
+        /// тот же конвейер, что у вырезать-вставить, но без буфера — форма получает
+        /// MoveRangeRequested и правит модель.
+        /// </summary>
+        public void MoveSelectedTo(int insertAt)
+        {
+            if (Locked || !AllowReorder || _list.SelectedIndices.Count == 0)
+                return;
+            if (insertAt < 0) insertAt = 0;
+            if (insertAt > _list.Items.Count) insertAt = _list.Items.Count;
+            var h = MoveRangeRequested;
+            if (h != null)
+                h(GetSelectedIndices(), insertAt);
+        }
+
         /// <summary>Позиция вставки буфера. Чистая — под тест.</summary>
         internal static int PasteIndex(int caretIndex, bool caretAfter, int[] selectedSorted, int count)
         {
@@ -544,7 +792,7 @@ namespace ExcelMerger
             return count;
         }
 
-        /// <summary>Отменить вырезание (Esc): вернуть цвет, очистить буфер. true — было что отменять.</summary>
+        /// <summary>Отменить вырезание (Esc): снять приглушение, очистить буфер. true — было что отменять.</summary>
         public bool TryCancelCut()
         {
             if (!HasCutPending)
@@ -558,10 +806,8 @@ namespace ExcelMerger
         {
             if (_cutRefs.Count == 0)
                 return;
-            foreach (ListViewItem item in _list.Items)
-                if (_cutRefs.Contains(item.Tag as PdfPageRef))
-                    item.ForeColor = _list.ForeColor;
             _cutRefs.Clear();
+            _list.Invalidate(); // приглушение рисуется в DrawItem — просто перерисовать
         }
 
         private void ClearClipboard()
@@ -571,15 +817,15 @@ namespace ExcelMerger
             _clipIsCut = false;
         }
 
-        // ---------- каретка вставки ----------
+        // ---------- каретка вставки и подсветка зазора ----------
 
         private void OnListMouseUp(object sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Left)
                 return;
-            if (_list.HitTest(e.Location).Item != null)
+            if (_list.HitTest(e.Location).Item != null || FindTileHit(e.Location) >= 0)
             {
-                ClearCaret(); // клик по плитке: якорь вставки — выделение
+                ClearCaret(); // клик по плитке (включая «кольцо» крупной): якорь вставки — выделение
                 return;
             }
             if (_list.Items.Count == 0 || !AllowReorder || Locked)
@@ -598,18 +844,64 @@ namespace ExcelMerger
             }
             _caretIndex = index;
             _caretAfter = after;
+            _hoverMark = false;
+            ShowMark(index, after, SystemColors.Highlight);
+        }
+
+        /// <summary>Подсветка зазора при наведении: светлая метка там, куда лёг бы клик каретки.</summary>
+        private void OnListMouseMove(object sender, MouseEventArgs e)
+        {
+            if (Locked || !AllowReorder || _caretIndex >= 0 || _list.Items.Count == 0 || e.Button != MouseButtons.None)
+            {
+                ClearHoverMark();
+                return;
+            }
+            if (_list.HitTest(e.Location).Item != null || FindTileHit(e.Location) >= 0)
+            {
+                ClearHoverMark(); // курсор над плиткой (включая «кольцо» крупной) — не над зазором
+                return;
+            }
+            int index = _list.InsertionMark.NearestIndex(e.Location);
+            bool after;
+            if (index < 0)
+            {
+                index = _list.Items.Count - 1;
+                after = true;
+            }
+            else
+            {
+                Rectangle bounds = _list.GetItemRect(index);
+                after = e.Location.X > bounds.Left + bounds.Width / 2;
+            }
+            _hoverMark = true;
+            ShowMark(index, after, HoverMarkColor);
+        }
+
+        private void ShowMark(int index, bool after, Color color)
+        {
+            _list.InsertionMark.Color = color;
             _list.InsertionMark.AppearsAfterItem = after;
             _list.InsertionMark.Index = index;
+        }
+
+        private void ClearHoverMark()
+        {
+            if (!_hoverMark)
+                return;
+            _hoverMark = false;
+            if (_caretIndex < 0)
+                _list.InsertionMark.Index = -1;
         }
 
         private void ClearCaret()
         {
             _caretIndex = -1;
             _caretAfter = false;
+            _hoverMark = false;
             _list.InsertionMark.Index = -1;
         }
 
-        // ---------- поворот выбранных страниц ----------
+        // ---------- поворот страниц ----------
 
         /// <summary>
         /// Повернуть выбранные страницы на delta градусов по часовой (±90). Поворот —
@@ -618,23 +910,39 @@ namespace ExcelMerger
         /// </summary>
         public void RotateSelected(int delta)
         {
-            if (Locked || !AllowRotate || _list.SelectedIndices.Count == 0)
+            if (_list.SelectedIndices.Count == 0)
+                return;
+            RotateItems(GetSelectedIndices(), delta);
+        }
+
+        /// <summary>Массовый поворот: ВСЕ страницы сетки на delta по часовой (пункт меню «все страницы»).</summary>
+        public void RotateAll(int delta)
+        {
+            int count = _list.Items.Count;
+            if (count == 0)
+                return;
+            var all = new int[count];
+            for (int i = 0; i < count; i++)
+                all[i] = i;
+            RotateItems(all, delta);
+        }
+
+        private void RotateItems(int[] indices, int delta)
+        {
+            if (Locked || !AllowRotate)
                 return;
             var pageKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            _list.BeginUpdate();
-            foreach (int index in GetSelectedIndices())
+            foreach (int index in indices)
             {
-                ListViewItem item = _list.Items[index];
-                var page = item.Tag as PdfPageRef;
+                var page = _list.Items[index].Tag as PdfPageRef;
                 if (page == null)
                     continue;
                 page.Rotation = PdfPageRef.ComposeRotation(page.Rotation, delta);
                 pageKeys.Add(ThumbKey(page));
-                EnsureTile(item);
             }
             foreach (string pageKey in pageKeys)
                 PruneUnusedRotations(pageKey);
-            _list.EndUpdate();
+            _list.Invalidate(); // плитки нужных поворотов пересоставятся лениво при отрисовке
         }
 
         /// <summary>Снять плитки поворотов страницы, которые больше не использует ни один её элемент.</summary>
@@ -651,11 +959,14 @@ namespace ExcelMerger
                 }
             string prefix = pageKey + "|r";
             var stale = new List<string>();
-            foreach (string imageKey in _thumbs.Images.Keys)
-                if (imageKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && !used.Contains(imageKey))
-                    stale.Add(imageKey);
-            foreach (string imageKey in stale)
-                _thumbs.Images.RemoveByKey(imageKey);
+            foreach (KeyValuePair<string, Bitmap> kv in _tiles)
+                if (kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && !used.Contains(kv.Key))
+                    stale.Add(kv.Key);
+            foreach (string tileKey in stale)
+            {
+                _tiles[tileKey].Dispose();
+                _tiles.Remove(tileKey);
+            }
         }
 
         // ---------- перетаскивание и дроп файлов ----------
@@ -683,6 +994,7 @@ namespace ExcelMerger
             // теряет и смысл, и отображение; иначе после отменённого перетаскивания
             // Ctrl+V вставил бы в невидимую позицию.
             ClearCaret();
+            _list.InsertionMark.Color = SystemColors.Highlight; // метка драга — в полном цвете
         }
 
         private void OnListDragOver(object sender, DragEventArgs e)
@@ -788,7 +1100,8 @@ namespace ExcelMerger
                 StopDragScroll();
                 return;
             }
-            int step = Math.Max(24, _thumbs.ImageSize.Height / 2);
+            Size cell = ThumbZoom.CellSize(_tileWidth);
+            int step = Math.Max(24, Px(cell.Height) / 3);
             SendMessage(_list.Handle, LVM_SCROLL, IntPtr.Zero, (IntPtr)(_dragScrollDir * step));
             if (AllowReorder)
                 UpdateInsertionMark(_list.PointToClient(Control.MousePosition));
@@ -803,9 +1116,16 @@ namespace ExcelMerger
             _miCut = AddMenuItem(Loc.T("grid.menu.cut"), "Ctrl+X", delegate { CutSelected(); });
             _miCopy = AddMenuItem(Loc.T("grid.menu.copy"), "Ctrl+C", delegate { CopySelected(); });
             _miPaste = AddMenuItem(Loc.T("grid.menu.paste"), "Ctrl+V", delegate { PasteClipboard(); });
+            _miMoveAfter = AddMenuItem(Loc.T("grid.menu.moveAfter"), null, delegate { var h = MoveAfterRequested; if (h != null) h(this, EventArgs.Empty); });
             _menu.Items.Add(new ToolStripSeparator());
-            _miRotateRight = AddMenuItem(Loc.T("grid.menu.rotateRight"), "Ctrl+Shift+«+»", delegate { RotateSelected(90); });
-            _miRotateLeft = AddMenuItem(Loc.T("grid.menu.rotateLeft"), "Ctrl+Shift+«−»", delegate { RotateSelected(-90); });
+            // Поворот — подменю: выбранные и «все страницы» (массовый поворот документа).
+            _miRotate = new ToolStripMenuItem(Loc.T("grid.menu.rotate"));
+            _miRotateRight = AddSubItem(_miRotate, Loc.T("grid.menu.rotateRight"), "Ctrl+Shift+«+»", delegate { RotateSelected(90); });
+            _miRotateLeft = AddSubItem(_miRotate, Loc.T("grid.menu.rotateLeft"), "Ctrl+Shift+«−»", delegate { RotateSelected(-90); });
+            _miRotate.DropDownItems.Add(new ToolStripSeparator());
+            _miRotateAllRight = AddSubItem(_miRotate, Loc.T("grid.menu.rotateAllRight"), null, delegate { RotateAll(90); });
+            _miRotateAllLeft = AddSubItem(_miRotate, Loc.T("grid.menu.rotateAllLeft"), null, delegate { RotateAll(-90); });
+            _menu.Items.Add(_miRotate);
             _menu.Items.Add(new ToolStripSeparator());
             _miDelete = AddMenuItem(Loc.T("grid.menu.delete"), "Del", delegate { var h = DeleteRequested; if (h != null) h(this, EventArgs.Empty); });
             _miGoTo = AddMenuItem(Loc.T("grid.menu.goto"), "Ctrl+G", delegate { var h = GoToRequested; if (h != null) h(this, EventArgs.Empty); });
@@ -822,19 +1142,33 @@ namespace ExcelMerger
             return mi;
         }
 
+        private static ToolStripMenuItem AddSubItem(ToolStripMenuItem parent, string text, string shortcutHint, EventHandler onClick)
+        {
+            var mi = new ToolStripMenuItem(text);
+            if (shortcutHint != null)
+                mi.ShortcutKeyDisplayString = shortcutHint;
+            mi.Click += onClick;
+            parent.DropDownItems.Add(mi);
+            return mi;
+        }
+
         private void OnMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)
         {
             bool hasSelection = _list.SelectedIndices.Count > 0;
-            _miCut.Visible = _miCopy.Visible = _miPaste.Visible = _miDelete.Visible = AllowReorder;
-            _miCut.Enabled = _miCopy.Enabled = _miDelete.Enabled = !Locked && hasSelection;
+            bool hasPages = _list.Items.Count > 0;
+            _miCut.Visible = _miCopy.Visible = _miPaste.Visible = _miMoveAfter.Visible = _miDelete.Visible = AllowReorder;
+            _miCut.Enabled = _miCopy.Enabled = _miMoveAfter.Enabled = _miDelete.Enabled = !Locked && hasSelection;
             _miPaste.Enabled = !Locked && ClipboardAvailable;
-            _miRotateRight.Visible = _miRotateLeft.Visible = AllowRotate;
+            _miRotate.Visible = AllowRotate;
+            _miRotate.Enabled = !Locked && hasPages;
             _miRotateRight.Enabled = _miRotateLeft.Enabled = !Locked && hasSelection;
-            _miGoTo.Enabled = _list.Items.Count > 0;
-            // Разделители между скрытыми группами не нужны.
+            _miRotateAllRight.Enabled = _miRotateAllLeft.Enabled = !Locked && hasPages;
+            _miGoTo.Enabled = hasPages;
+            // Разделители между скрытыми группами не нужны. Порядок пунктов:
+            // 0 cut, 1 copy, 2 paste, 3 moveAfter, 4 sep, 5 rotate, 6 sep, 7 delete, 8 goto.
             bool anyEdit = AllowReorder;
             bool anyRotate = AllowRotate;
-            _menu.Items[3].Visible = anyEdit && anyRotate;       // разделитель буфер | поворот
+            _menu.Items[4].Visible = anyEdit && anyRotate;       // разделитель буфер | поворот
             _menu.Items[6].Visible = anyEdit || anyRotate;       // разделитель | удалить/перейти
             e.Cancel = _menu.Items.Count == 0;
         }
@@ -857,35 +1191,6 @@ namespace ExcelMerger
             }
         }
 
-        private void RebuildTiles()
-        {
-            ImageList old = _thumbs;
-            var fresh = NewImageList(_tileWidth);
-
-            _list.BeginUpdate();
-            _thumbs = fresh;
-            _list.LargeImageList = fresh;
-            foreach (ListViewItem item in _list.Items)
-            {
-                var page = item.Tag as PdfPageRef;
-                if (page == null)
-                    continue;
-                CachedPage cached;
-                if (_pageCache.TryPeek(ThumbKey(page), out cached))
-                {
-                    string tileKey = TileKey(page);
-                    if (!fresh.Images.ContainsKey(tileKey))
-                        fresh.Images.Add(tileKey, ComposeTile(cached.Bmp, fresh.ImageSize, page.Rotation));
-                    item.ImageKey = tileKey;
-                }
-                else
-                    item.ImageKey = PlaceholderKey;
-            }
-            _list.EndUpdate();
-            if (old != null)
-                old.Dispose();
-        }
-
         // ---------- фоновый рендер ----------
 
         internal static string ThumbKey(PdfPageRef page)
@@ -902,8 +1207,11 @@ namespace ExcelMerger
         private void EnqueueThumb(PdfPageRef page)
         {
             string key = ThumbKey(page);
+            int target = _renderTarget;
             CachedPage cached;
-            if (_pageCache.TryGet(key, out cached)) // попадание освежает LRU: видимые не вытесняются
+            // Попадание освежает LRU (видимые не вытесняются); перерендер нужен, только
+            // если закэшированная ширина меньше требуемой текущим масштабом.
+            if (_pageCache.TryGet(key, out cached) && cached.Width >= target)
                 return;
             lock (_qLock)
             {
@@ -943,10 +1251,11 @@ namespace ExcelMerger
                         _thumbSignal.Wait();
                         continue;
                     }
-                    Bitmap page = renderer.Render(req.SourcePath, req.PageIndex, _renderWidth);
+                    int width = _renderTarget; // текущая целевая ширина (могла смениться зумом)
+                    Bitmap page = renderer.Render(req.SourcePath, req.PageIndex, width);
                     if (page == null)
                         continue;
-                    PostPage(req, page);
+                    PostPage(req, page, width);
                 }
             }
             finally
@@ -955,12 +1264,12 @@ namespace ExcelMerger
             }
         }
 
-        private void PostPage(PdfPageRef req, Bitmap page)
+        private void PostPage(PdfPageRef req, Bitmap page, int width)
         {
             try
             {
                 if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke((MethodInvoker)delegate { ApplyPage(req, page); });
+                    BeginInvoke((MethodInvoker)delegate { ApplyPage(req, page, width); });
                 else
                     page.Dispose();
             }
@@ -970,7 +1279,7 @@ namespace ExcelMerger
             }
         }
 
-        private void ApplyPage(PdfPageRef req, Bitmap page)
+        private void ApplyPage(PdfPageRef req, Bitmap page, int width)
         {
             string key = ThumbKey(req);
             // Заявка исполнена: снять дедуп, чтобы вытесненная позже страница могла
@@ -985,64 +1294,19 @@ namespace ExcelMerger
             CachedPage existing;
             if (_pageCache.TryPeek(key, out existing))
             {
-                page.Dispose();
-                return;
+                if (existing.Width >= width)
+                {
+                    page.Dispose(); // уже есть не хуже (гонка зум-аута) — свежий не нужен
+                    return;
+                }
+                // Дорендер крупнее: прежний рендер и его плитки заменяются.
+                CachedPage old;
+                if (_pageCache.Remove(key, out old))
+                    old.Bmp.Dispose();
+                RemoveTilesOf(key);
             }
-            _pageCache.Add(key, new CachedPage { Key = key, Bmp = page });
-
-            // Адресно по ключу, а не проходом по всем элементам (рендер всего
-            // документа иначе O(n²)). Плитка — под фактический поворот каждого элемента.
-            List<ListViewItem> items;
-            if (_itemsByKey.TryGetValue(key, out items))
-                foreach (ListViewItem item in items)
-                    EnsureTile(item);
-        }
-
-        /// <summary>
-        /// Обеспечить элементу плитку его страницы С ЕГО поворотом: если страница в
-        /// кэше — составить/переиспользовать плитку, иначе — заглушка (рендер докачает).
-        /// </summary>
-        private void EnsureTile(ListViewItem item)
-        {
-            var page = item.Tag as PdfPageRef;
-            if (page == null)
-                return;
-            CachedPage cached;
-            if (!_pageCache.TryPeek(ThumbKey(page), out cached))
-            {
-                if (item.ImageKey != PlaceholderKey)
-                    item.ImageKey = PlaceholderKey;
-                return;
-            }
-            string tileKey = TileKey(page);
-            if (!_thumbs.Images.ContainsKey(tileKey))
-                _thumbs.Images.Add(tileKey, ComposeTile(cached.Bmp, _thumbs.ImageSize, page.Rotation));
-            if (item.ImageKey != tileKey)
-                item.ImageKey = tileKey;
-        }
-
-        private ImageList NewImageList(int tileWidth)
-        {
-            var list = new ImageList();
-            list.ImageSize = ThumbZoom.TileSize(tileWidth);
-            list.ColorDepth = ColorDepth.Depth32Bit;
-            // Изображение НЕ освобождаем: ImageList удерживает ссылку на оригинал для
-            // пересоздания нативного handle (смена DPI/темы/ColorDepth) — досрочный
-            // Dispose дал бы «красный крест». Освобождение — задача самого ImageList.
-            list.Images.Add(PlaceholderKey, MakePlaceholder(list.ImageSize));
-            return list;
-        }
-
-        /// <summary>RotateFlip для поворота по часовой на 90/180/270. Чистая — под тест.</summary>
-        internal static RotateFlipType FlipFor(int rotation)
-        {
-            switch (rotation)
-            {
-                case 90: return RotateFlipType.Rotate90FlipNone;
-                case 180: return RotateFlipType.Rotate180FlipNone;
-                case 270: return RotateFlipType.Rotate270FlipNone;
-                default: return RotateFlipType.RotateNoneFlipNone;
-            }
+            _pageCache.Add(key, new CachedPage { Key = key, Bmp = page, Width = width });
+            RedrawItemsOf(key); // плитка составится лениво при отрисовке
         }
 
         private static Bitmap ComposeTile(Bitmap page, Size tile, int rotation)
@@ -1052,7 +1316,7 @@ namespace ExcelMerger
             // RotateFlip мутирует изображение — поворачиваем КОПИЮ, кэш остаётся неповёрнутым.
             using (var rotated = (Bitmap)page.Clone())
             {
-                rotated.RotateFlip(FlipFor(rotation));
+                rotated.RotateFlip(PageRotation.FlipFor(rotation));
                 return ComposeTileCore(rotated, tile);
             }
         }
@@ -1073,25 +1337,6 @@ namespace ExcelMerger
                 g.DrawImage(page, x, y, w, h);
                 using (var pen = new Pen(Color.FromArgb(200, 200, 200)))
                     g.DrawRectangle(pen, x, y, w - 1, h - 1);
-            }
-            return bmp;
-        }
-
-        private static Bitmap MakePlaceholder(Size tile)
-        {
-            var bmp = new Bitmap(tile.Width, tile.Height);
-            using (Graphics g = Graphics.FromImage(bmp))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.Clear(Color.FromArgb(250, 250, 250));
-                int w = (int)((tile.Height - 24) * 0.72f);
-                int h = tile.Height - 24;
-                int x = (tile.Width - w) / 2;
-                int y = 12;
-                using (var b = new SolidBrush(Color.White))
-                    g.FillRectangle(b, x, y, w, h);
-                using (var pen = new Pen(Color.FromArgb(205, 205, 205)))
-                    g.DrawRectangle(pen, x, y, w, h);
             }
             return bmp;
         }
@@ -1120,10 +1365,12 @@ namespace ExcelMerger
                     _dragScrollTimer.Dispose();
                 if (_menu != null)
                     _menu.Dispose(); // ContextMenuStrip не дочерний контрол — сам не освободится
+                if (_badgeFont != null)
+                    _badgeFont.Dispose();
+                _metrics.Dispose(); // пустой ImageList метрик (не дочерний компонент)
                 _shuttingDown = true;    // вытеснение при Clear только освобождает bitmap
                 _pageCache.Clear();
-                if (_thumbs != null)
-                    _thumbs.Dispose();
+                ClearTiles();
                 if (stopped)
                     _thumbSignal.Dispose();
             }

@@ -61,10 +61,10 @@ namespace ExcelMerger
             return SplitBookmarksCore(sourcePath, outDir, baseName, progress, rotations);
         }
 
-        /// <summary>Поворот страницы pageIndex из карты (вне карты — 0). Чистая — под тест.</summary>
+        /// <summary>Поворот страницы pageIndex из карты (вне карты — 0). Единая реализация — <see cref="PageRotation.At"/>.</summary>
         internal static int RotationAt(IList<int> rotations, int pageIndex)
         {
-            return rotations != null && pageIndex >= 0 && pageIndex < rotations.Count ? rotations[pageIndex] : 0;
+            return PageRotation.At(rotations, pageIndex);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

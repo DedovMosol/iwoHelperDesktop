@@ -153,13 +153,20 @@ namespace ExcelMerger
             A("grid.menu.cut", "Вырезать", "Cut");
             A("grid.menu.copy", "Копировать", "Copy");
             A("grid.menu.paste", "Вставить", "Paste");
-            A("grid.menu.rotateRight", "Повернуть вправо на 90°", "Rotate right 90°");
-            A("grid.menu.rotateLeft", "Повернуть влево на 90°", "Rotate left 90°");
+            A("grid.menu.rotate", "Повернуть", "Rotate");
+            A("grid.menu.rotateRight", "Вправо на 90°", "Right 90°");
+            A("grid.menu.rotateLeft", "Влево на 90°", "Left 90°");
+            A("grid.menu.rotateAllRight", "Все страницы вправо", "All pages right");
+            A("grid.menu.rotateAllLeft", "Все страницы влево", "All pages left");
             A("grid.menu.delete", "Удалить", "Remove");
             A("grid.menu.goto", "Перейти к странице…", "Go to page…");
             A("goto.title", "Перейти к странице", "Go to page");
             A("goto.prompt", "Страница (1–{0}):", "Page (1–{0}):");
             A("goto.ok", "Перейти", "Go");
+            A("grid.menu.moveAfter", "Переместить после страницы…", "Move after page…");
+            A("moveafter.title", "Переместить после страницы", "Move after page");
+            A("moveafter.prompt", "После страницы (0 — в начало, до {0}):", "After page (0 — to the start, up to {0}):");
+            A("moveafter.ok", "Переместить", "Move");
             A("common.cancel", "Отмена", "Cancel");
             A("common.tip.compression",
                 "«Хорошо»/«Нормально» уменьшают размер, снижая разрешение изображений (как в Acrobat).\n" +

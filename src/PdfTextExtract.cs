@@ -55,13 +55,15 @@ namespace ExcelMerger
     public static class PdfTextExtract
     {
         /// <summary>
-        /// Текст всех страниц. Битый/зашифрованный файл или запрет извлечения —
-        /// <see cref="MergeException"/> с понятным сообщением.
+        /// Текст всех страниц. rotations — пользовательские повороты по индексу исходной
+        /// страницы (0/90/180/270 по часовой, null — без поворотов): страница выправляется
+        /// ДО анализа макета, боковой текст становится горизонтальным. Битый/зашифрованный
+        /// файл или запрет извлечения — <see cref="MergeException"/> с понятным сообщением.
         /// </summary>
-        public static List<PdfPageText> Extract(string path, Action<int, int> progress = null)
+        public static List<PdfPageText> Extract(string path, Action<int, int> progress = null, IList<int> rotations = null)
         {
             EmbeddedAssemblies.Ensure();
-            return ExtractCore(path, progress);
+            return ExtractCore(path, progress, rotations);
         }
 
         /// <summary>
@@ -93,7 +95,7 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<PdfPageText> ExtractCore(string path, Action<int, int> progress)
+        private static List<PdfPageText> ExtractCore(string path, Action<int, int> progress, IList<int> rotations)
         {
             try
             {
@@ -103,6 +105,7 @@ namespace ExcelMerger
                     int pageCount = doc.NumberOfPages;
                     foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
                     {
+                        int rotation = PageRotation.At(rotations, page.Number - 1);
                         // Картинки страницы перечисляются ОДИН раз (декода здесь нет): рамки
                         // нужны фильтрам невидимого текста и штампов, а сами объекты — переносу
                         // изображений ниже. Рамки картинок и тёмных векторных заливок — подложки,
@@ -118,6 +121,9 @@ namespace ExcelMerger
                         }
                         List<RectPt> darkFills;
                         List<PdfLine> lines = ExtractGraphics(page, out darkFills);
+                        // Какая ориентация текста станет горизонтальной после поворота страницы
+                        // пользователем: только её и пускаем в поток (при 0° — прежний фильтр).
+                        UglyToad.PdfPig.Content.TextOrientation keepOrientation = KeepOrientationFor(rotation);
                         var words = new List<PdfWord>();
                         foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
                         {
@@ -132,8 +138,10 @@ namespace ExcelMerger
                                 UglyToad.PdfPig.Content.Letter first = w.Letters[0];
                                 // Повёрнутый текст (вертикальные служебные строки билетов) в поток
                                 // не пускаем: построчная сборка рассыпала бы его на посимвольные
-                                // «абзацы», вклинивающиеся между обычными строками.
-                                if (first.TextOrientation != UglyToad.PdfPig.Content.TextOrientation.Horizontal)
+                                // «абзацы», вклинивающиеся между обычными строками. При повороте
+                                // страницы пользователем горизонтальным станет боковой текст — его
+                                // и берём, а прежде-горизонтальный станет боковым и отсеется.
+                                if (first.TextOrientation != keepOrientation)
                                     continue;
                                 // Невидимый текст (белая заливка или режим «не рисовать») ВНЕ
                                 // картинок и тёмных плашек — служебные боковые метки («n&#» у
@@ -165,20 +173,16 @@ namespace ExcelMerger
                             // несёт картинка, а текст рядом с ней давал бы кашу из двух слоёв.
                             if (CoveredByLowImage(RectOf(bb), imageRects))
                                 continue;
-                            double top = bb.Top;
-                            // Прочерк «____» рисуется у базовой линии рамкой в пару pt: такой
-                            // вырожденный бокс не пересекается по вертикали с соседями («№», «от»)
-                            // и отрывался от них в отдельные строки. Даём прочерку высоту хотя бы
-                            // трети кегля — как у обычного слова той же строки.
-                            if (size > 0 && top - bb.Bottom < UnderscoreMinHeightFactor * size && IsUnderscoreOnly(text))
-                                top = bb.Bottom + UnderscoreMinHeightFactor * size;
+                            // Виртуальная высота прочерков применяется ПОСЛЕ поворота страницы
+                            // (ApplyUnderscoreHeights): рамка прочерка осмысленна в выправленном
+                            // пространстве, а при 0° результат прежний.
                             words.Add(new PdfWord
                             {
                                 Text = text,
                                 Left = bb.Left,
                                 Right = bb.Right,
                                 Bottom = bb.Bottom,
-                                Top = top,
+                                Top = bb.Top,
                                 FontSizePt = size,
                                 Bold = bold,
                                 Italic = italic,
@@ -186,12 +190,19 @@ namespace ExcelMerger
                                 FontName = family
                             });
                         }
-                        AssignHyperlinks(words, page);
+                        AssignHyperlinks(words, page); // рамки ссылок — в исходном пространстве, до поворота
+                        // Изображения извлекаются ДО поворота: их PNG и фолбэк-кропы Ghostscript
+                        // живут в исходном пространстве страницы. Поворот ниже развернёт и рамки,
+                        // и сами пиксели.
+                        List<OcrImage> images = ExtractImages(pageImages, page, path);
+                        double pageW = page.Width, pageH = page.Height;
+                        PageRotation.RotatePage(words, lines, images, rotation, ref pageW, ref pageH);
+                        ApplyUnderscoreHeights(words);
                         // Текстовый штамп → переносим картинкой (рендер-кроп), а его слова убираем
                         // из потока (иначе печать задвоится: картинка + те же строки текстом).
-                        OcrImage stampImage = ExtractTextStamp(words, page, path);
+                        OcrImage stampImage = ExtractTextStamp(words, page, path, rotation, pageW, pageH);
                         // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
-                        TableDetectResult det = TableDetector.Detect(lines, words, page.Width, page.Height);
+                        TableDetectResult det = TableDetector.Detect(lines, words, pageW, pageH);
                         HashSet<PdfLine> underlines = UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке
                         // Одиночные линии, не ставшие ни таблицей, ни подчёркиванием, — прочерки
                         // пунктов («______ №»): переносим текстом-заполнителем, иначе строка
@@ -206,15 +217,15 @@ namespace ExcelMerger
                             PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
                             Paragraphs = layout.Paragraphs,
                             FirstLineIndentPt = layout.FirstLineIndentPt,
-                            WidthPt = page.Width,
-                            HeightPt = page.Height,
+                            WidthPt = pageW,
+                            HeightPt = pageH,
                             Lines = lines,
                             Tables = det.Tables
                         };
-                        pt.Images = ExtractImages(pageImages, page, path);
+                        pt.Images = images;
                         if (stampImage != null)
                             pt.Images.Add(stampImage); // штамп — в общий поток изображений (порядок по TopPt)
-                        SetMargins(pt, words, pt.Images, page.Width, page.Height);
+                        SetMargins(pt, words, pt.Images, pageW, pageH);
                         pages.Add(pt);
                         if (progress != null)
                             progress(pages.Count, pageCount);
@@ -229,6 +240,40 @@ namespace ExcelMerger
         }
 
         private const double UnderscoreMinHeightFactor = 0.35; // виртуальная высота прочерка в долях кегля
+
+        /// <summary>
+        /// Ориентация текста PdfPig, которая станет горизонтальной после поворота страницы
+        /// на rotation по часовой: глиф с ориентацией O после поворота видится как O + R,
+        /// горизонталь получается при O = 360 − R. Вызывать из ядра (тип PdfPig).
+        /// </summary>
+        private static UglyToad.PdfPig.Content.TextOrientation KeepOrientationFor(int rotation)
+        {
+            switch (rotation)
+            {
+                case 90: return UglyToad.PdfPig.Content.TextOrientation.Rotate270;
+                case 180: return UglyToad.PdfPig.Content.TextOrientation.Rotate180;
+                case 270: return UglyToad.PdfPig.Content.TextOrientation.Rotate90;
+                default: return UglyToad.PdfPig.Content.TextOrientation.Horizontal;
+            }
+        }
+
+        /// <summary>
+        /// Прочерк «____» рисуется у базовой линии рамкой в пару pt: такой вырожденный бокс
+        /// не пересекается по вертикали с соседями («№», «от») и отрывался от них в отдельные
+        /// строки. Даём прочерку высоту хотя бы трети кегля — как у обычного слова той же
+        /// строки. Вызывается ПОСЛЕ поворота страницы (в выправленном пространстве).
+        /// Чистая — под тест.
+        /// </summary>
+        internal static void ApplyUnderscoreHeights(List<PdfWord> words)
+        {
+            if (words == null)
+                return;
+            foreach (PdfWord w in words)
+                if (w.FontSizePt > 0
+                    && w.Top - w.Bottom < UnderscoreMinHeightFactor * w.FontSizePt
+                    && IsUnderscoreOnly(w.Text))
+                    w.Top = w.Bottom + UnderscoreMinHeightFactor * w.FontSizePt;
+        }
 
         // Прочерк из одиночной линии: пределы толщины/длины и ширина «_» в долях кегля (TNR ≈ 0.5).
         // Толщина до 6 pt: прочерки пунктов встречаются и «жирным» штрихом (5 pt), а заливки
@@ -485,14 +530,18 @@ namespace ExcelMerger
 
         /// <summary>
         /// Распознать текстовый штамп и вернуть его как изображение (рендер-кроп области
-        /// Ghostscript-ом), убрав слова штампа из <paramref name="words"/>. Если штамп не найден
-        /// или картинку получить не удалось (нет Ghostscript, пустая область) — возвращает null и
-        /// НИЧЕГО не убирает: текст остаётся текстом (прежнее поведение, без регрессии). Вызывать
-        /// из ядра (после Ensure) — тело ссылается на типы PdfPig.
+        /// Ghostscript-ом), убрав слова штампа из <paramref name="words"/>. Работает в ТЕКУЩЕМ
+        /// пространстве страницы (после пользовательского поворота: pageW/pageH — возможно,
+        /// поменянные местами); кроп растеризатора выполняется в исходном пространстве через
+        /// обратный маппинг, пиксели затем доворачиваются. Если штамп не найден или картинку
+        /// получить не удалось (нет Ghostscript, пустая область) — возвращает null и НИЧЕГО не
+        /// убирает: текст остаётся текстом (прежнее поведение, без регрессии). Вызывать из ядра
+        /// (после Ensure) — тело ссылается на типы PdfPig.
         /// </summary>
-        private static OcrImage ExtractTextStamp(List<PdfWord> words, UglyToad.PdfPig.Content.Page page, string pdfPath)
+        private static OcrImage ExtractTextStamp(List<PdfWord> words, UglyToad.PdfPig.Content.Page page,
+            string pdfPath, int rotation, double pageW, double pageH)
         {
-            StampRegion stamp = StampDetector.Detect(words, page.Width, page.Height);
+            StampRegion stamp = StampDetector.Detect(words, pageW, pageH);
             if (stamp == null)
                 return null;
 
@@ -504,9 +553,23 @@ namespace ExcelMerger
                 raster = PageRasterizer.RenderPage(pdfPath, page.Number);
                 if (raster == null)
                     return null; // нет Ghostscript — штамп остаётся текстом
-                byte[] png = PageRasterizer.CropRegion(raster, page.Width, page.Height, left, top, width, height);
+                // Область кропа — в исходном (неповёрнутом) пространстве страницы: рендер
+                // Ghostscript ничего не знает о пользовательском повороте.
+                double cropLeft = left, cropTop = top, cropW = width, cropH = height;
+                if (rotation != 0)
+                {
+                    double ol, ob, or2, ot;
+                    PageRotation.MapBox(left, top - height, left + width, top,
+                        PageRotation.Inverse(rotation), pageW, pageH, out ol, out ob, out or2, out ot);
+                    cropLeft = ol;
+                    cropTop = ot;
+                    cropW = or2 - ol;
+                    cropH = ot - ob;
+                }
+                byte[] png = PageRasterizer.CropRegion(raster, page.Width, page.Height, cropLeft, cropTop, cropW, cropH);
                 if (png == null || png.Length == 0)
                     return null; // рендер/кроп не удался — не переносим, текст остаётся текстом
+                png = PageRotation.RotatePng(png, rotation); // пиксели — в выправленное пространство
                 // Проверку на одноцветность НЕ делаем: штамп — это белый фон с тонким текстом и рамкой,
                 // разреженная выборка приняла бы его за пустой; наличие текста уже доказано StampDetector.
 

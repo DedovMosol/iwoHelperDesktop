@@ -141,6 +141,7 @@ namespace ExcelMerger
                 return;
             int added = 0;
             int firstAdded = -1;
+            bool checkpointed = false; // снимок для Ctrl+Z — только если реально что-то добавилось
             int at = insertAt < 0 || insertAt > _order.Count ? _order.Count : insertAt;
             Cursor = Cursors.WaitCursor;
             try
@@ -150,6 +151,11 @@ namespace ExcelMerger
                     try
                     {
                         int pages = PdfMergeService.LoadPages(path).Count;
+                        if (!checkpointed)
+                        {
+                            _order.Checkpoint();
+                            checkpointed = true;
+                        }
                         int landed = _order.InsertDocument(at, path, pages);
                         if (firstAdded < 0)
                             firstAdded = landed;
@@ -185,6 +191,7 @@ namespace ExcelMerger
 
         private void OnReorder(int from, int to)
         {
+            _order.Checkpoint();
             _order.Move(from, to);
             RefreshGrid();
             int landed = to > from ? to - 1 : to;
@@ -196,6 +203,7 @@ namespace ExcelMerger
         {
             if (_busy)
                 return;
+            _order.Checkpoint();
             int landed = _order.MoveRange(indices, insertAt);
             if (landed < 0)
                 return;
@@ -208,6 +216,7 @@ namespace ExcelMerger
         {
             if (_busy || pages == null || pages.Length == 0)
                 return;
+            _order.Checkpoint();
             int landed = _order.InsertAt(insertAt, pages);
             RefreshGrid();
             _grid.SelectRange(landed, pages.Length);
@@ -220,9 +229,11 @@ namespace ExcelMerger
             if (_busy || _grid.SelectedCount != 1)
                 return;
             int index = _grid.GetSelectedIndices()[0];
+            bool willMove = later ? index < _order.Count - 1 : index > 0;
+            if (!willMove)
+                return; // уже с краю — снимок для Ctrl+Z не нужен
+            _order.Checkpoint();
             int moved = later ? _order.MoveDown(index) : _order.MoveUp(index);
-            if (moved == index)
-                return;
             RefreshGrid();
             _grid.SelectIndex(moved);
         }
@@ -231,15 +242,26 @@ namespace ExcelMerger
         {
             if (_busy || _grid.SelectedCount == 0)
                 return;
+            _order.Checkpoint();
             _order.RemoveAt(_grid.GetSelectedIndices());
             RefreshGrid();
             SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
             UpdateButtons();
         }
 
-        // Горячие клавиши сетки (Delete, Alt+←/→, Ctrl+A, Enter) — в базе PdfToolFormBase.
+        // Горячие клавиши сетки (Delete, Alt+←/→, Ctrl+X/C/V/Z, Ctrl+A, Enter) — в базе PdfToolFormBase.
         protected override void RemoveSelectedPages() { OnRemoveClick(this, EventArgs.Empty); }
         protected override void MoveSelectedPage(bool later) { MoveSelected(later); }
+
+        /// <summary>Ctrl+Z: откат последнего изменения порядка (перенос, удаление, вставка, добавление).</summary>
+        protected override void UndoOrder()
+        {
+            if (_busy || !_order.Undo())
+                return;
+            RefreshGrid();
+            SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
+            UpdateButtons();
+        }
 
         // ---------- сохранение ----------
 

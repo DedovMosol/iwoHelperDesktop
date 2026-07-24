@@ -1,0 +1,31 @@
+# Единые окончания строк: в репозитории — LF, в рабочей копии — родные для платформы.
+# Индекс уже целиком LF, поэтому нормализация ничего не переписывает.
+* text=auto
+
+# Батники исполняет cmd.exe — ему нужен CRLF в рабочей копии на любой машине.
+*.cmd text eol=crlf
+
+# Явно текстовые исходники и документы.
+*.cs text
+*.csproj text
+*.md text
+*.ps1 text
+*.iss text
+*.yml text
+*.manifest text
+.gitignore text
+.gitattributes text
+
+# Бинарники — не трогать.
+*.png binary
+*.jpg binary
+*.ico binary
+*.bmp binary
+*.dll binary
+*.exe binary
+*.pdf binary
+*.xlsx binary
+*.xlsm binary
+*.xlsb binary
+*.xls binary
+*.docx binary

@@ -3,6 +3,30 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.1] — 2026-07-24
+
+### Added
+- **Rotation in PDF → Word.** A sideways page can be rotated right in the grid
+  (right-click or Ctrl+Shift+«+»/«−») and is straightened BEFORE layout analysis: its
+  sideways text becomes normal lines and paragraphs, tables and margins are rebuilt in
+  the upright space, images and a text stamp turn together with the page,
+  and the produced `.docx` page swaps orientation accordingly. Without rotation the old
+  behaviour is intact (sideways text is filtered out).
+- **Mass rotation.** The rotate submenu now also turns ALL pages of the document at
+  once, and a selection can still be rotated as before. The tile shows a badge with the
+  current angle (90°/180°/270°).
+- **Thumbnails zoom up to 400 px.** The grid draws tiles itself (the previous 256 px
+  ImageList ceiling is gone) and re-renders visible pages at a larger width when zoomed
+  in, so big tiles are sharp. Page numbers, selection and the dimming of cut pages are
+  drawn with the tiles.
+- **Ctrl+Z undoes order edits** in PDF Merge and PDF → Word: reorder, delete, paste,
+  adding files and «Move after page» can be rolled back step by step (up to 50 steps).
+  Rotation is a page property and is not part of the order history.
+- **Move after page N…** in the context menu sends the selected pages right after the
+  page you name (0 — to the very start) — no dragging across 300 thumbnails.
+- **The insertion gap hints on hover.** Before clicking, the gap under the cursor shows
+  a light insertion bar, so the caret lands exactly where expected.
+
 ## [1.17.0] — 2026-07-24
 
 ### Added
