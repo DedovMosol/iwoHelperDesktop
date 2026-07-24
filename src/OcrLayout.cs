@@ -157,6 +157,12 @@ namespace ExcelMerger
         // неразрывных групп («и°надзора») оставляет строку почти полной — его не рвём.
         private const double HardBreakSlackEmFactor = 0.75;
         private const double HardBreakMaxPrevFill = 0.75;
+        // ГИГАНТСКИЙ внутристрочный зазор (в долях кегля) рвёт строку на отдельные абзацы:
+        // куски принадлежат разным зонам одной высоты («На № ___ от ___» слева и боковая метка
+        // справа; «(подпись) … (дата)»). Порог многократно выше любых межсловных зазоров и
+        // выше сеточного SegmentGapEmFactor — обычный текст и «метка … значение» не рвутся.
+        // Только для потока страницы: в ячейке таблицы (splitColumns=false) строка едина.
+        private const double WideIntraGapEmFactor = 6.0;
         // Порог пустой полосы этажа — от ТИПИЧНОГО просвета между рамками соседних строк
         // (не от шага базовых линий: при разнородных кеглях шапки и тела связь «шаг − высота»
         // рассыпается, и порог задирается выше зазоров между зонами шапки — у письма зоны
@@ -250,7 +256,7 @@ namespace ExcelMerger
                 foreach (int tag in leaf.Tags)
                     regionWords.Add(words[tag]);
                 AnalyzeRegion(ToLines(regionWords), leaf.ColumnLeft, leaf.ColumnRight, leaf.AvailRight,
-                    result.Paragraphs, stats);
+                    splitColumns, result.Paragraphs, stats);
             }
             result.FirstLineIndentPt = stats.DocumentIndent();
             return result;
@@ -293,7 +299,7 @@ namespace ExcelMerger
         /// (красную строку решает Analyze по всем блокам страницы).
         /// </summary>
         private static void AnalyzeRegion(List<Line> lines, double colLeft, double colRight, double availRight,
-            List<OcrParagraph> paragraphs, IndentStats stats)
+            bool splitColumns, List<OcrParagraph> paragraphs, IndentStats stats)
         {
             if (lines.Count == 0)
                 return;
@@ -314,7 +320,12 @@ namespace ExcelMerger
                 if (ln.Right >= bodyRight - 0.5 * em) reaching++;
             bool justified = reaching >= (int)Math.Ceiling(lines.Count * JustifiedShare);
 
+            // Порог зазора абзаца — по ФИЗИЧЕСКИМ строкам (до разрыва: сегменты одной строки
+            // дали бы нулевые зазоры и обрушили медиану), затем строки с гигантскими
+            // внутренними зазорами рвутся на сегменты-«строки» — куски разных зон.
             double gapThreshold = ParagraphThreshold(lines);
+            if (splitColumns)
+                lines = SplitWideGaps(lines, em);
             double indentTol = Math.Max(IndentFactor * em, IndentWidthFraction * width);
             double shortTol = ShortLineFraction * width;
 
@@ -403,6 +414,58 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Порвать строки с ГИГАНТСКИМИ внутренними зазорами (≥ <see cref="WideIntraGapEmFactor"/>
+        /// кегля) на сегменты-«строки»: куски принадлежат разным зонам одной высоты (пункты
+        /// слева и боковая метка справа, «(подпись) … (дата)»). Дальше сегменты живут как обычные
+        /// строки: умышленный перевод (<see cref="HardLineBreak"/>) разводит их по абзацам, а
+        /// блочный уровень собирает бок о бок. Обычные строки возвращаются как есть.
+        /// </summary>
+        private static List<Line> SplitWideGaps(List<Line> lines, double em)
+        {
+            double gapTol = WideIntraGapEmFactor * em;
+            List<Line> result = null; // ленивая копия: у большинства страниц разрывов нет
+            for (int li = 0; li < lines.Count; li++)
+            {
+                Line ln = lines[li];
+                List<Line> parts = null;
+                int from = 0;
+                for (int wi = 1; wi < ln.Words.Count; wi++)
+                {
+                    if (ln.Words[wi].Left - ln.Words[wi - 1].Right < gapTol)
+                        continue;
+                    if (parts == null)
+                        parts = new List<Line>();
+                    parts.Add(Slice(ln, from, wi));
+                    from = wi;
+                }
+                if (parts == null)
+                {
+                    if (result != null)
+                        result.Add(ln);
+                    continue;
+                }
+                parts.Add(Slice(ln, from, ln.Words.Count));
+                if (result == null)
+                {
+                    result = new List<Line>(lines.Count + parts.Count);
+                    for (int k = 0; k < li; k++)
+                        result.Add(lines[k]);
+                }
+                result.AddRange(parts);
+            }
+            return result ?? lines;
+        }
+
+        /// <summary>Сегмент строки [from..to) как самостоятельная строка (тот же MidY).</summary>
+        private static Line Slice(Line ln, int from, int to)
+        {
+            var part = new Line { MidY = ln.MidY };
+            for (int i = from; i < to; i++)
+                part.Words.Add(ln.Words[i]);
+            return part;
+        }
+
+        /// <summary>
         /// Умышленный ли перевод строки между prev и cur: первое слово cur свободно влезало в
         /// prev (с запасом в долях кегля), но автор начал новую строку — при мягком переносе так
         /// не бывает. availRight — правый предел ДОСТУПНОГО места (до следующей колонки/края
@@ -452,13 +515,15 @@ namespace ExcelMerger
                         int last = texts.Count - 1;
                         if (EndsWithHyphenAfterLetter(texts[last]))
                         {
-                            // Дефис после КИРИЛЛИЧЕСКОЙ буквы на конце строки — почти всегда
-                            // настоящий дефис составного слова («информационно-коммуникационных»):
-                            // Word и LibreOffice, из которых приходят официальные PDF, по
-                            // умолчанию слова не переносят, и снятие дефиса портило текст.
-                            // Латиница — прежнее снятие переноса («wo-» + «rld» → «world»).
+                            // Дефис у КИРИЛЛИЦЫ (с любой стороны разрыва) — почти всегда настоящий
+                            // дефис составного слова («информационно-коммуникационных»,
+                            // «Word-форма»): Word и LibreOffice, из которых приходят официальные
+                            // PDF, по умолчанию слова не переносят, и снятие дефиса портило текст.
+                            // Чистая латиница — прежнее снятие переноса («wo-» + «rld» → «world»).
                             string lastText = texts[last];
-                            if (!IsCyrillic(lastText[lastText.Length - 2]))
+                            bool cyr = IsCyrillic(lastText[lastText.Length - 2])
+                                || (text.Length > 0 && IsCyrillic(text[0]));
+                            if (!cyr)
                                 texts[last] = lastText.Substring(0, lastText.Length - 1); // снять дефис
                             space = false; // склеить перенос без пробела
                         }
@@ -548,17 +613,22 @@ namespace ExcelMerger
                     continue;
                 var heights = new List<double>(ln.Words.Count);
                 var bottoms = new List<double>(ln.Words.Count);
-                var sizes = new List<double>(ln.Words.Count);
+                // Доминирующий КЕГЛЬ строки — кегль самого ШИРОКОГО слова: маркер сноски узок,
+                // а нижняя медиана в короткой строке («№ 250» + «²») выбрала бы кегль маркера.
+                double domSize = 0, widest = -1;
                 foreach (PdfWord w in ln.Words)
                 {
                     heights.Add(w.Height);
                     bottoms.Add(w.Bottom);
-                    if (w.FontSizePt > 0)
-                        sizes.Add(w.FontSizePt);
+                    double wWidth = w.Right - w.Left;
+                    if (w.FontSizePt > 0 && wWidth > widest)
+                    {
+                        widest = wWidth;
+                        domSize = w.FontSizePt;
+                    }
                 }
                 double domH = MathUtil.Median(heights);
                 double domBottom = MathUtil.Median(bottoms);
-                double domSize = MathUtil.Median(sizes);
                 if (domH <= 0)
                     continue;
                 foreach (PdfWord w in ln.Words)

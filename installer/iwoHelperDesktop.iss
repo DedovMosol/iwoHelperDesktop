@@ -20,6 +20,14 @@ AppVersion={#AppVersion}
 AppPublisher={#Publisher}
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}
+; Версия и описание в РЕСУРСАХ самого Setup.exe (свойства файла в проводнике):
+; без этих директив Inno оставляет 0.0.0.0 и пустое описание.
+VersionInfoVersion={#AppVersion}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductName={#AppName}
+VersionInfoDescription={#AppName} Setup
+VersionInfoCompany={#Publisher}
+VersionInfoCopyright=© 2026 {#Publisher}. MIT License.
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes

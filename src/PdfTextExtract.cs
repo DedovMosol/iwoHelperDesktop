@@ -103,6 +103,21 @@ namespace ExcelMerger
                     int pageCount = doc.NumberOfPages;
                     foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
                     {
+                        // Картинки страницы перечисляются ОДИН раз (декода здесь нет): рамки
+                        // нужны фильтрам невидимого текста и штампов, а сами объекты — переносу
+                        // изображений ниже. Рамки картинок и тёмных векторных заливок — подложки,
+                        // на которых белый/невидимый текст ЛЕГИТИМЕН (шапки билетов, OCR-слой
+                        // поверх скана) и скрывать его нельзя.
+                        List<UglyToad.PdfPig.Content.IPdfImage> pageImages = ListPageImages(page);
+                        var imageRects = new List<RectPt>(pageImages.Count);
+                        foreach (UglyToad.PdfPig.Content.IPdfImage img in pageImages)
+                        {
+                            UglyToad.PdfPig.Core.PdfRectangle b = img.Bounds;
+                            if (b.Width > 0 && b.Height > 0)
+                                imageRects.Add(RectOf(b));
+                        }
+                        List<RectPt> darkFills;
+                        List<PdfLine> lines = ExtractGraphics(page, out darkFills);
                         var words = new List<PdfWord>();
                         foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
                         {
@@ -120,6 +135,16 @@ namespace ExcelMerger
                                 // «абзацы», вклинивающиеся между обычными строками.
                                 if (first.TextOrientation != UglyToad.PdfPig.Content.TextOrientation.Horizontal)
                                     continue;
+                                // Невидимый текст (белая заливка или режим «не рисовать») ВНЕ
+                                // картинок и тёмных плашек — служебные боковые метки («n&#» у
+                                // штампа даты): на белом листе их не видно, в выводе — мусор.
+                                // Подложка «спасает» слово, только накрывая его хотя бы
+                                // наполовину (OCR-слой скана, белая шапка на цветной плашке);
+                                // касание кромки картинки — не подложка.
+                                if (IsInvisibleInk(first)
+                                    && !CoveredByAnyRect(RectOf(bb), imageRects)
+                                    && !CoveredByAnyRect(RectOf(bb), darkFills))
+                                    continue;
                                 bool pseudoBold;
                                 text = DedupDoubledGlyphs(w.Letters, text, out pseudoBold);
                                 size = first.PointSize;
@@ -134,6 +159,11 @@ namespace ExcelMerger
                             // Символы приватной зоны юникода (заглушки полей Word, маркеры Symbol)
                             // не имеют смысла вне своего шрифта — в выводе это «□». Пропускаем.
                             if (IsPrivateUseOnly(text))
+                                continue;
+                            // Слово, накрытое НИЗКОЙ картинкой-штампом (впечатанные дата и номер
+                            // поверх пустой формы «____№____»), текстом не выводим: его вид уже
+                            // несёт картинка, а текст рядом с ней давал бы кашу из двух слоёв.
+                            if (CoveredByLowImage(RectOf(bb), imageRects))
                                 continue;
                             double top = bb.Top;
                             // Прочерк «____» рисуется у базовой линии рамкой в пару pt: такой
@@ -160,7 +190,6 @@ namespace ExcelMerger
                         // Текстовый штамп → переносим картинкой (рендер-кроп), а его слова убираем
                         // из потока (иначе печать задвоится: картинка + те же строки текстом).
                         OcrImage stampImage = ExtractTextStamp(words, page, path);
-                        List<PdfLine> lines = ExtractLines(page);
                         // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
                         TableDetectResult det = TableDetector.Detect(lines, words, page.Width, page.Height);
                         HashSet<PdfLine> underlines = UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке
@@ -182,7 +211,7 @@ namespace ExcelMerger
                             Lines = lines,
                             Tables = det.Tables
                         };
-                        pt.Images = ExtractImages(page, path);
+                        pt.Images = ExtractImages(pageImages, page, path);
                         if (stampImage != null)
                             pt.Images.Add(stampImage); // штамп — в общий поток изображений (порядок по TopPt)
                         SetMargins(pt, words, pt.Images, page.Width, page.Height);
@@ -365,13 +394,10 @@ namespace ExcelMerger
         /// CCITT, CMYK-JPEG и т.п.) пропускаются; сбой одной картинки не срывает остальные и
         /// текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
         /// </summary>
-        private static List<OcrImage> ExtractImages(UglyToad.PdfPig.Content.Page page, string pdfPath)
+        private static List<OcrImage> ExtractImages(List<UglyToad.PdfPig.Content.IPdfImage> images,
+            UglyToad.PdfPig.Content.Page page, string pdfPath)
         {
             var result = new List<OcrImage>();
-            IEnumerable<UglyToad.PdfPig.Content.IPdfImage> images;
-            try { images = page.GetImages(); }
-            catch { return result; }
-
             System.Drawing.Bitmap pageRaster = null; // ленивый рендер страницы — только если понадобится фолбэк
             bool rasterTried = false;
             try
@@ -555,16 +581,116 @@ namespace ExcelMerger
         private const double LineAxisTol = 1.0; // |dy| для горизонтали / |dx| для вертикали
         private const double MinLineLen = 2.0;  // короче — графический шум, не линовка
         private const double ThinFillMax = 2.5; // залитая полоска тоньше этого — это линия, не фон
+        // Тёмная векторная плашка: заливка темнее этого порога (сумма RGB) и крупнее пары em² —
+        // подложка, на которой белый текст легитимен (тёмные шапки таблиц).
+        private const double DarkFillMaxRgbSum = 1.5;
+        private const double DarkFillMinSidePt = 6.0;
+
+        /// <summary>Прямоугольник в координатах PDF (ось Y вверх) — рамки картинок/плашек.</summary>
+        internal struct RectPt
+        {
+            public double Left;
+            public double Bottom;
+            public double Right;
+            public double Top;
+        }
+
+        private static RectPt RectOf(UglyToad.PdfPig.Core.PdfRectangle b)
+        {
+            return new RectPt { Left = b.Left, Bottom = b.Bottom, Right = b.Right, Top = b.Top };
+        }
+
+        /// <summary>Картинки страницы одним списком (без декодирования). Сбой перечисления — пусто.</summary>
+        private static List<UglyToad.PdfPig.Content.IPdfImage> ListPageImages(UglyToad.PdfPig.Content.Page page)
+        {
+            var images = new List<UglyToad.PdfPig.Content.IPdfImage>();
+            try
+            {
+                foreach (UglyToad.PdfPig.Content.IPdfImage img in page.GetImages())
+                    images.Add(img);
+            }
+            catch { }
+            return images;
+        }
 
         /// <summary>
-        /// Линовка страницы (границы таблиц, подчёркивания) из векторной графики. Берём только
-        /// строго горизонтальные/вертикальные штрихи и рёбра прямоугольников; диагонали, кривые
-        /// и крупные заливки (фон ячеек) пропускаем. Сбой одной фигуры не срывает остальные и
-        /// текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
+        /// Невидимая отрисовка буквы: белая заливка (на белом листе не видна) или текстовый
+        /// режим «не рисовать» (Neither — OCR-слой, служебные боковые метки). Вызывать из ядра.
         /// </summary>
-        private static List<PdfLine> ExtractLines(UglyToad.PdfPig.Content.Page page)
+        private static bool IsInvisibleInk(UglyToad.PdfPig.Content.Letter letter)
+        {
+            try
+            {
+                if (letter.RenderingMode == UglyToad.PdfPig.Core.TextRenderingMode.Neither)
+                    return true;
+                if (letter.Color == null)
+                    return false;
+                var rgb = letter.Color.ToRGBValues();
+                return rgb.r >= 0.95 && rgb.g >= 0.95 && rgb.b >= 0.95;
+            }
+            catch { return false; } // не разобрали цвет/режим — считаем видимым (не теряем текст)
+        }
+
+        /// <summary>
+        /// Накрыт ли прямоугольник слова каким-либо из rects хотя бы наполовину по ОБЕИМ осям.
+        /// Слово «на подложке» — когда подложка реально под ним, а не касается кромкой.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static bool CoveredByAnyRect(RectPt word, List<RectPt> rects)
+        {
+            double wWidth = word.Right - word.Left, wHeight = word.Top - word.Bottom;
+            foreach (RectPt r in rects)
+            {
+                double xOverlap = Math.Min(word.Right, r.Right) - Math.Max(word.Left, r.Left);
+                double yOverlap = Math.Min(word.Top, r.Top) - Math.Max(word.Bottom, r.Bottom);
+                bool xOk = wWidth <= 0 ? xOverlap >= 0 : xOverlap >= 0.5 * wWidth;
+                bool yOk = wHeight <= 0 ? yOverlap >= 0 : yOverlap >= 0.5 * wHeight;
+                if (xOk && yOk)
+                    return true;
+            }
+            return false;
+        }
+
+        // «Штамп»: низкая картинка (впечатанные дата/номер) поверх строки-формы.
+        private const double LowImageMaxHeightPt = 24.0;
+        private const double CoverShare = 0.5; // картинка накрывает не меньше этой доли слова по обеим осям
+
+        /// <summary>
+        /// Накрыто ли слово низкой картинкой-«штампом»: картинка не выше
+        /// <see cref="LowImageMaxHeightPt"/> и перекрывает слово не меньше чем на половину по
+        /// ширине и высоте. Высокие картинки (схема вагона с номерами мест, печати, логотипы) под
+        /// правило не попадают — текст поверх них легитимен. Чистая — под тест.
+        /// </summary>
+        internal static bool CoveredByLowImage(RectPt word, List<RectPt> images)
+        {
+            double wWidth = word.Right - word.Left, wHeight = word.Top - word.Bottom;
+            if (wWidth <= 0)
+                return false;
+            foreach (RectPt img in images)
+            {
+                if (img.Top - img.Bottom > LowImageMaxHeightPt)
+                    continue;
+                double xOverlap = Math.Min(word.Right, img.Right) - Math.Max(word.Left, img.Left);
+                if (xOverlap < CoverShare * wWidth)
+                    continue;
+                double yOverlap = Math.Min(word.Top, img.Top) - Math.Max(word.Bottom, img.Bottom);
+                if (wHeight <= 0 ? yOverlap >= 0 : yOverlap >= CoverShare * wHeight)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Линовка страницы (границы таблиц, подчёркивания) из векторной графики; попутно —
+        /// рамки ТЁМНЫХ заливок (подложки белого текста). Берём только строго
+        /// горизонтальные/вертикальные штрихи и рёбра прямоугольников; диагонали, кривые
+        /// и крупные заливки (фон ячеек) в линовку не идут. Сбой одной фигуры не срывает
+        /// остальные и текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
+        /// </summary>
+        private static List<PdfLine> ExtractGraphics(UglyToad.PdfPig.Content.Page page, out List<RectPt> darkFills)
         {
             var result = new List<PdfLine>();
+            darkFills = new List<RectPt>();
             System.Collections.Generic.IReadOnlyList<UglyToad.PdfPig.Graphics.PdfPath> paths;
             try { paths = page.ExperimentalAccess.Paths; }
             catch { return result; }
@@ -591,12 +717,36 @@ namespace ExcelMerger
                         else if (stroked)
                             AddLineCommands(result, sub, thickness);
                         else if (sub.IsDrawnAsRectangle) // filled, не stroked
+                        {
                             AddThinFilledRect(result, sub);
+                            AddDarkFill(darkFills, path, sub);
+                        }
                     }
                 }
                 catch { } // одна битая фигура не ломает остальные
             }
             return result;
+        }
+
+        /// <summary>Крупная ТЁМНАЯ заливка → подложка (на ней белый текст легитимен).</summary>
+        private static void AddDarkFill(List<RectPt> darkFills, UglyToad.PdfPig.Graphics.PdfPath path, UglyToad.PdfPig.Core.PdfSubpath sub)
+        {
+            try
+            {
+                UglyToad.PdfPig.Core.PdfRectangle? r = sub.GetDrawnRectangle();
+                if (r == null)
+                    return;
+                UglyToad.PdfPig.Core.PdfRectangle rect = r.Value;
+                if (rect.Width < DarkFillMinSidePt || rect.Height < DarkFillMinSidePt)
+                    return; // мелочь/линии — не подложка
+                var fill = path.FillColor;
+                if (fill == null)
+                    return;
+                var rgb = fill.ToRGBValues();
+                if (rgb.r + rgb.g + rgb.b <= DarkFillMaxRgbSum)
+                    darkFills.Add(RectOf(rect));
+            }
+            catch { }
         }
 
         /// <summary>Рёбра нарисованного прямоугольника → 4 линии (границы ячейки/рамки).</summary>

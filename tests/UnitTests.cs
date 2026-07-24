@@ -139,6 +139,12 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: мелкая цифра у базовой линии — сносочный маркер (Super)", TestOcrFootnoteDigitSuper);
             Run("OcrLayout: строка с красной строкой не центрируется случайной симметрией", TestOcrRedIndentNotCentered);
             Run("WordDocxWriter: межблочные интервалы — типичный зазор, лишек, кап", TestDocxGapMath);
+            Run("ShellContext.MoveActiveLast: активное окно пересоздаётся последним", TestMoveActiveLast);
+            Run("OcrLayout: гигантский зазор внутри строки рвёт её на зоны (в ячейке — нет)", TestOcrWideGapSplit);
+            Run("WordDocxWriter.CoalesceRowBands: блоки одной строки — в полосу", TestCoalesceRowBands);
+            Run("WordDocxWriter.AnchorIndents: красная строка по факту / позиция колонки", TestAnchorIndents);
+            Run("OcrLayout: дефис лат+кириллица на переносе сохраняется", TestOcrHyphenMixedKept);
+            Run("PdfTextExtract: слово под низкой картинкой-штампом скрывается", TestCoveredByLowImage);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
             Run("ListMarker: нумерованный «1.»/«12)»", TestListMarkerNumbered);
             Run("ListMarker: маркированный «•»/«—»", TestListMarkerBulleted);
@@ -1941,19 +1947,19 @@ namespace ExcelMerger.Tests
 
         private static void TestOcrHardLineBreak()
         {
-            // «Следственного» свободно влезало после «начальник» — автор сам начал новую
+            // «отдела» свободно влезало после «руководитель» — автор сам начал новую
             // строку (подпись), это разные абзацы; иначе Word перевёрстывал бы их произвольно.
             var words = new List<PdfWord>
             {
                 W("полная строка на всю ширину колонки текста", 0, 130, 200, 10),
                 W("Заместитель", 0, 90, 40, 10),
-                W("начальник", 45, 90, 35, 10),       // Right 80 — заполнено 40% колонки
-                W("Следственного", 0, 75, 50, 10)     // влезло бы: 80 + 50 + 7.5 <= 200
+                W("руководитель", 45, 90, 35, 10),    // Right 80 — заполнено 40% колонки
+                W("отдела", 0, 75, 50, 10)            // влезло бы: 80 + 50 + 7.5 <= 200
             };
             List<string> p = OcrLayout.ToParagraphs(words);
             AssertEqual(3, p.Count, "полная строка и две строки подписи — три абзаца");
-            AssertEqual("Заместитель начальник", p[1], "первая строка подписи своим абзацем");
-            AssertEqual("Следственного", p[2], "вторая строка подписи своим абзацем");
+            AssertEqual("Заместитель руководитель", p[1], "первая строка подписи своим абзацем");
+            AssertEqual("отдела", p[2], "вторая строка подписи своим абзацем");
         }
 
         private static void TestOcrSignatureHardBreak()
@@ -1963,15 +1969,15 @@ namespace ExcelMerger.Tests
             // строки умышленный, строки подписи не склеиваются.
             var words = new List<PdfWord>
             {
-                W("Заместитель Министра начальник", 0, 90, 150, 10),
-                W("Следственного департамента", 0, 75, 120, 10),
-                W("Лебедев", 300, 75, 60, 10)
+                W("Руководитель главного управления", 0, 90, 150, 10),
+                W("испытательного отдела", 0, 75, 120, 10),
+                W("Иванов", 300, 75, 60, 10)
             };
             List<string> p = OcrLayout.ToParagraphs(words);
             AssertEqual(3, p.Count, "две строки подписи и Ф.И.О. — три абзаца");
-            AssertEqual("Заместитель Министра начальник", p[0], "первая строка подписи");
-            AssertEqual("Следственного департамента", p[1], "вторая строка подписи");
-            AssertEqual("Лебедев", p[2], "правая колонка после левой");
+            AssertEqual("Руководитель главного управления", p[0], "первая строка подписи");
+            AssertEqual("испытательного отдела", p[1], "вторая строка подписи");
+            AssertEqual("Иванов", p[2], "правая колонка после левой");
         }
 
         private static void TestOcrFootnoteDigitSuper()
@@ -2012,14 +2018,14 @@ namespace ExcelMerger.Tests
                 W("хвост второй строки прижат влево до правого поля", 0, 105, 200, 10),
                 W("третий абзац начинается с красной строки и идёт", 36, 90, 164, 10),
                 W("хвост третьей строки прижат влево до правого", 0, 75, 200, 10),
-                W("перевод учреждений на сервисы", 36, 60, 122, 10),  // отступы 36/42 — не центр
-                W("настоящий центр", 60, 25, 80, 10)                   // 60/60 — центр
+                W("одиночная строка пункта списка", 36, 60, 122, 10),  // отступы 36/42 — не центр
+                W("настоящий центр", 60, 25, 80, 10)                    // 60/60 — центр
             };
             List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
             OcrParagraph fake = null, real = null;
             foreach (OcrParagraph p in paras)
             {
-                if (p.Text.StartsWith("перевод")) fake = p;
+                if (p.Text.StartsWith("одиночная")) fake = p;
                 if (p.Text == "настоящий центр") real = p;
             }
             AssertTrue(fake != null && fake.Alignment != OcrAlignment.Center,
@@ -2042,7 +2048,129 @@ namespace ExcelMerger.Tests
             AssertEqual(7.0, WordDocxWriter.TypicalItemGap(items), "типичный зазор — медиана {7,7,30}");
             AssertEqual(0.0, WordDocxWriter.ExtraGapPt(10, 7), "лишек 3 меньше порога — без интервала");
             AssertEqual(23.0, WordDocxWriter.ExtraGapPt(30, 7), "лишек 23 — интервал 23 pt");
-            AssertEqual(120.0, WordDocxWriter.ExtraGapPt(500, 7), "кап 120 pt");
+            // Кап 400: пропускает «составителя у нижнего края» почти пустой страницы,
+            // а от переливов страхует демпфер FitSpacingToPages.
+            AssertEqual(400.0, WordDocxWriter.ExtraGapPt(900, 7), "кап 400 pt");
+        }
+
+        private static void TestMoveActiveLast()
+        {
+            // Активный снапшот уезжает в конец (его окно показывается последним и остаётся
+            // сверху после смены языка); порядок остальных сохраняется; без активного — no-op.
+            ShellContext.ToolSnapshot S(string key, bool active)
+            {
+                return new ShellContext.ToolSnapshot { Key = key, WasActive = active };
+            }
+            var snap = new List<ShellContext.ToolSnapshot> { S("a", false), S("b", true), S("c", false) };
+            ShellContext.MoveActiveLast(snap);
+            AssertEqual("a|c|b", snap[0].Key + "|" + snap[1].Key + "|" + snap[2].Key, "активный — последним");
+            var none = new List<ShellContext.ToolSnapshot> { S("a", false), S("b", false) };
+            ShellContext.MoveActiveLast(none);
+            AssertEqual("a|b", none[0].Key + "|" + none[1].Key, "без активного порядок не меняется");
+        }
+
+        private static void TestOcrWideGapSplit()
+        {
+            // Куски одной строки, разделённые гигантским зазором (20 кеглей), — разные зоны
+            // (пункты слева, учётная метка справа): в потоке рвутся на абзацы, в ячейке — нет.
+            var words = new List<PdfWord>
+            {
+                W("На", 0, 90, 20, 10),
+                W("№", 25, 90, 10, 10),
+                W("02.07.2026", 40, 90, 60, 10),
+                W("REG~MARK", 300, 90, 60, 10)
+            };
+            List<OcrParagraph> flow = OcrLayout.Analyze(words).Paragraphs;
+            AssertEqual(2, flow.Count, "в потоке — два абзаца-зоны");
+            AssertEqual("На № 02.07.2026", flow[0].Text, "левая зона");
+            AssertEqual("REG~MARK", flow[1].Text, "правая зона");
+            List<OcrParagraph> cell = OcrLayout.Analyze(words, false).Paragraphs;
+            AssertEqual(1, cell.Count, "в ячейке строка едина");
+            AssertEqual("На № 02.07.2026 REG~MARK", cell[0].Text, "текст ячейки не порван");
+        }
+
+        private static void TestCoalesceRowBands()
+        {
+            // Два одиночных абзаца одной «строки» с широким каналом — side-by-side полоса;
+            // абзац строкой ниже полосой не становится.
+            WordDocxWriter.PageItem P(double left, double right, double top, double bottom)
+            {
+                var b = new WordDocxWriter.Block
+                {
+                    Paragraph = new OcrParagraph(),
+                    Left = left,
+                    Right = right,
+                    Top = top,
+                    Bottom = bottom
+                };
+                return new WordDocxWriter.PageItem { Single = b, Top = top, Bottom = bottom };
+            }
+            var items = new List<WordDocxWriter.PageItem>
+            {
+                P(0, 100, 100, 90),    // левая зона строки
+                P(200, 300, 99, 89),   // правая зона той же строки (канал 100)
+                P(0, 300, 70, 60)      // следующая строка — отдельно
+            };
+            List<WordDocxWriter.PageItem> result = WordDocxWriter.CoalesceRowBands(items);
+            AssertEqual(2, result.Count, "полоса + одиночный");
+            AssertTrue(result[0].IsBand && result[0].Columns.Count == 2, "первая пара — полоса 1×2");
+            AssertEqual(200.0, result[0].ColLeft[1], "левый край правой колонки");
+            AssertTrue(!result[1].IsBand, "нижний абзац остался одиночным");
+        }
+
+        private static void TestAnchorIndents()
+        {
+            double fli, li;
+            WordDocxWriter.AnchorIndents(303, 510, 0, out fli, out li);
+            AssertTrue(fli == 0 && li == 303, "глубокий старт — позиция колонки (боковая метка)");
+            WordDocxWriter.AnchorIndents(35, 510, 34.7, out fli, out li);
+            AssertTrue(fli == 34.7 && li == 0, "фактический отступ ≈ документному — красная строка");
+            WordDocxWriter.AnchorIndents(1, 510, 34.7, out fli, out li);
+            AssertTrue(fli == 0 && li == 0, "абзац с края — без ложной красной строки (сноски)");
+            WordDocxWriter.AnchorIndents(35, 510, 0, out fli, out li);
+            AssertTrue(fli == 35 && li == 0, "документ без общего отступа — отступ по факту");
+            WordDocxWriter.AnchorIndents(4, 510, 0, out fli, out li);
+            AssertTrue(fli == 0 && li == 0, "шум измерения — не отступ");
+        }
+
+        private static void TestOcrHyphenMixedKept()
+        {
+            // Кириллица с ЛЮБОЙ стороны разрыва — составное слово, дефис остаётся.
+            var words = new List<PdfWord>
+            {
+                W("шла", 0, 90, 20, 10),
+                W("Word-", 25, 90, 65, 10),
+                W("форма", 0, 75, 90, 10)
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(1, p.Count, "один абзац");
+            AssertEqual("шла Word-форма", p[0], "дефис лат+кириллица сохранён");
+        }
+
+        private static void TestCoveredByLowImage()
+        {
+            var form = new PdfTextExtract.RectPt { Left = 66, Bottom = 570, Right = 260, Top = 577 };
+            var stampImg = new List<PdfTextExtract.RectPt>
+            {
+                new PdfTextExtract.RectPt { Left = 94, Bottom = 567, Right = 254, Top = 581 } // штамп H=14
+            };
+            AssertTrue(PdfTextExtract.CoveredByLowImage(form, stampImg), "форма под штампом скрыта");
+            var tallImg = new List<PdfTextExtract.RectPt>
+            {
+                new PdfTextExtract.RectPt { Left = 60, Bottom = 400, Right = 300, Top = 590 } // схема H=190
+            };
+            AssertTrue(!PdfTextExtract.CoveredByLowImage(form, tallImg), "высокая картинка не поглощает текст");
+            var aside = new List<PdfTextExtract.RectPt>
+            {
+                new PdfTextExtract.RectPt { Left = 200, Bottom = 567, Right = 420, Top = 581 } // сбоку, перекрытие < 50%
+            };
+            AssertTrue(!PdfTextExtract.CoveredByLowImage(form, aside), "слабое перекрытие — не штамп");
+            AssertTrue(PdfTextExtract.CoveredByAnyRect(
+                new PdfTextExtract.RectPt { Left = 100, Bottom = 570, Right = 120, Top = 578 }, stampImg),
+                "слово на подложке — накрыто наполовину по обеим осям");
+            AssertTrue(!PdfTextExtract.CoveredByAnyRect(
+                new PdfTextExtract.RectPt { Left = 94, Bottom = 581, Right = 104, Top = 585 }, stampImg),
+                "касание кромки картинки — не подложка (белая метка у штампа)");
         }
 
         private static void TestOcrEmpty()

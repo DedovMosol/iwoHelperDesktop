@@ -23,6 +23,8 @@ namespace ExcelMerger
     {
         private static readonly Color PdfRed = Color.FromArgb(211, 47, 47);      // #D32F2F
         private static readonly Color PdfFold = Color.FromArgb(154, 34, 34);     // #9A2222
+        // Единый шрифт заголовка карточек: создание в каждом OnPaint — лишний GDI-чурн.
+        private static readonly Font TitleFont = new Font("Segoe UI", 12.5f, FontStyle.Bold);
 
         private readonly CardGlyph _glyph;
         private readonly string _title;
@@ -111,12 +113,9 @@ namespace ExcelMerger
             var glyphRect = new Rectangle((Width - glyphSize) / 2, 26, glyphSize, glyphSize);
             DrawGlyph(g, glyphRect);
 
-            using (var titleFont = new Font("Segoe UI", 12.5f, FontStyle.Bold))
-            {
-                var titleRect = new Rectangle(10, glyphRect.Bottom + 12, Width - 20, 28);
-                TextRenderer.DrawText(g, _title, titleFont, titleRect, Theme.TextPrimary,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
-            }
+            var titleRect = new Rectangle(10, glyphRect.Bottom + 12, Width - 20, 28);
+            TextRenderer.DrawText(g, _title, TitleFont, titleRect, Theme.TextPrimary,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
 
             var descRect = new Rectangle(18, glyphRect.Bottom + 46, Width - 36, Height - glyphRect.Bottom - 56);
             TextRenderer.DrawText(g, _description, Font, descRect, Theme.TextMuted,

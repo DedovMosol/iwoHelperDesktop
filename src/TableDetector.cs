@@ -95,15 +95,43 @@ namespace ExcelMerger
 
         // ---------- связные компоненты линий ----------
 
+        // Клетка пространственной сетки для поиска связей: полный перебор пар был O(n²) и
+        // заметно тормозил на PDF с пунктирной линовкой (тысячи коротких штрихов).
+        private const double GridCellPt = 32;
+
         private static List<List<PdfLine>> ConnectedComponents(IList<PdfLine> lines)
         {
             int n = lines.Count;
             var parent = new int[n];
             for (int i = 0; i < n; i++) parent[i] = i;
+
+            // Кандидаты на связь — только линии одной клетки; рамка каждой расширена на
+            // TouchTol, поэтому связи «через границу клетки» не теряются. Уже связанные
+            // пары отсеиваются Find'ом до дорогого Touch.
+            var buckets = new Dictionary<long, List<int>>();
             for (int i = 0; i < n; i++)
-                for (int j = i + 1; j < n; j++)
-                    if (Touch(lines[i], lines[j]))
-                        Union(parent, i, j);
+            {
+                PdfLine l = lines[i];
+                int x0 = (int)Math.Floor((l.MinX - TouchTol) / GridCellPt), x1 = (int)Math.Floor((l.MaxX + TouchTol) / GridCellPt);
+                int y0 = (int)Math.Floor((l.MinY - TouchTol) / GridCellPt), y1 = (int)Math.Floor((l.MaxY + TouchTol) / GridCellPt);
+                for (int cx = x0; cx <= x1; cx++)
+                    for (int cy = y0; cy <= y1; cy++)
+                    {
+                        long key = ((long)cx << 32) | (uint)cy;
+                        List<int> bucket;
+                        if (!buckets.TryGetValue(key, out bucket))
+                        {
+                            bucket = new List<int>();
+                            buckets[key] = bucket;
+                        }
+                        bucket.Add(i);
+                    }
+            }
+            foreach (List<int> bucket in buckets.Values)
+                for (int a = 0; a < bucket.Count; a++)
+                    for (int b = a + 1; b < bucket.Count; b++)
+                        if (Find(parent, bucket[a]) != Find(parent, bucket[b]) && Touch(lines[bucket[a]], lines[bucket[b]]))
+                            Union(parent, bucket[a], bucket[b]);
 
             var groups = new Dictionary<int, List<PdfLine>>();
             for (int i = 0; i < n; i++)

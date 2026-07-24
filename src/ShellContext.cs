@@ -23,7 +23,7 @@ namespace ExcelMerger
         private StartForm _hub;
         private bool _rebuilding; // идёт пересборка окон при смене языка — не завершать приложение
 
-        private sealed class ToolEntry
+        internal sealed class ToolEntry
         {
             public string Name;
             public Func<Action, Form> Factory;
@@ -110,16 +110,21 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Пересобрать открытые окна на новом языке, сохранив их положение. Занятые инструменты
+        /// Пересобрать открытые окна на новом языке, сохранив их положение И активное окно.
+        /// Порядок: неактивные инструменты → хаб → АКТИВНОЕ окно последним — последнее
+        /// показанное остаётся сверху, поэтому пользователь после смены языка остаётся в том
+        /// окне, из меню которого её выбрал (иначе хаб выпрыгивал поверх). Занятые инструменты
         /// (идёт операция) не закрываются — останутся в прежнем языке и обновятся при следующем
-        /// открытии. Флаг _rebuilding не даёт приложению завершиться, пока окна на миг закрыты
-        /// между «закрыть старое» и «открыть новое».
+        /// открытии; занятое активное окно в конце поднимается наверх как есть. Флаг _rebuilding
+        /// не даёт приложению завершиться, пока окна на миг закрыты между «закрыть» и «открыть».
         /// </summary>
         private void RebuildOpenWindows()
         {
             _rebuilding = true;
             try
             {
+                Form active = Form.ActiveForm; // окно, из меню которого сменили язык
+
                 // Снимок открытых инструментов ДО закрытия (закрытие чистит словари).
                 var snap = new List<ToolSnapshot>();
                 foreach (KeyValuePair<string, ToolEntry> kv in _openTools)
@@ -131,14 +136,26 @@ namespace ExcelMerger
                             Key = kv.Key,
                             Entry = kv.Value,
                             Location = f.Location,
-                            State = f.WindowState
+                            State = f.WindowState,
+                            WasActive = ReferenceEquals(f, active)
                         });
                 }
+                MoveActiveLast(snap);
                 bool hubOpen = _hub != null && !_hub.IsDisposed;
+                bool hubWasActive = hubOpen && ReferenceEquals(_hub, active);
                 Point hubLoc = hubOpen ? _hub.Location : Point.Empty;
 
+                // Хаб пересоздаётся ДО активного инструмента (и после неактивных); если активен
+                // был сам хаб — он в самом конце, как раньше.
+                bool hubRebuilt = false;
+                Form busyActive = null; // активное занятое окно не пересоздаётся — поднимем его
                 foreach (ToolSnapshot t in snap)
                 {
+                    if (hubOpen && !hubRebuilt && !hubWasActive && t.WasActive)
+                    {
+                        RebuildHub(hubLoc);
+                        hubRebuilt = true;
+                    }
                     Form old;
                     if (_tools.TryGetOpen(t.Key, out old) && old != null && !old.IsDisposed)
                     {
@@ -146,24 +163,25 @@ namespace ExcelMerger
                         // «Прервать операцию?» посреди смены языка (а «Да» отменил бы работу).
                         var busy = old as IBusyAware;
                         if (busy != null && busy.IsBusy)
-                            continue; // остаётся на прежнем языке
+                        {
+                            if (t.WasActive)
+                                busyActive = old; // остаётся на прежнем языке, но наверху
+                            continue;
+                        }
                         old.Close();
                         if (!old.IsDisposed)
-                            continue; // закрытие отменено — оставляем в прежнем языке
+                        {
+                            if (t.WasActive)
+                                busyActive = old; // закрытие отменено — оставляем и поднимаем
+                            continue;
+                        }
                     }
                     SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Location, t.State);
                 }
 
-                if (hubOpen)
-                {
-                    StartForm oldHub = _hub;
-                    _hub = null;
-                    if (oldHub != null && !oldHub.IsDisposed)
-                        oldHub.Close();
-                    ShowHub();
-                    if (_hub != null && !hubLoc.IsEmpty)
-                        _hub.Location = hubLoc;
-                }
+                if (hubOpen && !hubRebuilt)
+                    RebuildHub(hubLoc);
+                BringToFront(busyActive); // null-безопасно: активное непересозданное окно — наверх
             }
             finally
             {
@@ -173,12 +191,42 @@ namespace ExcelMerger
                 ExitThread(); // страховка: если пересобирать было нечего
         }
 
-        private sealed class ToolSnapshot
+        /// <summary>Пересоздать хаб на прежнем месте (часть пересборки при смене языка).</summary>
+        private void RebuildHub(Point hubLoc)
+        {
+            StartForm oldHub = _hub;
+            _hub = null;
+            if (oldHub != null && !oldHub.IsDisposed)
+                oldHub.Close();
+            ShowHub();
+            if (_hub != null && !hubLoc.IsEmpty)
+                _hub.Location = hubLoc;
+        }
+
+        /// <summary>
+        /// Активный снапшот — в конец списка (последнее показанное окно остаётся сверху);
+        /// порядок остальных сохраняется. Чистая — под тест.
+        /// </summary>
+        internal static void MoveActiveLast(List<ToolSnapshot> snap)
+        {
+            for (int i = 0; i < snap.Count; i++)
+            {
+                if (!snap[i].WasActive)
+                    continue;
+                ToolSnapshot active = snap[i];
+                snap.RemoveAt(i);
+                snap.Add(active);
+                return; // активное окно одно
+            }
+        }
+
+        internal sealed class ToolSnapshot
         {
             public string Key;
             public ToolEntry Entry;
             public Point Location;
             public FormWindowState State;
+            public bool WasActive;
         }
 
         private void Track(Form form)
