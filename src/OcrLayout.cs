@@ -111,10 +111,17 @@ namespace ExcelMerger
         // ширины). Так узнаём и узкую (номер страницы), и ШИРОКУЮ (строка титула) центрированную
         // строку: у широкой зазоры малы в долях ширины, но симметричны, поэтому порог задан ещё и в
         // долях кегля. Отличие от красной строки — та упирается в правое поле (правый зазор ≈ 0); от
-        // рваной левой — та стоит у левого поля (левый зазор ≈ 0).
+        // рваной левой — та стоит у левого поля (левый зазор ≈ 0). Строку, начинающуюся ТОЧНО с
+        // красной строки документа и случайно почти симметричную («перевод учреждений…» с
+        // отступами 36/42), отсекает отдельный фильтр в CenteredRuns: совпадение (допуск
+        // IndentMatchTolPt) с кучным кластером отступов строк, прижатых к правому полю
+        // (окно IndentClusterWidthPt, поддержка ≥ MinIndentSupport — см. RegionRedIndent).
         private const double CenterInsetEmFactor = 0.5;
         private const double CenterMinInsetFraction = 0.02;
         private const double CenterBalanceFraction = 0.08;
+        private const double IndentMatchTolPt = 2.5;
+        private const double IndentClusterWidthPt = 3.0;
+        private const int MinIndentSupport = 3;
         // Прогон по общей оси центра: соседние строки соосны, если их midX расходится не больше чем на
         // эту долю кегля. Красная строка/короткий хвост justified-абзаца смещают midX сильнее — прогон
         // на них обрывается, поэтому тело не «прилипает» к центрированному титулу.
@@ -123,6 +130,11 @@ namespace ExcelMerger
         // линии вверх (надстрочный) или вниз (подстрочный) заметно относительно кегля.
         private const double ScriptSizeFactor = 0.85;
         private const double ScriptRiseFactor = 0.1;
+        // Сносочный маркер: ЧИСЛО с кеглем заметно мельче доминирующего КЕГЛЯ строки («250²»:
+        // 8.1 pt против 14 pt). По рамке его не поймать: ink-высота цифры почти равна высоте
+        // строчных букв соседних слов, а подъём в некоторых шрифтах нулевой — маркеры одного
+        // документа выходили вразнобой (часть надстрочные, часть на базовой).
+        private const double DigitScriptSizeFactor = 0.75;
         // Между двумя соседними словами строки ставим пробел: PdfPig уже сгруппировал буквы в
         // слова, поэтому раздельные слова — это граница слова. Склеиваем без пробела ТОЛЬКО
         // почти соприкасающиеся токены (зазор < SpaceGapFactor кегля) — так PdfPig изредка дробит
@@ -138,6 +150,13 @@ namespace ExcelMerger
         private const double ColumnMinExtentEmFactor = 2.2;
         private const int ColumnMinWords = 2;
         private const double MinCutGapPt = 2.0;
+        // Умышленный перевод строки (жёсткий разрыв): следующая строка начата, хотя её первое
+        // слово свободно влезало в предыдущую — при мягком переносе так не бывает (слово
+        // переносится, только когда НЕ влезло). Требуем запас (слак в долях кегля) и «сильно
+        // короткую» предыдущую строку (заполнена меньше этой доли колонки): рэг из-за
+        // неразрывных групп («и°надзора») оставляет строку почти полной — его не рвём.
+        private const double HardBreakSlackEmFactor = 0.75;
+        private const double HardBreakMaxPrevFill = 0.75;
         // Порог пустой полосы этажа — от ТИПИЧНОГО просвета между рамками соседних строк
         // (не от шага базовых линий: при разнородных кеглях шапки и тела связь «шаг − высота»
         // рассыпается, и порог задирается выше зазоров между зонами шапки — у письма зоны
@@ -230,7 +249,7 @@ namespace ExcelMerger
                 var regionWords = new List<PdfWord>(leaf.Tags.Count);
                 foreach (int tag in leaf.Tags)
                     regionWords.Add(words[tag]);
-                AnalyzeRegion(ToLines(regionWords), leaf.ColumnLeft, leaf.ColumnRight,
+                AnalyzeRegion(ToLines(regionWords), leaf.ColumnLeft, leaf.ColumnRight, leaf.AvailRight,
                     result.Paragraphs, stats);
             }
             result.FirstLineIndentPt = stats.DocumentIndent();
@@ -268,10 +287,12 @@ namespace ExcelMerger
         /// блока). colLeft/colRight — рамка КОЛОНКИ блока: центрирование, красная строка и
         /// выключка считаются от полей колонки, а не от рамки самого блока — узкий блок (одна
         /// центрированная строка титула, отрезанная этажом) иначе терял бы центрирование.
-        /// Абзацы добавляются в paragraphs; отступы первых строк и число групп копятся в stats
+        /// availRight — правый предел ДОСТУПНОГО места (до контента следующей колонки/края
+        /// родителя): по нему решается умышленный перевод строки. Абзацы добавляются в
+        /// paragraphs; отступы первых строк и число групп копятся в stats
         /// (красную строку решает Analyze по всем блокам страницы).
         /// </summary>
-        private static void AnalyzeRegion(List<Line> lines, double colLeft, double colRight,
+        private static void AnalyzeRegion(List<Line> lines, double colLeft, double colRight, double availRight,
             List<OcrParagraph> paragraphs, IndentStats stats)
         {
             if (lines.Count == 0)
@@ -321,7 +342,9 @@ namespace ExcelMerger
                     bool indentBreak = lines[i].Left - bodyLeft > indentTol;
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
                     bool listBreak = StartsWithListMarker(lines[i]);
-                    if (gapBreak || centeredBreak || indentBreak || shortBreak || listBreak)
+                    bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft,
+                        Math.Max(availRight, bodyRight), em);
+                    if (gapBreak || centeredBreak || indentBreak || shortBreak || listBreak || hardBreak)
                     {
                         groups.Add(current);
                         groupCentered.Add(centered[i - 1]);
@@ -380,9 +403,33 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Умышленный ли перевод строки между prev и cur: первое слово cur свободно влезало в
+        /// prev (с запасом в долях кегля), но автор начал новую строку — при мягком переносе так
+        /// не бывает. availRight — правый предел ДОСТУПНОГО места (до следующей колонки/края
+        /// области), а не рамка контента: у блока подписи из двух коротких строк собственная
+        /// рамка всегда «заполнена». Прев-строка обязана быть «сильно короткой» (заполнена меньше
+        /// <see cref="HardBreakMaxPrevFill"/> доступной ширины): почти полную строку с рэгом от
+        /// неразрывной группы не рвём. Ловит реквизиты («__ № __» / «на № __ от __»),
+        /// многострочные подписи и «исп./тел.» — иначе их строки склеивались в один абзац и
+        /// Word перевёрстывал их произвольно. Чистая — под тест.
+        /// </summary>
+        private static bool HardLineBreak(Line prev, Line cur, double bodyLeft, double availRight, double em)
+        {
+            double width = availRight - bodyLeft;
+            if (width <= 0)
+                return false;
+            if (prev.Right > bodyLeft + HardBreakMaxPrevFill * width)
+                return false; // предыдущая строка почти полная — обычный мягкий перенос
+            PdfWord first = cur.Words[0];
+            double firstWidth = first.Right - first.Left;
+            return prev.Right + firstWidth + HardBreakSlackEmFactor * em <= availRight;
+        }
+
+        /// <summary>
         /// Абзац → раны: слова в порядке чтения склеиваются (пробел между словами; перенос по
-        /// строкам склеивает, дефис-перенос снимается), а при смене формата (кегль/жирный/курсив/
-        /// цвет) начинается новый ран — формат сохраняется пословно, а не на весь абзац.
+        /// строкам склеивает, дефис-перенос латиницы снимается, кириллический дефис остаётся —
+        /// см. BuildRuns), а при смене формата (кегль/жирный/курсив/цвет) начинается новый ран —
+        /// формат сохраняется пословно, а не на весь абзац.
         /// </summary>
         private static List<OcrRun> BuildRuns(List<Line> group)
         {
@@ -405,7 +452,14 @@ namespace ExcelMerger
                         int last = texts.Count - 1;
                         if (EndsWithHyphenAfterLetter(texts[last]))
                         {
-                            texts[last] = texts[last].Substring(0, texts[last].Length - 1); // снять дефис
+                            // Дефис после КИРИЛЛИЧЕСКОЙ буквы на конце строки — почти всегда
+                            // настоящий дефис составного слова («информационно-коммуникационных»):
+                            // Word и LibreOffice, из которых приходят официальные PDF, по
+                            // умолчанию слова не переносят, и снятие дефиса портило текст.
+                            // Латиница — прежнее снятие переноса («wo-» + «rld» → «world»).
+                            string lastText = texts[last];
+                            if (!IsCyrillic(lastText[lastText.Length - 2]))
+                                texts[last] = lastText.Substring(0, lastText.Length - 1); // снять дефис
                             space = false; // склеить перенос без пробела
                         }
                         else space = true;
@@ -494,18 +548,33 @@ namespace ExcelMerger
                     continue;
                 var heights = new List<double>(ln.Words.Count);
                 var bottoms = new List<double>(ln.Words.Count);
-                foreach (PdfWord w in ln.Words) { heights.Add(w.Height); bottoms.Add(w.Bottom); }
+                var sizes = new List<double>(ln.Words.Count);
+                foreach (PdfWord w in ln.Words)
+                {
+                    heights.Add(w.Height);
+                    bottoms.Add(w.Bottom);
+                    if (w.FontSizePt > 0)
+                        sizes.Add(w.FontSizePt);
+                }
                 double domH = MathUtil.Median(heights);
                 double domBottom = MathUtil.Median(bottoms);
+                double domSize = MathUtil.Median(sizes);
                 if (domH <= 0)
                     continue;
                 foreach (PdfWord w in ln.Words)
                 {
-                    if (w.Height >= ScriptSizeFactor * domH)
-                        continue; // не мельче — не скрипт
                     double rise = w.Bottom - domBottom;
-                    if (rise > ScriptRiseFactor * domH) w.Super = true;
-                    else if (rise < -ScriptRiseFactor * domH) w.Sub = true;
+                    if (w.Height < ScriptSizeFactor * domH)
+                    {
+                        if (rise > ScriptRiseFactor * domH) { w.Super = true; continue; }
+                        if (rise < -ScriptRiseFactor * domH) { w.Sub = true; continue; }
+                    }
+                    // Число мелкого КЕГЛЯ не ниже базовой — сносочный маркер («250²»); настоящий
+                    // подстрочный индекс (H₂O) опущен сильнее порога и остался в ветке Sub.
+                    if (IsDigitsOnly(w.Text) && w.FontSizePt > 0 && domSize > 0
+                        && w.FontSizePt <= DigitScriptSizeFactor * domSize
+                        && rise > -(ScriptRiseFactor * domH))
+                        w.Super = true;
                 }
             }
         }
@@ -525,6 +594,7 @@ namespace ExcelMerger
             int n = lines.Count;
             var centered = new bool[n];
             double midTol = MidAxisTolEmFactor * em;
+            double redIndent = RegionRedIndent(lines, bodyLeft, bodyRight, em, width);
             int start = 0;
             while (start < n)
             {
@@ -535,13 +605,67 @@ namespace ExcelMerger
                     end++;
                 bool anyFloating = false;
                 for (int i = start; i <= end && !anyFloating; i++)
-                    anyFloating = IsCentered(lines[i].Left - bodyLeft, bodyRight - lines[i].Right, em, width);
+                {
+                    double leftGap = lines[i].Left - bodyLeft;
+                    // Строка, начатая ТОЧНО с красной строки региона, — абзац с отступом, а не
+                    // центр, даже если её правый зазор случайно почти равен левому («перевод
+                    // учреждений…» с отступами 36/42 при красной строке 35).
+                    if (redIndent >= 0 && Math.Abs(leftGap - redIndent) <= IndentMatchTolPt)
+                        continue;
+                    anyFloating = IsCentered(leftGap, bodyRight - lines[i].Right, em, width);
+                }
                 if (anyFloating)
                     for (int i = start; i <= end; i++)
                         centered[i] = true;
                 start = end + 1;
             }
             return centered;
+        }
+
+        /// <summary>
+        /// Типичный отступ красной строки региона: центр самого населённого КУЧНОГО кластера
+        /// (окно <see cref="IndentClusterWidthPt"/>) левых отступов строк в «отступном» диапазоне
+        /// (глубже допуска красной строки, но мельче зоны центрирования). В выборку идут только
+        /// строки, ПРИЖАТЫЕ к правому полю: красная строка — это первая строка абзаца, набранного
+        /// до правого края; у центрированных строк правый край плавает, и без этого гейта плотный
+        /// титул из строк почти равной ширины дал бы ложный кластер и потерял бы центрирование.
+        /// Машинная красная строка повторяется с точностью до долей пункта — кластер узкий и
+        /// населённый; у центрированной колонки (бланк «СОЦИАЛЬНЫЙ ФОНД РОССИИ») отступы
+        /// разбросаны и кластера нет. Поддержка меньше <see cref="MinIndentSupport"/> строк — −1
+        /// (фильтр не применяется).
+        /// </summary>
+        private static double RegionRedIndent(List<Line> lines, double bodyLeft, double bodyRight, double em, double width)
+        {
+            double indentTol = Math.Max(IndentFactor * em, IndentWidthFraction * width);
+            double maxIndent = MaxIndentFraction * width;
+            double reachTol = 0.5 * em; // «прижата к правому полю» — как в подсчёте justified-строк
+            var insets = new List<double>();
+            foreach (Line ln in lines)
+            {
+                if (ln.Right < bodyRight - reachTol)
+                    continue; // правый край плавает — не строка сплошного абзаца
+                double ins = ln.Left - bodyLeft;
+                if (ins > indentTol && ins <= maxIndent)
+                    insets.Add(ins);
+            }
+            if (insets.Count < MinIndentSupport)
+                return -1;
+            insets.Sort();
+            int bestCount = 0, bestFrom = 0;
+            for (int i = 0, j = 0; i < insets.Count; i++)
+            {
+                while (insets[i] - insets[j] > IndentClusterWidthPt)
+                    j++;
+                if (i - j + 1 > bestCount)
+                {
+                    bestCount = i - j + 1;
+                    bestFrom = j;
+                }
+            }
+            if (bestCount < MinIndentSupport)
+                return -1; // отступы разбросаны (центрированный блок) — не красная строка
+            var cluster = insets.GetRange(bestFrom, bestCount);
+            return MathUtil.Median(cluster);
         }
 
         private static double MidX(Line line) { return (line.Left + line.Right) / 2; }
@@ -727,6 +851,23 @@ namespace ExcelMerger
         private static bool EndsWithHyphenAfterLetter(string s)
         {
             return s.Length >= 2 && s[s.Length - 1] == '-' && char.IsLetter(s[s.Length - 2]);
+        }
+
+        /// <summary>Кириллическая ли буква (U+0400–U+04FF).</summary>
+        private static bool IsCyrillic(char c)
+        {
+            return c >= 'Ѐ' && c <= 'ӿ';
+        }
+
+        /// <summary>Слово целиком из цифр (непустое)?</summary>
+        private static bool IsDigitsOnly(string s)
+        {
+            if (string.IsNullOrEmpty(s))
+                return false;
+            for (int i = 0; i < s.Length; i++)
+                if (!char.IsDigit(s[i]))
+                    return false;
+            return true;
         }
 
         /// <summary>Начинается ли строка с маркера списка («1.», «•»). По первым словам (маркеру

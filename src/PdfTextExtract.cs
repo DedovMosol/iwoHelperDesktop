@@ -193,7 +193,7 @@ namespace ExcelMerger
                     return pages;
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (MergeException.ShouldWrap(ex))
             {
                 throw new MergeException(string.Format(Loc.T("err.ocr.extractFailed"), Path.GetFileName(path), ex.Message));
             }

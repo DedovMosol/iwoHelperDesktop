@@ -198,6 +198,12 @@ namespace ExcelMerger
                 "Не удалось извлечь текст из «{0}»: файл повреждён, зашифрован или без прав на извлечение. ({1})",
                 "Could not extract text from “{0}”: the file is corrupt, encrypted, or extraction is not allowed. ({1})");
 
+            // crash.* — последний рубеж обработки ошибок (CrashReport)
+            A("crash.title", "Непредвиденная ошибка", "Unexpected error");
+            A("crash.body",
+                "{0}\n\nПриложение продолжит работу. Техническая информация сохранена в файл:\n{1}",
+                "{0}\n\nThe app will keep running. Technical details were saved to:\n{1}");
+
             // update.* — проверка обновлений
             A("update.err.title", "Не удалось проверить обновления", "Could not check for updates");
             A("update.err.network", "Проверьте подключение к интернету. ({0})", "Check your internet connection. ({0})");

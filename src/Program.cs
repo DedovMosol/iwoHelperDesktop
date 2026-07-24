@@ -39,6 +39,7 @@ namespace ExcelMerger
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            CrashReport.Install(); // последний рубеж: фирменный диалог + crash.log вместо тихого краха
             Application.Run(new ShellContext()); // хаб + инструменты как независимые окна
             // Все окна закрыты, настройки/COM уже освобождены детерминированно.
             // Форсируем выход, чтобы финализация WinRT (Windows.Data.Pdf, если

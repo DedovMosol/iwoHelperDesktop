@@ -142,9 +142,14 @@ namespace ExcelMerger
                     Form old;
                     if (_tools.TryGetOpen(t.Key, out old) && old != null && !old.IsDisposed)
                     {
+                        // Занятое окно не трогаем вовсе: его Close() показал бы модальный вопрос
+                        // «Прервать операцию?» посреди смены языка (а «Да» отменил бы работу).
+                        var busy = old as IBusyAware;
+                        if (busy != null && busy.IsBusy)
+                            continue; // остаётся на прежнем языке
                         old.Close();
                         if (!old.IsDisposed)
-                            continue; // занят (закрытие отменено) — оставляем в прежнем языке
+                            continue; // закрытие отменено — оставляем в прежнем языке
                     }
                     SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Location, t.State);
                 }

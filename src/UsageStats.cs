@@ -1,14 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace ExcelMerger
 {
     /// <summary>
     /// Локальные счётчики операций (без телеметрии): %APPDATA%\iwo Helper Desktop\stats.txt.
-    /// Мутации — через read-modify-write (весь UI в одном потоке, поэтому без гонок и
-    /// потери инкрементов между окнами). Поддержана ручная очистка и опциональная
-    /// авто-очистка раз в N дней (0 — выключена).
+    /// Мутации — read-modify-write под межпроцессным мьютексом: в одном процессе они идут
+    /// только с UI-потока, а две КОПИИ приложения без блокировки теряли бы инкременты.
+    /// Поддержана ручная очистка и опциональная авто-очистка раз в N дней (0 — выключена).
     /// </summary>
     public class UsageStats
     {
@@ -114,9 +115,27 @@ namespace ExcelMerger
 
         private static void Mutate(Action<UsageStats> change)
         {
-            UsageStats s = Load();
-            change(s);
-            s.Save();
+            // Межпроцессная блокировка: в одном процессе мутации идут только с UI-потока,
+            // но ДВЕ КОПИИ приложения без неё теряли бы инкременты read-modify-write.
+            // Не дождались за 2 с (нереально: запись мгновенна) — работаем без блокировки,
+            // счётчики не стоят зависшего UI.
+            using (var mutex = new Mutex(false, @"Local\iwoHelperDesktop.stats"))
+            {
+                bool held = false;
+                try
+                {
+                    try { held = mutex.WaitOne(2000); }
+                    catch (AbandonedMutexException) { held = true; } // прежний держатель умер — блокировка наша
+                    UsageStats s = Load();
+                    change(s);
+                    s.Save();
+                }
+                finally
+                {
+                    if (held)
+                        mutex.ReleaseMutex();
+                }
+            }
         }
 
         public static void RecordExcelDigest() { Mutate(delegate(UsageStats s) { s.ExcelDigests++; }); }

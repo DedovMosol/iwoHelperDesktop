@@ -16,7 +16,7 @@ namespace ExcelMerger
     /// инициализируются позже, поэтому раскладку строит сам наследник, а база лишь
     /// хранит общее состояние и поведение (KISS, без анти-паттерна «virtual в ctor»).
     /// </summary>
-    public abstract class PdfToolFormBase : Form
+    public abstract class PdfToolFormBase : Form, IBusyAware
     {
         protected readonly Action _showHub;
         protected PdfPageGrid _grid;
@@ -26,6 +26,12 @@ namespace ExcelMerger
         protected Label _lblStatus;
         protected ToolTip _tips;
         protected bool _busy; // идёт фоновая операция (только UI-поток)
+
+        /// <summary>Идёт операция: смена языка это окно не пересоздаёт (см. IBusyAware).</summary>
+        public bool IsBusy
+        {
+            get { return _busy; }
+        }
 
         // Прогресс операции: полоса + проценты в свободной зоне нижнего строя (видны только во
         // время работы) и дублирование на кнопке панели задач Windows. Все обновления — на UI-потоке.
@@ -79,14 +85,7 @@ namespace ExcelMerger
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             header.TabIndex = 100; // «Главная» — в конце обхода Tab, а не в начале
             Controls.Add(header);
-            if (_showHub != null)
-            {
-                Button home = Ui.HomeButton(_showHub);
-                home.SetBounds(header.Width - 180, 22, 160, 30);
-                home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                _tips.SetToolTip(home, Loc.T("common.homeTip"));
-                header.Controls.Add(home);
-            }
+            Ui.HomeOnHeader(header, _showHub, _tips, 22);
         }
 
         /// <summary>Троттлинг пересборки плиток при перетаскивании ползунка масштаба.</summary>

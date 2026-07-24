@@ -3,6 +3,44 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.7] — 2026-07-24
+
+### Added
+- **Intentional line breaks survive in short-line blocks.** A new line whose first word would
+  still have fit on the previous one is a deliberate break, not a soft wrap — multi-line
+  signatures, fill-in requisite lines and contact footers now stay as separate paragraphs
+  instead of being glued together and re-flowed by Word. The check uses the width actually
+  available up to the neighbouring column, not just the block's own frame.
+- **Vertical rhythm of the page is reproduced.** Extra space between blocks beyond the page's
+  typical gap becomes spacing before the block (inside side-by-side header columns too). A
+  pagination damper trims the added spacing if it would push the document past the source page
+  count, so no document gains pages compared to previous versions.
+- **Font-size based footnote markers.** A digits-only word set noticeably smaller than its line
+  is recognised as a superscript footnote mark even when its glyph box sits on the baseline —
+  markers of one document no longer come out half raised, half inline.
+- **Crash safety net.** Unhandled UI exceptions show a branded error dialog and the app keeps
+  running. All unhandled exceptions are appended to `crash.log` in the app profile for support.
+
+### Fixed
+- **Compound words keep their hyphen.** A hyphen at a line break after a Cyrillic letter is kept
+  when the lines are joined: office suites do not auto-hyphenate, so such a hyphen is part of
+  the word. Latin soft hyphenation is still removed.
+- **A first-line-indented line is not mistaken for a centred one.** A single line starting
+  exactly at the document's first-line indent stays a regular paragraph even when its right gap
+  happens to be nearly symmetric. Real centred lines (detected via a tight indent cluster) are
+  unaffected.
+- **A table Word failed to build is no longer lost.** The partially built table is removed and
+  the cell contents are emitted as plain paragraphs, so the text survives the rare COM failure.
+- **English Office error messages are classified too.** Permanently unreadable workbooks
+  (password, damaged, wrong format) are reported at once instead of pointless retries when
+  Office speaks English.
+- **Language switch no longer interrupts a busy window.** Switching the UI language while an
+  operation is running skips that window (it keeps the old language) instead of popping a
+  "cancel the operation?" prompt in the middle of the switch.
+- Small ones: the header-band fallback centres images against the real page width, usage
+  counters are guarded by a cross-process mutex, the About dialog releases its icon bitmap
+  deterministically, and out-of-memory errors are no longer masked as "the file is damaged".
+
 ## [1.16.6] — 2026-07-23
 
 ### Added
