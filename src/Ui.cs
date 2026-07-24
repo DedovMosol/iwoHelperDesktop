@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -8,6 +9,34 @@ namespace ExcelMerger
     /// <summary>Общие фабрики элементов интерфейса (главное окно и «О программе»).</summary>
     internal static class Ui
     {
+        /// <summary>
+        /// Включить двойную буферизацию ListView (убирает мерцание при добавлении строк);
+        /// свойство защищённое — только через reflection. Общее для всех списков (DRY).
+        /// </summary>
+        public static void EnableDoubleBuffer(ListView list)
+        {
+            PropertyInfo p = typeof(ListView).GetProperty("DoubleBuffered",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (p != null)
+                p.SetValue(list, true, null);
+        }
+
+        /// <summary>
+        /// Кнопка «Главная» в правом углу брендовой шапки (единая для всех инструментов, DRY).
+        /// showHub == null (запуск вне хаба, напр. смоук-тест) — кнопки нет.
+        /// </summary>
+        public static void HomeOnHeader(HeaderBand header, Action showHub, ToolTip tips, int top)
+        {
+            if (showHub == null)
+                return;
+            Button home = HomeButton(showHub);
+            home.SetBounds(header.Width - 180, top, 160, 30);
+            home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            if (tips != null)
+                tips.SetToolTip(home, Loc.T("common.homeTip"));
+            header.Controls.Add(home);
+        }
+
         public static Label Label(Control parent, string text, int x, int y, Font font, Color color)
         {
             var l = new Label();

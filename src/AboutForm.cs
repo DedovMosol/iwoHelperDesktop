@@ -12,6 +12,8 @@ namespace ExcelMerger
         internal const string DonationAccount = "40817810354405296071";
         internal const string DonationBank = "ПОВОЛЖСКИЙ БАНК ПАО СБЕРБАНК";
 
+        private Bitmap _iconBitmap; // PictureBox своё Image не освобождает — держим и диспозим сами
+
         public AboutForm()
         {
             Text = Loc.T("hub.about");
@@ -34,7 +36,10 @@ namespace ExcelMerger
             iconBox.SizeMode = PictureBoxSizeMode.StretchImage;
             Icon appIcon = Ui.AppIcon();
             if (appIcon != null)
-                iconBox.Image = appIcon.ToBitmap();
+            {
+                _iconBitmap = appIcon.ToBitmap();
+                iconBox.Image = _iconBitmap;
+            }
             Controls.Add(iconBox);
 
             Ui.Label(this, "iwo Helper Desktop", 86, 26,
@@ -88,6 +93,13 @@ namespace ExcelMerger
             Controls.Add(ok);
             AcceptButton = ok;
             CancelButton = ok; // Esc тоже закрывает
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _iconBitmap != null)
+                _iconBitmap.Dispose();
+            base.Dispose(disposing);
         }
 
         /// <summary>Значение только для чтения, но выделяемое и копируемое (Ctrl+C), без рамки.</summary>

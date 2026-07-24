@@ -3,14 +3,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
 namespace ExcelMerger
 {
-    public class MainForm : Form
+    public class MainForm : Form, IBusyAware
     {
         private const string AppTitle = "iwo Helper Desktop";
         private const int MenuHeight = HelpMenu.Height;
@@ -64,6 +63,12 @@ namespace ExcelMerger
         private bool _populating;  // подавляет ItemChecked во время заполнения
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
         private bool _noteBusy;       // готовится записка Word (только UI-поток)
+
+        /// <summary>Идёт слияние или записка: смена языка это окно не пересоздаёт (см. IBusyAware).</summary>
+        public bool IsBusy
+        {
+            get { return _running || _noteBusy; }
+        }
         private bool _closeRequested; // пользователь закрыл окно во время объединения
         private bool _isFreshRun;     // прогон — новый свод (не дослияние), для счётчика статистики
 
@@ -138,7 +143,7 @@ namespace ExcelMerger
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             header.TabIndex = 100; // «Главная» — в конце обхода Tab, а не в начале
             Controls.Add(header);
-            AddHomeButton(header);
+            Ui.HomeOnHeader(header, _showHub, _tips, 24);
 
             // Шаг 1: исходная папка
             AddSectionLabel(Loc.T("excel.sec.inputFolder"), 115);
@@ -219,7 +224,7 @@ namespace ExcelMerger
             _list.Columns.Add(Loc.T("excel.col.file"), 300);
             _list.Columns.Add(Loc.T("excel.col.result"), 130);
             _list.Columns.Add(Loc.T("excel.col.note"), 180);
-            EnableDoubleBuffer(_list);
+            Ui.EnableDoubleBuffer(_list);
             _list.ItemChecked += OnItemChecked;
             _list.ItemCheck += delegate(object s, ItemCheckEventArgs e)
             {
@@ -291,17 +296,6 @@ namespace ExcelMerger
             Resize += delegate { AdjustNoteColumn(); };
             AdjustNoteColumn();
             UpdateReadiness();
-        }
-
-        private void AddHomeButton(HeaderBand header)
-        {
-            if (_showHub == null)
-                return; // запущено вне хаба (напр. автотест)
-            Button home = Ui.HomeButton(_showHub);
-            home.SetBounds(header.Width - 180, 24, 160, 30);
-            home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _tips.SetToolTip(home, Loc.T("common.homeTip"));
-            header.Controls.Add(home);
         }
 
         private void BuildMenu()
@@ -394,15 +388,6 @@ namespace ExcelMerger
                 return;
             try { Clipboard.SetText(sb.ToString()); }
             catch { } // буфер обмена занят другим приложением — не повод падать
-        }
-
-        private static void EnableDoubleBuffer(ListView list)
-        {
-            // Убирает мерцание при добавлении строк; свойство защищённое — только через reflection.
-            PropertyInfo p = typeof(ListView).GetProperty("DoubleBuffered",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            if (p != null)
-                p.SetValue(list, true, null);
         }
 
         // Доли колонок: Файл / Результат / Примечание.

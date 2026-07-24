@@ -87,6 +87,9 @@ namespace ExcelMerger.Tests
             Run("Retry: порядок и успешные записи не меняются", TestCombineRetryOrder);
             Run("OutputFormats: код формата по расширению", TestOutputFormatCodes);
             Run("OutputFormats: срез введённого расширения", TestStripExtension);
+            Run("CrashReport.Format: метка времени, версия, текст исключения", TestCrashReportFormat);
+            Run("MergeService.IsPermanentOpenError: ru/en паттерны, транзиент — нет", TestPermanentOpenError);
+            Run("MergeException.ShouldWrap: OOM не маскируется под «файл повреждён»", TestShouldWrap);
             Run("CheckOutputWritable: занятый файл распознан", TestOutputLocked);
             Run("CheckOutputWritable: свободный и новый файлы", TestOutputWritable);
             Run("CheckOutputWritable: несуществующая папка", TestOutputBadFolder);
@@ -130,6 +133,12 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: узкий настоящий пробел сохранён (не склейка)", TestOcrNarrowSpaceKept);
             Run("OcrLayout: тонкое тире остаётся в строке", TestOcrThinDashStaysOnLine);
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
+            Run("OcrLayout: кириллический дефис-перенос сохраняется (составное слово)", TestOcrHyphenCyrillicKept);
+            Run("OcrLayout: умышленный перевод строки рвёт абзац (подпись)", TestOcrHardLineBreak);
+            Run("OcrLayout: подпись в левой колонке рвётся по строкам (доступное место)", TestOcrSignatureHardBreak);
+            Run("OcrLayout: мелкая цифра у базовой линии — сносочный маркер (Super)", TestOcrFootnoteDigitSuper);
+            Run("OcrLayout: строка с красной строкой не центрируется случайной симметрией", TestOcrRedIndentNotCentered);
+            Run("WordDocxWriter: межблочные интервалы — типичный зазор, лишек, кап", TestDocxGapMath);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
             Run("ListMarker: нумерованный «1.»/«12)»", TestListMarkerNumbered);
             Run("ListMarker: маркированный «•»/«—»", TestListMarkerBulleted);
@@ -1280,6 +1289,35 @@ namespace ExcelMerger.Tests
             AssertEqual("Свод", OutputFormats.StripKnownExtension("Свод"), "без расширения");
         }
 
+        // ---------- CrashReport / классификация ошибок ----------
+
+        private static void TestCrashReportFormat()
+        {
+            string entry = CrashReport.Format(new InvalidOperationException("бум"),
+                "1.16.7", new DateTime(2026, 7, 24, 12, 30, 45));
+            AssertTrue(entry.StartsWith("[2026-07-24 12:30:45] v1.16.7"), "метка времени и версия");
+            AssertTrue(entry.Contains("InvalidOperationException") && entry.Contains("бум"), "тип и сообщение");
+            AssertTrue(entry.EndsWith("\r\n\r\n"), "записи разделены пустой строкой");
+            AssertTrue(CrashReport.Format(null, "1.0.0", DateTime.Now).Contains("(null)"), "null-исключение не роняет лог");
+        }
+
+        private static void TestPermanentOpenError()
+        {
+            AssertTrue(MergeService.IsPermanentOpenError("Введён неверный пароль."), "ru: пароль");
+            AssertTrue(MergeService.IsPermanentOpenError("The password you supplied is not correct."), "en: password");
+            AssertTrue(MergeService.IsPermanentOpenError("Файл повреждён и не может быть открыт."), "ru: повреждён");
+            AssertTrue(MergeService.IsPermanentOpenError("The file format or file extension is not valid."), "en: not valid");
+            AssertTrue(MergeService.IsPermanentOpenError("The file is corrupt and cannot be opened."), "en: corrupt");
+            AssertTrue(!MergeService.IsPermanentOpenError("Вызов был отклонён."), "транзиентный COM-сбой — ретраить");
+            AssertTrue(!MergeService.IsPermanentOpenError(null), "null — не постоянная ошибка");
+        }
+
+        private static void TestShouldWrap()
+        {
+            AssertTrue(MergeException.ShouldWrap(new IOException("диск")), "обычную ошибку оборачиваем");
+            AssertTrue(!MergeException.ShouldWrap(new OutOfMemoryException()), "OOM не маскируем под «файл повреждён»");
+        }
+
         // ---------- CheckOutputWritable ----------
 
         private static void TestOutputLocked()
@@ -1883,6 +1921,128 @@ namespace ExcelMerger.Tests
             List<string> p = OcrLayout.ToParagraphs(words);
             AssertEqual(1, p.Count, "один абзац");
             AssertEqual("hello world", p[0], "дефис-перенос склеен");
+        }
+
+        private static void TestOcrHyphenCyrillicKept()
+        {
+            // Дефис после кириллической буквы на конце строки — составное слово
+            // («информационно-коммуникационных»): официальные PDF приходят из Word/LibreOffice,
+            // которые по умолчанию слова не переносят, поэтому дефис сохраняется.
+            var words = new List<PdfWord>
+            {
+                W("шёл", 0, 90, 20, 10),
+                W("информационно-", 25, 90, 70, 10),   // строка почти полная — не «жёсткий перевод»
+                W("коммуникационных", 0, 75, 95, 10)
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(1, p.Count, "один абзац");
+            AssertEqual("шёл информационно-коммуникационных", p[0], "кириллический дефис сохранён");
+        }
+
+        private static void TestOcrHardLineBreak()
+        {
+            // «Следственного» свободно влезало после «начальник» — автор сам начал новую
+            // строку (подпись), это разные абзацы; иначе Word перевёрстывал бы их произвольно.
+            var words = new List<PdfWord>
+            {
+                W("полная строка на всю ширину колонки текста", 0, 130, 200, 10),
+                W("Заместитель", 0, 90, 40, 10),
+                W("начальник", 45, 90, 35, 10),       // Right 80 — заполнено 40% колонки
+                W("Следственного", 0, 75, 50, 10)     // влезло бы: 80 + 50 + 7.5 <= 200
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(3, p.Count, "полная строка и две строки подписи — три абзаца");
+            AssertEqual("Заместитель начальник", p[1], "первая строка подписи своим абзацем");
+            AssertEqual("Следственного", p[2], "вторая строка подписи своим абзацем");
+        }
+
+        private static void TestOcrSignatureHardBreak()
+        {
+            // Подпись слева (две короткие строки) и Ф.И.О. справа: рамка левой колонки по её
+            // контенту «заполнена», но ДОСТУПНОЕ место тянется до правой колонки — перевод
+            // строки умышленный, строки подписи не склеиваются.
+            var words = new List<PdfWord>
+            {
+                W("Заместитель Министра начальник", 0, 90, 150, 10),
+                W("Следственного департамента", 0, 75, 120, 10),
+                W("Лебедев", 300, 75, 60, 10)
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEqual(3, p.Count, "две строки подписи и Ф.И.О. — три абзаца");
+            AssertEqual("Заместитель Министра начальник", p[0], "первая строка подписи");
+            AssertEqual("Следственного департамента", p[1], "вторая строка подписи");
+            AssertEqual("Лебедев", p[2], "правая колонка после левой");
+        }
+
+        private static void TestOcrFootnoteDigitSuper()
+        {
+            // Ink-бокс и подъём цифры-сноски ненадёжны (в некоторых шрифтах она на базовой и
+            // почти в высоту строчных): маркер узнаётся по мелкому КЕГЛЮ числа («250²» — 8 pt
+            // против 14 pt). Мелкое слово из БУКВ на базовой — не скрипт.
+            PdfWord Sized(string text, double left, double bottom, double width, double height, double sizePt)
+            {
+                PdfWord w = W(text, left, bottom, width, height);
+                w.FontSizePt = sizePt;
+                return w;
+            }
+            var words = new List<PdfWord>
+            {
+                Sized("№250", 0, 0, 30, 7, 14),
+                Sized("2", 31, 0, 4, 6, 8),      // кегль 8 против 14, база 0 — всё равно Super
+                Sized("далее", 40, 0, 30, 7, 14),
+                Sized("ещё", 75, 0, 20, 7, 14),
+                Sized("сн", 100, 0, 8, 6, 8)     // мелкое буквенное на базовой — НЕ скрипт
+            };
+            List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
+            AssertEqual(4, runs.Count, "цифра и мелкое слово — отдельные раны (кегль различен)");
+            AssertTrue(runs[1].Super && !runs[1].Sub, "«2» — надстрочный маркер сноски");
+            AssertEqual("2", runs[1].Text.Trim(), "текст маркера (межсловный пробел уходит в ран)");
+            AssertTrue(!runs[3].Super && !runs[3].Sub, "мелкое буквенное слово — не скрипт");
+        }
+
+        private static void TestOcrRedIndentNotCentered()
+        {
+            // Одиночная строка, начатая точно с красной строки документа и случайно почти
+            // симметричная (36/42), — не центр; настоящая симметричная строка — центр.
+            var words = new List<PdfWord>
+            {
+                W("первый абзац начинается с красной строки и идёт", 36, 150, 164, 10),
+                W("хвост первой строки прижат влево до правого поля", 0, 135, 200, 10),
+                W("второй абзац начинается с красной строки и идёт", 36, 120, 164, 10),
+                W("хвост второй строки прижат влево до правого поля", 0, 105, 200, 10),
+                W("третий абзац начинается с красной строки и идёт", 36, 90, 164, 10),
+                W("хвост третьей строки прижат влево до правого", 0, 75, 200, 10),
+                W("перевод учреждений на сервисы", 36, 60, 122, 10),  // отступы 36/42 — не центр
+                W("настоящий центр", 60, 25, 80, 10)                   // 60/60 — центр
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            OcrParagraph fake = null, real = null;
+            foreach (OcrParagraph p in paras)
+            {
+                if (p.Text.StartsWith("перевод")) fake = p;
+                if (p.Text == "настоящий центр") real = p;
+            }
+            AssertTrue(fake != null && fake.Alignment != OcrAlignment.Center,
+                "строка с красной строкой не центрирована");
+            AssertTrue(real != null && real.Alignment == OcrAlignment.Center,
+                "настоящая симметричная строка центрирована");
+        }
+
+        private static void TestDocxGapMath()
+        {
+            // Межблочные интервалы: типичный зазор — нижняя медиана положительных; интервал —
+            // лишек сверх типичного с порогом (6 pt) и капом (120 pt).
+            var items = new List<WordDocxWriter.PageItem>
+            {
+                new WordDocxWriter.PageItem { Top = 100, Bottom = 90 },
+                new WordDocxWriter.PageItem { Top = 83, Bottom = 70 },   // зазор 7
+                new WordDocxWriter.PageItem { Top = 63, Bottom = 50 },   // зазор 7
+                new WordDocxWriter.PageItem { Top = 20, Bottom = 10 }    // зазор 30
+            };
+            AssertEqual(7.0, WordDocxWriter.TypicalItemGap(items), "типичный зазор — медиана {7,7,30}");
+            AssertEqual(0.0, WordDocxWriter.ExtraGapPt(10, 7), "лишек 3 меньше порога — без интервала");
+            AssertEqual(23.0, WordDocxWriter.ExtraGapPt(30, 7), "лишек 23 — интервал 23 pt");
+            AssertEqual(120.0, WordDocxWriter.ExtraGapPt(500, 7), "кап 120 pt");
         }
 
         private static void TestOcrEmpty()
@@ -2732,11 +2892,21 @@ namespace ExcelMerger.Tests
                 W("R2a", 200, 180, 35, 10), W("R2b", 240, 180, 35, 10)
             };
             List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
-            AssertEqual(2, paras.Count, "по абзацу на колонку");
-            AssertTrue(paras[0].Text.Contains("L1a") && paras[0].Text.Contains("L2b"), "левая колонка собрана целиком");
-            AssertTrue(!paras[0].Text.Contains("R1a"), "в левой нет слов правой");
-            AssertTrue(paras[1].Text.Contains("R1a") && paras[1].Text.Contains("R2b"), "правая колонка собрана целиком");
-            AssertTrue(!paras[1].Text.Contains("L1a"), "в правой нет слов левой");
+            // Короткие строки левой колонки — умышленные переводы (влезали бы до правой
+            // колонки): каждая своим абзацем. Главное — колонки не перемешаны, левая раньше.
+            string all = "";
+            int lastLeft = -1, firstRight = int.MaxValue;
+            for (int i = 0; i < paras.Count; i++)
+            {
+                string t = paras[i].Text;
+                all += t + "|";
+                AssertTrue(!(t.Contains("L") && t.Contains("R")), "в абзаце слова одной колонки: " + t);
+                if (t.Contains("L")) lastLeft = i;
+                if (t.Contains("R") && i < firstRight) firstRight = i;
+            }
+            AssertTrue(all.Contains("L1a") && all.Contains("L2b") && all.Contains("R1a") && all.Contains("R2b"),
+                "все слова обеих колонок на месте");
+            AssertTrue(lastLeft < firstRight, "левая колонка целиком раньше правой");
         }
 
         private static void TestOcrCellNoColumns()

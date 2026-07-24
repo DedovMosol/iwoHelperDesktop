@@ -25,6 +25,11 @@ namespace ExcelMerger
         public readonly List<int> Tags = new List<int>();
         public double ColumnLeft;
         public double ColumnRight;
+        // Правый предел ДОСТУПНОГО места: левый край контента следующей колонки (или правая
+        // граница родительской области). ColumnRight — рамка по СОДЕРЖИМОМУ колонки, и для
+        // вопроса «влезло бы слово в строку» (умышленный перевод строки) она не годится:
+        // у блока подписи из двух коротких строк собственная рамка всегда «заполнена».
+        public double AvailRight;
     }
 
     /// <summary>
@@ -39,6 +44,7 @@ namespace ExcelMerger
         public List<int> Tags;          // лист: метки боксов в порядке чтения; null — внутренний узел
         public double ColumnLeft;
         public double ColumnRight;
+        public double AvailRight;       // лист: правый предел доступного места (см. CutLeaf.AvailRight)
         public List<CutNode> Children;  // внутренний узел: дети; null — лист
         public bool SideBySide;         // внутренний: true — колонки (бок о бок), false — этажи (стек)
 
@@ -110,7 +116,7 @@ namespace ExcelMerger
             };
             double left, right;
             HorizontalBounds(boxes, all, out left, out right);
-            return CutFloors(ctx, all, MaxDepth, left, right);
+            return CutFloors(ctx, all, MaxDepth, left, right, right);
         }
 
         /// <summary>Листья дерева в порядке чтения (обход в порядке детей).</summary>
@@ -118,7 +124,7 @@ namespace ExcelMerger
         {
             if (node.IsLeaf)
             {
-                var leaf = new CutLeaf { ColumnLeft = node.ColumnLeft, ColumnRight = node.ColumnRight };
+                var leaf = new CutLeaf { ColumnLeft = node.ColumnLeft, ColumnRight = node.ColumnRight, AvailRight = node.AvailRight };
                 leaf.Tags.AddRange(node.Tags);
                 acc.Add(leaf);
                 return;
@@ -128,35 +134,44 @@ namespace ExcelMerger
         }
 
         /// <summary>Этажи области (сверху вниз): узел-стек. Нет этажей — сразу колонки.</summary>
-        private static CutNode CutFloors(CutContext ctx, List<int> items, int depth, double colLeft, double colRight)
+        private static CutNode CutFloors(CutContext ctx, List<int> items, int depth, double colLeft, double colRight, double availRight)
         {
             List<List<int>> floors = depth > 0 ? SplitAtGaps(ctx.Boxes, items, true, ctx.HGapMin) : null;
             if (floors == null)
-                return CutColumns(ctx, items, depth, colLeft, colRight);
+                return CutColumns(ctx, items, depth, colLeft, colRight, availRight);
             var node = new CutNode { SideBySide = false, Children = new List<CutNode>(floors.Count) };
             foreach (List<int> floor in floors)
-                node.Children.Add(CutColumns(ctx, floor, depth - 1, colLeft, colRight));
+                node.Children.Add(CutColumns(ctx, floor, depth - 1, colLeft, colRight, availRight));
             return node;
         }
 
         /// <summary>Колонки этажа (слева направо): узел side-by-side. Нет колонок — лист.</summary>
-        private static CutNode CutColumns(CutContext ctx, List<int> items, int depth, double colLeft, double colRight)
+        private static CutNode CutColumns(CutContext ctx, List<int> items, int depth, double colLeft, double colRight, double availRight)
         {
             List<List<int>> columns = depth > 0 ? SplitColumns(ctx, items) : null;
             if (columns == null)
             {
-                var leaf = new CutNode { Tags = new List<int>(items.Count), ColumnLeft = colLeft, ColumnRight = colRight };
+                var leaf = new CutNode { Tags = new List<int>(items.Count), ColumnLeft = colLeft, ColumnRight = colRight, AvailRight = availRight };
                 foreach (int i in items)
                     leaf.Tags.Add(ctx.Boxes[i].Tag);
                 return leaf;
             }
             var node = new CutNode { SideBySide = true, Children = new List<CutNode>(columns.Count) };
-            foreach (List<int> column in columns)
+            for (int c = 0; c < columns.Count; c++)
             {
-                // Новая колонка — новая опорная рамка для геометрии её содержимого.
+                // Новая колонка — новая опорная рамка для геометрии её содержимого. Доступное
+                // справа место кончается у контента СЛЕДУЮЩЕЙ колонки (или у предела родителя).
+                List<int> column = columns[c];
                 double left, right;
                 HorizontalBounds(ctx.Boxes, column, out left, out right);
-                node.Children.Add(CutFloors(ctx, column, depth - 1, left, right));
+                double childAvail = availRight;
+                if (c + 1 < columns.Count)
+                {
+                    double nextLeft, nextRight;
+                    HorizontalBounds(ctx.Boxes, columns[c + 1], out nextLeft, out nextRight);
+                    childAvail = nextLeft;
+                }
+                node.Children.Add(CutFloors(ctx, column, depth - 1, left, right, childAvail));
             }
             return node;
         }

@@ -43,6 +43,16 @@ namespace ExcelMerger
     public class MergeException : Exception
     {
         public MergeException(string message) : base(message) { }
+
+        /// <summary>
+        /// Можно ли завернуть исключение в понятное «файл повреждён/недоступен»: критические
+        /// сбои процесса (OutOfMemory) маскировать нельзя — причина не в файле, и такое
+        /// сообщение направит пользователя по ложному следу. Для when-фильтров catch.
+        /// </summary>
+        public static bool ShouldWrap(Exception ex)
+        {
+            return !(ex is OutOfMemoryException);
+        }
     }
 
     /// <summary>
@@ -744,10 +754,8 @@ namespace ExcelMerger
                 catch (Exception ex)
                 {
                     last = ex;
-                    string m = (Unwrap(ex).Message ?? "").ToLowerInvariant();
                     // Проблема самого файла — повторять бессмысленно.
-                    if (m.Contains("парол") || m.Contains("password") ||
-                        m.Contains("недопустим") || m.Contains("format") || m.Contains("поврежд"))
+                    if (IsPermanentOpenError(Unwrap(ex).Message))
                         throw;
                     System.Threading.Thread.Sleep(500); // транзиентный сбой — подождать и повторить
                 }
@@ -755,6 +763,25 @@ namespace ExcelMerger
             throw last;
         }
 
+        /// <summary>
+        /// Ошибка открытия — свойство самого файла (пароль/формат/повреждение), ретраи не помогут.
+        /// Excel не даёт различимых HRESULT (всё DISP_E_EXCEPTION), поэтому по тексту сообщения;
+        /// паттерны и русского, и английского Office — иначе на английском 4 пустых ретрая по
+        /// 500 мс и общая формулировка вместо причины. Чистая — под тест.
+        /// </summary>
+        internal static bool IsPermanentOpenError(string message)
+        {
+            string m = (message ?? "").ToLowerInvariant();
+            return m.Contains("парол") || m.Contains("password")
+                || m.Contains("недопустим") || m.Contains("поврежд")
+                || m.Contains("format") || m.Contains("invalid") || m.Contains("not valid")
+                || m.Contains("damag") || m.Contains("corrupt");
+        }
+
+        // Примечания к файлам (Note) НАРОЧНО не через Loc: те же строки попадают в отчёт
+        // (ReportWriter) и записку Word (NoteText), которые по политике приложения всегда
+        // русские, как все генерируемые документы; список в UI показывает их без перевода,
+        // чтобы экран, отчёт и записка совпадали дословно.
         private static FileResult Skipped(string fileName, string path, string note)
         {
             var fr = new FileResult();
