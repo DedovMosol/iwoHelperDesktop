@@ -3,6 +3,21 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.16.9] — 2026-07-24
+
+### Added
+- **32-bit packages (x86).** Every release now also ships a portable
+  `iwoHelperDesktop-x86.exe` and an `iwoHelperDesktop-setup-<version>-x86.exe` installer
+  with a bundled 32-bit Ghostscript — for 32-bit editions of Windows. The tool set is
+  identical to x64: Office automation and Ghostscript run as separate processes, so they
+  do not depend on the app's bitness. In a 32-bit process the thumbnail document cache is
+  halved (the address space is ~2 GB and every shown PDF is held in memory). CI builds
+  and validates both architectures.
+- **Windows 8.1 support.** The minimum OS is now Windows 8.1 — the oldest Windows with
+  the `Windows.Data.Pdf` engine that renders page thumbnails. The installer checks for
+  .NET Framework 4.8 (built into Windows 10 1903+ and Windows 11) and opens the download
+  page when it is missing on 8.1.
+
 ## [1.16.8] — 2026-07-24
 
 ### Added

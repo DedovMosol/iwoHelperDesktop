@@ -1,6 +1,8 @@
-# Сборка через dotnet SDK (.NET Framework 4.8 target) + юнит-тесты + смоук GUI.
-# Интеграционные тесты (tests/verify*.ps1) требуют установленные Office/Excel/Word
-# и выполняются только локально: tests\run_all.cmd.
+# Сборка через dotnet SDK (.NET Framework 4.8 target) + юнит-тесты + смоук GUI —
+# матрицей по разрядности (x64 и x86): каждый пакет собирается, самопроверяется
+# СВОИМ exe (32-битный гоняется в WOW64) и валидирует свой установщик со своим
+# Ghostscript. Интеграционные тесты (tests/verify*.ps1) требуют установленные
+# Office/Excel/Word и выполняются только локально: tests\run_all.cmd.
 name: CI
 
 on:
@@ -16,6 +18,16 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            dist: dist
+            gs_choco: ''
+          - arch: x86
+            dist: dist/x86
+            gs_choco: '--x86'
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +38,7 @@ jobs:
 
       - name: Сборка приложения
         shell: cmd
-        run: call build.cmd
+        run: call build.cmd ${{ matrix.arch }}
 
       - name: Юнит-тесты
         shell: cmd
@@ -35,42 +47,42 @@ jobs:
       - name: Смоук-тест GUI (создание окон без показа)
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--selftest' -Wait -PassThru
+          $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--selftest' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode)"; exit 1 }
 
       - name: Проверка вшитого PdfSharp
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--pdfcheck' -Wait -PassThru
+          $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--pdfcheck' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "pdfcheck exit=$($p.ExitCode)"; exit 1 }
 
       - name: Проверка вшитого PdfPig (извлечение текста born-digital PDF)
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--pdftextcheck' -Wait -PassThru
+          $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--pdftextcheck' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "pdftextcheck exit=$($p.ExitCode)"; exit 1 }
 
       - name: Чистый выход после рендера миниатюр (WinRT)
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--thumbcheck' -Wait -PassThru
+          $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--thumbcheck' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "thumbcheck exit=$($p.ExitCode)"; exit 1 }
 
       - name: Ghostscript и Inno Setup (сжатие и установщик)
         shell: pwsh
         run: |
-          choco install ghostscript --no-progress -y
+          choco install ghostscript --no-progress -y ${{ matrix.gs_choco }}
           choco install innosetup --no-progress -y
 
       - name: Проверка сжатия PDF (Ghostscript round-trip)
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath .\dist\iwoHelperDesktop.exe -ArgumentList '--gscheck' -Wait -PassThru
+          $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--gscheck' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "gscheck exit=$($p.ExitCode)"; exit 1 }
 
       - name: Подготовка Ghostscript для установщика
         shell: pwsh
-        run: .\tools\stage_gs.ps1
+        run: .\tools\stage_gs.ps1 -Arch ${{ matrix.arch }}
 
       - name: Сборка установщика (валидация .iss)
         shell: pwsh
@@ -79,23 +91,24 @@ jobs:
             ForEach-Object { Join-Path $_.FullName 'ISCC.exe' } | Where-Object { Test-Path $_ } |
             Sort-Object -Descending | Select-Object -First 1
           if (-not $iscc) { Write-Host 'ISCC.exe не найден'; exit 1 }
-          # Без /DAppVersion: версия берётся из собранного dist\iwoHelperDesktop.exe
+          # Без /DAppVersion: версия берётся из собранного exe своей разрядности
           # (фолбэк в .iss). Нечисловое значение (как раньше "ci") ломает VersionInfoVersion.
-          & $iscc .\installer\iwoHelperDesktop.iss
+          & $iscc "/DArch=${{ matrix.arch }}" .\installer\iwoHelperDesktop.iss
           if ($LASTEXITCODE -ne 0) { Write-Host "iscc exit=$LASTEXITCODE"; exit 1 }
 
       - name: Артефакт сборки
         uses: actions/upload-artifact@v4
         with:
-          name: iwoHelperDesktop
-          path: dist/iwoHelperDesktop.exe
+          name: iwoHelperDesktop-${{ matrix.arch }}
+          path: ${{ matrix.dist }}/iwoHelperDesktop.exe
 
       - name: Артефакт установщика (без подписи — подпись локально)
         uses: actions/upload-artifact@v4
         with:
-          name: iwoHelperDesktop-setup
+          name: iwoHelperDesktop-setup-${{ matrix.arch }}
           path: dist/iwoHelperDesktop-setup-*.exe
 
-      # Релизы на GitHub создаются ЛОКАЛЬНО (tools\make_release.ps1): оба артефакта
-      # подписываются самоподписанным сертификатом, который есть только на машине
-      # мейнтейнера. CI лишь собирает, тестирует и валидирует установщик.
+      # Релизы на GitHub создаются ЛОКАЛЬНО (tools\make_release.ps1): все четыре
+      # артефакта (portable + installer, x64 + x86) подписываются самоподписанным
+      # сертификатом, который есть только на машине мейнтейнера. CI лишь собирает,
+      # тестирует и валидирует установщики.

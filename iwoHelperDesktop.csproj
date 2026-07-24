@@ -7,11 +7,15 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
-    <!-- Явно x64: процесс должен быть 64-битным, чтобы грузить вшитый инсталлятором
-         64-битный Ghostscript (gsdll64.dll). AnyCPU+Prefer32Bit мог бы дать 32-битный
-         процесс и тихий отказ сжатия в поле. -->
-    <PlatformTarget>x64</PlatformTarget>
+    <!-- Разрядность задаётся явно (никакого AnyCPU+Prefer32Bit — тихие сюрпризы в поле).
+         По умолчанию x64; `-p:Arch=x86` даёт 32-битный exe для 32-битных Windows —
+         в dist\x86\ и с ОТДЕЛЬНЫМ obj: при общем obj инкрементальная очистка MSBuild
+         удаляла бы выход другой разрядности из dist. Ghostscript и Office работают
+         отдельными процессами, поэтому их разрядность от разрядности exe не зависит. -->
+    <Arch Condition="'$(Arch)' == ''">x64</Arch>
+    <PlatformTarget>$(Arch)</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
+    <IntermediateOutputPath Condition="'$(Arch)' == 'x86'">obj\x86\Release\</IntermediateOutputPath>
     <UseWindowsForms>true</UseWindowsForms>
     <LangVersion>7.3</LangVersion>
     <Nullable>disable</Nullable>
@@ -26,8 +30,9 @@
     <Optimize>true</Optimize>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
-    <!-- Один exe в dist\ без вложенных net48\ и rid\ -->
+    <!-- Один exe в dist\ без вложенных net48\ и rid\ (x86-вариант — в dist\x86\) -->
     <OutputPath>dist\</OutputPath>
+    <OutputPath Condition="'$(Arch)' == 'x86'">dist\x86\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>

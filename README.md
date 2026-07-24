@@ -9,7 +9,7 @@
 [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Privacy: offline‑only](https://img.shields.io/badge/Privacy-offline--only-107C41)](docs/PRIVACY.md)
-![Windows](https://img.shields.io/badge/Windows-10%2F11%20x64-0078D6?logo=windows&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-8.1%2B%20x64%2Fx86-0078D6?logo=windows&logoColor=white)
 [![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet-framework/net48)
 
 **Free, offline office tools in a single Windows app — merge Excel sheets, merge/split/compress PDFs at Acrobat‑level quality, and turn born‑digital PDFs back into editable Word. No subscription, no admin rights, no network.**
@@ -46,14 +46,16 @@ A small, self‑contained Windows application that bundles the office tasks peop
 
 ## ⬇️ Download
 
-| OS | Download |
+| Windows | Download |
 |----|----------|
-| **Windows 10 / 11 (x64)** | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) |
+| **64‑bit** — Windows 8.1 / 10 / 11 *(most PCs)* | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) |
+| **32‑bit** — 32‑bit editions of Windows 8.1 / 10 | [![Installer](https://img.shields.io/badge/Installer-x86-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x86-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) |
 
-- **Installer** *(recommended)* — bundles Ghostscript, so PDF compression works out of the box. Installs **per‑user without admin** by default (choose “for all users” for a machine‑wide install).
-- **Portable** — a single `iwoHelperDesktop.exe` — just run it. PDF compression works if Ghostscript is installed on the machine.
+- **Installer** *(recommended)* — bundles Ghostscript of the matching bitness, so PDF compression works out of the box. Installs **per‑user without admin** by default (choose “for all users” for a machine‑wide install).
+- **Portable** — a single `iwoHelperDesktop.exe` (`iwoHelperDesktop-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
+- The x64 and x86 packages are functionally identical — take **x64** unless your Windows is 32‑bit.
 
-> Requirements: Windows 10/11 x64 (with .NET Framework 4.8, bundled since Windows 10 1903). **Excel Digest** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split and Compression** need neither Excel nor Word.
+> Requirements: Windows 8.1 / 10 / 11 with .NET Framework 4.8 — built into Windows 10 1903+ and Windows 11; on Windows 8.1 it installs once (the installer checks and opens the download page). **Excel Digest** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split and Compression** need neither Excel nor Word.
 
 ## 🖥️ Usage
 
@@ -114,7 +116,7 @@ Format is derived from the path extension. `--toc` adds a table of contents, `--
 ```
 build.cmd
 ```
-Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction in PDF → Word. PDF thumbnails use the system `Windows.Data.Pdf` (WinRT), and PDF → Word writes the `.docx` through Word COM.
+Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`; `build.cmd x86` produces the 32‑bit exe in `dist\x86\`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction in PDF → Word. PDF thumbnails use the system `Windows.Data.Pdf` (WinRT), and PDF → Word writes the `.docx` through Word COM.
 
 <details>
 <summary><b>Signing, installer, release, CI and tests</b></summary>

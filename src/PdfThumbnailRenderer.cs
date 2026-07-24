@@ -27,7 +27,9 @@ namespace ExcelMerger
         // открывают документы последовательно (в «Разделении» — по одному; в «Объединении»
         // видимое окно охватывает обычно 1–2 файла), поэтому небольшой LRU не вызывает
         // перерендера, но ограничивает память и число открытых документов.
-        private const int MaxCachedDocuments = 6;
+        // В 32-битном процессе адресного пространства ~2 ГБ, а каждый документ держит
+        // ПОЛНУЮ копию файла (byte[] + InMemoryRandomAccessStream) — кэш вдвое меньше.
+        private static readonly int MaxCachedDocuments = IntPtr.Size == 8 ? 6 : 3;
 
         private readonly LruCache<CachedDoc> _docs =
             new LruCache<CachedDoc>(MaxCachedDocuments, ReleaseCached);
