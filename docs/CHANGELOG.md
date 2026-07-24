@@ -26,6 +26,17 @@ versions follow [SemVer](https://semver.org/).
   page you name (0 — to the very start) — no dragging across 300 thumbnails.
 - **The insertion gap hints on hover.** Before clicking, the gap under the cursor shows
   a light insertion bar, so the caret lands exactly where expected.
+- **Redo (Ctrl+Y or Ctrl+Shift+Z)** returns an undone gesture, and **rotations are now
+  part of the Ctrl+Z history** in PDF Merge and PDF → Word — every snapshot carries both
+  the page order and the angles, and a new gesture clears the redo branch, as in any
+  editor.
+- **Rotate buttons on the tile.** Hovering a thumbnail shows ↺ / ↻ chips on it (as in
+  Acrobat) — one click turns that page without touching the selection.
+
+### Changed
+- **The README download buttons now download directly.** Release assets use stable
+  names (`iwoHelperDesktop-setup.exe`, `iwoHelperDesktop-setup-x86.exe`), so the four
+  buttons always fetch the latest build instead of opening the releases page.
 
 ## [1.17.0] — 2026-07-24
 

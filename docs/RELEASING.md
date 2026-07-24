@@ -5,14 +5,17 @@ certificate that lives only on the maintainer's machine (`Cert:\CurrentUser\My`)
 CI (`.github/workflows/ci.yml`) builds, tests and validates the installer on every
 push, but does **not** create GitHub Releases.
 
-Each release publishes four assets — the same tool set for both architectures:
+Each release publishes four assets — the same tool set for both architectures, under
+**stable names** (no version in the file name — the README download buttons point at
+`releases/latest/download/<name>` and always fetch the newest build; the version lives
+in the tag and the files' VersionInfo):
 
 - `iwoHelperDesktop.exe` / `iwoHelperDesktop-x86.exe` — portable single files, 64-bit and
   32-bit (run as-is — PDF compression works if Ghostscript is installed on the machine).
-- `iwoHelperDesktop-setup-<version>.exe` / `iwoHelperDesktop-setup-<version>-x86.exe` —
-  installers that **bundle Ghostscript** of the matching bitness (compression out of the
-  box), install **per-user without admin** by default. Minimum OS is Windows 8.1; the
-  installer checks for .NET Framework 4.8 and points to the download when it is missing.
+- `iwoHelperDesktop-setup.exe` / `iwoHelperDesktop-setup-x86.exe` — installers that
+  **bundle Ghostscript** of the matching bitness (compression out of the box), install
+  **per-user without admin** by default. Minimum OS is Windows 8.1; the installer checks
+  for .NET Framework 4.8 and points to the download when it is missing.
 
 ## Prerequisites (maintainer machine)
 

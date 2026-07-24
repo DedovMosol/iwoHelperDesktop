@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Application:** iwo Helper Desktop
-**Last updated:** 2026-07-23
+**Last updated:** 2026-07-24
 
 ## Summary
 
@@ -41,7 +41,11 @@ The app keeps a small amount of data **locally**, under
   no content), these exist only for your own reference and can be cleared manually or
   automatically from the app’s **Statistics** window,
 - `reports\` — text reports of the three most recent Excel Digest runs, saved next to
-  where you chose to save the digest and mirrored here.
+  where you chose to save the digest and mirrored here,
+- `crash.log` — a local, size‑rotated error log written only if the app hits an
+  unexpected error (exception type, message and stack trace, which may include the path
+  of the file being processed — never its contents). It is never transmitted anywhere,
+  it exists so **you** can attach it to a bug report if you choose to.
 
 You can delete this folder at any time, the app recreates only what it needs.
 
