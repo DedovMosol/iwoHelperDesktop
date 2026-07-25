@@ -25,6 +25,7 @@ namespace ExcelMerger
         private ComboBox _cmbFormat;
         private ComboBox _cmbScope;
         private ToolTip _tips;
+        private ContextMenuStrip _listMenu; // меню «Копировать» списка файлов (компонент — освобождаем вручную)
         private Button _btnMerge;
         private Button _btnCancel;
         private ProgressBar _progress;
@@ -102,9 +103,12 @@ namespace ExcelMerger
             {
                 if (_inputDebounce != null)
                     _inputDebounce.Dispose();
-                // ToolTip — компонент, а не дочерний контрол: авто-освобождение не срабатывает.
+                // ToolTip и ContextMenuStrip — компоненты, а не дочерние контролы:
+                // авто-освобождение не срабатывает (правило соблюдено и в PdfPageGrid/StartForm).
                 if (_tips != null)
                     _tips.Dispose();
+                if (_listMenu != null)
+                    _listMenu.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -237,13 +241,13 @@ namespace ExcelMerger
             _list.DragOver += OnFileDragOver;
             _list.DragDrop += OnFileDragDrop;
             _list.DragLeave += delegate { HideDropLine(); };
-            var copyMenu = new ContextMenuStrip();
+            _listMenu = new ContextMenuStrip();
             var copyItem = new ToolStripMenuItem(Loc.T("common.copy"));
             copyItem.ShortcutKeyDisplayString = "Ctrl+C";
             copyItem.Click += delegate { CopySelectedRows(); };
-            copyMenu.Items.Add(copyItem);
-            copyMenu.Opening += delegate { copyItem.Enabled = _list.SelectedItems.Count > 0; };
-            _list.ContextMenuStrip = copyMenu;
+            _listMenu.Items.Add(copyItem);
+            _listMenu.Opening += delegate { copyItem.Enabled = _list.SelectedItems.Count > 0; };
+            _list.ContextMenuStrip = _listMenu;
             // Все горячие клавиши списка — в ProcessCmdKey (см. ниже): Enter как
             // диалоговая клавиша AcceptButton перехватывается до KeyDown, поэтому
             // KeyDown для неё бесполезен; заодно единое место для остальных.

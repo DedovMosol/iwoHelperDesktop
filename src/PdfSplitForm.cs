@@ -313,7 +313,7 @@ namespace ExcelMerger
                     outPath = dialog.FileName;
                 }
                 RunSplit(delegate(Action<int, int> pr) { PdfSplitService.Extract(src, indices, outPath, pr, rotations, cancel); return new List<string> { outPath }; },
-                    level, outPath, false, UsageStats.RecordPdfExtract);
+                    level, outPath, false, UsageStats.RecordPdfExtract, indices.Count);
                 return;
             }
 
@@ -366,7 +366,7 @@ namespace ExcelMerger
                 default:
                     return;
             }
-            RunSplit(work, level, dir, true, record);
+            RunSplit(work, level, dir, true, record, _pageCount);
         }
 
         /// <summary>
@@ -392,15 +392,16 @@ namespace ExcelMerger
         /// <summary>
         /// Выполнить работу в фоне; сжать полученные файлы (на этом же воркере, до
         /// открытия результата); по завершении — статус, счётчик, открытие результата.
+        /// workUnits — фактический объём работы в страницах (у «Извлечь выбранные» —
+        /// число выбранных, не страницы источника): от него порог кнопки «Отмена».
         /// </summary>
-        private void RunSplit(Func<Action<int, int>, List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record)
+        private void RunSplit(Func<Action<int, int>, List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record, int workUnits)
         {
             _busy = true;
             UpdateControls();
             SetStatus(openAsFolder ? Loc.T("split.status.splitting") : Loc.T("split.status.extracting"), Theme.TextMuted);
-            // total = число страниц источника: включает кнопку «Отмена» от порога (счётчик
-            // «страница N из M» для разделения не показываем — единица работы здесь «часть»).
-            BeginProgress(_pageCount);
+            // Счётчик «страница N из M» для разделения не показываем — единица работы здесь «часть».
+            BeginProgress(workUnits);
             Action<int, int> onProgress = UiProgress();
             long sourceSize = SafeLength(_sourcePath); // для подсказки о сжатии (UI-поток, до старта воркера)
             var thread = new Thread(delegate()

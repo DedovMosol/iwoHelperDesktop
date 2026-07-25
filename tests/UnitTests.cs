@@ -238,6 +238,11 @@ namespace ExcelMerger.Tests
             Run("WordDocxWriter: центрированное изображение (логотип) -> по центру, врезка/печать -> нет", TestImageCentered);
             Run("PageRasterizer: рамка PDF (Y-вверх) -> пиксельный кроп, кламп по краю", TestCropRect);
 
+            // ---------- 1.17.4 ----------
+            Run("PdfPageGrid.ClassifyDoubleClick: чип поворота > номер > предпросмотр", TestClassifyDoubleClick);
+            Run("NumberPromptDialog.DialogWidth: база или подпись с полями", TestNumberDialogWidth);
+            Run("Ui.AppIcon: один экземпляр на процесс (HICON не плодится)", TestAppIconCached);
+
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             return _failed == 0 ? 0 : 1;
@@ -3972,12 +3977,12 @@ namespace ExcelMerger.Tests
         /// Регресс: масштаб/сжатие принадлежат PDF-окнам. Долгоживущий экземпляр (MainForm
         /// грузит настройки при старте) не должен затирать их устаревшим значением при своём
         /// Save — общий Save обязан перечитать эти поля с диска, а явно писать их лишь SaveView.
-        /// Тест бэкапит и восстанавливает реальный settings.txt.
+        /// Живой %APPDATA% не трогается: тест работает в изолированном корне AppPaths.
         /// </summary>
         private static void TestSettingsViewNotClobbered()
         {
-            string file = AppPaths.SettingsFile;
-            string backup = File.Exists(file) ? File.ReadAllText(file) : null;
+            string root = Path.Combine(Path.GetTempPath(), "iwo_settings_" + Guid.NewGuid().ToString("N"));
+            AppPaths.SetRootForTests(root);
             try
             {
                 // 1. PDF-окно сохраняет вид: масштаб 300, сжатие 2.
@@ -3997,8 +4002,8 @@ namespace ExcelMerger.Tests
             }
             finally
             {
-                if (backup != null) File.WriteAllText(file, backup);
-                else if (File.Exists(file)) File.Delete(file);
+                AppPaths.SetRootForTests(null);
+                try { Directory.Delete(root, true); } catch { }
             }
         }
 
@@ -4062,6 +4067,48 @@ namespace ExcelMerger.Tests
                 AssertEqual(0, parts.Length, "частичные файлы удалены при отмене (осталось 0)");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        // ---------- 1.17.4 ----------
+
+        /// <summary>
+        /// Регресс 1.17.3: двойной клик по hover-кнопке поворота открывал предпросмотр
+        /// вместо второго поворота. Приоритет: чип поворота > номер под плиткой > плитка.
+        /// </summary>
+        private static void TestClassifyDoubleClick()
+        {
+            var tile = new System.Drawing.Rectangle(20, 10, 200, 260);
+            var cell = new System.Drawing.Rectangle(10, 6, 220, 290);
+            System.Drawing.Rectangle[] chips = PdfPageGrid.HoverRotateButtons(tile, 24, 6);
+            var onChip = new System.Drawing.Point(chips[1].X + 5, chips[1].Y + 5);
+            var onTile = new System.Drawing.Point(tile.X + 30, tile.Y + 30);
+            var onLabel = new System.Drawing.Point(cell.X + cell.Width / 2, tile.Bottom + 8);
+
+            AssertEqual(PdfPageGrid.DoubleClickAction.RotateChip,
+                PdfPageGrid.ClassifyDoubleClick(onChip, tile, cell, chips, true), "чип поворота — проглотить");
+            AssertEqual(PdfPageGrid.DoubleClickAction.Preview,
+                PdfPageGrid.ClassifyDoubleClick(onTile, tile, cell, chips, true), "плитка — предпросмотр");
+            AssertEqual(PdfPageGrid.DoubleClickAction.MoveAfter,
+                PdfPageGrid.ClassifyDoubleClick(onLabel, tile, cell, chips, true), "номер — перенос");
+            AssertEqual(PdfPageGrid.DoubleClickAction.Preview,
+                PdfPageGrid.ClassifyDoubleClick(onLabel, tile, cell, chips, false), "номер без reorder — предпросмотр");
+            AssertEqual(PdfPageGrid.DoubleClickAction.Preview,
+                PdfPageGrid.ClassifyDoubleClick(onChip, tile, cell, null, true),
+                "кнопки не показаны (не hot/Locked) — обычная плитка");
+        }
+
+        private static void TestNumberDialogWidth()
+        {
+            AssertEqual(300, NumberPromptDialog.DialogWidth(100, 16, 300), "короткая подпись — базовая ширина");
+            AssertEqual(300, NumberPromptDialog.DialogWidth(268, 16, 300), "ровно впритык — базовая");
+            AssertEqual(333, NumberPromptDialog.DialogWidth(301, 16, 300), "длинная подпись расширяет окно с полями");
+        }
+
+        private static void TestAppIconCached()
+        {
+            System.Drawing.Icon first = Ui.AppIcon();
+            System.Drawing.Icon second = Ui.AppIcon();
+            AssertTrue(ReferenceEquals(first, second), "оба вызова возвращают один экземпляр (или общий null)");
         }
 
         private static void AssertEqual(object expected, object actual, string what)

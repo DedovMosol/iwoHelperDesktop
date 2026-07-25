@@ -1050,10 +1050,37 @@ namespace ExcelMerger
             return pt.Y > tileRect.Bottom && pt.Y <= cell.Bottom && pt.X >= cell.Left && pt.X <= cell.Right;
         }
 
+        /// <summary>Что делает двойной клик по элементу сетки. Чистая — под тест.</summary>
+        internal enum DoubleClickAction
+        {
+            Preview,    // по плитке — полноразмерный предпросмотр
+            MoveAfter,  // по номеру под плиткой — «Переместить после…»
+            RotateChip  // по hover-кнопке поворота — проглотить (крутит каждый MouseUp)
+        }
+
+        /// <summary>
+        /// Классификация двойного клика: hover-кнопка поворота (если показана) старше
+        /// номера, номер — старше плитки. hoverChips == null — кнопки не показаны.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static DoubleClickAction ClassifyDoubleClick(Point pt, Rectangle tileRect, Rectangle cell,
+            Rectangle[] hoverChips, bool allowMoveAfter)
+        {
+            if (hoverChips != null)
+                foreach (Rectangle chip in hoverChips)
+                    if (chip.Contains(pt))
+                        return DoubleClickAction.RotateChip;
+            if (allowMoveAfter && IsOnLabel(pt, tileRect, cell))
+                return DoubleClickAction.MoveAfter;
+            return DoubleClickAction.Preview;
+        }
+
         /// <summary>
         /// Двойной клик: по НОМЕРУ (в редактируемой сетке) — перенос страницы по номеру
         /// (как контекстное «Переместить после…»); по самой ПЛИТКЕ — полноразмерный
         /// предпросмотр страницы. Обе возможности доступны всем PDF-инструментам (DRY).
+        /// Клик по hover-кнопке поворота предпросмотр НЕ открывает: поворот делает каждый
+        /// MouseUp пары, поэтому быстрый двойной клик по ↻ честно даёт 180°.
         /// </summary>
         private void OnListDoubleClick(object sender, MouseEventArgs e)
         {
@@ -1069,13 +1096,17 @@ namespace ExcelMerger
 
             Rectangle tileRect, cell;
             ItemGeometry(index, out tileRect, out cell);
-            if (AllowReorder && !Locked && IsOnLabel(e.Location, tileRect, cell))
+            Rectangle[] chips = index == _hotIndex && AllowRotate && !Locked ? HoverRotateButtonsFor(index) : null;
+            switch (ClassifyDoubleClick(e.Location, tileRect, cell, chips, AllowReorder && !Locked))
             {
-                // Двойной клик по номеру = быстрый перенос ЭТОЙ страницы (выделяем её и просим диалог).
-                SelectIndex(index);
-                var h = MoveAfterRequested;
-                if (h != null) h(this, EventArgs.Empty);
-                return;
+                case DoubleClickAction.RotateChip:
+                    return; // второй MouseUp пары сам довернёт страницу ещё на 90°
+                case DoubleClickAction.MoveAfter:
+                    // Двойной клик по номеру = быстрый перенос ЭТОЙ страницы (выделяем её и просим диалог).
+                    SelectIndex(index);
+                    var h = MoveAfterRequested;
+                    if (h != null) h(this, EventArgs.Empty);
+                    return;
             }
             // Иначе — предпросмотр страницы в полный размер.
             PagePreviewForm.Show(FindForm(), page, string.Format(Loc.T("preview.title"), _list.Items[index].Text));
@@ -1500,7 +1531,14 @@ namespace ExcelMerger
                     int width = _renderTarget; // текущая целевая ширина (могла смениться зумом)
                     Bitmap page = renderer.Render(req.SourcePath, req.PageIndex, width);
                     if (page == null)
+                    {
+                        // Сбой рендера (файл занят антивирусом/сетью и т.п.): снять ключ дедупа,
+                        // иначе страница осталась бы заглушкой НАВСЕГДА — EnqueueThumb больше не
+                        // поставил бы её в очередь. Ближайший тик видимых повторит заявку.
+                        lock (_qLock)
+                            _thumbRequested.Remove(ThumbKey(req));
                         continue;
+                    }
                     PostPage(req, page, width);
                 }
             }

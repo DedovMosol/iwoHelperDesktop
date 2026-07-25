@@ -609,7 +609,9 @@ namespace ExcelMerger
             try
             {
                 UserSettings s = UserSettings.Load();
-                int zoom = _grid != null ? _grid.TileWidth : s.ZoomWidth;
+                // Источник истины масштаба — ползунок: 60-мс троттлинг мог ещё не применить
+                // его последнее движение к сетке (закрытие сразу после сдвига).
+                int zoom = _zoom != null ? _zoom.Value : (_grid != null ? _grid.TileWidth : s.ZoomWidth);
                 int compression = _compress != null ? (int)_compress.Level : s.CompressionLevel;
                 s.SaveView(zoom, compression); // масштаб/сжатие — явно (общий Save их бы сохранил с диска)
             }
@@ -631,8 +633,9 @@ namespace ExcelMerger
                 return;
             }
             SaveViewPrefs(); // запомнить масштаб и уровень сжатия между запусками
-            if (_grid != null)
-                _grid.StopRendering(); // разбудить и остановить фоновый рендер
+            // Фоновый рендер сетки останавливает её Dispose (stop + join): здесь звать
+            // StopRendering нельзя — остановка необратима, а закрытие ещё может быть
+            // ветировано (например, отмена завершения сеанса Windows после FormClosing).
             base.OnFormClosing(e);
         }
 
