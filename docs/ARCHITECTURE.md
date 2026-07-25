@@ -137,8 +137,10 @@ are conceptual.
 `HeaderBand` (gradient window header), `ChoiceCard`, `RoundedButton`, `AccentCheckBox`,
 `JustifiedLabel`, `WindowChrome` (title-bar colouring), `WindowFlasher` (completion
 flash), `TaskbarProgress` (`ITaskbarList3`), `MessageForm`/`Dialogs` (branded message
-boxes), `GoToPageDialog` (Ctrl+G), `AboutForm`, `StatsForm`, `FolderPicker`,
-`CompressionPicker`, `ThumbZoom` (tile sizing, DPI render width, page-cache capacity).
+boxes), `NumberPromptDialog` (Ctrl+G / “move after page…”, sized to its prompt),
+`AboutForm`, `StatsForm`, `FolderPicker`, `CompressionPicker`, `ThumbZoom` (tile sizing,
+DPI render width, page-cache capacity). Shared fonts and the app icon are cached per
+process by `Ui` (WinForms never disposes `Control.Font`/`Form.Icon`).
 
 ### Excel Digest
 
@@ -166,7 +168,8 @@ boxes), `GoToPageDialog` (Ctrl+G), `AboutForm`, `StatsForm`, `FolderPicker`,
 | File | Responsibility |
 |---|---|
 | `EmbeddedAssemblies.cs` | Runtime resolver for the embedded PdfSharp/PdfPig assemblies. |
-| `PdfToolFormBase.cs` | Base class of all PDF tool windows: thumbnail grid, zoom slider with a live percentage readout (`ThumbZoom.Percent`) and Ctrl+wheel over the slider, compression picker, status/progress strip (with a per-page counter and a selection counter — pure `ProgressItem`/`RestingStatus`), drag-and-drop, a keyboard-shortcuts cheat sheet built from the grid's capabilities (`BuildShortcuts`), the shared grid hotkeys (`ClassifyPageKey`: Ctrl+A/X/C/V/Z/Y/G, Alt+←/→, Delete, Esc, Ctrl+Shift+«+»/«−»), background-work lifecycle. The zoom slider and the percentage share the row with the compression picker on the right, both right-anchored so a constant gap keeps them apart at any width (the slider stretches). Remembers the last zoom width and compression level between runs (`SaveView`, restored in `BuildBottomStrip`). Cooperative cancellation of long operations (`ShouldOfferCancel` ≥ 5 pages): a Cancel button overlays the action button (`CancelToken` → a `volatile` flag the worker polls), withdrawn at the point of no return once the output is committed (`StopOfferingCancel`). Forms open with dropped files via `IFileAcceptor` (drop onto a start-screen `ChoiceCard`). |
+| `PdfToolFormBase.cs` | Base class of all PDF tool windows: thumbnail grid, zoom slider with a live percentage readout (`ThumbZoom.Percent`) and Ctrl+wheel over the slider, compression picker, status/progress strip (with a per-page counter and a selection counter — pure `ProgressItem`/`RestingStatus`), drag-and-drop, a keyboard-shortcuts cheat sheet built from the grid's capabilities (`BuildShortcuts`), the shared grid hotkeys (`ClassifyPageKey`: Ctrl+A/X/C/V/Z/Y/G, Alt+←/→, Delete, Esc, Ctrl+Shift+«+»/«−»), background-work lifecycle. The zoom slider and the percentage share the row with the compression picker on the right, both right-anchored so a constant gap keeps them apart at any width (the slider stretches). Remembers the last zoom width and compression level between runs (`SaveView`, restored in `BuildBottomStrip`). Cooperative cancellation of long operations (`ShouldOfferCancel` ≥ 5 pages): a Cancel button overlays the action button (`CancelToken` → a `volatile` flag the worker polls), withdrawn at the point of no return once the output is committed (`StopOfferingCancel`, wired through to the PDF → Word writer). Background work is marshalled through the shared `Ui.OnUi`/`Ui.RunWorker` (one guarded `BeginInvoke` helper, no per-form copies); `SyncControls` is the abstract per-form hook that reflects the current state (operation, background parse, selection) on the buttons and grid lock. Adding/opening a PDF parses it on a worker (`BeginLoad`/`EndLoad`, `Working` = busy or loading) so a large or network file never freezes the window. Forms open with dropped files via `IFileAcceptor` (drop onto a start-screen `ChoiceCard`; `WireFileDrop` is the shared window drop handler). |
+| `PdfOrderedToolFormBase.cs` | Base of the two tools that assemble one result from pages of several files — **PDF Merge** and **PDF → Word**. Owns the `PdfPageOrder` model and the entire “order ↔ grid” layer once (add files, reorder, cut/copy/paste move, delete, undo/redo, grid + file-drop wiring); the concrete forms keep only their buttons, their action worker and a `SyncControls` override. |
 | `PdfPageGrid.cs`, `PdfPageOrder.cs` | The thumbnail grid subsystem, OWNER-DRAWN (tiles, number captions, selection, cut-dimming and the rotation badge are painted in `DrawItem`; `LVM_SETICONSPACING` sets the cell, so zoom goes to 400 px past the ImageList limit — an empty metrics ImageList keeps native hit-testing honest and clicks on the outer ring of big tiles are compensated). Lazy visible-only rendering with a larger re-render on deep zoom, an in-window page buffer (cut/copy/paste) with an insertion caret and a hover hint, drag reorder with edge auto-scroll, file drop with an insert position, per-page and whole-document rotation, «Move after page N…», a context menu, `Locked` gating during operations. Hovering a tile shows ↺/↻ rotate chips on it. Double-clicking a tile opens a full-size page preview (`PagePreviewForm`); double-clicking the number strip under a tile (`IsOnLabel`) opens «Move after page…» instead. The page-order model (`PdfPageRef` = source file + page index + rotation) is shared by merge and PDF → Word and keeps undo/redo stacks (Ctrl+Z / Ctrl+Y) of order-plus-rotation snapshots (`BeforeRotate` lets the form checkpoint before the grid mutates angles); the grid mutates only `Rotation` of the shared refs and requests order changes via events. |
 | `PdfThumbnailRenderer.cs`, `LruCache.cs` | WinRT rendering **from memory** (see invariants) at a DPI-scaled width; LRU of open documents (6, halved on x86) and a byte-budgeted LRU of rendered pages (192 MB, 48 MB on x86) — an evicted page re-renders when shown again. |
 | `PagePreviewForm.cs` | Modal full-size preview of one page (double-click a tile). Renders on its own background thread with a private `PdfThumbnailRenderer` (single-threaded), honours the tile's rotation, disposes the bitmap on close and drops a late render if the window is already gone. |
@@ -362,11 +365,12 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` (~215 tests, custom exe runner, zero
+1. **Unit tests** — `tests/UnitTests.cs` (~220 tests, custom exe runner, zero
    dependencies, no Office) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
-   zoom percentage, the number-strip hit-test, the cancel threshold, live merge/split
-   cancellation (throws and leaves no file), and settings that survive a stale writer.
+   zoom percentage and wheel-step chaining, the number-strip hit-test and double-click
+   classification, the cancel threshold, live merge/split cancellation (throws and leaves
+   no file), and settings that survive a stale writer (in an isolated `AppPaths` root).
    Run by `tests\build_tests.cmd`; this is what CI executes.
 2. **Self-checks in the exe** — `--selftest` (every window created headless),
    `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded PdfSharp,
