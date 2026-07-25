@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -218,29 +217,24 @@ namespace ExcelMerger
             BeginProgress(order.Count, Loc.T("ocr.status.convertingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
+            // Точка невозврата: писатель зовёт это перед SaveDocx (Word уже наполнен, отменить
+            // без следа нельзя) — снимаем предложение отмены, чтобы кнопка не «зависала».
+            Action pointOfNoReturn = delegate { OnUi(delegate { StopOfferingCancel(); }); };
 
-            var thread = new Thread(delegate()
+            Ui.RunWorker(delegate()
             {
                 Exception error = null;
                 ConvertResult result = null;
                 try
                 {
-                    result = PdfToWordService.Convert(order, outPath, onProgress, cancel);
+                    result = PdfToWordService.Convert(order, outPath, onProgress, cancel, pointOfNoReturn);
                 }
                 catch (Exception ex)
                 {
                     error = ex;
                 }
-                try
-                {
-                    if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { OnConvertFinished(error, result, outPath); });
-                }
-                catch (InvalidOperationException) { }
-            });
-            thread.SetApartmentState(ApartmentState.STA); // требование Word COM
-            thread.IsBackground = true;
-            thread.Start();
+                OnUi(delegate { OnConvertFinished(error, result, outPath); });
+            }, sta: true); // требование Word COM
         }
 
         private void OnConvertFinished(Exception error, ConvertResult result, string outPath)

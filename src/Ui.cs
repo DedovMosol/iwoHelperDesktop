@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.Reflection;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -121,6 +122,41 @@ namespace ExcelMerger
                 catch { _appIcon = null; } // без иконки — со стандартной системной
             }
             return _appIcon;
+        }
+
+        /// <summary>
+        /// Безопасная доставка действия в UI-поток контрола из фонового: BeginInvoke под
+        /// guard'ом IsHandleCreated/IsDisposed с перехватом гонки «окно разрушено между
+        /// проверкой и вызовом». true — делегат принят очередью UI; false — не принят
+        /// (вызывающий освобождает свои ресурсы сам). Единая обвязка всех воркеров (DRY):
+        /// ручные копии guard'а уже дважды теряли catch.
+        /// </summary>
+        public static bool OnUi(Control target, Action action)
+        {
+            try
+            {
+                if (target != null && target.IsHandleCreated && !target.IsDisposed)
+                {
+                    target.BeginInvoke(action);
+                    return true;
+                }
+            }
+            catch (InvalidOperationException) { } // окно разрушено между проверкой и вызовом
+            return false;
+        }
+
+        /// <summary>
+        /// Запустить фоновый воркер (IsBackground; sta — для Office COM). Возвращает
+        /// запущенный поток. Результаты доставлять через <see cref="OnUi"/>.
+        /// </summary>
+        public static Thread RunWorker(Action work, bool sta = false)
+        {
+            var thread = new Thread(delegate() { work(); });
+            if (sta)
+                thread.SetApartmentState(ApartmentState.STA);
+            thread.IsBackground = true;
+            thread.Start();
+            return thread;
         }
 
         /// <summary>Акцентная полоса заданного цвета в верхней части окна.</summary>

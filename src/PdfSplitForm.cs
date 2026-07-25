@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -404,7 +403,7 @@ namespace ExcelMerger
             BeginProgress(workUnits);
             Action<int, int> onProgress = UiProgress();
             long sourceSize = SafeLength(_sourcePath); // для подсказки о сжатии (UI-поток, до старта воркера)
-            var thread = new Thread(delegate()
+            Ui.RunWorker(delegate()
             {
                 Exception error = null;
                 int count = 0, compressed = 0;
@@ -416,8 +415,7 @@ namespace ExcelMerger
                     count = files.Count;
                     // Файлы записаны — точка невозврата: сжатие (Ghostscript) не прерываем, поэтому
                     // снимаем предложение отмены, чтобы кнопка не «зависала» на «Отмена…».
-                    if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { StopOfferingCancel(); });
+                    OnUi(delegate { StopOfferingCancel(); });
                     for (int i = 0; i < files.Count; i++)
                     {
                         if (PdfCompression.Compress(files[i], level))
@@ -433,15 +431,8 @@ namespace ExcelMerger
                 catch (Exception ex) { error = ex; }
                 int resultCount = count, resultCompressed = compressed;
                 long resultLargest = largest;
-                try
-                {
-                    if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { OnSplitFinished(error, resultCount, resultCompressed, openTarget, openAsFolder, record, level, sourceSize, resultLargest); });
-                }
-                catch (InvalidOperationException) { }
+                OnUi(delegate { OnSplitFinished(error, resultCount, resultCompressed, openTarget, openAsFolder, record, level, sourceSize, resultLargest); });
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         private void OnSplitFinished(Exception error, int count, int compressed, string openTarget, bool openAsFolder, Action record,

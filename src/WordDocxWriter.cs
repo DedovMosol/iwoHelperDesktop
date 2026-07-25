@@ -31,10 +31,11 @@ namespace ExcelMerger
         /// Пишет .docx из абзацев и изображений страниц. Занятый файл/нет Word — MergeException.
         /// cancelled — кооперативная отмена между страницами: OperationCanceledException; так как
         /// сохранение идёт лишь ПОСЛЕ наполнения, при отмене файл не создаётся (Word закрывается
-        /// без сохранения в finally общего каркаса).
+        /// без сохранения в finally общего каркаса). onCommitting — вызывается один раз после
+        /// наполнения и перед сохранением (точка невозврата: дальше отмена уже не сработает).
         /// </summary>
         public static void Write(IList<PdfPageText> pages, string path, Action<int, int> progress = null,
-            Func<bool> cancelled = null)
+            Func<bool> cancelled = null, Action onCommitting = null)
         {
             if (pages == null)
                 throw new ArgumentNullException("pages");
@@ -100,6 +101,10 @@ namespace ExcelMerger
                     }
                     ClearInheritedList(sel, listState); // хвостовой пустой абзац не должен унаследовать маркер
                     FitSpacingToPages(doc, pages.Count); // интервалы не должны выталкивать лишнюю страницу
+                    // Наполнение завершено, последний Cancellation.ThrowIf позади: дальше WordCom
+                    // сохраняет .docx (Ghostscript-подобная точка невозврата) — снять кнопку отмены.
+                    if (onCommitting != null)
+                        onCommitting();
                 });
             }
             finally
