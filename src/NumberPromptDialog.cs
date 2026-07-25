@@ -24,12 +24,13 @@ namespace ExcelMerger
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(300, 108);
+            const int margin = 16, btnW = 112, btnH = 30;
+            int w = 300; // вмещает самую длинную подпись (замер) и разнесённые кнопки
             BackColor = Color.White;
 
             var label = new Label();
             label.AutoSize = true;
-            label.Location = new Point(16, 16);
+            label.Location = new Point(margin, 16);
             label.Text = prompt;
             Controls.Add(label);
 
@@ -37,21 +38,25 @@ namespace ExcelMerger
             _num.Minimum = min;
             _num.Maximum = max;
             _num.Value = initial < min ? min : (initial > max ? max : initial);
-            _num.SetBounds(16, 40, 100, 27);
+            _num.SetBounds(margin, 42, 100, 27);
             Controls.Add(_num);
 
-            var ok = new RoundedButton(true);
-            ok.Text = okText;
-            ok.SetBounds(120, 72, 84, 28);
-            ok.DialogResult = DialogResult.OK;
-            Controls.Add(ok);
-
+            int btnY = 76;
+            // Кнопки разнесены по краям (как в MessageForm): «Отмена» слева, действие справа.
+            // Ширина 112 вмещает самую длинную подпись («Переместить» ≈ 85 px) без обрезки.
             var cancel = new RoundedButton(false);
             cancel.Text = Loc.T("common.cancel");
-            cancel.SetBounds(210, 72, 74, 28);
+            cancel.SetBounds(MessageForm.ButtonX(0, 2, w, btnW, margin), btnY, btnW, btnH);
             cancel.DialogResult = DialogResult.Cancel;
             Controls.Add(cancel);
 
+            var ok = new RoundedButton(true);
+            ok.Text = okText;
+            ok.SetBounds(MessageForm.ButtonX(1, 2, w, btnW, margin), btnY, btnW, btnH);
+            ok.DialogResult = DialogResult.OK;
+            Controls.Add(ok);
+
+            ClientSize = new Size(w, btnY + btnH + margin);
             AcceptButton = ok;
             CancelButton = cancel;
         }

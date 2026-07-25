@@ -19,6 +19,11 @@ versions follow [SemVer](https://semver.org/).
   working on documents of five pages or more. Canceling stops cleanly and leaves no
   half-written file (multi-file splits remove any parts already produced).
 
+### Fixed
+- The “Go to page” / “Move after page…” dialog no longer clips its action button (the
+  longer **Move** label was cut off), and its two buttons are spread to opposite sides
+  (Cancel on the left, the action on the right) to match the app’s other dialogs.
+
 ## [1.17.2] — 2026-07-25
 
 ### Added
