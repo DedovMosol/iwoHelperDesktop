@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -317,7 +316,7 @@ namespace ExcelMerger
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
 
-            var thread = new Thread(delegate()
+            Ui.RunWorker(delegate()
             {
                 Exception error = null;
                 bool compressed = false;
@@ -335,19 +334,12 @@ namespace ExcelMerger
                 {
                     // Файл записан — точка невозврата: сжатие (Ghostscript) не прерываем, поэтому
                     // снимаем предложение отмены, чтобы кнопка не «зависала» на «Отмена…».
-                    if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { StopOfferingCancel(); });
+                    OnUi(delegate { StopOfferingCancel(); });
                     compressed = PdfCompression.Compress(outputPath, level);
                 }
-                try
-                {
-                    if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { OnSaveFinished(error, outputPath, pages.Count, compressed); });
-                }
-                catch (InvalidOperationException) { }
+                bool didCompress = compressed;
+                OnUi(delegate { OnSaveFinished(error, outputPath, pages.Count, didCompress); });
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         private void OnSaveFinished(Exception error, string outputPath, int pageCount, bool compressed)

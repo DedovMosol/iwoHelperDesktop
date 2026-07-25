@@ -402,6 +402,12 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>Доставка действия в UI-поток этого окна из воркера (guard + BeginInvoke, см. Ui.OnUi).</summary>
+        protected void OnUi(Action action)
+        {
+            Ui.OnUi(this, action);
+        }
+
         /// <summary>
         /// Колбэк прогресса для сервиса (вызывается из воркера): считает процент, отсекает
         /// повторы и маршалит применение на UI-поток. Троттлинг по проценту — не чаще 100 обновлений.
@@ -415,12 +421,7 @@ namespace ExcelMerger
                 if (pct == workerLastPct)
                     return;
                 workerLastPct = pct;
-                try
-                {
-                    if (IsHandleCreated && !IsDisposed)
-                        BeginInvoke((MethodInvoker)delegate { ApplyProgress(pct); });
-                }
-                catch (InvalidOperationException) { } // окно закрылось между проверкой и вызовом
+                OnUi(delegate { ApplyProgress(pct); });
             };
         }
 

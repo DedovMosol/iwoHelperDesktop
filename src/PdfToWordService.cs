@@ -24,9 +24,11 @@ namespace ExcelMerger
         /// или занятый выход — <see cref="MergeException"/>. order — страницы (источник + индекс
         /// с нуля) в нужном порядке; страницы могут идти из разных файлов. progress — «сделано/всего»
         /// единиц работы (извлечение источников — первая половина шкалы, запись — вторая); может быть null.
+        /// onCommitting — вызывается один раз перед сохранением .docx (точка невозврата: Word наполнен,
+        /// дальше отмена уже не сработает); может быть null.
         /// </summary>
         public static ConvertResult Convert(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null,
-            Func<bool> cancelled = null)
+            Func<bool> cancelled = null, Action onCommitting = null)
         {
             if (order == null || order.Count == 0)
                 throw new MergeException(Loc.T("err.ocr.noPages"));
@@ -94,7 +96,7 @@ namespace ExcelMerger
                 double frac = t > 0 ? (double)d / t : 1.0;
                 progress(writeUnits + (int)(frac * writeUnits), 2 * writeUnits);
             };
-            WordDocxWriter.Write(pages, outputPath, writeCb, cancelled);
+            WordDocxWriter.Write(pages, outputPath, writeCb, cancelled, onCommitting);
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
         }
 

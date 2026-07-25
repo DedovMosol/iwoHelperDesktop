@@ -909,7 +909,7 @@ namespace ExcelMerger
         /// <summary>Запуск фонового STA-потока: исключения доставляются в UI, поток не падает.</summary>
         private void StartWorker(Func<MergeResult> work)
         {
-            _worker = new Thread(delegate()
+            _worker = Ui.RunWorker(delegate() // STA — требование Excel COM
             {
                 MergeResult result = null;
                 Exception error = null;
@@ -922,21 +922,13 @@ namespace ExcelMerger
                     error = ex;
                 }
                 OnUi(delegate { OnMergeFinished(result, error); });
-            });
-            _worker.SetApartmentState(ApartmentState.STA); // требование Excel COM
-            _worker.IsBackground = true;
-            _worker.Start();
+            }, sta: true);
         }
 
-        /// <summary>Безопасная доставка действия в UI-поток из фонового.</summary>
+        /// <summary>Безопасная доставка действия в UI-поток из фонового (единая обвязка, см. Ui.OnUi).</summary>
         private void OnUi(Action action)
         {
-            try
-            {
-                if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(action);
-            }
-            catch (InvalidOperationException) { } // окно уже разрушено — доставлять некому
+            Ui.OnUi(this, action);
         }
 
         private void OnServiceProgress(int current, int total, string fileName)
@@ -1074,7 +1066,7 @@ namespace ExcelMerger
             _lnkNote.Enabled = false;
             SetStatus(Loc.T("excel.status.noteBusy"), Theme.TextMuted);
 
-            var thread = new Thread(delegate()
+            Ui.RunWorker(delegate() // STA — требование Word COM
             {
                 Exception error = null;
                 try
@@ -1102,10 +1094,7 @@ namespace ExcelMerger
                         OpenPath(notePath, false);
                     }
                 });
-            });
-            thread.SetApartmentState(ApartmentState.STA); // требование Word COM
-            thread.IsBackground = true;
-            thread.Start();
+            }, sta: true);
         }
 
         /// <summary>«Повторить пропущенные» видима, когда есть что и куда дослить.</summary>
