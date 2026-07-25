@@ -3,6 +3,22 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.3] — 2026-07-25
+
+### Added
+- **Zoom readout and Ctrl+wheel on the slider.** The zoom slider now shows the current
+  scale as a percentage next to it, and holding Ctrl while turning the wheel over the
+  slider steps the zoom (matching Ctrl+wheel over the grid).
+- **The last zoom and compression level are remembered** between runs, so a tool opens at
+  the scale and quality you left it.
+- **Double-click a page for a full-size preview.** Double-clicking a tile opens the page
+  at full size on a dark backdrop (rendered in the background, so the window stays
+  responsive). Esc or a click closes it. Double-clicking the page NUMBER under a tile
+  instead opens the “move after page…” prompt — a fast way to reorder without the menu.
+- **Cancel long operations.** Merge, Split and PDF → Word show a Cancel button while
+  working on documents of five pages or more. Canceling stops cleanly and leaves no
+  half-written file (multi-file splits remove any parts already produced).
+
 ## [1.17.2] — 2026-07-25
 
 ### Added

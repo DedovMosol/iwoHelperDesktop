@@ -61,6 +61,22 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>
+        /// Восстановить сохранённый уровень (без показа диалога «нужен Ghostscript» — это не
+        /// действие пользователя): вне диапазона ИЛИ сжатие при отсутствии Ghostscript тихо
+        /// откатывается к «Отлично».
+        /// </summary>
+        public void SetLevel(CompressionLevel level)
+        {
+            int i = (int)level;
+            if (i <= 0 || i >= _combo.Items.Count || !Ghostscript.Available)
+                i = (int)CompressionLevel.None;
+            bool prev = _reverting;
+            _reverting = true; // подавить обработчик выбора (иначе всплыл бы диалог при старте)
+            try { _combo.SelectedIndex = i; }
+            finally { _reverting = prev; }
+        }
+
         protected override void Dispose(bool disposing)
         {
             // ToolTip — компонент, а не дочерний контрол: авто-освобождение не сработает.

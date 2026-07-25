@@ -62,8 +62,13 @@ namespace ExcelMerger
             return LoadPagesCore(path);
         }
 
-        /// <summary>Собирает страницы в порядке order в новый PDF. Пустой порядок — ошибка.</summary>
-        public static void Merge(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null)
+        /// <summary>
+        /// Собирает страницы в порядке order в новый PDF. Пустой порядок — ошибка.
+        /// cancelled — кооперативная отмена (проверяется между страницами; при отмене файл
+        /// не создаётся — сохранение идёт лишь в самом конце): OperationCanceledException.
+        /// </summary>
+        public static void Merge(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null,
+            Func<bool> cancelled = null)
         {
             if (order == null || order.Count == 0)
                 throw new MergeException(Loc.T("err.pdf.noPages"));
@@ -71,7 +76,7 @@ namespace ExcelMerger
             if (lockError != null)
                 throw new MergeException(Loc.T("err.pdf.fileBusy"));
             EmbeddedAssemblies.Ensure();
-            MergeCore(order, outputPath, progress);
+            MergeCore(order, outputPath, progress, cancelled);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -107,7 +112,8 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void MergeCore(IList<PdfPageRef> order, string outputPath, Action<int, int> progress)
+        private static void MergeCore(IList<PdfPageRef> order, string outputPath, Action<int, int> progress,
+            Func<bool> cancelled)
         {
             // Каждый источник открывается один раз, сколько бы страниц из него ни брали.
             var sources = new Dictionary<string, PdfDocument>(StringComparer.OrdinalIgnoreCase);
@@ -118,6 +124,7 @@ namespace ExcelMerger
                 int added = 0;
                 foreach (PdfPageRef page in order)
                 {
+                    Cancellation.ThrowIf(cancelled); // между страницами; файл ещё не создан
                     PdfDocument source;
                     string key = Path.GetFullPath(page.SourcePath);
                     if (!sources.TryGetValue(key, out source))

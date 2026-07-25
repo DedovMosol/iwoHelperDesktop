@@ -27,8 +27,14 @@ namespace ExcelMerger
         private const double MinPagePt = 72;    // 1"; разумные пределы размера страницы
         private const double MaxPagePt = 1584;  // 22" — максимум Word
 
-        /// <summary>Пишет .docx из абзацев и изображений страниц. Занятый файл/нет Word — MergeException.</summary>
-        public static void Write(IList<PdfPageText> pages, string path, Action<int, int> progress = null)
+        /// <summary>
+        /// Пишет .docx из абзацев и изображений страниц. Занятый файл/нет Word — MergeException.
+        /// cancelled — кооперативная отмена между страницами: OperationCanceledException; так как
+        /// сохранение идёт лишь ПОСЛЕ наполнения, при отмене файл не создаётся (Word закрывается
+        /// без сохранения в finally общего каркаса).
+        /// </summary>
+        public static void Write(IList<PdfPageText> pages, string path, Action<int, int> progress = null,
+            Func<bool> cancelled = null)
         {
             if (pages == null)
                 throw new ArgumentNullException("pages");
@@ -50,6 +56,7 @@ namespace ExcelMerger
 
                     for (int p = 0; p < pages.Count; p++)
                     {
+                        Cancellation.ThrowIf(cancelled); // отмена между страницами; файл ещё не сохранён
                         if (p > 0)
                             sel.InsertBreak(WdSectionBreakNextPage); // новый раздел = свой размер листа
                         ApplySectionSetup(sel, pages[p]); // размер и поля страницы из источника

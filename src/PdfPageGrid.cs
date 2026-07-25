@@ -220,6 +220,7 @@ namespace ExcelMerger
             _list.DragLeave += delegate { _list.InsertionMark.Index = -1; StopDragScroll(); SetDropActive(false); };
             _list.MouseWheel += OnListMouseWheel;
             _list.MouseUp += OnListMouseUp;
+            _list.MouseDoubleClick += OnListDoubleClick;
             _list.MouseMove += OnListMouseMove;
             _list.MouseLeave += delegate { ClearHoverMark(); SetHotIndex(-1); };
             _list.Scrolled += delegate { ScheduleVisibleUpdate(); };
@@ -1041,6 +1042,43 @@ namespace ExcelMerger
             _caretAfter = after;
             _hoverMark = false;
             ShowMark(index, after, SystemColors.Highlight);
+        }
+
+        /// <summary>Точка попадает в полосу номера под плиткой (не в саму плитку). Чистая — под тест.</summary>
+        internal static bool IsOnLabel(Point pt, Rectangle tileRect, Rectangle cell)
+        {
+            return pt.Y > tileRect.Bottom && pt.Y <= cell.Bottom && pt.X >= cell.Left && pt.X <= cell.Right;
+        }
+
+        /// <summary>
+        /// Двойной клик: по НОМЕРУ (в редактируемой сетке) — перенос страницы по номеру
+        /// (как контекстное «Переместить после…»); по самой ПЛИТКЕ — полноразмерный
+        /// предпросмотр страницы. Обе возможности доступны всем PDF-инструментам (DRY).
+        /// </summary>
+        private void OnListDoubleClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || _list.Items.Count == 0)
+                return;
+            ListViewHitTestInfo hit = _list.HitTest(e.Location);
+            int index = hit.Item != null ? hit.Item.Index : FindTileHit(e.Location);
+            if (index < 0)
+                return;
+            var page = _list.Items[index].Tag as PdfPageRef;
+            if (page == null)
+                return;
+
+            Rectangle tileRect, cell;
+            ItemGeometry(index, out tileRect, out cell);
+            if (AllowReorder && !Locked && IsOnLabel(e.Location, tileRect, cell))
+            {
+                // Двойной клик по номеру = быстрый перенос ЭТОЙ страницы (выделяем её и просим диалог).
+                SelectIndex(index);
+                var h = MoveAfterRequested;
+                if (h != null) h(this, EventArgs.Empty);
+                return;
+            }
+            // Иначе — предпросмотр страницы в полный размер.
+            PagePreviewForm.Show(FindForm(), page, string.Format(Loc.T("preview.title"), _list.Items[index].Text));
         }
 
         /// <summary>
