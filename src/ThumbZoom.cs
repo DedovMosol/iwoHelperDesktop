@@ -64,6 +64,20 @@ namespace ExcelMerger
             return (int)Math.Round(100.0 * Clamp(width) / DefaultWidth);
         }
 
+        /// <summary>Наименьший/наибольший показываемый процент (границы поля ввода). Чистые — под тест.</summary>
+        public static int MinPercent { get { return Percent(MinWidth); } }
+        public static int MaxPercent { get { return Percent(MaxWidth); } }
+
+        /// <summary>
+        /// Ширина плитки для заданного процента — обратная к <see cref="Percent"/>; результат
+        /// клампится в [MinWidth..MaxWidth]. Round-trip на границах: WidthFromPercent(Percent(w))
+        /// возвращает ту же плитку для крайних значений. Чистая — под тест.
+        /// </summary>
+        public static int WidthFromPercent(int percent)
+        {
+            return Clamp((int)Math.Round(percent * DefaultWidth / 100.0));
+        }
+
         /// <summary>
         /// Ширина рендера страницы в ФИЗИЧЕСКИХ пикселях для плитки maxTileWidth: плитка ×
         /// DPI-масштаб × запас на даунскейл, в пределах [300..640]. Базовый рендер считается

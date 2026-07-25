@@ -23,16 +23,16 @@ PDF → Word tools themselves.
 ## Ground rules
 
 - **Language level is pinned**: C# 7.3 on .NET Framework 4.8 — no newer syntax.
-- **Match the house style**: identifiers in English; comments in Russian (the project's
-  working language); comment *why*, not *what*.
+- **Match the house style**: identifiers in English, comments in Russian (the project's
+  working language), comment *why*, not *what*.
 - **Logic goes into pure functions** with unit tests in `tests/UnitTests.cs`. Behaviour
   that needs Office gets a `tests\verify*.ps1` script instead.
 - **Office COM rules are non-negotiable** — see
   [Office COM layer](docs/ARCHITECTURE.md#office-com-layer): release through
   `ComSafe`, never call a closed object, escape cell text via `CellText`.
-- **No new runtime dependencies** unless embedded as a resource and MIT-compatible;
+- **No new runtime dependencies** unless embedded as a resource and MIT-compatible,
   copyleft tools may only run as separate processes (like Ghostscript does).
-- **UI strings go through `Loc`** in both languages; generated documents (cover note,
+- **UI strings go through `Loc`** in both languages, generated documents (cover note,
   TOC, reports) intentionally stay Russian.
 
 ## Pull requests

@@ -6,7 +6,7 @@ namespace ExcelMerger
 {
     /// <summary>
     /// Общая база всех инструментов работы с PDF («Объединение», «Разделение», «PDF → Word»):
-    /// держит сетку миниатюр, ползунок масштаба с троттлингом, выбор сжатия, строку статуса
+    /// держит сетку миниатюр, регулятор масштаба с троттлингом, выбор сжатия, строку статуса
     /// и подсказки; единообразно закрывается (дожидаясь фоновой операции) и
     /// детерминированно освобождает ресурсы. Фоновый разбор PDF (добавление/открытие) идёт
     /// через <see cref="BeginLoad"/>/<see cref="EndLoad"/>, а доступность кнопок каждый
@@ -23,7 +23,9 @@ namespace ExcelMerger
         protected readonly Action _showHub;
         protected PdfPageGrid _grid;
         protected TrackBar _zoom;
-        protected Label _zoomPct; // подпись текущего масштаба в процентах
+        protected NumericUpDown _zoomInput; // редактируемый масштаб в процентах (рядом со слайдером)
+        protected Label _zoomPct; // подпись «%» справа от поля ввода масштаба
+        private bool _zoomSync;   // идёт программная синхронизация поля % от регулятора — не применять обратно
         protected System.Windows.Forms.Timer _zoomTimer;
         protected CompressionPicker _compress;
         protected Label _lblStatus;
@@ -108,21 +110,65 @@ namespace ExcelMerger
             Ui.HomeOnHeader(header, _showHub, _tips, 22);
         }
 
-        /// <summary>Троттлинг пересборки плиток при перетаскивании ползунка масштаба.</summary>
+        /// <summary>Троттлинг пересборки плиток при перетаскивании регулятора масштаба.</summary>
         protected void ScheduleZoom()
         {
             _zoomTimer.Stop();
             _zoomTimer.Start();
         }
 
-        /// <summary>Обновить подпись масштаба в процентах (от значения ползунка — мгновенно, до пересборки плиток).</summary>
-        private void UpdateZoomPercent()
+        /// <summary>
+        /// Синхронизировать поле ввода % со значением регулятора (мгновенно, до пересборки плиток).
+        /// Под _zoomSync, чтобы вызванное этим ValueChanged поля НЕ применилось обратно к регулятору
+        /// (иначе округление WidthFromPercent(Percent(w)) дало бы петлю/дрейф).
+        /// </summary>
+        private void SyncZoomInput()
         {
-            if (_zoomPct != null)
-                _zoomPct.Text = ThumbZoom.Percent(_zoom.Value) + " %";
+            if (_zoomInput == null)
+                return;
+            _zoomSync = true;
+            try { _zoomInput.Value = ThumbZoom.Percent(_zoom.Value); }
+            finally { _zoomSync = false; }
         }
 
-        /// <summary>Ctrl+колесо над ползунком масштаба меняет масштаб шагом сетки (без Ctrl — родное поведение TrackBar).</summary>
+        /// <summary>Ввод масштаба в поле %: применить к регулятору (тот же троттлинг). Петли нет — см. _zoomSync.</summary>
+        private void OnZoomInputChanged(object sender, EventArgs e)
+        {
+            if (_zoomSync || _zoomInput == null || _zoom == null)
+                return;
+            int width = ThumbZoom.WidthFromPercent((int)_zoomInput.Value);
+            if (width != _zoom.Value)
+                _zoom.Value = width; // → ValueChanged → ScheduleZoom + SyncZoomInput (под guard)
+        }
+
+        /// <summary>Сбросить масштаб к 100% (Ctrl+0, двойной клик по «%»).</summary>
+        private void ResetZoom()
+        {
+            if (_zoom != null)
+                _zoom.Value = ThumbZoom.DefaultWidth; // 100% → ValueChanged применит и синхронизирует поле
+        }
+
+        /// <summary>
+        /// Enter в поле «%»: зафиксировать введённое значение немедленно. Чтение
+        /// <c>NumericUpDown.Value</c> при незавершённом вводе само валидирует и клампит текст в
+        /// [Min..Max] (и обновляет отображение к разрешённому значению — прямое присваивание
+        /// Value вне диапазона бросило бы исключение), а изменение значения применит масштаб
+        /// через ValueChanged. ProcessCmdKey заодно гасит Enter, чтобы он не нажал кнопку
+        /// действия окна (Сохранить/Конвертировать) и не начал операцию.
+        /// </summary>
+        private void CommitZoomInput()
+        {
+            if (_zoomInput != null)
+                _ = _zoomInput.Value; // геттер валидирует и клампит введённый пользователем текст
+        }
+
+        /// <summary>Ctrl+0 (основной ряд и цифровой блок) — сброс масштаба к 100%. Чистая — под тест.</summary>
+        internal static bool IsResetZoomKey(Keys keyData)
+        {
+            return keyData == (Keys.Control | Keys.D0) || keyData == (Keys.Control | Keys.NumPad0);
+        }
+
+        /// <summary>Ctrl+колесо над регулятором масштаба меняет масштаб шагом сетки (без Ctrl — родное поведение TrackBar).</summary>
         private void OnZoomWheel(object sender, MouseEventArgs e)
         {
             if ((ModifierKeys & Keys.Control) == 0)
@@ -216,7 +262,7 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Общий нижний строй PDF-инструментов: подпись + ползунок масштаба (с
+        /// Общий нижний строй PDF-инструментов: подпись + регулятор масштаба (с
         /// троттлинг-таймером), выбор сжатия, полоса прогресса и строка статуса.
         /// Вызывать ПОСЛЕ создания сетки (_grid) — к ней привязан масштаб.
         /// right — правый край рабочей области; actionWidth — ширина кнопки действия
@@ -225,7 +271,7 @@ namespace ExcelMerger
         protected void BuildBottomStrip(int right, string statusText, int actionWidth, bool withCompress = true)
         {
             int h = ClientSize.Height;
-            // Восстановить масштаб прошлой сессии ДО создания ползунка (0 — не задан).
+            // Восстановить масштаб прошлой сессии ДО создания регулятора (0 — не задан).
             UserSettings prefs = UserSettings.Load();
             if (prefs.ZoomWidth >= ThumbZoom.MinWidth)
                 _grid.SetTileWidth(prefs.ZoomWidth);
@@ -234,10 +280,10 @@ namespace ExcelMerger
                 .Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 
             // Сжатие (если есть) создаём ПЕРВЫМ: от его левого края отмеряем подпись % и правый
-            // край растяжимого ползунка. Подпись и сжатие оба на правом якоре → между ними
+            // край растяжимого регулятора. Подпись и сжатие оба на правом якоре → между ними
             // ПОСТОЯННЫЙ зазор на любой ширине окна, поэтому они не наезжают друг на друга даже
             // при минимальной ширине (замер: длинная метка сжатия иначе перекрывала бы «%»).
-            const int pctW = 52; // ширина подписи «400 %»
+            const int pctW = 62; // ширина блока масштаба: поле ввода «303» + подпись «%»
             int pctRight;        // правый край подписи процента
             if (withCompress)
             {
@@ -266,21 +312,37 @@ namespace ExcelMerger
             _zoom.TickFrequency = 32;
             _zoom.SmallChange = 16;
             _zoom.LargeChange = 32;
-            _zoom.ValueChanged += delegate { ScheduleZoom(); UpdateZoomPercent(); };
-            _zoom.MouseWheel += OnZoomWheel; // Ctrl+колесо над ползунком — как в сетке
+            _zoom.ValueChanged += delegate { ScheduleZoom(); SyncZoomInput(); };
+            _zoom.MouseWheel += OnZoomWheel; // Ctrl+колесо над регулятором — как в сетке
             _tips.SetToolTip(_zoom, Loc.T("common.tip.zoom"));
             Controls.Add(_zoom);
-            _grid.ZoomChanged += delegate(int w) { _zoom.Value = w; }; // Ctrl+колесо в сетке двигает ползунок (→ %)
+            _grid.ZoomChanged += delegate(int w) { _zoom.Value = w; }; // Ctrl+колесо в сетке двигает регулятор (→ %)
 
-            // Текущий масштаб в процентах — справа от ползунка, правым якорём (левее сжатия).
-            _zoomPct = Ui.Label(this, "", pctLeft, h - 138, Font, Theme.TextMuted);
+            // Текущий масштаб — редактируемое поле процентов + подпись «%» справа от регулятора,
+            // правым якорём (левее сжатия). Поле даёт точный ввод, которого не хватало регулятору;
+            // регулятор остаётся. Двусторонняя синхронизация — через _zoomSync (без петли/дрейфа).
+            const int suffixW = 16;            // подпись «%»
+            int inputW = pctW - suffixW - 2;   // поле ввода процента (44)
+            _zoomInput = new NumericUpDown();
+            _zoomInput.Minimum = ThumbZoom.MinPercent;
+            _zoomInput.Maximum = ThumbZoom.MaxPercent;
+            _zoomInput.Value = ThumbZoom.Percent(_grid.TileWidth); // ∈ [MinPercent..MaxPercent]
+            _zoomInput.TextAlign = HorizontalAlignment.Right;
+            _zoomInput.SetBounds(pctLeft, h - 140, inputW, 22);
+            _zoomInput.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            _zoomInput.ValueChanged += OnZoomInputChanged;
+            _tips.SetToolTip(_zoomInput, Loc.T("common.tip.zoomInput"));
+            Controls.Add(_zoomInput);
+
+            _zoomPct = Ui.Label(this, "%", pctLeft + inputW + 2, h - 138, Font, Theme.TextMuted);
             _zoomPct.AutoSize = false;
-            _zoomPct.SetBounds(pctLeft, h - 138, pctW, 20);
+            _zoomPct.SetBounds(pctLeft + inputW + 2, h - 138, suffixW, 20);
             _zoomPct.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            UpdateZoomPercent();
+            _zoomPct.Cursor = Cursors.Hand;                    // рука на «%»: видно, что кликабельно (сброс)
+            _zoomPct.DoubleClick += delegate { ResetZoom(); }; // двойной клик по «%» → 100%
 
             _zoomTimer = new System.Windows.Forms.Timer();
-            _zoomTimer.Interval = 60; // троттлинг пересборки плиток при перетаскивании ползунка
+            _zoomTimer.Interval = 60; // троттлинг пересборки плиток при перетаскивании регулятора
             _zoomTimer.Tick += delegate { _zoomTimer.Stop(); _grid.SetTileWidth(_zoom.Value); };
 
             // Статус делит нижний ряд с кнопкой действия справа: фиксированная ширина до
@@ -291,7 +353,7 @@ namespace ExcelMerger
             _lblStatus.SetBounds(20, h - 50, right - actionWidth - 12 - 20, 20);
             _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
-            // Полоса прогресса — отдельный ряд между «Масштаб/Сжатие» (низ h-103: ползунок
+            // Полоса прогресса — отдельный ряд между «Масштаб/Сжатие» (низ h-103: регулятор
             // h-148 + 45) и «статус/кнопка» (верх h-58): зазоры 11 и 18 px, перекрытий нет.
             _progress = new ProgressBar();
             _progress.SetBounds(20, h - 92, right - 20 - 52, 16);
@@ -545,6 +607,18 @@ namespace ExcelMerger
         /// </summary>
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (_zoom != null && IsResetZoomKey(keyData)) // Ctrl+0 — сброс масштаба к 100% (на уровне окна)
+            {
+                ResetZoom();
+                return true;
+            }
+            // Enter в поле масштаба применяет введённый процент и НЕ запускает кнопку действия
+            // окна (иначе редактирование «%» случайно начинало бы Сохранение/Конвертацию).
+            if (keyData == Keys.Enter && _zoomInput != null && _zoomInput.Focused)
+            {
+                CommitZoomInput();
+                return true;
+            }
             if (_grid != null && _grid.ListFocused)
             {
                 switch (ClassifyPageKey(keyData))
@@ -689,7 +763,7 @@ namespace ExcelMerger
             try
             {
                 UserSettings s = UserSettings.Load();
-                // Источник истины масштаба — ползунок: 60-мс троттлинг мог ещё не применить
+                // Источник истины масштаба — регулятор: 60-мс троттлинг мог ещё не применить
                 // его последнее движение к сетке (закрытие сразу после сдвига).
                 int zoom = _zoom != null ? _zoom.Value : (_grid != null ? _grid.TileWidth : s.ZoomWidth);
                 int compression = _compress != null ? (int)_compress.Level : s.CompressionLevel;
@@ -704,6 +778,12 @@ namespace ExcelMerger
             get { return Loc.T("common.busy"); }
         }
 
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            WindowPlacement.Restore(this); // вернуть размер/положение прошлой сессии (клампя в видимую область)
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (_busy)
@@ -713,6 +793,7 @@ namespace ExcelMerger
                 return;
             }
             SaveViewPrefs(); // запомнить масштаб и уровень сжатия между запусками
+            WindowPlacement.Save(this); // запомнить размер и положение окна между запусками
             // Фоновый рендер сетки останавливает её Dispose (stop + join): здесь звать
             // StopRendering нельзя — остановка необратима, а закрытие ещё может быть
             // ветировано (например, отмена завершения сеанса Windows после FormClosing).

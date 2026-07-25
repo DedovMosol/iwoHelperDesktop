@@ -84,7 +84,7 @@ namespace ExcelMerger
         }
 
         /// <summary>Создать окно инструмента через фабрику, отследить и (опционально) поставить на место. Возвращает окно.</summary>
-        private Form SpawnTool(string key, string name, Func<Action, Form> factory, Point? location, FormWindowState state)
+        private Form SpawnTool(string key, string name, Func<Action, Form> factory, Rectangle? bounds, FormWindowState state)
         {
             Form tool = factory(ShowHub); // кнопка «Главная» в инструменте показывает хаб
             _tools.Add(key, tool);
@@ -92,8 +92,13 @@ namespace ExcelMerger
             Track(tool);
             tool.FormClosed += delegate { _tools.Remove(key); _openTools.Remove(key); };
             tool.Show(); // отдельное окно, без владельца — переживает закрытие хаба
-            if (state == FormWindowState.Normal && location.HasValue)
-                tool.Location = location.Value; // вернуть на прежнее место при пересборке
+            if (state == FormWindowState.Normal && bounds.HasValue)
+            {
+                // Перебить возможный Maximized от OnLoad-восстановления настроек: при пересборке
+                // (смена языка) авторитетно состояние СНИМКА живого окна, а не сохранённое на диске.
+                tool.WindowState = FormWindowState.Normal;
+                tool.Bounds = bounds.Value; // вернуть прежние размер И положение
+            }
             else if (state != FormWindowState.Normal)
                 tool.WindowState = state;
             BringToFront(tool);
@@ -153,7 +158,7 @@ namespace ExcelMerger
                         {
                             Key = kv.Key,
                             Entry = kv.Value,
-                            Location = f.Location,
+                            Bounds = f.Bounds,
                             State = f.WindowState,
                             WasActive = ReferenceEquals(f, active)
                         });
@@ -194,7 +199,7 @@ namespace ExcelMerger
                             continue;
                         }
                     }
-                    SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Location, t.State);
+                    SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Bounds, t.State);
                 }
 
                 if (hubOpen && !hubRebuilt)
@@ -242,7 +247,7 @@ namespace ExcelMerger
         {
             public string Key;
             public ToolEntry Entry;
-            public Point Location;
+            public Rectangle Bounds;
             public FormWindowState State;
             public bool WasActive;
         }

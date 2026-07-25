@@ -1165,6 +1165,12 @@ namespace ExcelMerger
             UpdateListButtons(); // кнопки порядка/выбора блокируются во время прогона
         }
 
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            WindowPlacement.Restore(this); // вернуть размер/положение прошлой сессии (клампя в видимую область)
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (_noteBusy)
@@ -1188,6 +1194,7 @@ namespace ExcelMerger
                 return;
             }
             SavePathsToSettings();
+            WindowPlacement.Save(this); // запомнить размер и положение окна между запусками
             base.OnFormClosing(e);
         }
 

@@ -122,6 +122,7 @@ namespace ExcelMerger.Tests
             Run("PdfPageGrid: PageLabel (позиция/исходная), TileKey с поворотом, FlipFor", TestGridLabelTileKey);
             Run("PdfPageGrid.PasteIndex: каретка, выделение, конец", TestPasteIndex);
             Run("PdfToolFormBase.ClassifyPageKey: буфер, поворот, Ctrl+G, Esc", TestClassifyClipboardKeys);
+            Run("PdfToolFormBase.IsResetZoomKey: Ctrl+0 (оба ряда)", TestIsResetZoomKey);
             Run("PdfSplitService.RotationAt: карта поворотов и границы", TestRotationAt);
             Run("Merge (живой): /Rotate пишется и складывается с исходным", TestMergeRotationLive);
             Run("SplitByRanges (живой): карта поворотов по индексу страницы", TestSplitRotationLive);
@@ -138,9 +139,11 @@ namespace ExcelMerger.Tests
             Run("PdfToolFormBase.BuildShortcuts: набор клавиш по возможностям", TestBuildShortcuts);
             Run("ChoiceCard.FilterByExtension: фильтр по расширению и существованию", TestCardFilter);
             Run("ThumbZoom.Percent: масштаб в процентах от умолчания", TestZoomPercent);
+            Run("ThumbZoom.WidthFromPercent: обратная к Percent, round-trip и кламп", TestWidthFromPercent);
             Run("PdfPageGrid.IsOnLabel: точка в полосе номера, не в плитке", TestIsOnLabel);
             Run("PdfToolFormBase.ShouldOfferCancel: отмена от порога страниц", TestShouldOfferCancel);
             Run("UserSettings: общий Save не затирает масштаб/сжатие устаревшим экземпляром", TestSettingsViewNotClobbered);
+            Run("UserSettings: границы окон сохраняются и не затираются устаревшим Save", TestWindowBoundsPersistence);
             Run("Merge (живой): отмена бросает и не создаёт файл", TestCancelMergeLive);
             Run("SplitEveryN (живой): отмена бросает и удаляет частичные файлы", TestCancelSplitLive);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
@@ -177,6 +180,8 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: строка с красной строкой не центрируется случайной симметрией", TestOcrRedIndentNotCentered);
             Run("WordDocxWriter: межблочные интервалы — типичный зазор, лишек, кап", TestDocxGapMath);
             Run("ShellContext.MoveActiveLast: активное окно пересоздаётся последним", TestMoveActiveLast);
+            Run("WindowPlacement: сериализация границ окна и отбраковка мусора", TestWindowBoundsRoundTrip);
+            Run("WindowPlacement.ClampToWorkingArea: край/вне экрана/мин/макс/мультимонитор", TestClampToWorkingArea);
             Run("OcrLayout: гигантский зазор внутри строки рвёт её на зоны (в ячейке — нет)", TestOcrWideGapSplit);
             Run("WordDocxWriter.CoalesceRowBands: блоки одной строки — в полосу", TestCoalesceRowBands);
             Run("WordDocxWriter.AnchorIndents: красная строка по факту / позиция колонки", TestAnchorIndents);
@@ -742,6 +747,15 @@ namespace ExcelMerger.Tests
             AssertEqual(MainForm.ListKeyAction.Exclude, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Delete), "Delete — исключить");
             AssertEqual(MainForm.ListKeyAction.Swallow, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Enter), "Enter — не сливать");
             AssertEqual(MainForm.ListKeyAction.None, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Up), "просто ↑ — навигация");
+        }
+
+        private static void TestIsResetZoomKey()
+        {
+            var Ctrl = System.Windows.Forms.Keys.Control;
+            AssertTrue(PdfToolFormBase.IsResetZoomKey(Ctrl | System.Windows.Forms.Keys.D0), "Ctrl+0 (основной ряд)");
+            AssertTrue(PdfToolFormBase.IsResetZoomKey(Ctrl | System.Windows.Forms.Keys.NumPad0), "Ctrl+0 (цифровой блок)");
+            AssertTrue(!PdfToolFormBase.IsResetZoomKey(System.Windows.Forms.Keys.D0), "0 без Ctrl — нет");
+            AssertTrue(!PdfToolFormBase.IsResetZoomKey(Ctrl | System.Windows.Forms.Keys.D1), "Ctrl+1 — нет");
         }
 
         private static void TestClassifyPageKey()
@@ -2096,6 +2110,42 @@ namespace ExcelMerger.Tests
             AssertEqual(400.0, WordDocxWriter.ExtraGapPt(900, 7), "кап 400 pt");
         }
 
+        private static void TestWindowBoundsRoundTrip()
+        {
+            var r = new System.Drawing.Rectangle(120, -40, 800, 660); // отрицательный Y — левый монитор
+            System.Drawing.Rectangle back; bool max;
+            AssertTrue(WindowPlacement.TryParse(WindowPlacement.Format(r, false), out back, out max), "разбор своей сериализации");
+            AssertEqual(r, back, "round-trip прямоугольника");
+            AssertTrue(!max, "флаг развёрнуто = false");
+            AssertTrue(WindowPlacement.TryParse(WindowPlacement.Format(r, true), out back, out max) && max, "флаг развёрнуто = true");
+            System.Drawing.Rectangle junk; bool jm;
+            AssertTrue(!WindowPlacement.TryParse(null, out junk, out jm), "null — не разбирается");
+            AssertTrue(!WindowPlacement.TryParse("1,2,3", out junk, out jm), "мало полей — брак");
+            AssertTrue(!WindowPlacement.TryParse("1,2,0,10,0", out junk, out jm), "нулевая ширина — брак");
+            AssertTrue(!WindowPlacement.TryParse("a,b,c,d,e", out junk, out jm), "не числа — брак");
+        }
+
+        private static void TestClampToWorkingArea()
+        {
+            var screen = new System.Drawing.Rectangle(0, 0, 1920, 1040);
+            var one = new[] { screen };
+            var min = new System.Drawing.Size(700, 560);
+            var inside = new System.Drawing.Rectangle(100, 100, 800, 600);
+            AssertEqual(inside, WindowPlacement.ClampToWorkingArea(inside, one, min), "внутри экрана — без изменений");
+            var offRB = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(1900, 1000, 800, 600), one, min);
+            AssertTrue(offRB.Right <= screen.Right && offRB.Bottom <= screen.Bottom, "не за правым/нижним краем");
+            AssertEqual(800, offRB.Width, "ширина сохранена при сдвиге внутрь");
+            var offAll = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(-5000, -5000, 800, 600), one, min);
+            AssertTrue(offAll.X >= screen.Left && offAll.Y >= screen.Top, "ушедшее целиком за экран возвращается");
+            var tiny = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(0, 0, 100, 100), one, min);
+            AssertTrue(tiny.Width >= min.Width && tiny.Height >= min.Height, "не меньше MinimumSize");
+            var huge = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(0, 0, 5000, 5000), one, min);
+            AssertTrue(huge.Width <= screen.Width && huge.Height <= screen.Height, "не больше экрана");
+            var two = new[] { screen, new System.Drawing.Rectangle(1920, 0, 1920, 1040) };
+            var onSecond = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(2200, 100, 800, 600), two, min);
+            AssertEqual(new System.Drawing.Rectangle(2200, 100, 800, 600), onSecond, "на втором мониторе — без изменений");
+        }
+
         private static void TestMoveActiveLast()
         {
             // Активный снапшот уезжает в конец (его окно показывается последним и остаётся
@@ -2397,6 +2447,13 @@ namespace ExcelMerger.Tests
                 AssertEqual((int)Lang.Ru, (int)Loc.Parse("xx"), "Parse неизвестный -> ru");
                 AssertEqual("en", Loc.Code(Lang.En), "Code En");
                 AssertEqual("ru", Loc.Code(Lang.Ru), "Code Ru");
+                // Дефолт первого запуска по системной локали: русская → ru, прочие → en.
+                AssertEqual((int)Lang.Ru, (int)Loc.DefaultForCulture("ru-RU"), "локаль ru-RU -> ru");
+                AssertEqual((int)Lang.Ru, (int)Loc.DefaultForCulture("RU"), "локаль RU -> ru");
+                AssertEqual((int)Lang.En, (int)Loc.DefaultForCulture("en-US"), "локаль en-US -> en");
+                AssertEqual((int)Lang.En, (int)Loc.DefaultForCulture("de-DE"), "локаль de-DE -> en");
+                AssertEqual((int)Lang.En, (int)Loc.DefaultForCulture(null), "нет локали -> en");
+                AssertEqual((int)Lang.En, (int)Loc.DefaultForCulture(""), "пустая локаль -> en");
             }
             finally { Loc.Init(saved); }
         }
@@ -3965,6 +4022,19 @@ namespace ExcelMerger.Tests
             AssertEqual(ThumbZoom.Percent(ThumbZoom.MaxWidth), ThumbZoom.Percent(10000), "сверх максимума клампится");
         }
 
+        private static void TestWidthFromPercent()
+        {
+            AssertEqual(ThumbZoom.DefaultWidth, ThumbZoom.WidthFromPercent(100), "100% → ширина по умолчанию");
+            // Round-trip на границах: процент границы обратно даёт ту же граничную ширину.
+            AssertEqual(ThumbZoom.MinWidth, ThumbZoom.WidthFromPercent(ThumbZoom.Percent(ThumbZoom.MinWidth)), "round-trip: минимум");
+            AssertEqual(ThumbZoom.MaxWidth, ThumbZoom.WidthFromPercent(ThumbZoom.Percent(ThumbZoom.MaxWidth)), "round-trip: максимум");
+            AssertEqual(ThumbZoom.MinWidth, ThumbZoom.WidthFromPercent(1), "ниже минимума клампится");
+            AssertEqual(ThumbZoom.MaxWidth, ThumbZoom.WidthFromPercent(9999), "выше максимума клампится");
+            AssertTrue(ThumbZoom.WidthFromPercent(50) < ThumbZoom.DefaultWidth, "50% < умолчания");
+            AssertEqual(ThumbZoom.Percent(ThumbZoom.MinWidth), ThumbZoom.MinPercent, "MinPercent = Percent(MinWidth)");
+            AssertEqual(ThumbZoom.Percent(ThumbZoom.MaxWidth), ThumbZoom.MaxPercent, "MaxPercent = Percent(MaxWidth)");
+        }
+
         private static void TestIsOnLabel()
         {
             var tile = new System.Drawing.Rectangle(100, 50, 132, 172); // низ плитки = 222
@@ -4001,6 +4071,37 @@ namespace ExcelMerger.Tests
                 AssertEqual(300, after.ZoomWidth, "общий Save НЕ затёр масштаб");
                 AssertEqual(2, after.CompressionLevel, "общий Save НЕ затёр сжатие");
                 AssertEqual("X", after.LastInputFolder, "общий Save сохранил собственные поля экземпляра");
+            }
+            finally
+            {
+                AppPaths.SetRootForTests(null);
+                try { Directory.Delete(root, true); } catch { }
+            }
+        }
+
+        private static void TestWindowBoundsPersistence()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "iwo_wnd_" + Guid.NewGuid().ToString("N"));
+            AppPaths.SetRootForTests(root);
+            try
+            {
+                // Границы двух окон сохраняются и читаются обратно.
+                UserSettings.SaveWindowBounds("PdfMergeForm", "10,20,780,660,0");
+                UserSettings.SaveWindowBounds("MainForm", "0,0,760,725,1");
+                UserSettings loaded = UserSettings.Load();
+                string a, b;
+                AssertTrue(loaded.WindowBounds.TryGetValue("PdfMergeForm", out a) && a == "10,20,780,660,0", "границы Merge сохранены");
+                AssertTrue(loaded.WindowBounds.TryGetValue("MainForm", out b) && b == "0,0,760,725,1", "границы Main сохранены");
+
+                // Устаревший экземпляр (загружен ДО правки) своим Save() НЕ затирает чужие границы.
+                UserSettings stale = UserSettings.Load();
+                UserSettings.SaveWindowBounds("PdfSplitForm", "5,5,700,560,0"); // другое окно записало свои
+                stale.LastInputFolder = "Y";
+                stale.Save();
+                UserSettings after = UserSettings.Load();
+                string c;
+                AssertTrue(after.WindowBounds.TryGetValue("PdfSplitForm", out c) && c == "5,5,700,560,0", "чужие границы не затёрты устаревшим Save");
+                AssertEqual("Y", after.LastInputFolder, "устаревший экземпляр сохранил свои поля");
             }
             finally
             {
@@ -4126,7 +4227,7 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
-        /// Ctrl+колесо в сетке применяется троттлингом ползунка: пока цель не применена,
+        /// Ctrl+колесо в сетке применяется троттлингом регулятора: пока цель не применена,
         /// следующие щелчки шагают от неё — быстрое вращение не теряет шаги.
         /// </summary>
         private static void TestWheelBasis()

@@ -12,7 +12,14 @@ namespace ExcelMerger
         [STAThread]
         private static int Main(string[] args)
         {
-            Loc.Init(Loc.Parse(UserSettings.Load().Language)); // язык интерфейса из настроек — до создания окон
+            // Язык интерфейса — до создания окон. Явный выбор (инсталлер сидит settings.txt при
+            // установке, либо прошлый запуск сохранил) применяем как есть; первый запуск без
+            // настроек (portable-версия) берёт язык по системной локали, чтобы англоязычному не
+            // выскакивал русский.
+            UserSettings startup = UserSettings.Load();
+            Loc.Init(startup.Language != null
+                ? Loc.Parse(startup.Language)
+                : Loc.DefaultForCulture(System.Globalization.CultureInfo.CurrentUICulture.Name));
             if (args.Length >= 1 && string.Equals(args[0], "--selftest", StringComparison.OrdinalIgnoreCase))
                 return RunSelfTest();
             if (args.Length >= 1 && string.Equals(args[0], "--pdfcheck", StringComparison.OrdinalIgnoreCase))

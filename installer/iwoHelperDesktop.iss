@@ -66,6 +66,10 @@ UsePreviousAppDir=yes
 ; Показать страницу приветствия — на ней явно предупреждаем про установку
 ; только для текущего пользователя (см. [Messages] WelcomeLabel2).
 DisableWelcomePage=no
+; Всегда спрашивать язык в начале установки (RU/EN): выбранный язык мастера становится
+; языком приложения по умолчанию (см. [Code] SeedLanguage). Так англоязычному пользователю
+; не выскакивает русский интерфейс.
+ShowLanguageDialog=yes
 ; Минимальная ОС — Windows 8.1 (NT 6.3): раньше неё нет Windows.Data.Pdf (миниатюры).
 ; .NET Framework 4.8 проверяется в [Code] (в Windows 10 1903+ уже встроен).
 MinVersion=6.3
@@ -89,11 +93,17 @@ WizardSmallImageFile=wizard_small.bmp
 LicenseFile=license_installer.txt
 
 [Languages]
+; Английский (Default.isl) и русский. Язык выбирается в начале установки (ShowLanguageDialog)
+; и задаёт ЯЗЫК ПРИЛОЖЕНИЯ по умолчанию — [Code] сидит его в settings.txt. По умолчанию
+; предлагается язык системы (LanguageDetectionMethod=uilanguage); англ. — первый в списке,
+; поэтому нераспознанная локаль получает английский мастер, а не русский.
+Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Messages]
-; Явное предупреждение про режим установки на странице приветствия.
+; Явное предупреждение про режим установки на странице приветствия (на языке мастера).
 ru.WelcomeLabel2=Будет установлено приложение «iwo Helper Desktop» {#AppVersion}.%n%nВНИМАНИЕ: по умолчанию программа устанавливается ТОЛЬКО для текущего пользователя (права администратора не нужны). Чтобы установить для всех пользователей этого компьютера, выберите соответствующий вариант в начале установки.%n%nРекомендуется закрыть остальные приложения перед продолжением.
+en.WelcomeLabel2=This will install iwo Helper Desktop {#AppVersion}.%n%nNOTE: by default the app is installed for the CURRENT USER ONLY (no administrator rights required). To install it for all users of this computer, choose that option at the start of setup.%n%nIt is recommended to close all other applications before continuing.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -140,4 +150,33 @@ begin
         SW_SHOWNORMAL, ewNoWait, ErrCode);
     Result := False;
   end;
+end;
+
+// Записать язык приложения по умолчанию из выбранного языка мастера в settings.txt
+// (%APPDATA%\iwo Helper Desktop). Приложение читает эту строку при старте — так язык
+// установки становится языком интерфейса. Пишем ТОЛЬКО при ПЕРВОЙ установке (файла ещё
+// нет): единственную ASCII-строку language=xx. Перезаписывать существующий файл нельзя —
+// Inno читает/пишет его в системной кодировке (ANSI), а .NET пишет UTF-8, поэтому
+// read-modify-write испортил бы НЕ-ASCII содержимое (кириллические пути в lastInputFolder).
+// Если файл уже есть — язык задан приложением или прошлой установкой, не трогаем.
+procedure SeedLanguage();
+var
+  Dir, FilePath, Code: String;
+  Lines: TArrayOfString;
+begin
+  Dir := ExpandConstant('{userappdata}\iwo Helper Desktop');
+  FilePath := Dir + '\settings.txt';
+  if FileExists(FilePath) then
+    Exit; // настройки уже есть — язык задан, кодировку не рискуем
+  if ActiveLanguage() = 'en' then Code := 'en' else Code := 'ru';
+  ForceDirectories(Dir);
+  SetArrayLength(Lines, 1);
+  Lines[0] := 'language=' + Code; // единственная строка, чистый ASCII
+  SaveStringsToFile(FilePath, Lines, False);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    SeedLanguage(); // язык установки → язык приложения по умолчанию
 end;

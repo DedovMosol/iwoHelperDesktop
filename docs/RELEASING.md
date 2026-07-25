@@ -7,14 +7,14 @@ push, but does **not** create GitHub Releases.
 
 Each release publishes four assets — the same tool set for both architectures. **Every
 file name carries the version** so a downloaded file is self-identifying (the portable
-exes are copied from the build output to versioned names, keeping their signature; the
+exes are copied from the build output to versioned names, keeping their signature, the
 installers come out versioned from ISCC):
 
 - `iwoHelperDesktop-<version>.exe` / `iwoHelperDesktop-<version>-x86.exe` — portable single
   files, 64-bit and 32-bit (run as-is — PDF compression works if Ghostscript is installed).
 - `iwoHelperDesktop-setup-<version>.exe` / `iwoHelperDesktop-setup-<version>-x86.exe` —
   installers that **bundle Ghostscript** of the matching bitness (compression out of the
-  box), install **per-user without admin** by default. Minimum OS is Windows 8.1; the
+  box), install **per-user without admin** by default. Minimum OS is Windows 8.1, the
   installer checks for .NET Framework 4.8 and points to the download when it is missing.
 
 The four README download buttons link to `releases/download/v<version>/<file>` — a direct
@@ -49,7 +49,7 @@ README when you bump the version**, so the buttons point at the new files.
    powershell -NoProfile -File tools\make_release.ps1 -Publish
    ```
 
-`make_release.ps1` chains `make_installer.ps1` per architecture (x64, then x86; each:
+`make_release.ps1` chains `make_installer.ps1` per architecture (x64, then x86, each:
 build → sign exe → stage Ghostscript → ISCC → sign installer) and refuses to publish
 when the x64 and x86 exe versions differ. Re-running `-Publish` for an existing tag
 updates the assets (`gh release upload --clobber`) and the notes.

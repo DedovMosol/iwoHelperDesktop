@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -13,11 +14,18 @@ namespace ExcelMerger
         public bool AddToc = true;              // «Содержание» по умолчанию включено
         public bool AllSheets;                  // все листы (по умолчанию — только первый)
         public string OutputExtension = ".xlsx";
-        public string Language = "ru";          // язык интерфейса: «ru»/«en» (см. Loc)
+        // Язык интерфейса «ru»/«en» (см. Loc). null = не задан (первый запуск без настроек):
+        // Program берёт язык по системной локали. Установленную версию сидит инсталлер.
+        public string Language;
         // Вид PDF-инструментов между запусками: ширина плитки (0 — не задана, брать умолчание)
         // и уровень сжатия (индекс CompressionLevel). Применяет/сохраняет PdfToolFormBase.
         public int ZoomWidth;
         public int CompressionLevel;
+        // Размер/положение окон между запусками: ключ — имя типа формы, значение «x,y,w,h,m»
+        // (см. WindowPlacement). Кросс-настройка (не «своя» ни у одного окна) — сохраняется из
+        // свежей загрузки, поэтому долгоживущее окно не затрёт границы, записанные другим окном.
+        public readonly Dictionary<string, string> WindowBounds =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         private static string FilePath
         {
@@ -47,6 +55,8 @@ namespace ExcelMerger
                     else if (key == "language" && (value == "ru" || value == "en")) s.Language = value;
                     else if (key == "zoomWidth") { int z; if (int.TryParse(value, out z)) s.ZoomWidth = z; }
                     else if (key == "compression") { int c; if (int.TryParse(value, out c)) s.CompressionLevel = c; }
+                    else if (key.StartsWith("wnd.", StringComparison.Ordinal) && key.Length > 4)
+                        s.WindowBounds[key.Substring(4)] = value;
                 }
             }
             catch { } // повреждённые настройки не должны мешать запуску
@@ -63,7 +73,7 @@ namespace ExcelMerger
         public void Save()
         {
             UserSettings disk = Load(); // свежие значения полей, которыми этот экземпляр не владеет
-            WriteAll(disk.ZoomWidth, disk.CompressionLevel);
+            WriteAll(disk.ZoomWidth, disk.CompressionLevel, disk.WindowBounds);
         }
 
         /// <summary>
@@ -73,15 +83,27 @@ namespace ExcelMerger
         /// </summary>
         public void SaveView(int zoomWidth, int compressionLevel)
         {
-            WriteAll(zoomWidth, compressionLevel);
+            WriteAll(zoomWidth, compressionLevel, WindowBounds);
         }
 
-        private void WriteAll(int zoomWidth, int compressionLevel)
+        /// <summary>
+        /// Сохранить размер/положение одного окна (ключ — имя типа формы), не тронув прочие
+        /// настройки и границы других окон: read-modify-write свежей загрузки (как SaveView для
+        /// масштаба). Долгоживущее окно так не затрёт границы, записанные другим окном.
+        /// </summary>
+        public static void SaveWindowBounds(string formKey, string bounds)
+        {
+            UserSettings disk = Load();
+            disk.WindowBounds[formKey] = bounds;
+            disk.WriteAll(disk.ZoomWidth, disk.CompressionLevel, disk.WindowBounds);
+        }
+
+        private void WriteAll(int zoomWidth, int compressionLevel, Dictionary<string, string> windowBounds)
         {
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
-                File.WriteAllLines(FilePath, new List<string>
+                var lines = new List<string>
                 {
                     "lastInputFolder=" + (LastInputFolder ?? ""),
                     "lastOutputFolder=" + (LastOutputFolder ?? ""),
@@ -94,7 +116,16 @@ namespace ExcelMerger
                     // экземпляра: другие формы держат устаревшую копию настроек и иначе
                     // затёрли бы язык обратно при своём Save.
                     "language=" + Loc.Code(Loc.Current)
-                });
+                };
+                // Границы окон (wnd.<Форма>=x,y,w,h,m) — отсортированно: детерминированный файл.
+                if (windowBounds != null)
+                {
+                    var keys = new List<string>(windowBounds.Keys);
+                    keys.Sort(StringComparer.Ordinal);
+                    foreach (string k in keys)
+                        lines.Add("wnd." + k + "=" + windowBounds[k]);
+                }
+                File.WriteAllLines(FilePath, lines);
             }
             catch { }
         }
