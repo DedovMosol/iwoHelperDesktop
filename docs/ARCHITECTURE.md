@@ -397,9 +397,12 @@ needs Office gets a `verify` script.
 - **Installer** (`installer/iwoHelperDesktop.iss`): one script, `/DArch=x64|x86` selects
   the exe, the bundled Ghostscript (`installer\gs\` or `installer\gs32\`) and the `-x86`
   file-name suffix. `MinVersion=6.3` (Windows 8.1), `[Code]` verifies .NET Framework 4.8
-  and opens the download page when missing. Setup asks for its language (Russian/English,
-  `ShowLanguageDialog`) and seeds that choice as the app's default language in `settings.txt`
-  (`SeedLanguage`), so the installed app opens in the language chosen at install time.
+  and opens the download page when missing. Setup opens with a custom flag language picker
+  (Russian/English) from `InitializeWizard` (`PromptLanguageByFlags`). Choosing a non‑system
+  language relaunches Setup with `/LANG=` and the install mode (Inno fixes the wizard language
+  before the wizard is built, so a relaunch is the only way to re‑localise it), and the choice
+  is seeded as the app's default language in `settings.txt` (`SeedLanguage`), so the installed
+  app opens in the language chosen at install time.
 - **Release** (local, maintainer-only — the self-signed certificate lives on one
   machine): bump `src/AssemblyInfo.cs`, add a CHANGELOG section, then
   `tools\make_release.ps1 -Publish` runs `make_installer.ps1` per architecture (build →
@@ -415,9 +418,9 @@ needs Office gets a `verify` script.
 |---|---|
 | `src/` | All application sources (one project, flat). |
 | `tests/` | `UnitTests.cs` + runner project, `verify*.ps1` integration scripts, corpus generators. |
-| `tools/` | Maintainer scripts: `make_release.ps1`, `make_installer.ps1`, `sign.ps1`, `stage_gs.ps1`, `make_wizard_images.ps1`. |
+| `tools/` | Maintainer scripts: `make_release.ps1`, `make_installer.ps1`, `sign.ps1`, `stage_gs.ps1`, `make_wizard_images.ps1`, `make_flag_bitmaps.ps1` (renders the installer language‑picker flags, mirroring `Flags.cs`). |
 | `build/` | Build inputs: icon, manifest, vendored `PdfSharp.dll`, `pdfpig/*`. |
-| `installer/` | Inno Setup script + wizard images, `gs/` and `gs32/` are staged locally and gitignored. |
+| `installer/` | Inno Setup script + wizard images + language‑picker flags (`flag_en.bmp`, `flag_ru.bmp`), `gs/` and `gs32/` are staged locally and gitignored. |
 | `docs/` | This file, `CHANGELOG.md`, `PRIVACY.md`, `RELEASING.md`, screenshots. |
 | `dist/` | Build output (gitignored), `dist\x86\` holds the 32-bit build. |
 | `.github/workflows/` | `ci.yml`. |

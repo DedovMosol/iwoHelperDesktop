@@ -3,22 +3,26 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
-## [1.17.5] — 2026-07-25
+## [1.17.5] — 2026-07-26
 
 ### Added
 - **Type an exact zoom percentage.** A “%” box next to the zoom slider lets you enter a
   precise scale (or nudge it with the spin arrows), on top of the slider and Ctrl+wheel.
   Ctrl+0, or a double‑click on the “%”, resets the zoom to 100%.
-- **The installer asks for a language.** Setup now offers Russian or English at the start
-  and runs in that language, and the chosen language becomes the app’s default, so an
-  English user is not shown a Russian interface. The portable build follows the system
-  language on first run.
+- **The installer opens with a flag language chooser.** Setup starts with a Russian/English
+  picker showing each flag (instead of a plain drop‑down), runs the wizard in the chosen
+  language, and makes that language the app’s default, so an English user is not shown a
+  Russian interface. The portable build follows the system language on first run.
 - **Windows remember their size and position.** Each tool window (and the Excel Digest
   window) reopens where and at the size you left it, restored safely onto a visible screen
   (never off‑screen or on a disconnected monitor).
 - **Clearer Split hints.** The “ranges” and “every N pages” fields show tooltips that
   explain the format, and the shortcuts cheat sheet and per‑tool help now cover the new
   zoom entry and the reset.
+
+### Changed
+- **Consistent zoom control across PDF tools.** The zoom slider and “%” box now line up at
+  the same size and position in PDF → Word as they do in Merge and Split.
 
 ## [1.17.4] — 2026-07-25
 

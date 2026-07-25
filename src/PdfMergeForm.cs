@@ -191,8 +191,7 @@ namespace ExcelMerger
             if (compressed)
                 UsageStats.RecordPdfCompress();
             SetStatus(string.Format(Loc.T(compressed ? "pdf.status.savedCompressed" : "pdf.status.saved"), pageCount), Theme.OkGreen);
-            try { Process.Start(outputPath); }
-            catch { } // нет ассоциации PDF — файл всё равно сохранён
+            Ui.OpenPath(outputPath); // авто-открытие результата; молча, если нет ассоциации PDF
         }
 
         /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>

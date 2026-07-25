@@ -16,6 +16,23 @@ namespace ExcelMerger
         private readonly ToolTip _tips;
         private bool _reverting; // защита от реентранси SelectedIndexChanged
 
+        private const int CaptionGap = 8;  // подпись → список
+        private const int ComboExtra = 40; // кнопка списка + внутренние отступы
+
+        /// <summary>
+        /// Ширина контрола (подпись + список под самый длинный пункт). Статична, чтобы экраны БЕЗ
+        /// сжатия (PDF → Word) резервировали такое же место и регулятор масштаба был одинакового
+        /// размера на всех PDF-инструментах (единая раскладка).
+        /// </summary>
+        public static int PreferredWidth()
+        {
+            var font = Ui.Font(9.75f);
+            int widest = 0;
+            foreach (string lbl in PdfCompression.LevelLabels())
+                widest = Math.Max(widest, TextRenderer.MeasureText(lbl, font).Width);
+            return TextRenderer.MeasureText(Loc.T("common.compression"), font).Width + CaptionGap + widest + ComboExtra;
+        }
+
         public CompressionPicker()
         {
             // Без этого стиля UserControl игнорирует Transparent и красит себя серым
@@ -34,21 +51,19 @@ namespace ExcelMerger
 
             _combo = new ComboBox();
             _combo.DropDownStyle = ComboBoxStyle.DropDownList;
-            string[] levelLabels = PdfCompression.LevelLabels();
-            _combo.Items.AddRange(levelLabels);
+            _combo.Items.AddRange(PdfCompression.LevelLabels());
             _combo.SelectedIndex = (int)CompressionLevel.None; // «Отлично — без сжатия»
-            // Ширина — под самый длинный пункт (иначе «Нормально — минимальный размер» обрезается).
-            int widest = 0;
-            foreach (string lbl in levelLabels)
-                widest = Math.Max(widest, TextRenderer.MeasureText(lbl, Font).Width);
-            _combo.SetBounds(caption.Right + 8, 1, widest + 40, 27); // +кнопка списка и отступы
+            // Ширина контрола — PreferredWidth (под самый длинный пункт), ту же резервируют экраны
+            // без сжатия, чтобы регулятор масштаба был одинакового размера везде.
+            int total = PreferredWidth();
+            _combo.SetBounds(caption.Right + CaptionGap, 1, total - caption.Right - CaptionGap, 27);
             _combo.SelectedIndexChanged += OnSelectedIndexChanged;
             Controls.Add(_combo);
 
             _tips = new ToolTip();
             _tips.SetToolTip(_combo, Loc.T("common.tip.compression"));
 
-            Size = new Size(_combo.Right, 29);
+            Size = new Size(total, 29);
         }
 
         /// <summary>Выбранный уровень сжатия.</summary>

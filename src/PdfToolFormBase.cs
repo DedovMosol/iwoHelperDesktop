@@ -283,8 +283,11 @@ namespace ExcelMerger
             // край растяжимого регулятора. Подпись и сжатие оба на правом якоре → между ними
             // ПОСТОЯННЫЙ зазор на любой ширине окна, поэтому они не наезжают друг на друга даже
             // при минимальной ширине (замер: длинная метка сжатия иначе перекрывала бы «%»).
-            const int pctW = 62; // ширина блока масштаба: поле ввода «303» + подпись «%»
-            int pctRight;        // правый край подписи процента
+            const int pctW = 62;        // ширина блока масштаба: поле ввода «303» + подпись «%»
+            const int compressGap = 12; // зазор между блоком «%» и выбором сжатия
+            // Место под выбор сжатия резервируется ВСЕГДА — даже когда его нет (PDF → Word), — чтобы
+            // регулятор масштаба и блок «%» были одинакового размера и положения на ВСЕХ PDF-экранах.
+            int compressSlot = CompressionPicker.PreferredWidth();
             if (withCompress)
             {
                 _compress = new CompressionPicker();
@@ -292,12 +295,8 @@ namespace ExcelMerger
                 _compress.Location = new Point(right - _compress.Width, h - 146);
                 _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
                 Controls.Add(_compress);
-                pctRight = _compress.Left - 12; // постоянный зазор до выбора сжатия
             }
-            else
-            {
-                pctRight = right; // сжатия нет — подпись у правого края ряда
-            }
+            int pctRight = right - compressSlot - compressGap; // единый правый край «%» на всех экранах
             int pctLeft = pctRight - pctW;
             const int sliderLeft = 85;
 

@@ -465,14 +465,7 @@ namespace ExcelMerger
             if (ShouldSuggestCompression(level, sourceSize, largestOutput))
                 status += Loc.T("split.status.largeHint");
             SetStatus(status, Theme.OkGreen);
-            try
-            {
-                if (openAsFolder)
-                    Process.Start("explorer.exe", "\"" + openTarget + "\"");
-                else
-                    Process.Start(openTarget);
-            }
-            catch { } // нет ассоциации/проводника — файлы всё равно созданы
+            Ui.OpenPath(openTarget, openAsFolder); // авто-открытие; молча — файлы всё равно созданы
         }
 
         /// <summary>Длина файла в байтах (0, если недоступен). Без исключений.</summary>
