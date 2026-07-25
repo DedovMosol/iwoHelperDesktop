@@ -216,6 +216,7 @@ namespace ExcelMerger
                 "Microsoft Word is not installed: the Word.Application COM component was not found.");
             A("err.word.fileBusy", "«{0}» недоступен для записи — возможно, открыт в Word или другой программе.",
                 "“{0}” is not writable — it may be open in Word or another program.");
+            A("err.word.saveFailed", "Не удалось сохранить «{0}»: {1}", "Could not save “{0}”: {1}");
             A("word.label.docx", "Файл Word", "Word file");
             A("word.label.note", "Записка Word", "Word note");
             // cli.* — консольный режим

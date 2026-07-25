@@ -83,11 +83,24 @@ namespace ExcelMerger
             return b;
         }
 
-        /// <summary>Иконка приложения из exe (или null, если недоступна). Общая для всех окон.</summary>
+        private static Icon _appIcon;
+        private static bool _appIconTried;
+
+        /// <summary>
+        /// Иконка приложения из exe (или null, если недоступна). Общая для всех окон.
+        /// Кэш на процесс: ExtractAssociatedIcon создаёт НОВЫЙ HICON на каждый вызов, а
+        /// Form.Icon его не освобождает — без кэша каждый диалог/предпросмотр копил бы
+        /// хэндлы до финализатора. Кэш не освобождается (живёт весь процесс). UI-поток.
+        /// </summary>
         public static Icon AppIcon()
         {
-            try { return Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
-            catch { return null; } // без иконки — со стандартной системной
+            if (!_appIconTried)
+            {
+                _appIconTried = true;
+                try { _appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+                catch { _appIcon = null; } // без иконки — со стандартной системной
+            }
+            return _appIcon;
         }
 
         /// <summary>Акцентная полоса заданного цвета в верхней части окна.</summary>

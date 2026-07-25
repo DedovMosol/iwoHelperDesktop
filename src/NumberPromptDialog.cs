@@ -25,7 +25,9 @@ namespace ExcelMerger
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
             const int margin = 16, btnW = 112, btnH = 30;
-            int w = 300; // вмещает самую длинную подпись (замер) и разнесённые кнопки
+            // База 300 вмещает кнопки по краям; длинная подпись (например, 5-значное число
+            // страниц в «до {0}») расширяет окно по замеру — статичная константа обрезала бы её.
+            int w = DialogWidth(TextRenderer.MeasureText(prompt, Font).Width, margin, 300);
             BackColor = Color.White;
 
             var label = new Label();
@@ -66,6 +68,12 @@ namespace ExcelMerger
             base.OnShown(e);
             _num.Select(0, _num.Value.ToString().Length); // сразу печатать номер без очистки поля
             _num.Focus();
+        }
+
+        /// <summary>Ширина диалога: не уже базовой и не уже подписи с полями. Чистая — под тест.</summary>
+        internal static int DialogWidth(int promptWidth, int margin, int minWidth)
+        {
+            return Math.Max(minWidth, promptWidth + 2 * margin);
         }
 
         /// <summary>Показать диалог; вернуть число в [min..max] или -1 при отмене.</summary>
