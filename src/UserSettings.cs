@@ -53,7 +53,30 @@ namespace ExcelMerger
             return s;
         }
 
+        /// <summary>
+        /// Сохранить настройки. Масштаб и уровень сжатия PDF-инструментов НЕ берутся из
+        /// полей этого экземпляра, а сохраняются из свежайшего значения на диске: их
+        /// владелец — PDF-окна, а долгоживущие окна (MainForm держит копию с запуска)
+        /// иначе затёрли бы устаревшим значением чужой правкой (та же ловушка, что с
+        /// языком). Осознанно эти поля пишет только <see cref="SaveView"/>.
+        /// </summary>
         public void Save()
+        {
+            UserSettings disk = Load(); // свежие значения полей, которыми этот экземпляр не владеет
+            WriteAll(disk.ZoomWidth, disk.CompressionLevel);
+        }
+
+        /// <summary>
+        /// Сохранить настройки вместе с видом PDF-инструмента: масштаб и уровень сжатия
+        /// пишутся ЯВНО (вызывает <see cref="PdfToolFormBase"/> при закрытии окна поверх
+        /// свежей загрузки, поэтому прочие поля тоже актуальны).
+        /// </summary>
+        public void SaveView(int zoomWidth, int compressionLevel)
+        {
+            WriteAll(zoomWidth, compressionLevel);
+        }
+
+        private void WriteAll(int zoomWidth, int compressionLevel)
         {
             try
             {
@@ -65,8 +88,8 @@ namespace ExcelMerger
                     "addToc=" + AddToc,
                     "allSheets=" + AllSheets,
                     "outputExtension=" + (OutputExtension ?? ".xlsx"),
-                    "zoomWidth=" + ZoomWidth,
-                    "compression=" + CompressionLevel,
+                    "zoomWidth=" + zoomWidth,
+                    "compression=" + compressionLevel,
                     // Язык — из живого Loc (единый источник истины), а НЕ из поля этого
                     // экземпляра: другие формы держат устаревшую копию настроек и иначе
                     // затёрли бы язык обратно при своём Save.

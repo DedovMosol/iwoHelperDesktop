@@ -126,7 +126,7 @@ are conceptual.
 | `IBusyAware.cs` | Marker for windows running a long operation (skipped by the language rebuild). |
 | `FastExit.cs` | Hard process exit for headless modes — avoids WinRT finalization crashes on CLR unload. |
 | `CrashReport.cs` | Global exception handlers: branded dialog on the UI thread, silent log otherwise; `%APPDATA%\…\crash.log` with size rotation. |
-| `UserSettings.cs`, `AppPaths.cs` | `settings.txt` (language, remembered options) and all `%APPDATA%` paths. |
+| `UserSettings.cs`, `AppPaths.cs` | `settings.txt` (language, remembered options, PDF zoom width and compression level) and all `%APPDATA%` paths. Fields owned by another window are never clobbered by a stale instance: `Save` re-reads zoom/compression from disk (the PDF tools write them explicitly via `SaveView`), the same way language is taken from the live `Loc`. |
 | `UsageStats.cs` | Local operation counters in `stats.txt`, guarded by a cross-process mutex; optional auto-clear. |
 | `UpdateChecker.cs` | Manual check: reads the latest release tag from the GitHub API, compares, offers to open the Releases page. Pure `ParseTag`/`IsNewer` for tests. |
 | `Loc.cs`, `Flags.cs` | Localization catalog and GDI-drawn menu flags — see [Localization](#localization). |
@@ -166,9 +166,11 @@ boxes), `GoToPageDialog` (Ctrl+G), `AboutForm`, `StatsForm`, `FolderPicker`,
 | File | Responsibility |
 |---|---|
 | `EmbeddedAssemblies.cs` | Runtime resolver for the embedded PdfSharp/PdfPig assemblies. |
-| `PdfToolFormBase.cs` | Base class of all PDF tool windows: thumbnail grid, zoom slider, compression picker, status/progress strip (with a per-page counter and a selection counter — pure `ProgressItem`/`RestingStatus`), drag-and-drop, a keyboard-shortcuts cheat sheet built from the grid's capabilities (`BuildShortcuts`), the shared grid hotkeys (`ClassifyPageKey`: Ctrl+A/X/C/V/Z/Y/G, Alt+←/→, Delete, Esc, Ctrl+Shift+«+»/«−»), background-work lifecycle. Forms open with dropped files via `IFileAcceptor` (drop onto a start-screen `ChoiceCard`). |
-| `PdfPageGrid.cs`, `PdfPageOrder.cs` | The thumbnail grid subsystem, OWNER-DRAWN (tiles, number captions, selection, cut-dimming and the rotation badge are painted in `DrawItem`; `LVM_SETICONSPACING` sets the cell, so zoom goes to 400 px past the ImageList limit — an empty metrics ImageList keeps native hit-testing honest and clicks on the outer ring of big tiles are compensated). Lazy visible-only rendering with a larger re-render on deep zoom, an in-window page buffer (cut/copy/paste) with an insertion caret and a hover hint, drag reorder with edge auto-scroll, file drop with an insert position, per-page and whole-document rotation, «Move after page N…», a context menu, `Locked` gating during operations. Hovering a tile shows ↺/↻ rotate chips on it. The page-order model (`PdfPageRef` = source file + page index + rotation) is shared by merge and PDF → Word and keeps undo/redo stacks (Ctrl+Z / Ctrl+Y) of order-plus-rotation snapshots (`BeforeRotate` lets the form checkpoint before the grid mutates angles); the grid mutates only `Rotation` of the shared refs and requests order changes via events. |
+| `PdfToolFormBase.cs` | Base class of all PDF tool windows: thumbnail grid, zoom slider with a live percentage readout (`ThumbZoom.Percent`) and Ctrl+wheel over the slider, compression picker, status/progress strip (with a per-page counter and a selection counter — pure `ProgressItem`/`RestingStatus`), drag-and-drop, a keyboard-shortcuts cheat sheet built from the grid's capabilities (`BuildShortcuts`), the shared grid hotkeys (`ClassifyPageKey`: Ctrl+A/X/C/V/Z/Y/G, Alt+←/→, Delete, Esc, Ctrl+Shift+«+»/«−»), background-work lifecycle. The zoom slider and the percentage share the row with the compression picker on the right, both right-anchored so a constant gap keeps them apart at any width (the slider stretches). Remembers the last zoom width and compression level between runs (`SaveView`, restored in `BuildBottomStrip`). Cooperative cancellation of long operations (`ShouldOfferCancel` ≥ 5 pages): a Cancel button overlays the action button (`CancelToken` → a `volatile` flag the worker polls), withdrawn at the point of no return once the output is committed (`StopOfferingCancel`). Forms open with dropped files via `IFileAcceptor` (drop onto a start-screen `ChoiceCard`). |
+| `PdfPageGrid.cs`, `PdfPageOrder.cs` | The thumbnail grid subsystem, OWNER-DRAWN (tiles, number captions, selection, cut-dimming and the rotation badge are painted in `DrawItem`; `LVM_SETICONSPACING` sets the cell, so zoom goes to 400 px past the ImageList limit — an empty metrics ImageList keeps native hit-testing honest and clicks on the outer ring of big tiles are compensated). Lazy visible-only rendering with a larger re-render on deep zoom, an in-window page buffer (cut/copy/paste) with an insertion caret and a hover hint, drag reorder with edge auto-scroll, file drop with an insert position, per-page and whole-document rotation, «Move after page N…», a context menu, `Locked` gating during operations. Hovering a tile shows ↺/↻ rotate chips on it. Double-clicking a tile opens a full-size page preview (`PagePreviewForm`); double-clicking the number strip under a tile (`IsOnLabel`) opens «Move after page…» instead. The page-order model (`PdfPageRef` = source file + page index + rotation) is shared by merge and PDF → Word and keeps undo/redo stacks (Ctrl+Z / Ctrl+Y) of order-plus-rotation snapshots (`BeforeRotate` lets the form checkpoint before the grid mutates angles); the grid mutates only `Rotation` of the shared refs and requests order changes via events. |
 | `PdfThumbnailRenderer.cs`, `LruCache.cs` | WinRT rendering **from memory** (see invariants) at a DPI-scaled width; LRU of open documents (6, halved on x86) and a byte-budgeted LRU of rendered pages (192 MB, 48 MB on x86) — an evicted page re-renders when shown again. |
+| `PagePreviewForm.cs` | Modal full-size preview of one page (double-click a tile). Renders on its own background thread with a private `PdfThumbnailRenderer` (single-threaded), honours the tile's rotation, disposes the bitmap on close and drops a late render if the window is already gone. |
+| `Cancellation.cs` | One tiny helper — `ThrowIf(Func<bool>)` throws `OperationCanceledException` when the cooperative cancel flag is set. Services call it between work units; every PDF service saves at the very end, so a cancel leaves no partial output (multi-file splits delete the parts already produced). |
 | `Ghostscript.cs` | Locates gs (bundled → registry → `Program Files` → user profile → `PATH`) and runs it with a timeout. |
 | `PdfCompression.cs` | `pdfwrite` downsampling (`/ebook`, `/screen`), PDF 1.4 output; the result replaces the original only if it is a valid PDF **and** strictly smaller. |
 | `PageRasterizer.cs` | Renders a page region to PNG via gs — the raster fallback used for soft-masked images and text stamps. |
@@ -178,7 +180,9 @@ boxes), `GoToPageDialog` (Ctrl+G), `AboutForm`, `StatsForm`, `FolderPicker`,
 
 `PdfMergeForm` / `PdfMergeService` (load page sizes, copy pages as-is in shown order),
 `PdfSplitForm` / `PdfSplitService` (extract selection, split by ranges / every N /
-top-level bookmarks). Both compress optionally and never modify the source.
+top-level bookmarks). Both compress optionally and never modify the source. Both are
+cancellable during page assembly (the page count drives the ≥ 5 threshold); the optional
+Ghostscript compression that follows runs past the point of no return and is not interrupted.
 
 ### PDF → Word pipeline
 
@@ -316,7 +320,10 @@ Late-bound COM is powerful and unforgiving; these rules are load-bearing:
 - **STA worker threads** — one per Office job (merge, note, PDF → Word write): COM
   apartments require it.
 - **Thumbnail thread** — one background renderer per grid with a work queue; joined
-  (with a timeout) before the form disposes.
+  (with a timeout) before the form disposes. The page-preview window renders on its own
+  short-lived background thread.
+- **Cooperative cancellation** — the UI thread sets a `volatile` flag; the worker polls
+  it between work units (`Cancellation.ThrowIf`) and unwinds cleanly. No thread is aborted.
 - **Cross-process safety** — `stats.txt` increments run under a named mutex, so two app
   copies don't lose counts.
 - **Headless exits** — CLI/self-check modes end with `FastExit.Now` to skip WinRT
@@ -334,8 +341,9 @@ Late-bound COM is powerful and unforgiving; these rules are load-bearing:
 
 ## Persistence and privacy
 
-Everything lives under `%APPDATA%\iwo Helper Desktop`: `settings.txt` (language and
-remembered options), `stats.txt` (local counters, optional auto-clear), `reports\`
+Everything lives under `%APPDATA%\iwo Helper Desktop`: `settings.txt` (language,
+remembered options, PDF zoom width and compression level), `stats.txt` (local counters,
+optional auto-clear), `reports\`
 (three latest merge reports), `crash.log`. Nothing else is written outside user-chosen
 output folders. The only network code is `UpdateChecker` — a manual GET of the latest
 release tag; it opens the browser rather than downloading. Details: [PRIVACY](PRIVACY.md).
@@ -354,9 +362,11 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` (~200 tests, custom exe runner, zero
+1. **Unit tests** — `tests/UnitTests.cs` (~215 tests, custom exe runner, zero
    dependencies, no Office) covering the pure core: layout analysis, table/grid/stamp
-   detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules.
+   detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
+   zoom percentage, the number-strip hit-test, the cancel threshold, live merge/split
+   cancellation (throws and leaves no file), and settings that survive a stale writer.
    Run by `tests\build_tests.cmd`; this is what CI executes.
 2. **Self-checks in the exe** — `--selftest` (every window created headless),
    `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded PdfSharp,
