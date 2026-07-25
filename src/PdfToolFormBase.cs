@@ -27,6 +27,10 @@ namespace ExcelMerger
         protected Label _lblStatus;
         protected ToolTip _tips;
         protected bool _busy; // идёт фоновая операция (только UI-поток)
+        private bool _loading; // идёт фоновый разбор PDF (добавление/открытие) — только UI-поток
+
+        /// <summary>Идёт фоновая операция ИЛИ фоновый разбор PDF: правки сетки и запуск заблокированы.</summary>
+        protected bool Working { get { return _busy || _loading; } }
         // Отмена длинных операций: кнопка «Отмена» показывается поверх кнопки действия во
         // время операции от CancelPageThreshold единиц. Флаг ставит UI-поток, читает воркер.
         private Button _actionButton;
@@ -152,10 +156,61 @@ namespace ExcelMerger
         /// </summary>
         protected void RefreshRestingStatus()
         {
-            if (_busy || _grid == null)
-                return;
+            if (Working || _grid == null)
+                return; // во время операции/загрузки статус занят прогрессом или «Загрузка…»
             SetStatus(RestingStatus(_grid.SelectedCount, _grid.Count, IdleStatusText(),
                 Loc.T("common.status.selected")), Theme.TextMuted);
+        }
+
+        /// <summary>
+        /// Синхронизировать доступность кнопок и блокировку сетки с текущим состоянием
+        /// (Working, выделение, наличие содержимого). Реализуют формы. Зовётся базой после
+        /// смены состояния загрузки/операции и формами на своих мутациях.
+        /// </summary>
+        protected abstract void SyncControls();
+
+        /// <summary>
+        /// Начать фоновый разбор PDF: пометить загрузку, отключить кнопки/заблокировать сетку
+        /// (SyncControls), показать статус loadingText. false — уже идёт операция/загрузка
+        /// (повторный вызов игнорируется). Пару составляет <see cref="EndLoad"/>. Только UI-поток.
+        /// </summary>
+        protected bool BeginLoad(string loadingText)
+        {
+            if (Working)
+                return false;
+            _loading = true;
+            SyncControls();
+            SetStatus(loadingText, Theme.TextMuted);
+            return true;
+        }
+
+        /// <summary>Завершить фоновый разбор PDF: снять пометку и восстановить кнопки/сетку. Только UI-поток.</summary>
+        protected void EndLoad()
+        {
+            _loading = false;
+            SyncControls();
+        }
+
+        /// <summary>
+        /// Единая обвязка приёма PDF-файлов, брошенных на окно (DRY: раньше по копии в каждой
+        /// форме). Курсор-эффект только когда не идёт операция/загрузка и в дропе есть файлы;
+        /// сам дроп передаёт непустой список в onFiles. Обработчик грида (дроп на сетку) — отдельно.
+        /// </summary>
+        protected void WireFileDrop(Action<string[]> onFiles)
+        {
+            DragEnter += delegate(object s, DragEventArgs e)
+            {
+                e.Effect = !Working && PdfDrop.ExtractPaths(e).Length > 0
+                    ? DragDropEffects.Copy : DragDropEffects.None;
+            };
+            DragDrop += delegate(object s, DragEventArgs e)
+            {
+                if (Working)
+                    return;
+                string[] paths = PdfDrop.ExtractPaths(e);
+                if (paths.Length > 0)
+                    onFiles(paths);
+            };
         }
 
         /// <summary>

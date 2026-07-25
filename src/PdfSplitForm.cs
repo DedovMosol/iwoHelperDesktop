@@ -42,14 +42,14 @@ namespace ExcelMerger
         {
             BuildUi();
             UpdateModeInputs();
-            UpdateControls();
+            SyncControls();
         }
 
         private void BuildUi()
         {
             InitShell(Title, new Size(800, 660), new Size(700, 560), Theme.PdfRed);
-            DragEnter += OnFileDragEnter;
-            DragDrop += OnFileDragDrop;
+            // Дроп PDF на окно — открыть первый файл (разделение работает с одним документом).
+            WireFileDrop(delegate(string[] paths) { LoadSource(paths[0]); });
             BuildHeaderWithHome(Title,
                 Loc.T("split.header.subtitle"),
                 Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
@@ -67,11 +67,11 @@ namespace ExcelMerger
             _grid.DropHint = Loc.T("split.grid.drop");
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            _grid.SelectionChanged += delegate { UpdateControls(); RefreshRestingStatus(); };
+            _grid.SelectionChanged += delegate { SyncControls(); RefreshRestingStatus(); };
             _grid.FilesDropped += delegate(string[] paths, int insertAt)
             {
-                if (!_busy && paths.Length > 0)
-                    LoadSource(paths[0]); // разделение работает с одним документом
+                if (paths.Length > 0)
+                    LoadSource(paths[0]); // разделение работает с одним документом (LoadSource гейтит Working)
             };
             WireGridMenu();
             Controls.Add(_grid);
@@ -94,7 +94,7 @@ namespace ExcelMerger
             _cmbMode.SelectedIndex = ModeExtract;
             _cmbMode.SetBounds(px, m + 150, pw, 27);
             _cmbMode.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _cmbMode.SelectedIndexChanged += delegate { UpdateModeInputs(); UpdateControls(); };
+            _cmbMode.SelectedIndexChanged += delegate { UpdateModeInputs(); SyncControls(); };
             // Выбор режима из раскрытого списка переводит фокус в его поле ввода — можно
             // сразу печатать. Стрелки по закрытому списку фокус не трогают, иначе они
             // перестали бы листать режимы.
@@ -168,8 +168,8 @@ namespace ExcelMerger
         /// <summary>Дроп PDF на карточку хаба: открыть первый файл (разделение — один документ).</summary>
         public void AcceptFiles(string[] paths)
         {
-            if (!_busy && paths != null && paths.Length > 0)
-                LoadSource(paths[0]);
+            if (paths != null && paths.Length > 0)
+                LoadSource(paths[0]); // LoadSource гейтит Working
         }
 
         // ---------- открытие исходника ----------
@@ -185,44 +185,43 @@ namespace ExcelMerger
             }
         }
 
-        private void OnFileDragEnter(object sender, DragEventArgs e)
-        {
-            e.Effect = !_busy && PdfDrop.ExtractPaths(e).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
-        }
-
-        private void OnFileDragDrop(object sender, DragEventArgs e)
-        {
-            if (_busy)
-                return;
-            string[] paths = PdfDrop.ExtractPaths(e);
-            if (paths.Length > 0)
-                LoadSource(paths[0]); // разделение работает с одним документом
-        }
-
+        /// <summary>
+        /// Открыть исходный документ: разбор PDF идёт в фоне (большой/сетевой файл не морозит
+        /// окно), затем сетка страниц и статус. Битый/занятый файл — диалог, прежний документ цел.
+        /// </summary>
         private void LoadSource(string path)
         {
-            Cursor = Cursors.WaitCursor;
-            try
+            if (!BeginLoad(Loc.T("common.status.loading")))
+                return; // уже идёт операция или загрузка
+            Ui.RunWorker(delegate()
             {
-                _pageCount = PdfMergeService.LoadPages(path).Count;
-            }
-            catch (MergeException ex)
+                int count = 0;
+                string error = null;
+                try { count = PdfMergeService.LoadPages(path).Count; }
+                catch (MergeException ex) { error = ex.Message; }
+                int pages = count;
+                string err = error;
+                OnUi(delegate { ApplyLoadedSource(path, pages, err); });
+            });
+        }
+
+        /// <summary>Применить результат фонового разбора исходника (UI-поток).</summary>
+        private void ApplyLoadedSource(string path, int pageCount, string error)
+        {
+            EndLoad();
+            if (error != null)
             {
-                Cursor = Cursors.Default;
-                Dialogs.Error(this, Title, Loc.T("split.err.fileNotOpened"), ex.Message);
+                Dialogs.Error(this, Title, Loc.T("split.err.fileNotOpened"), error); // прежний документ остаётся
                 return;
             }
-            finally
-            {
-                Cursor = Cursors.Default;
-            }
             _sourcePath = path;
+            _pageCount = pageCount;
             _pages = new List<PdfPageRef>();
             for (int i = 0; i < _pageCount; i++)
                 _pages.Add(new PdfPageRef { SourcePath = path, PageIndex = i });
             _grid.SetPages(_pages);
             SetStatus(string.Format(Loc.T("split.status.opened"), Path.GetFileName(path), _pageCount), Theme.TextMuted);
-            UpdateControls();
+            SyncControls();
         }
 
         // ---------- режимы ----------
@@ -252,16 +251,16 @@ namespace ExcelMerger
                 _numN.Focus();
         }
 
-        private void UpdateControls()
+        protected override void SyncControls()
         {
             bool loaded = _sourcePath != null;
-            _grid.Locked = _busy; // поворот и дроп — только вне операции
-            _compress.Enabled = !_busy;
-            _btnOpen.Enabled = !_busy;
-            _cmbMode.Enabled = !_busy && loaded;
-            _txtRanges.Enabled = !_busy && loaded;
-            _numN.Enabled = !_busy && loaded;
-            bool canDo = !_busy && loaded &&
+            _grid.Locked = Working; // поворот и дроп — только вне работы (операция/загрузка)
+            _compress.Enabled = !Working;
+            _btnOpen.Enabled = !Working;
+            _cmbMode.Enabled = !Working && loaded;
+            _txtRanges.Enabled = !Working && loaded;
+            _numN.Enabled = !Working && loaded;
+            bool canDo = !Working && loaded &&
                 (_cmbMode.SelectedIndex != ModeExtract || _grid.SelectedCount > 0);
             _btnDo.Enabled = canDo;
         }
@@ -272,7 +271,7 @@ namespace ExcelMerger
 
         private void OnDoClick(object sender, EventArgs e)
         {
-            if (_busy || _sourcePath == null)
+            if (Working || _sourcePath == null)
                 return;
             int mode = _cmbMode.SelectedIndex;
             bool combine = mode == ModeRanges && _chkCombine.Checked;
@@ -397,7 +396,7 @@ namespace ExcelMerger
         private void RunSplit(Func<Action<int, int>, List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record, int workUnits)
         {
             _busy = true;
-            UpdateControls();
+            SyncControls();
             SetStatus(openAsFolder ? Loc.T("split.status.splitting") : Loc.T("split.status.extracting"), Theme.TextMuted);
             // Счётчик «страница N из M» для разделения не показываем — единица работы здесь «часть».
             BeginProgress(workUnits);
@@ -440,7 +439,7 @@ namespace ExcelMerger
         {
             _busy = false;
             EndProgress();
-            UpdateControls();
+            SyncControls();
             if (error is OperationCanceledException)
             {
                 SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // частичные файлы удалены
