@@ -413,6 +413,10 @@ namespace ExcelMerger
                     // Две фазы в одну шкалу 2×частей: разбиение (0..P) и сжатие (P..2P).
                     List<string> files = work(delegate(int done, int total) { onProgress(done, 2 * total); });
                     count = files.Count;
+                    // Файлы записаны — точка невозврата: сжатие (Ghostscript) не прерываем, поэтому
+                    // снимаем предложение отмены, чтобы кнопка не «зависала» на «Отмена…».
+                    if (IsHandleCreated && !IsDisposed)
+                        BeginInvoke((MethodInvoker)delegate { StopOfferingCancel(); });
                     for (int i = 0; i < files.Count; i++)
                     {
                         if (PdfCompression.Compress(files[i], level))

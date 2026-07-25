@@ -332,7 +332,13 @@ namespace ExcelMerger
                 // Сжатие — на этом же воркере и ДО открытия файла (иначе замену
                 // заблокирует вьюер). Ошибки сжатия не срывают сохранение.
                 if (error == null)
+                {
+                    // Файл записан — точка невозврата: сжатие (Ghostscript) не прерываем, поэтому
+                    // снимаем предложение отмены, чтобы кнопка не «зависала» на «Отмена…».
+                    if (IsHandleCreated && !IsDisposed)
+                        BeginInvoke((MethodInvoker)delegate { StopOfferingCancel(); });
                     compressed = PdfCompression.Compress(outputPath, level);
+                }
                 try
                 {
                     if (IsHandleCreated && !IsDisposed)

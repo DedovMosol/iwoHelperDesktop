@@ -140,6 +140,7 @@ namespace ExcelMerger.Tests
             Run("ThumbZoom.Percent: масштаб в процентах от умолчания", TestZoomPercent);
             Run("PdfPageGrid.IsOnLabel: точка в полосе номера, не в плитке", TestIsOnLabel);
             Run("PdfToolFormBase.ShouldOfferCancel: отмена от порога страниц", TestShouldOfferCancel);
+            Run("UserSettings: общий Save не затирает масштаб/сжатие устаревшим экземпляром", TestSettingsViewNotClobbered);
             Run("Merge (живой): отмена бросает и не создаёт файл", TestCancelMergeLive);
             Run("SplitEveryN (живой): отмена бросает и удаляет частичные файлы", TestCancelSplitLive);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
@@ -3965,6 +3966,40 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfPageGrid.IsOnLabel(new System.Drawing.Point(150, 120), tile, cell), "точка в плитке — не номер");
             AssertTrue(!PdfPageGrid.IsOnLabel(new System.Drawing.Point(150, 300), tile, cell), "ниже ячейки — не номер");
             AssertTrue(!PdfPageGrid.IsOnLabel(new System.Drawing.Point(50, 235), tile, cell), "левее ячейки — не номер");
+        }
+
+        /// <summary>
+        /// Регресс: масштаб/сжатие принадлежат PDF-окнам. Долгоживущий экземпляр (MainForm
+        /// грузит настройки при старте) не должен затирать их устаревшим значением при своём
+        /// Save — общий Save обязан перечитать эти поля с диска, а явно писать их лишь SaveView.
+        /// Тест бэкапит и восстанавливает реальный settings.txt.
+        /// </summary>
+        private static void TestSettingsViewNotClobbered()
+        {
+            string file = AppPaths.SettingsFile;
+            string backup = File.Exists(file) ? File.ReadAllText(file) : null;
+            try
+            {
+                // 1. PDF-окно сохраняет вид: масштаб 300, сжатие 2.
+                new UserSettings().SaveView(300, 2);
+                AssertEqual(300, UserSettings.Load().ZoomWidth, "SaveView записал масштаб");
+                AssertEqual(2, UserSettings.Load().CompressionLevel, "SaveView записал сжатие");
+
+                // 2. Устаревший экземпляр (как у MainForm: масштаб 100) сохраняет СВОИ поля.
+                var stale = new UserSettings { LastInputFolder = "X", ZoomWidth = 100, CompressionLevel = 0 };
+                stale.Save();
+
+                // Масштаб/сжатие взяты с диска (300/2), а не из устаревшего экземпляра (100/0).
+                UserSettings after = UserSettings.Load();
+                AssertEqual(300, after.ZoomWidth, "общий Save НЕ затёр масштаб");
+                AssertEqual(2, after.CompressionLevel, "общий Save НЕ затёр сжатие");
+                AssertEqual("X", after.LastInputFolder, "общий Save сохранил собственные поля экземпляра");
+            }
+            finally
+            {
+                if (backup != null) File.WriteAllText(file, backup);
+                else if (File.Exists(file)) File.Delete(file);
+            }
         }
 
         private static void TestShouldOfferCancel()

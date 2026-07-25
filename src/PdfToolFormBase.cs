@@ -176,10 +176,33 @@ namespace ExcelMerger
             Ui.Label(this, Loc.T("common.zoom"), 20, h - 144, Font, Theme.TextMuted)
                 .Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 
+            // Сжатие (если есть) создаём ПЕРВЫМ: от его левого края отмеряем подпись % и правый
+            // край растяжимого ползунка. Подпись и сжатие оба на правом якоре → между ними
+            // ПОСТОЯННЫЙ зазор на любой ширине окна, поэтому они не наезжают друг на друга даже
+            // при минимальной ширине (замер: длинная метка сжатия иначе перекрывала бы «%»).
+            const int pctW = 52; // ширина подписи «400 %»
+            int pctRight;        // правый край подписи процента
+            if (withCompress)
+            {
+                _compress = new CompressionPicker();
+                _compress.SetLevel((CompressionLevel)prefs.CompressionLevel); // сжатие прошлой сессии
+                _compress.Location = new Point(right - _compress.Width, h - 146);
+                _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+                Controls.Add(_compress);
+                pctRight = _compress.Left - 12; // постоянный зазор до выбора сжатия
+            }
+            else
+            {
+                pctRight = right; // сжатия нет — подпись у правого края ряда
+            }
+            int pctLeft = pctRight - pctW;
+            const int sliderLeft = 85;
+
             _zoom = new TrackBar();
             // Реальная высота TrackBar — 45 (AutoSize), заданную меньшую он игнорирует.
-            _zoom.SetBounds(85, h - 148, 170, 45);
-            _zoom.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            // Ширина — до подписи %; тянется с окном (левый+правый якорь), не сталкиваясь со сжатием.
+            _zoom.SetBounds(sliderLeft, h - 148, pctLeft - 10 - sliderLeft, 45);
+            _zoom.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             _zoom.Minimum = ThumbZoom.MinWidth;
             _zoom.Maximum = ThumbZoom.MaxWidth;
             _zoom.Value = _grid.TileWidth; // до подписки на ValueChanged — не триггерит ScheduleZoom
@@ -192,25 +215,16 @@ namespace ExcelMerger
             Controls.Add(_zoom);
             _grid.ZoomChanged += delegate(int w) { _zoom.Value = w; }; // Ctrl+колесо в сетке двигает ползунок (→ %)
 
-            // Текущий масштаб в процентах справа от ползунка.
-            _zoomPct = Ui.Label(this, "", 258, h - 138, Font, Theme.TextMuted);
+            // Текущий масштаб в процентах — справа от ползунка, правым якорём (левее сжатия).
+            _zoomPct = Ui.Label(this, "", pctLeft, h - 138, Font, Theme.TextMuted);
             _zoomPct.AutoSize = false;
-            _zoomPct.SetBounds(258, h - 138, 52, 20);
-            _zoomPct.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            _zoomPct.SetBounds(pctLeft, h - 138, pctW, 20);
+            _zoomPct.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             UpdateZoomPercent();
 
             _zoomTimer = new System.Windows.Forms.Timer();
             _zoomTimer.Interval = 60; // троттлинг пересборки плиток при перетаскивании ползунка
             _zoomTimer.Tick += delegate { _zoomTimer.Stop(); _grid.SetTileWidth(_zoom.Value); };
-
-            if (withCompress)
-            {
-                _compress = new CompressionPicker();
-                _compress.SetLevel((CompressionLevel)prefs.CompressionLevel); // сжатие прошлой сессии
-                _compress.Location = new Point(right - _compress.Width, h - 146);
-                _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-                Controls.Add(_compress);
-            }
 
             // Статус делит нижний ряд с кнопкой действия справа: фиксированная ширина до
             // кнопки + многоточие, длинный текст целиком покажет подсказка AutoEllipsis.
@@ -299,6 +313,18 @@ namespace ExcelMerger
         protected void RegisterActionButton(Button b)
         {
             _actionButton = b;
+        }
+
+        /// <summary>
+        /// Убрать предложение отмены НЕ дожидаясь конца операции — когда пройдена точка
+        /// невозврата (результат уже записан на диск и отменить его без следа нельзя, дальше
+        /// идёт лишь дожатие/пост-обработка). Возвращает кнопку действия (пока отключённую).
+        /// Маршалить на UI-поток. Идемпотентна; EndProgress затем ничего не делает.
+        /// </summary>
+        protected void StopOfferingCancel()
+        {
+            if (_cancelOffered)
+                ShowCancelButton(false);
         }
 
         /// <summary>Показать/скрыть кнопку «Отмена» поверх кнопки действия (создаётся один раз по её геометрии).</summary>
@@ -583,11 +609,9 @@ namespace ExcelMerger
             try
             {
                 UserSettings s = UserSettings.Load();
-                if (_grid != null)
-                    s.ZoomWidth = _grid.TileWidth;
-                if (_compress != null)
-                    s.CompressionLevel = (int)_compress.Level;
-                s.Save();
+                int zoom = _grid != null ? _grid.TileWidth : s.ZoomWidth;
+                int compression = _compress != null ? (int)_compress.Level : s.CompressionLevel;
+                s.SaveView(zoom, compression); // масштаб/сжатие — явно (общий Save их бы сохранил с диска)
             }
             catch { } // настройки — не критично: сбой сохранения не мешает закрытию
         }
