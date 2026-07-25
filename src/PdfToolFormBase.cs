@@ -207,7 +207,11 @@ namespace ExcelMerger
             return (int)(100L * completed / total);
         }
 
-        /// <summary>Показать полосу в начале операции. Только UI-поток.</summary>
+        /// <summary>
+        /// Номер текущей единицы (страницы) из процента и их общего числа: 1..total, 0 при
+        /// total ≤ 0. Приблизительно (по проценту): у некоторых операций шкала двухфазная.
+        /// Чистая — под тест.
+        /// </summary>
         internal static int ProgressItem(int pct, int total)
         {
             if (total <= 0)
@@ -218,6 +222,10 @@ namespace ExcelMerger
             return item;
         }
 
+        /// <summary>
+        /// Показать полосу в начале операции. total &gt; 0 и runningFormat («… {0} из {1}»)
+        /// включают счётчик «страница N из M» в статусе; иначе — только процент. Только UI-поток.
+        /// </summary>
         protected void BeginProgress(int total = 0, string runningFormat = null)
         {
             _lastPct = -1;
@@ -240,7 +248,7 @@ namespace ExcelMerger
             _taskbar.SetState(Handle, TaskbarProgressState.None);
         }
 
-        /// <summary>Применить процент к полосе и панели задач. Только UI-поток.</summary>
+        /// <summary>Применить процент к полосе, панели задач и (при заданном формате) счётчику страниц. Только UI-поток.</summary>
         private void ApplyProgress(int pct)
         {
             if (!_busy || pct == _lastPct)
