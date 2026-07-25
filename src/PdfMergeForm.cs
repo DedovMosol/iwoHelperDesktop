@@ -143,10 +143,7 @@ namespace ExcelMerger
 
             var pages = _order.ToList();
             CompressionLevel level = _compress.Level; // читаем с UI-потока до старта воркера
-            _busy = true;
-            SyncControls();
-            SetStatus(Loc.T("common.status.saving"), Theme.TextMuted);
-            BeginProgress(pages.Count, Loc.T("pdf.status.savingPage"));
+            BeginOperation(Loc.T("common.status.saving"), pages.Count, Loc.T("pdf.status.savingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
 
@@ -178,9 +175,7 @@ namespace ExcelMerger
 
         private void OnSaveFinished(Exception error, string outputPath, int pageCount, bool compressed)
         {
-            _busy = false;
-            EndProgress();
-            SyncControls();
+            EndOperation();
             if (error is OperationCanceledException)
             {
                 SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // файл не создан

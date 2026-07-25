@@ -135,10 +135,7 @@ namespace ExcelMerger
                 outPath = dialog.FileName;
             }
 
-            _busy = true;
-            SyncControls();
-            SetStatus(Loc.T("ocr.status.converting"), Theme.TextMuted);
-            BeginProgress(order.Count, Loc.T("ocr.status.convertingPage"));
+            BeginOperation(Loc.T("ocr.status.converting"), order.Count, Loc.T("ocr.status.convertingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
             // Точка невозврата: писатель зовёт это перед SaveDocx (Word уже наполнен, отменить
@@ -163,9 +160,7 @@ namespace ExcelMerger
 
         private void OnConvertFinished(Exception error, ConvertResult result, string outPath)
         {
-            _busy = false;
-            EndProgress();
-            SyncControls();
+            EndOperation();
             if (error is OperationCanceledException)
             {
                 SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // .docx не создан

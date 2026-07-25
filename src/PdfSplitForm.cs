@@ -197,8 +197,11 @@ namespace ExcelMerger
             {
                 int count = 0;
                 string error = null;
+                // Ловим ШИРОКО: битый/занятый/аварийный файл (в т.ч. редкий OOM, который
+                // LoadPages НЕ оборачивает) не должен ронять фоновый поток — только диалог.
                 try { count = PdfMergeService.LoadPages(path).Count; }
                 catch (MergeException ex) { error = ex.Message; }
+                catch (Exception ex) { error = string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message); }
                 int pages = count;
                 string err = error;
                 OnUi(delegate { ApplyLoadedSource(path, pages, err); });
@@ -211,6 +214,7 @@ namespace ExcelMerger
             EndLoad();
             if (error != null)
             {
+                RefreshRestingStatus(); // вернуть статус прежнего документа вместо залипшей «Загрузка…»
                 Dialogs.Error(this, Title, Loc.T("split.err.fileNotOpened"), error); // прежний документ остаётся
                 return;
             }
@@ -395,11 +399,8 @@ namespace ExcelMerger
         /// </summary>
         private void RunSplit(Func<Action<int, int>, List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record, int workUnits)
         {
-            _busy = true;
-            SyncControls();
-            SetStatus(openAsFolder ? Loc.T("split.status.splitting") : Loc.T("split.status.extracting"), Theme.TextMuted);
             // Счётчик «страница N из M» для разделения не показываем — единица работы здесь «часть».
-            BeginProgress(workUnits);
+            BeginOperation(openAsFolder ? Loc.T("split.status.splitting") : Loc.T("split.status.extracting"), workUnits);
             Action<int, int> onProgress = UiProgress();
             long sourceSize = SafeLength(_sourcePath); // для подсказки о сжатии (UI-поток, до старта воркера)
             Ui.RunWorker(delegate()
@@ -437,9 +438,7 @@ namespace ExcelMerger
         private void OnSplitFinished(Exception error, int count, int compressed, string openTarget, bool openAsFolder, Action record,
             CompressionLevel level, long sourceSize, long largestOutput)
         {
-            _busy = false;
-            EndProgress();
-            SyncControls();
+            EndOperation();
             if (error is OperationCanceledException)
             {
                 SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // частичные файлы удалены
