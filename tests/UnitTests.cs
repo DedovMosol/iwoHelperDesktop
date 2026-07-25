@@ -242,6 +242,8 @@ namespace ExcelMerger.Tests
             Run("PdfPageGrid.ClassifyDoubleClick: чип поворота > номер > предпросмотр", TestClassifyDoubleClick);
             Run("NumberPromptDialog.DialogWidth: база или подпись с полями", TestNumberDialogWidth);
             Run("Ui.AppIcon: один экземпляр на процесс (HICON не плодится)", TestAppIconCached);
+            Run("Ui.Font: кэш по размеру/стилю/семейству, один экземпляр", TestFontCached);
+            Run("PdfPageGrid.WheelBasis: неприменённая цель колеса старше текущей ширины", TestWheelBasis);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
@@ -4109,6 +4111,33 @@ namespace ExcelMerger.Tests
             System.Drawing.Icon first = Ui.AppIcon();
             System.Drawing.Icon second = Ui.AppIcon();
             AssertTrue(ReferenceEquals(first, second), "оба вызова возвращают один экземпляр (или общий null)");
+        }
+
+        private static void TestFontCached()
+        {
+            AssertTrue(ReferenceEquals(Ui.Font(9.75f), Ui.Font(9.75f)), "один экземпляр на одинаковый запрос");
+            AssertTrue(!ReferenceEquals(Ui.Font(9.75f), Ui.Font(9.75f, System.Drawing.FontStyle.Bold)),
+                "стиль различает записи кэша");
+            AssertTrue(!ReferenceEquals(Ui.Font(9.75f), Ui.Font(11f)), "размер различает записи кэша");
+            System.Drawing.Font symbol = Ui.Font(9.5f, System.Drawing.FontStyle.Regular, "Segoe UI Symbol");
+            AssertTrue(ReferenceEquals(symbol, Ui.Font(9.5f, System.Drawing.FontStyle.Regular, "Segoe UI Symbol")),
+                "семейство — часть ключа");
+            AssertEqual(9.75f, Ui.Font(9.75f).Size, "размер шрифта соответствует запросу");
+        }
+
+        /// <summary>
+        /// Ctrl+колесо в сетке применяется троттлингом ползунка: пока цель не применена,
+        /// следующие щелчки шагают от неё — быстрое вращение не теряет шаги.
+        /// </summary>
+        private static void TestWheelBasis()
+        {
+            AssertEqual(132, PdfPageGrid.WheelBasis(0, 132), "без цели — текущая ширина");
+            AssertEqual(148, PdfPageGrid.WheelBasis(148, 132), "неприменённая цель старше");
+            // Последовательность из двух быстрых щелчков «+»: вторая цель считается от первой.
+            int first = ThumbZoom.StepFromWheel(PdfPageGrid.WheelBasis(0, 132), 120);
+            int second = ThumbZoom.StepFromWheel(PdfPageGrid.WheelBasis(first, 132), 120);
+            AssertEqual(148, first, "первый щелчок: +16");
+            AssertEqual(164, second, "второй щелчок шагает от цели, а не от устаревшей ширины");
         }
 
         private static void AssertEqual(object expected, object actual, string what)

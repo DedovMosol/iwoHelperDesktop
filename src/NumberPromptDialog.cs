@@ -17,7 +17,7 @@ namespace ExcelMerger
         private NumberPromptDialog(string title, string prompt, string okText, int min, int max, int initial)
         {
             Text = title;
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = MaximizeBox = false;
             ShowInTaskbar = false;

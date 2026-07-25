@@ -21,7 +21,7 @@ namespace ExcelMerger
         public StatsForm()
         {
             Text = Loc.T("menu.stats");
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -37,7 +37,7 @@ namespace ExcelMerger
             WindowChrome.Enable(this, Theme.HubBlue);
 
             Ui.AccentBar(this, 0, Theme.HubBlue);
-            Ui.Label(this, Loc.T("menu.stats"), 24, 22, new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+            Ui.Label(this, Loc.T("menu.stats"), 24, 22, Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             _since = Ui.Label(this, "", 24, 56, Font, Theme.TextMuted);
 
             _excel = Row(Loc.T("stats.row.excel"), 92);
@@ -48,7 +48,7 @@ namespace ExcelMerger
             _bookmarks = Row(Loc.T("stats.row.bookmarks"), 222);
             _pdftoword = Row(Loc.T("stats.row.pdftoword"), 248);
             _compress = Row(Loc.T("stats.row.compress"), 274);
-            _total = Ui.Label(this, "", 24, 306, new Font("Segoe UI", 10.5f, FontStyle.Bold), Theme.TextPrimary);
+            _total = Ui.Label(this, "", 24, 306, Ui.Font(10.5f, FontStyle.Bold), Theme.TextPrimary);
 
             Ui.Label(this, Loc.T("stats.autoClear"), 24, 352, Font, Theme.TextPrimary);
             _cmbAuto = new ComboBox();
@@ -88,7 +88,7 @@ namespace ExcelMerger
         private Label Row(string caption, int y)
         {
             Ui.Label(this, caption, 24, y, Font, Theme.TextPrimary);
-            var value = Ui.Label(this, "0", 300, y, new Font("Segoe UI", 9.75f, FontStyle.Bold), Theme.TextPrimary);
+            var value = Ui.Label(this, "0", 300, y, Ui.Font(9.75f, FontStyle.Bold), Theme.TextPrimary);
             return value;
         }
 

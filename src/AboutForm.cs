@@ -17,7 +17,7 @@ namespace ExcelMerger
         public AboutForm()
         {
             Text = Loc.T("hub.about");
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -43,7 +43,7 @@ namespace ExcelMerger
             Controls.Add(iconBox);
 
             Ui.Label(this, "iwo Helper Desktop", 86, 26,
-                new Font("Segoe UI", 14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+                Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             Ui.Label(this, string.Format(Loc.T("about.version"), version.ToString(3)), 88, 58, Font, Theme.TextMuted);
 
@@ -71,7 +71,7 @@ namespace ExcelMerger
 
             // --- Донаты: пункты можно выделить и скопировать (read-only TextBox) ---
             Ui.Label(this, Loc.T("about.donate"), 24, y,
-                new Font("Segoe UI", 9.75f, FontStyle.Bold), Theme.TextPrimary); y += 26;
+                Ui.Font(9.75f, FontStyle.Bold), Theme.TextPrimary); y += 26;
 
             // Пункты — выделяемые read-only поля: копируются правым кликом или Ctrl+C
             // (отдельная кнопка «копировать» не нужна).

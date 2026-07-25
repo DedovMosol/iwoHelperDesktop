@@ -24,9 +24,11 @@ namespace ExcelMerger
             FlatStyle = FlatStyle.Flat;
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
+            // Кэшированные шрифты: кнопок много (по 4–6 на окно), свой Font у каждой
+            // копил бы GDI-объекты до финализатора при каждой пересборке окон.
             Font = primary
-                ? new Font("Segoe UI", 10.5f, FontStyle.Bold)
-                : new Font("Segoe UI", 9.75f);
+                ? Ui.Font(10.5f, FontStyle.Bold)
+                : Ui.Font(9.75f);
         }
 
         protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }

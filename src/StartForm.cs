@@ -29,7 +29,7 @@ namespace ExcelMerger
             Icon startIcon = Ui.AppIcon();
             if (startIcon != null)
                 Icon = startIcon;
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -133,7 +133,7 @@ namespace ExcelMerger
                 SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint |
                          ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
                 BackColor = Color.Transparent;
-                Font = new Font("Segoe MDL2 Assets", size);
+                Font = Ui.Font(size, FontStyle.Regular, "Segoe MDL2 Assets"); // кэш: глобус пересоздаётся с окном
                 Text = glyph;
                 Cursor = Cursors.Hand;
                 TabStop = false;

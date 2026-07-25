@@ -22,7 +22,7 @@ namespace ExcelMerger
             // (SystemColors.Control) — серый прямоугольник на белой форме.
             SetStyle(ControlStyles.SupportsTransparentBackColor, true);
             BackColor = Color.Transparent;
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
 
             var caption = new Label();
             caption.Text = Loc.T("common.compression");

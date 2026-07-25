@@ -35,6 +35,19 @@ namespace ExcelMerger
         private static readonly Color HoverMarkColor = Color.FromArgb(185, 185, 185);
         private static readonly Color GridBack = Color.FromArgb(250, 250, 250);
 
+        // Кисти/перья горячего paint-пути (DrawItemCore зовётся на каждую видимую плитку в
+        // каждом кадре): цвета фиксированы — объекты живут весь процесс, а не создаются на
+        // каждую отрисовку (тот же стандарт, что ChoiceCard.TitleFont). Только UI-поток.
+        private static readonly Brush BackBrush = new SolidBrush(GridBack);
+        private static readonly Brush DimBrush = new SolidBrush(Color.FromArgb(150, GridBack));   // приглушение вырезанных
+        private static readonly Brush ChipFill = new SolidBrush(Color.FromArgb(200, 40, 40, 40)); // hover-кнопки поворота
+        private static readonly Brush BadgeFill = new SolidBrush(Color.FromArgb(190, 40, 40, 40));// бейдж угла
+        private static readonly Pen PlaceholderPen = new Pen(Color.FromArgb(205, 205, 205));
+        private static readonly Pen TileBorderPen = new Pen(Color.FromArgb(200, 200, 200));
+        // Заливка выделения зависит от системного цвета: кэш с ленивым пересозданием
+        // (сбрасывается в OnSystemColorsChanged — смена темы не заморозит старый цвет).
+        private Brush _selFill;
+
         /// <summary>
         /// ListView, извещающий о прокрутке (для ленивого рендера видимых страниц) и
         /// рисующий подсказку по центру, когда список ПУСТ (owner-draw не вызывает
@@ -45,7 +58,7 @@ namespace ExcelMerger
             private static readonly Color HintColor = Color.FromArgb(120, 120, 120);
             public event EventHandler Scrolled;
             public string HintText;   // текст-подсказка пустого списка; null — не рисовать
-            public Font HintFont;     // владелец — грид (создаёт и освобождает)
+            public Font HintFont;     // общий кэшированный шрифт (Ui.Font) — не освобождать
 
             protected override void WndProc(ref Message m)
             {
@@ -184,9 +197,10 @@ namespace ExcelMerger
             _renderTarget = _renderBase;
             _pageCache = new LruCache<CachedPage>(
                 ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderHi), OnPageEvicted);
-            _badgeFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-            _chipFont = new Font("Segoe UI Symbol", 9.5f); // глифы ↺/↻ hover-кнопок поворота
-            _hintFont = new Font("Segoe UI", 11f);         // подсказка пустого списка
+            // Общие кэшированные шрифты (Ui.Font): грид ими не владеет и не освобождает.
+            _badgeFont = Ui.Font(7.5f, FontStyle.Bold);
+            _chipFont = Ui.Font(9.5f, FontStyle.Regular, "Segoe UI Symbol"); // глифы ↺/↻ hover-кнопок
+            _hintFont = Ui.Font(11f); // подсказка пустого списка (крупнее подписей)
             // Тонкая внутренняя рамка (Padding) видна только когда закрашена акцентом при
             // дропе: список Dock.Fill занимает клиент за вычетом Padding, его частичные
             // перерисовки в неё не залезают — рамка держится без мерцания.
@@ -200,7 +214,7 @@ namespace ExcelMerger
             _list.MultiSelect = true;
             _list.HideSelection = false;
             _list.BorderStyle = BorderStyle.FixedSingle;
-            _list.BackColor = Color.FromArgb(250, 250, 250);
+            _list.BackColor = GridBack; // единый источник с BackBrush/DimBrush пейнта
             _list.OwnerDraw = true;
             _list.DrawItem += OnDrawItem;
             _list.HandleCreated += delegate { ApplyIconSpacing(); };
@@ -542,17 +556,14 @@ namespace ExcelMerger
             Rectangle tileRect, cell;
             ItemGeometry(e.ItemIndex, out tileRect, out cell);
 
-            using (var back = new SolidBrush(_list.BackColor))
-                g.FillRectangle(back, cell);
+            g.FillRectangle(BackBrush, cell);
 
             bool selected = e.Item.Selected;
             if (selected)
             {
                 Rectangle sel = Rectangle.Inflate(tileRect, Px(4), Px(4));
-                using (var brush = new SolidBrush(Color.FromArgb(45, SystemColors.Highlight)))
-                    g.FillRectangle(brush, sel);
-                using (var pen = new Pen(SystemColors.Highlight))
-                    g.DrawRectangle(pen, sel.X, sel.Y, sel.Width - 1, sel.Height - 1);
+                g.FillRectangle(SelectionFill(), sel);
+                g.DrawRectangle(SystemPens.Highlight, sel.X, sel.Y, sel.Width - 1, sel.Height - 1);
             }
 
             Bitmap tile = page != null ? GetTile(page) : null;
@@ -562,8 +573,7 @@ namespace ExcelMerger
                 DrawPlaceholder(g, tileRect);
 
             if (page != null && _cutRefs.Contains(page))
-                using (var dim = new SolidBrush(Color.FromArgb(150, _list.BackColor)))
-                    g.FillRectangle(dim, tileRect); // вырезанные приглушены до вставки (Esc — отмена)
+                g.FillRectangle(DimBrush, tileRect); // вырезанные приглушены до вставки (Esc — отмена)
 
             if (page != null && page.Rotation != 0)
                 DrawRotationBadge(g, tileRect, page.Rotation);
@@ -636,8 +646,7 @@ namespace ExcelMerger
             g.SmoothingMode = SmoothingMode.AntiAlias;
             for (int i = 0; i < 2; i++)
             {
-                using (var fill = new SolidBrush(Color.FromArgb(200, 40, 40, 40)))
-                    g.FillEllipse(fill, buttons[i]);
+                g.FillEllipse(ChipFill, buttons[i]);
                 TextRenderer.DrawText(g, glyphs[i], _chipFont, buttons[i], Color.White,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
@@ -676,8 +685,7 @@ namespace ExcelMerger
             int padX = Px(4), padY = Px(2);
             var badge = new Rectangle(tileRect.Right - sz.Width - 2 * padX - Px(3), tileRect.Y + Px(3),
                 sz.Width + 2 * padX, sz.Height + 2 * padY);
-            using (var brush = new SolidBrush(Color.FromArgb(190, 40, 40, 40)))
-                g.FillRectangle(brush, badge);
+            g.FillRectangle(BadgeFill, badge);
             TextRenderer.DrawText(g, text, _badgeFont, badge, Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
@@ -690,10 +698,27 @@ namespace ExcelMerger
                 return;
             int x = tileRect.X + (tileRect.Width - w) / 2;
             int y = tileRect.Y + 12;
-            using (var b = new SolidBrush(Color.White))
-                g.FillRectangle(b, x, y, w, h);
-            using (var pen = new Pen(Color.FromArgb(205, 205, 205)))
-                g.DrawRectangle(pen, x, y, w, h);
+            g.FillRectangle(Brushes.White, x, y, w, h);
+            g.DrawRectangle(PlaceholderPen, x, y, w, h);
+        }
+
+        /// <summary>Заливка выделения (SystemColors.Highlight с прозрачностью) — лениво, до смены темы.</summary>
+        private Brush SelectionFill()
+        {
+            if (_selFill == null)
+                _selFill = new SolidBrush(Color.FromArgb(45, SystemColors.Highlight));
+            return _selFill;
+        }
+
+        protected override void OnSystemColorsChanged(EventArgs e)
+        {
+            // Цвет выделения мог смениться вместе с темой — кэш пересоздастся при отрисовке.
+            if (_selFill != null)
+            {
+                _selFill.Dispose();
+                _selFill = null;
+            }
+            base.OnSystemColorsChanged(e);
         }
 
         /// <summary>
@@ -858,6 +883,7 @@ namespace ExcelMerger
         public void SetTileWidth(int width)
         {
             width = ThumbZoom.Clamp(width);
+            _wheelPending = 0; // цель колеса применена (или перебита ползунком)
             if (width == _tileWidth)
                 return;
             _tileWidth = width;
@@ -1452,20 +1478,39 @@ namespace ExcelMerger
 
         // ---------- масштаб ----------
 
+        // Целевая ширина Ctrl+колеса, ещё не применённая троттлингом ползунка (0 — нет).
+        // Пока цель не применена, следующие щелчки шагают от неё, а не от устаревшей
+        // _tileWidth — иначе быстрое вращение теряло бы шаги.
+        private int _wheelPending;
+
+        /// <summary>База шага колеса: неприменённая цель прошлых щелчков или текущая ширина. Чистая — под тест.</summary>
+        internal static int WheelBasis(int pendingWidth, int currentWidth)
+        {
+            return pendingWidth > 0 ? pendingWidth : currentWidth;
+        }
+
         private void OnListMouseWheel(object sender, MouseEventArgs e)
         {
             if ((ModifierKeys & Keys.Control) == 0)
                 return; // без Ctrl — обычная прокрутка
-            int newWidth = ThumbZoom.StepFromWheel(_tileWidth, e.Delta);
             var handled = e as HandledMouseEventArgs;
             if (handled != null)
                 handled.Handled = true;
-            if (newWidth != _tileWidth)
+            int basis = WheelBasis(_wheelPending, _tileWidth);
+            int newWidth = ThumbZoom.StepFromWheel(basis, e.Delta);
+            if (newWidth == basis)
+                return; // упёрлись в границу масштаба
+            var h = ZoomChanged;
+            if (h != null)
             {
-                SetTileWidth(newWidth);
-                var h = ZoomChanged;
-                if (h != null) h(_tileWidth);
+                // Пересборка плиток (ClearTiles + Invalidate) — дорогая: не на каждый щелчок,
+                // а через ползунок и его общий 60-мс троттлинг (как и перетаскивание ползунка).
+                // Подпись «%» при этом обновляется мгновенно из значения ползунка.
+                _wheelPending = newWidth;
+                h(newWidth);
             }
+            else
+                SetTileWidth(newWidth); // сетка без ползунка — применяем сразу
         }
 
         // ---------- фоновый рендер ----------
@@ -1619,8 +1664,7 @@ namespace ExcelMerger
                 int x = (tile.Width - w) / 2;
                 int y = (tile.Height - h) / 2;
                 g.DrawImage(page, x, y, w, h);
-                using (var pen = new Pen(Color.FromArgb(200, 200, 200)))
-                    g.DrawRectangle(pen, x, y, w - 1, h - 1);
+                g.DrawRectangle(TileBorderPen, x, y, w - 1, h - 1);
             }
             return bmp;
         }
@@ -1649,12 +1693,9 @@ namespace ExcelMerger
                     _dragScrollTimer.Dispose();
                 if (_menu != null)
                     _menu.Dispose(); // ContextMenuStrip не дочерний контрол — сам не освободится
-                if (_badgeFont != null)
-                    _badgeFont.Dispose();
-                if (_chipFont != null)
-                    _chipFont.Dispose();
-                if (_hintFont != null)
-                    _hintFont.Dispose();
+                // Шрифты — общие кэшированные (Ui.Font), грид их не освобождает.
+                if (_selFill != null)
+                    _selFill.Dispose();
                 _metrics.Dispose(); // пустой ImageList метрик (не дочерний компонент)
                 _shuttingDown = true;    // вытеснение при Clear только освобождает bitmap
                 _pageCache.Clear();

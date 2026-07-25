@@ -46,7 +46,7 @@ namespace ExcelMerger
             string linkText, string linkUrl)
         {
             Text = title ?? "iwo Helper Desktop";
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -69,7 +69,7 @@ namespace ExcelMerger
             Controls.Add(iconBox);
 
             var hdr = new Label();
-            hdr.Font = new Font("Segoe UI", 11f, FontStyle.Bold);
+            hdr.Font = Ui.Font(11f, FontStyle.Bold);
             hdr.ForeColor = Color.FromArgb(40, 40, 40);
             hdr.MaximumSize = new Size(textW, 0);
             hdr.AutoSize = true;
