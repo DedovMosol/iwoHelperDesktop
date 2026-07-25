@@ -3,6 +3,30 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.4] — 2026-07-25
+
+### Fixed
+- **Double-clicking a rotate button rotates twice.** A quick double-click on a tile’s
+  ↺/↻ hover button now turns the page a full 180° instead of turning it once and then
+  opening the full-size preview on top.
+- **The last zoom is always remembered.** Closing a tool right after moving the zoom
+  slider now saves the slider’s position (previously a value set in the last fraction of
+  a second could be lost).
+- **A thumbnail that fails to render once retries.** A page whose thumbnail could not be
+  produced on the first attempt (a file briefly locked by antivirus or on a flaky network
+  share) no longer stays blank until the document is reopened.
+- **PDF → Word withdraws Cancel at the point of no return**, the way Merge and Split
+  already did, so the button no longer stays active — and then stuck on “Canceling…” —
+  while Word is writing the final `.docx`.
+
+### Changed
+- **Opening or adding a PDF no longer freezes the window.** The file is parsed in the
+  background, so a large document or one on a network drive keeps the window responsive
+  instead of showing “Not Responding”.
+- **Smoother grid.** Ctrl+wheel zoom over the page grid is throttled like the slider, and
+  the grid’s drawing no longer allocates temporary brushes and fonts on every frame — less
+  stutter while scrolling and zooming large documents.
+
 ## [1.17.3] — 2026-07-25
 
 ### Added
