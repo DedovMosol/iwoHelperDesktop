@@ -34,6 +34,7 @@ namespace ExcelMerger
         private bool _hover;
         private bool _pressed;
         private string[] _acceptExtensions; // расширения принимаемых дропом файлов (null — не принимать)
+        private bool _dragOk;               // текущая drag-сессия несёт подходящие файлы (решено в DragEnter)
 
         /// <summary>Раскрытые дропом на карточку файлы (уже отфильтрованы по расширению).</summary>
         public event Action<string[]> FilesDropped;
@@ -75,18 +76,28 @@ namespace ExcelMerger
 
         protected override void OnDragEnter(DragEventArgs e)
         {
-            e.Effect = AcceptedFrom(e.Data).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+            // Подходящесть выясняем один раз за drag-сессию: DragOver сыплется на каждое
+            // движение мыши, разбирать HDROP и звать File.Exists там было бы расточительно.
+            _dragOk = AcceptedFrom(e.Data).Length > 0;
+            e.Effect = _dragOk ? DragDropEffects.Copy : DragDropEffects.None;
             base.OnDragEnter(e);
         }
 
         protected override void OnDragOver(DragEventArgs e)
         {
-            e.Effect = AcceptedFrom(e.Data).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Effect = _dragOk ? DragDropEffects.Copy : DragDropEffects.None; // из кэша DragEnter
             base.OnDragOver(e);
+        }
+
+        protected override void OnDragLeave(EventArgs e)
+        {
+            _dragOk = false;
+            base.OnDragLeave(e);
         }
 
         protected override void OnDragDrop(DragEventArgs e)
         {
+            _dragOk = false;
             string[] paths = AcceptedFrom(e.Data);
             if (paths.Length > 0)
             {
