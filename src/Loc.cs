@@ -457,8 +457,8 @@ namespace ExcelMerger
             A("ocr.status.addPdf", "Добавьте цифровые PDF — кнопкой или перетащив их в окно.",
                 "Add born‑digital PDFs — with the button or by dragging them onto the window.");
             A("ocr.status.pageCount", "Страниц к переводу: {0}.", "Pages to convert: {0}.");
-            A("ocr.grid.empty", "Перетащите цифровые PDF сюда\nили нажмите «Открыть PDF…»",
-                "Drop born‑digital PDFs here\nor click “Open PDF…”");
+            A("ocr.grid.empty", "Перетащите цифровые PDF сюда\nили нажмите «Добавить PDF…»",
+                "Drop born‑digital PDFs here\nor click “Add PDF…”");
             A("ocr.status.converting", "Конвертация в Word…", "Converting to Word…");
             A("ocr.status.convertingPage", "Конвертация: страница {0} из {1}…", "Converting: page {0} of {1}…");
             A("ocr.status.failed", "Не выполнено.", "Failed.");
