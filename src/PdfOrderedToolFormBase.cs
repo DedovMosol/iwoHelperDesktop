@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -80,8 +81,12 @@ namespace ExcelMerger
                 var errors = new List<string>();
                 foreach (string path in toLoad)
                 {
+                    // Ловим ШИРОКО (как операционные воркеры): один битый/занятый/аварийный файл
+                    // (в т.ч. редкий OOM, который LoadPages НЕ оборачивает) не должен ронять
+                    // фоновый поток — остальные файлы пакета всё равно добавляются.
                     try { loaded.Add(new LoadedDoc { Path = path, PageCount = PdfMergeService.LoadPages(path).Count }); }
-                    catch (MergeException ex) { errors.Add(ex.Message); } // битый/занятый файл — в диалог
+                    catch (MergeException ex) { errors.Add(ex.Message); } // понятное локализованное сообщение
+                    catch (Exception ex) { errors.Add(string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message)); }
                 }
                 OnUi(delegate { ApplyAdded(loaded, errors, at, insertMode); });
             });
@@ -104,16 +109,18 @@ namespace ExcelMerger
                     added += doc.PageCount;
                 }
             }
-            foreach (string err in errors)
-                Dialogs.Error(this, ToolTitle, Loc.T("common.fileNotAdded"), err);
             if (added > 0)
             {
                 RefreshGrid();
                 if (insertMode)
                     _grid.SelectRange(firstAdded, added); // показать место вставки дропа
-                RefreshRestingStatus();
             }
+            // Вернуть idle/счётчик-статус вместо «Загрузка…» на ЛЮБОМ исходе (в т.ч. когда
+            // ни один файл не добавился) — иначе статус залипал бы на «Загрузка…».
+            RefreshRestingStatus();
             SyncControls();
+            foreach (string err in errors)
+                Dialogs.Error(this, ToolTitle, Loc.T("common.fileNotAdded"), err);
         }
 
         /// <summary>Перестроить сетку из текущего порядка.</summary>
