@@ -14,13 +14,12 @@ namespace ExcelMerger
     /// собираются в выбранном порядке. Отсканированные документы (без текстового слоя) в
     /// настоящее время недоступны — при попытке будет понятное сообщение (файл цел).
     /// Конвертация обёрнута try/catch (<see cref="OnConvertClick"/>): любая ошибка — диалог,
-    /// не краш. На базе <see cref="PdfToolFormBase"/> (сетка/зум/статус/закрытие/освобождение — DRY).
+    /// не краш. Модель порядка и её слой — в общей базе <see cref="PdfOrderedToolFormBase"/> (DRY).
     /// </summary>
-    public class OcrForm : PdfToolFormBase, IFileAcceptor
+    public class OcrForm : PdfOrderedToolFormBase
     {
         private static string Title { get { return Loc.T("hub.ocr.name"); } }
 
-        private readonly PdfPageOrder _order = new PdfPageOrder();
         private Button _btnOpen;
         private Button _btnUp;
         private Button _btnDown;
@@ -32,8 +31,10 @@ namespace ExcelMerger
         public OcrForm(Action showHub) : base(showHub)
         {
             BuildUi();
-            UpdateControls();
+            SyncControls();
         }
+
+        protected override string ToolTitle { get { return Title; } }
 
         /// <summary>Idle-статус: пусто — подсказка добавления, иначе — число страниц к переводу.</summary>
         protected override string IdleStatusText()
@@ -43,17 +44,10 @@ namespace ExcelMerger
                 : string.Format(Loc.T("ocr.status.pageCount"), _order.Count);
         }
 
-        /// <summary>Дроп PDF на карточку хаба: добавить файлы в конец (как кнопкой «Открыть»).</summary>
-        public void AcceptFiles(string[] paths)
-        {
-            AddFiles(paths);
-        }
-
         private void BuildUi()
         {
             InitShell(Title, new Size(800, 660), new Size(700, 560), Theme.WordViolet);
-            DragEnter += OnFileDragEnter;
-            DragDrop += OnFileDragDrop;
+            WireFileDropAppend(); // дроп PDF на окно — добавить в конец (общая обвязка базы)
             BuildHeaderWithHome(Title,
                 Loc.T("ocr.header.subtitle"),
                 Theme.WordViolet, Theme.WordVioletDark, ShowHelp);
@@ -71,13 +65,7 @@ namespace ExcelMerger
             _grid.DropHint = Loc.T("grid.dropHint");
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            _grid.ReorderRequested += OnReorder;
-            _grid.MoveRangeRequested += OnMoveRange;
-            _grid.InsertPagesRequested += OnInsertPages;
-            _grid.FilesDropped += delegate(string[] paths, int insertAt) { AddFiles(paths, insertAt); };
-            _grid.BeforeRotate += delegate { _order.Checkpoint(); }; // повороты — в историю Ctrl+Z
-            _grid.SelectionChanged += delegate { UpdateControls(); RefreshRestingStatus(); };
-            WireGridMenu();
+            WireOrderGrid(); // события порядка + контекстное меню (общая обвязка базы)
             Controls.Add(_grid);
 
             int px = right - panelW + 10;
@@ -95,7 +83,7 @@ namespace ExcelMerger
             _btnDown = AddPanelButton(Loc.T("common.later"), px, m + 164, pw, Loc.T("common.tip.later"));
             _btnDown.Click += delegate { MoveSelected(true); };
             _btnRemove = AddPanelButton(Loc.T("common.remove"), px, m + 208, pw, Loc.T("common.tip.remove"));
-            _btnRemove.Click += OnRemoveClick;
+            _btnRemove.Click += delegate { RemoveSelected(); };
 
             BuildBottomStrip(right, Loc.T("ocr.status.addPdf"), 230, false);
 
@@ -116,8 +104,6 @@ namespace ExcelMerger
             Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("ocr.help.body"));
         }
 
-        // ---------- открытие ----------
-
         private void OnOpenClick(object sender, EventArgs e)
         {
             using (var dialog = new OpenFileDialog())
@@ -130,73 +116,11 @@ namespace ExcelMerger
             }
         }
 
-        private void OnFileDragEnter(object sender, DragEventArgs e)
-        {
-            e.Effect = !_busy && PdfDrop.ExtractPaths(e).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
-        }
-
-        private void OnFileDragDrop(object sender, DragEventArgs e)
-        {
-            if (!_busy)
-                AddFiles(PdfDrop.ExtractPaths(e));
-        }
-
-        /// <summary>
-        /// Добавить PDF-файлы в конец (кнопка, дроп на окно) или ПЕРЕД позицией insertAt
-        /// (дроп на сетку). Ошибка файла — диалог, остальные добавляются.
-        /// </summary>
-        private void AddFiles(string[] paths, int insertAt = -1)
-        {
-            if (_busy || paths == null)
-                return;
-            int added = 0;
-            int firstAdded = -1;
-            bool checkpointed = false; // снимок для Ctrl+Z — только если реально что-то добавилось
-            int at = insertAt < 0 || insertAt > _order.Count ? _order.Count : insertAt;
-            Cursor = Cursors.WaitCursor;
-            try
-            {
-                foreach (string path in paths)
-                {
-                    try
-                    {
-                        int pages = PdfMergeService.LoadPages(path).Count;
-                        if (!checkpointed)
-                        {
-                            _order.Checkpoint();
-                            checkpointed = true;
-                        }
-                        int landed = _order.InsertDocument(at, path, pages);
-                        if (firstAdded < 0)
-                            firstAdded = landed;
-                        at = landed + pages; // следующий файл — сразу за вставленным
-                        added += pages;
-                    }
-                    catch (MergeException ex)
-                    {
-                        Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), ex.Message);
-                    }
-                }
-            }
-            finally
-            {
-                Cursor = Cursors.Default;
-            }
-            if (added > 0)
-            {
-                RefreshGrid();
-                if (insertAt >= 0)
-                    _grid.SelectRange(firstAdded, added); // показать место вставки дропа
-                RefreshRestingStatus();
-            }
-            UpdateControls();
-        }
-
         // ---------- конвертация ----------
 
         private void OnConvertClick(object sender, EventArgs e)
         {
-            if (_busy || _order.Count == 0)
+            if (Working || _order.Count == 0)
                 return;
             // Порядок/подмножество страниц из сетки (источник + индекс; страницы могут идти из разных файлов).
             List<PdfPageRef> order = _order.ToList();
@@ -212,7 +136,7 @@ namespace ExcelMerger
             }
 
             _busy = true;
-            UpdateControls();
+            SyncControls();
             SetStatus(Loc.T("ocr.status.converting"), Theme.TextMuted);
             BeginProgress(order.Count, Loc.T("ocr.status.convertingPage"));
             Action<int, int> onProgress = UiProgress();
@@ -241,7 +165,7 @@ namespace ExcelMerger
         {
             _busy = false;
             EndProgress();
-            UpdateControls();
+            SyncControls();
             if (error is OperationCanceledException)
             {
                 SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // .docx не создан
@@ -259,107 +183,16 @@ namespace ExcelMerger
             catch { } // нет ассоциации .docx — файл всё равно создан
         }
 
-        private void UpdateControls()
+        /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>
+        protected override void SyncControls()
         {
-            bool one = !_busy && _grid.SelectedCount == 1;
-            _grid.Locked = _busy; // правки сетки (буфер, дроп) — только вне операции
-            _btnOpen.Enabled = !_busy;
+            bool one = !Working && _grid.SelectedCount == 1;
+            _grid.Locked = Working; // правки сетки (буфер, дроп) — только вне работы
+            _btnOpen.Enabled = !Working;
             _btnUp.Enabled = one;
             _btnDown.Enabled = one;
-            _btnRemove.Enabled = !_busy && _grid.SelectedCount > 0;
-            _btnConvert.Enabled = !_busy && _order.Count > 0;
-        }
-
-        // ---------- перестановка и удаление страниц ----------
-
-        private void RefreshGrid()
-        {
-            _grid.SetPages(_order.ToList());
-        }
-
-        private void OnReorder(int from, int to)
-        {
-            if (_busy)
-                return;
-            _order.Checkpoint();
-            _order.Move(from, to);
-            RefreshGrid();
-            _grid.SelectIndex(to > from ? to - 1 : to); // выделить страницу на новом месте
-        }
-
-        /// <summary>Вставка вырезанных страниц (Ctrl+X → Ctrl+V) — перенос набора внутри порядка.</summary>
-        private void OnMoveRange(int[] indices, int insertAt)
-        {
-            if (_busy)
-                return;
-            _order.Checkpoint();
-            int landed = _order.MoveRange(indices, insertAt);
-            if (landed < 0)
-                return;
-            RefreshGrid();
-            _grid.SelectRange(landed, indices.Length);
-        }
-
-        /// <summary>Вставка скопированных страниц (Ctrl+C → Ctrl+V) — новые экземпляры в позиции.</summary>
-        private void OnInsertPages(PdfPageRef[] pages, int insertAt)
-        {
-            if (_busy || pages == null || pages.Length == 0)
-                return;
-            _order.Checkpoint();
-            int landed = _order.InsertAt(insertAt, pages);
-            RefreshGrid();
-            _grid.SelectRange(landed, pages.Length);
-            RefreshRestingStatus();
-            UpdateControls();
-        }
-
-        private void MoveSelected(bool later)
-        {
-            if (_busy || _grid.SelectedCount != 1)
-                return;
-            int index = _grid.GetSelectedIndices()[0];
-            bool willMove = later ? index < _order.Count - 1 : index > 0;
-            if (!willMove)
-                return; // уже с краю — снимок для Ctrl+Z не нужен
-            _order.Checkpoint();
-            int moved = later ? _order.MoveDown(index) : _order.MoveUp(index);
-            RefreshGrid();
-            _grid.SelectIndex(moved);
-        }
-
-        private void OnRemoveClick(object sender, EventArgs e)
-        {
-            if (_busy || _grid.SelectedCount == 0)
-                return;
-            _order.Checkpoint();
-            _order.RemoveAt(_grid.GetSelectedIndices());
-            RefreshGrid();
-            RefreshRestingStatus();
-            UpdateControls();
-        }
-
-        // Горячие клавиши сетки (Delete, Alt+←/→, Ctrl+X/C/V/Z, Ctrl+A, Enter) — в базе PdfToolFormBase.
-        protected override void RemoveSelectedPages() { OnRemoveClick(this, EventArgs.Empty); }
-        protected override void MoveSelectedPage(bool later) { MoveSelected(later); }
-
-        /// <summary>Ctrl+Z: откат последнего жеста (перенос, удаление, вставка, добавление, поворот).</summary>
-        protected override void UndoOrder()
-        {
-            if (_busy || !_order.Undo())
-                return;
-            RefreshGrid();
-            RefreshRestingStatus();
-            UpdateControls();
-        }
-
-        /// <summary>Ctrl+Y / Ctrl+Shift+Z: возврат откаченного жеста.</summary>
-        protected override void RedoOrder()
-        {
-            if (_busy || !_order.Redo())
-                return;
-            RefreshGrid();
-            RefreshRestingStatus();
-            UpdateControls();
+            _btnRemove.Enabled = !Working && _grid.SelectedCount > 0;
+            _btnConvert.Enabled = !Working && _order.Count > 0;
         }
 
         /// <summary>Имя .docx по умолчанию: из одного файла — его имя; из нескольких — «Объединённый».</summary>

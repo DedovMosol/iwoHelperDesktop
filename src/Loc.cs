@@ -155,6 +155,7 @@ namespace ExcelMerger
             A("common.status.selected", "Выбрано {0} из {1}.", "{0} of {1} selected.");
             A("grid.dropHint", "Отпустите, чтобы добавить", "Drop to add");
             A("common.status.saving", "Сохранение…", "Saving…");
+            A("common.status.loading", "Загрузка…", "Loading…");
             A("common.busySaving", "Дождитесь завершения сохранения…", "Wait for saving to finish…");
             A("common.status.notDone", "Не выполнено.", "Failed.");
             A("common.close", "Закрыть", "Close");
