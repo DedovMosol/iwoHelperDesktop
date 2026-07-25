@@ -33,7 +33,7 @@ namespace ExcelMerger
 
             Text = caption;
             Icon = Ui.AppIcon();
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             FormBorderStyle = FormBorderStyle.Sizable;
             MinimizeBox = false;
             ShowInTaskbar = false;

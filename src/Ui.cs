@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -9,6 +11,24 @@ namespace ExcelMerger
     /// <summary>Общие фабрики элементов интерфейса (главное окно и «О программе»).</summary>
     internal static class Ui
     {
+        // Кэш общих шрифтов: WinForms НЕ владеет Control.Font, поэтому шрифт, создаваемый
+        // на каждое окно/диалог, жил бы до финализатора — GDI-мусор при каждом диалоге и
+        // каждой пересборке окон сменой языка. Кэш живёт весь процесс и не освобождается;
+        // ключей конечное число (фиксированные литералы вызовов). Только UI-поток.
+        private static readonly Dictionary<string, Font> _fonts = new Dictionary<string, Font>();
+
+        /// <summary>Общий кэшированный шрифт (по умолчанию — Segoe UI). НЕ освобождать у получателя.</summary>
+        public static Font Font(float size, FontStyle style = FontStyle.Regular, string family = "Segoe UI")
+        {
+            string key = family + "|" + size.ToString(CultureInfo.InvariantCulture) + "|" + (int)style;
+            Font f;
+            if (!_fonts.TryGetValue(key, out f))
+            {
+                f = new Font(family, size, style);
+                _fonts[key] = f;
+            }
+            return f;
+        }
         /// <summary>
         /// Включить двойную буферизацию ListView (убирает мерцание при добавлении строк);
         /// свойство защищённое — только через reflection. Общее для всех списков (DRY).

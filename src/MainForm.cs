@@ -121,7 +121,7 @@ namespace ExcelMerger
             Icon appIcon = Ui.AppIcon();
             if (appIcon != null)
                 Icon = appIcon;
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
@@ -332,7 +332,7 @@ namespace ExcelMerger
 
         private void AddSectionLabel(string text, int y)
         {
-            Ui.Label(this, text, 20, y, new Font("Segoe UI", 8f, FontStyle.Bold), Theme.TextMuted);
+            Ui.Label(this, text, 20, y, Ui.Font(8f, FontStyle.Bold), Theme.TextMuted);
         }
 
         private CheckBox AddCheckBox(string text, int x, int y, string tooltip)

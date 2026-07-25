@@ -67,7 +67,7 @@ namespace ExcelMerger
             Icon icon = Ui.AppIcon();
             if (icon != null)
                 Icon = icon;
-            Font = new Font("Segoe UI", 9.75f);
+            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96f, 96f);
