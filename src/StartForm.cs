@@ -66,31 +66,31 @@ namespace ExcelMerger
             };
             Controls.Add(excel);
 
+            // PDF-карточки принимают дроп PDF: открывают инструмент и передают ему файлы
+            // (одна фабрика на клик и на дроп — DRY). Свод Excel работает с ПАПКОЙ, не с
+            // файлами, поэтому его карточка дроп не принимает.
             var pdf = new ChoiceCard(CardGlyph.Pdf, Loc.T("hub.pdf.name"), Loc.T("hub.pdf.desc"));
             pdf.SetBounds(282, 96, 240, 250);
-            pdf.Click += delegate
-            {
-                if (_context != null)
-                    _context.OpenTool("pdf", Loc.T("hub.pdf.name"), delegate(Action back) { return new PdfMergeForm(back); });
-            };
+            Func<Action, Form> pdfFactory = delegate(Action back) { return new PdfMergeForm(back); };
+            pdf.Click += delegate { if (_context != null) _context.OpenTool("pdf", Loc.T("hub.pdf.name"), pdfFactory); };
+            pdf.AcceptFiles(".pdf");
+            pdf.FilesDropped += delegate(string[] files) { if (_context != null) _context.OpenToolWithFiles("pdf", Loc.T("hub.pdf.name"), pdfFactory, files); };
             Controls.Add(pdf);
 
             var split = new ChoiceCard(CardGlyph.PdfSplit, Loc.T("hub.split.name"), Loc.T("hub.split.desc"));
             split.SetBounds(24, 364, 240, 250);
-            split.Click += delegate
-            {
-                if (_context != null)
-                    _context.OpenTool("split", Loc.T("hub.split.name"), delegate(Action back) { return new PdfSplitForm(back); });
-            };
+            Func<Action, Form> splitFactory = delegate(Action back) { return new PdfSplitForm(back); };
+            split.Click += delegate { if (_context != null) _context.OpenTool("split", Loc.T("hub.split.name"), splitFactory); };
+            split.AcceptFiles(".pdf");
+            split.FilesDropped += delegate(string[] files) { if (_context != null) _context.OpenToolWithFiles("split", Loc.T("hub.split.name"), splitFactory, files); };
             Controls.Add(split);
 
             var ocr = new ChoiceCard(CardGlyph.Ocr, Loc.T("hub.ocr.name"), Loc.T("hub.ocr.desc"));
             ocr.SetBounds(282, 364, 240, 250);
-            ocr.Click += delegate
-            {
-                if (_context != null)
-                    _context.OpenTool("ocr", Loc.T("hub.ocr.name"), delegate(Action back) { return new OcrForm(back); });
-            };
+            Func<Action, Form> ocrFactory = delegate(Action back) { return new OcrForm(back); };
+            ocr.Click += delegate { if (_context != null) _context.OpenTool("ocr", Loc.T("hub.ocr.name"), ocrFactory); };
+            ocr.AcceptFiles(".pdf");
+            ocr.FilesDropped += delegate(string[] files) { if (_context != null) _context.OpenToolWithFiles("ocr", Loc.T("hub.ocr.name"), ocrFactory, files); };
             Controls.Add(ocr);
 
             // Нижний ряд: «Проверить обновления» слева (на месте версии), «О программе» справа.

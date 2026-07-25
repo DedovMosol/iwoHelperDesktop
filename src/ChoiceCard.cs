@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -31,6 +33,68 @@ namespace ExcelMerger
         private readonly string _description;
         private bool _hover;
         private bool _pressed;
+        private string[] _acceptExtensions; // расширения принимаемых дропом файлов (null — не принимать)
+
+        /// <summary>Раскрытые дропом на карточку файлы (уже отфильтрованы по расширению).</summary>
+        public event Action<string[]> FilesDropped;
+
+        /// <summary>Разрешить дроп файлов с этими расширениями (например «.pdf»); включает подсветку эффекта.</summary>
+        public void AcceptFiles(params string[] extensions)
+        {
+            _acceptExtensions = extensions;
+            AllowDrop = extensions != null && extensions.Length > 0;
+        }
+
+        /// <summary>Пути с одним из расширений exts (регистр не важен, файл должен существовать). Чистая — под тест.</summary>
+        internal static string[] FilterByExtension(string[] paths, string[] exts)
+        {
+            var result = new List<string>();
+            if (paths == null || exts == null)
+                return result.ToArray();
+            foreach (string path in paths)
+            {
+                if (!File.Exists(path))
+                    continue;
+                string ext = Path.GetExtension(path);
+                foreach (string e in exts)
+                    if (string.Equals(ext, e, StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.Add(path);
+                        break;
+                    }
+            }
+            return result.ToArray();
+        }
+
+        private string[] AcceptedFrom(IDataObject data)
+        {
+            if (_acceptExtensions == null || data == null || !data.GetDataPresent(DataFormats.FileDrop))
+                return new string[0];
+            return FilterByExtension(data.GetData(DataFormats.FileDrop) as string[], _acceptExtensions);
+        }
+
+        protected override void OnDragEnter(DragEventArgs e)
+        {
+            e.Effect = AcceptedFrom(e.Data).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+            base.OnDragEnter(e);
+        }
+
+        protected override void OnDragOver(DragEventArgs e)
+        {
+            e.Effect = AcceptedFrom(e.Data).Length > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+            base.OnDragOver(e);
+        }
+
+        protected override void OnDragDrop(DragEventArgs e)
+        {
+            string[] paths = AcceptedFrom(e.Data);
+            if (paths.Length > 0)
+            {
+                Action<string[]> h = FilesDropped;
+                if (h != null) h(paths);
+            }
+            base.OnDragDrop(e);
+        }
 
         public ChoiceCard(CardGlyph glyph, string title, string description)
         {

@@ -17,7 +17,7 @@ namespace ExcelMerger
     /// Конвертация обёрнута try/catch (<see cref="OnConvertClick"/>): любая ошибка — диалог,
     /// не краш. На базе <see cref="PdfToolFormBase"/> (сетка/зум/статус/закрытие/освобождение — DRY).
     /// </summary>
-    public class OcrForm : PdfToolFormBase
+    public class OcrForm : PdfToolFormBase, IFileAcceptor
     {
         private static string Title { get { return Loc.T("hub.ocr.name"); } }
 
@@ -34,6 +34,20 @@ namespace ExcelMerger
         {
             BuildUi();
             UpdateControls();
+        }
+
+        /// <summary>Idle-статус: пусто — подсказка добавления, иначе — число страниц к переводу.</summary>
+        protected override string IdleStatusText()
+        {
+            return _order.Count == 0
+                ? Loc.T("ocr.status.addPdf")
+                : string.Format(Loc.T("ocr.status.pageCount"), _order.Count);
+        }
+
+        /// <summary>Дроп PDF на карточку хаба: добавить файлы в конец (как кнопкой «Открыть»).</summary>
+        public void AcceptFiles(string[] paths)
+        {
+            AddFiles(paths);
         }
 
         private void BuildUi()
@@ -54,6 +68,8 @@ namespace ExcelMerger
             _grid.AllowReorder = true; // перестановка страниц перетаскиванием
             _grid.ShowPositionNumbers = true; // под плиткой — позиция в итоговом документе
             _grid.AllowRotate = true; // страница выправляется ДО анализа макета (боковой текст станет строками)
+            _grid.EmptyHint = Loc.T("ocr.grid.empty");
+            _grid.DropHint = Loc.T("grid.dropHint");
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _grid.ReorderRequested += OnReorder;
@@ -61,7 +77,7 @@ namespace ExcelMerger
             _grid.InsertPagesRequested += OnInsertPages;
             _grid.FilesDropped += delegate(string[] paths, int insertAt) { AddFiles(paths, insertAt); };
             _grid.BeforeRotate += delegate { _order.Checkpoint(); }; // повороты — в историю Ctrl+Z
-            _grid.SelectionChanged += delegate { UpdateControls(); };
+            _grid.SelectionChanged += delegate { UpdateControls(); RefreshRestingStatus(); };
             WireGridMenu();
             Controls.Add(_grid);
 
@@ -171,7 +187,7 @@ namespace ExcelMerger
                 RefreshGrid();
                 if (insertAt >= 0)
                     _grid.SelectRange(firstAdded, added); // показать место вставки дропа
-                SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
+                RefreshRestingStatus();
             }
             UpdateControls();
         }
@@ -198,7 +214,7 @@ namespace ExcelMerger
             _busy = true;
             UpdateControls();
             SetStatus(Loc.T("ocr.status.converting"), Theme.TextMuted);
-            BeginProgress();
+            BeginProgress(order.Count, Loc.T("ocr.status.convertingPage"));
             Action<int, int> onProgress = UiProgress();
 
             var thread = new Thread(delegate()
@@ -292,7 +308,7 @@ namespace ExcelMerger
             int landed = _order.InsertAt(insertAt, pages);
             RefreshGrid();
             _grid.SelectRange(landed, pages.Length);
-            SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
+            RefreshRestingStatus();
             UpdateControls();
         }
 
@@ -317,7 +333,7 @@ namespace ExcelMerger
             _order.Checkpoint();
             _order.RemoveAt(_grid.GetSelectedIndices());
             RefreshGrid();
-            SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
+            RefreshRestingStatus();
             UpdateControls();
         }
 
@@ -331,7 +347,7 @@ namespace ExcelMerger
             if (_busy || !_order.Undo())
                 return;
             RefreshGrid();
-            SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
+            RefreshRestingStatus();
             UpdateControls();
         }
 
@@ -341,7 +357,7 @@ namespace ExcelMerger
             if (_busy || !_order.Redo())
                 return;
             RefreshGrid();
-            SetStatus(string.Format(Loc.T("ocr.status.pageCount"), _order.Count), Theme.TextMuted);
+            RefreshRestingStatus();
             UpdateControls();
         }
 

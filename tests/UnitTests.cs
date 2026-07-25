@@ -132,6 +132,11 @@ namespace ExcelMerger.Tests
             Run("PDF->Word (живой): боковой текст выправляется поворотом страницы", TestExtractRotationLive);
             Run("PdfDrop.ExtractPaths: фильтр .pdf, несуществующие, пустой дроп", TestPdfDropExtract);
             Run("PdfPageGrid.DropInsertIndex: позиция дропа по метке/в конец", TestDropInsertIndex);
+            Run("PdfPageGrid.HintFor: подсказка пусто/дроп, скрыта при непустом", TestHintFor);
+            Run("PdfToolFormBase.RestingStatus: счётчик выделения или idle", TestRestingStatus);
+            Run("PdfToolFormBase.ProgressItem: страница из процента, границы", TestProgressItem);
+            Run("PdfToolFormBase.BuildShortcuts: набор клавиш по возможностям", TestBuildShortcuts);
+            Run("ChoiceCard.FilterByExtension: фильтр по расширению и существованию", TestCardFilter);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
             Run("PdfPageGrid.StaleKeys: вытесняются только отсутствующие в keep", TestGridStaleKeys);
             Run("PdfPageGrid.LowerBound: бинарный поиск по монотонному предикату", TestLowerBound);
@@ -3864,6 +3869,77 @@ namespace ExcelMerger.Tests
             // Сетка без порядка («Разделение») — позиция не важна, всегда в конец.
             AssertEqual(10, PdfPageGrid.DropInsertIndex(false, 3, true, 10), "без порядка — в конец");
             AssertEqual(0, PdfPageGrid.DropInsertIndex(true, -1, false, 0), "пустая сетка — 0");
+        }
+
+        // ---------- быстрые победы UX 1.17.2 ----------
+
+        private static void TestHintFor()
+        {
+            AssertEqual(null, PdfPageGrid.HintFor(3, false, "empty", "drop"), "непустой список — без подсказки");
+            AssertEqual(null, PdfPageGrid.HintFor(3, true, "empty", "drop"), "непустой во время дропа — без подсказки");
+            AssertEqual("empty", PdfPageGrid.HintFor(0, false, "empty", "drop"), "пусто, не дроп — подсказка добавления");
+            AssertEqual("drop", PdfPageGrid.HintFor(0, true, "empty", "drop"), "пусто, дроп — «отпустите»");
+            AssertEqual("empty", PdfPageGrid.HintFor(0, true, "empty", null), "нет drop-текста — падаем на empty");
+        }
+
+        private static void TestRestingStatus()
+        {
+            AssertEqual("3 / 10", PdfToolFormBase.RestingStatus(3, 10, "idle", "{0} / {1}"), "есть выделение");
+            AssertEqual("idle", PdfToolFormBase.RestingStatus(0, 10, "idle", "{0} / {1}"), "нет выделения — idle");
+            AssertEqual("1 / 1", PdfToolFormBase.RestingStatus(1, 1, "idle", "{0} / {1}"), "выбрана одна из одной");
+            AssertEqual("", PdfToolFormBase.RestingStatus(0, 0, "", "{0} / {1}"), "пусто — пустой idle");
+        }
+
+        private static void TestProgressItem()
+        {
+            AssertEqual(0, PdfToolFormBase.ProgressItem(50, 0), "нет единиц — 0");
+            AssertEqual(1, PdfToolFormBase.ProgressItem(0, 10), "0% — минимум 1");
+            AssertEqual(5, PdfToolFormBase.ProgressItem(50, 10), "50% из 10 — 5");
+            AssertEqual(10, PdfToolFormBase.ProgressItem(100, 10), "100% — всё");
+            AssertEqual(3, PdfToolFormBase.ProgressItem(37, 8), "37% из 8 ≈ 3");
+            AssertEqual(10, PdfToolFormBase.ProgressItem(150, 10), "процент сверх 100 клампится");
+            AssertEqual(2, PdfToolFormBase.ProgressItem(1, 200), "1% из 200 — пропорционально 2");
+            AssertEqual(1, PdfToolFormBase.ProgressItem(0, 200), "0% — минимум 1, не 0");
+        }
+
+        private static void TestBuildShortcuts()
+        {
+            Func<string, string> t = delegate(string k) { return k; }; // «переводчик» возвращает ключ
+            string split = PdfToolFormBase.BuildShortcuts(false, true, t);   // разделение: без reorder, с rotate
+            AssertTrue(split.Contains("shortcuts.zoom") && split.Contains("shortcuts.goto"), "общие клавиши всегда");
+            AssertTrue(split.Contains("shortcuts.rotate"), "поворот при rotate");
+            AssertTrue(!split.Contains("shortcuts.cutcopy") && !split.Contains("shortcuts.undo"), "без reorder — нет буфера/отмены");
+
+            string merge = PdfToolFormBase.BuildShortcuts(true, true, t);    // объединение: всё
+            AssertTrue(merge.Contains("shortcuts.cutcopy") && merge.Contains("shortcuts.paste") &&
+                merge.Contains("shortcuts.undo") && merge.Contains("shortcuts.move"), "reorder — буфер/перемещение/отмена");
+
+            string plain = PdfToolFormBase.BuildShortcuts(false, false, t);  // ни reorder, ни rotate
+            AssertTrue(!plain.Contains("shortcuts.rotate") && !plain.Contains("shortcuts.cutcopy"), "минимальный набор");
+            AssertTrue(plain.Contains("shortcuts.selectAll"), "выделить всё — общее");
+            AssertTrue(!plain.EndsWith("\n") && !plain.EndsWith("\r"), "хвостовые переводы срезаны");
+        }
+
+        private static void TestCardFilter()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_card_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string pdf = Path.Combine(dir, "a.pdf"); File.WriteAllBytes(pdf, new byte[] { 1 });
+                string pdfUp = Path.Combine(dir, "B.PDF"); File.WriteAllBytes(pdfUp, new byte[] { 1 });
+                string txt = Path.Combine(dir, "c.txt"); File.WriteAllBytes(txt, new byte[] { 1 });
+                string ghost = Path.Combine(dir, "no.pdf"); // не создаём
+
+                string[] got = ChoiceCard.FilterByExtension(new[] { pdf, pdfUp, txt, ghost }, new[] { ".pdf" });
+                Array.Sort(got);
+                AssertEqual(2, got.Length, "только существующие .pdf (регистр не важен)");
+                AssertTrue(Array.IndexOf(got, pdf) >= 0 && Array.IndexOf(got, pdfUp) >= 0, "оба регистра .pdf");
+                AssertEqual(0, ChoiceCard.FilterByExtension(new[] { txt }, new[] { ".pdf" }).Length, ".txt отсеян");
+                AssertEqual(0, ChoiceCard.FilterByExtension(null, new[] { ".pdf" }).Length, "null-пути — пусто");
+                AssertEqual(0, ChoiceCard.FilterByExtension(new[] { pdf }, null).Length, "null-расширения — пусто");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
         }
 
         private static void AssertEqual(object expected, object actual, string what)

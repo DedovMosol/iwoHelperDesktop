@@ -15,7 +15,7 @@ namespace ExcelMerger
     /// диапазонам, каждые N страниц, по закладкам). Страницы копируются без
     /// переконвертации (PDFsharp); исходный файл не изменяется.
     /// </summary>
-    public class PdfSplitForm : PdfToolFormBase
+    public class PdfSplitForm : PdfToolFormBase, IFileAcceptor
     {
         private static string Title { get { return Loc.T("hub.split.name"); } }
         private const int ModeExtract = 0, ModeRanges = 1, ModeEveryN = 2, ModeBookmarks = 3;
@@ -64,9 +64,11 @@ namespace ExcelMerger
             _grid.AllowReorder = false; // разделение не меняет порядок исходника
             _grid.AllowRotate = true;   // но поворот страниц в ИТОГОВЫХ файлах — можно
             // ShowPositionNumbers = false: под плиткой — номер исходной страницы.
+            _grid.EmptyHint = Loc.T("split.grid.empty");
+            _grid.DropHint = Loc.T("split.grid.drop");
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            _grid.SelectionChanged += delegate { UpdateControls(); };
+            _grid.SelectionChanged += delegate { UpdateControls(); RefreshRestingStatus(); };
             _grid.FilesDropped += delegate(string[] paths, int insertAt)
             {
                 if (!_busy && paths.Length > 0)
@@ -153,6 +155,21 @@ namespace ExcelMerger
         private void ShowHelp()
         {
             Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("split.help.body"));
+        }
+
+        /// <summary>Idle-статус: не открыт — подсказка открытия, иначе — имя файла и число страниц.</summary>
+        protected override string IdleStatusText()
+        {
+            return _sourcePath == null
+                ? Loc.T("split.status.openPdf")
+                : string.Format(Loc.T("split.status.opened"), Path.GetFileName(_sourcePath), _pageCount);
+        }
+
+        /// <summary>Дроп PDF на карточку хаба: открыть первый файл (разделение — один документ).</summary>
+        public void AcceptFiles(string[] paths)
+        {
+            if (!_busy && paths != null && paths.Length > 0)
+                LoadSource(paths[0]);
         }
 
         // ---------- открытие исходника ----------
