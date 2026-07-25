@@ -20,6 +20,11 @@ versions follow [SemVer](https://semver.org/).
   PDF → Word card opens that tool with the files already loaded (an open tool receives
   them without a prompt).
 
+### Changed
+- **Release file names carry the version** (`iwoHelperDesktop-1.17.2.exe`,
+  `iwoHelperDesktop-setup-1.17.2.exe`, and the `-x86` variants), so a downloaded file is
+  self-identifying. The README buttons download the current release directly.
+
 ## [1.17.1] — 2026-07-24
 
 ### Added
