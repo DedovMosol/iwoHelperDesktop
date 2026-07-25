@@ -3,6 +3,23 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.2] — 2026-07-25
+
+### Added
+- **Empty page grids explain themselves.** An empty grid now shows a centered hint
+  (“Drop PDFs here or click Add PDF…”), and dragging a file over it highlights the drop
+  target with an accent frame and a “Drop to add” prompt.
+- **Selection counter.** Selecting pages shows “N of M selected” in the status line,
+  reverting to the page count when nothing is selected.
+- **Per-page progress.** While saving a merged PDF or converting to Word the status
+  shows “page N of M”, next to the percentage.
+- **Keyboard-shortcuts cheat sheet.** A ☰ Menu → Keyboard shortcuts entry lists the grid
+  keys (zoom, select, cut/copy/paste, undo/redo, move, rotate, go to page); the list
+  adapts to what the tool supports.
+- **Drop PDFs onto the start-screen cards.** Dropping PDF files on the Merge, Split or
+  PDF → Word card opens that tool with the files already loaded (an open tool receives
+  them without a prompt).
+
 ## [1.17.1] — 2026-07-24
 
 ### Added

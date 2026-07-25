@@ -85,6 +85,17 @@ namespace ExcelMerger
             A("menu.root", "☰ Меню", "☰ Menu");
             A("menu.howTo", "Как пользоваться", "How to use");
             A("menu.stats", "Статистика", "Statistics");
+            A("menu.shortcuts", "Горячие клавиши", "Keyboard shortcuts");
+            A("shortcuts.title", "Клавиши в сетке страниц", "Keys in the page grid");
+            A("shortcuts.zoom", "Ctrl+колесо — масштаб миниатюр", "Ctrl+Wheel — thumbnail zoom");
+            A("shortcuts.selectAll", "Ctrl+A — выделить все страницы", "Ctrl+A — select all pages");
+            A("shortcuts.goto", "Ctrl+G — перейти к странице", "Ctrl+G — go to page");
+            A("shortcuts.move", "Alt+←/→ — переместить страницу раньше/позже", "Alt+←/→ — move the page earlier/later");
+            A("shortcuts.cutcopy", "Ctrl+X / Ctrl+C — вырезать / копировать", "Ctrl+X / Ctrl+C — cut / copy");
+            A("shortcuts.paste", "Ctrl+V — вставить (по каретке или после выбранного)", "Ctrl+V — paste (at the caret or after the selection)");
+            A("shortcuts.delete", "Delete — удалить выбранные; Esc — отменить вырезание", "Delete — remove selected; Esc — cancel the cut");
+            A("shortcuts.undo", "Ctrl+Z / Ctrl+Y — отменить / вернуть", "Ctrl+Z / Ctrl+Y — undo / redo");
+            A("shortcuts.rotate", "Ctrl+Shift+«+» / «−» — повернуть выбранные", "Ctrl+Shift+“+” / “−” — rotate the selection");
             A("menu.language", "Язык / Language", "Язык / Language");
             A("menu.lang.ru", "RU", "RU");
             A("menu.lang.en", "EN", "EN");
@@ -141,6 +152,8 @@ namespace ExcelMerger
             A("common.tip.addPdf", "Файлы также можно перетащить в окно", "You can also drag files onto the window");
             A("common.tip.removePages", "Удалить выбранные страницы (Delete)", "Remove the selected pages (Delete)");
             A("common.status.pageCountList", "Страниц в списке: {0}.", "Pages in the list: {0}.");
+            A("common.status.selected", "Выбрано {0} из {1}.", "{0} of {1} selected.");
+            A("grid.dropHint", "Отпустите, чтобы добавить", "Drop to add");
             A("common.status.saving", "Сохранение…", "Saving…");
             A("common.busySaving", "Дождитесь завершения сохранения…", "Wait for saving to finish…");
             A("common.status.notDone", "Не выполнено.", "Failed.");
@@ -330,6 +343,9 @@ namespace ExcelMerger
             A("split.pickPdf", "Выберите PDF для разделения", "Choose a PDF to split");
             A("split.err.fileNotOpened", "Файл не открыт", "File not opened");
             A("split.status.opened", "Открыт «{0}»: страниц {1}.", "Opened “{0}”: {1} pages.");
+            A("split.grid.empty", "Перетащите PDF сюда\nили нажмите «Открыть PDF…»",
+                "Drop a PDF here\nor click “Open PDF…”");
+            A("split.grid.drop", "Отпустите, чтобы открыть", "Drop to open");
             A("split.hint.extract", "Выделите нужные страницы в сетке (Ctrl+A — все).",
                 "Select the pages in the grid (Ctrl+A — all).");
             A("split.hint.bookmarks", "По одному файлу на закладку верхнего уровня.",
@@ -390,6 +406,9 @@ namespace ExcelMerger
                 "Merge *.pdf documents with page reordering and compression.");
             A("pdf.status.addPdf", "Добавьте PDF-файлы — кнопкой или перетащив их в окно.",
                 "Add PDF files — with the button or by dragging them onto the window.");
+            A("pdf.grid.empty", "Перетащите PDF сюда\nили нажмите «Добавить PDF…»",
+                "Drop PDFs here\nor click “Add PDF…”");
+            A("pdf.status.savingPage", "Сохранение: страница {0} из {1}…", "Saving: page {0} of {1}…");
             A("pdf.btn.save", "Сохранить PDF…", "Save PDF…");
             A("pdf.defaultName", "Объединённый.pdf", "Merged.pdf");
             A("pdf.status.saveFailed", "PDF не сохранён.", "PDF was not saved.");
@@ -438,7 +457,10 @@ namespace ExcelMerger
             A("ocr.status.addPdf", "Добавьте цифровые PDF — кнопкой или перетащив их в окно.",
                 "Add born‑digital PDFs — with the button or by dragging them onto the window.");
             A("ocr.status.pageCount", "Страниц к переводу: {0}.", "Pages to convert: {0}.");
+            A("ocr.grid.empty", "Перетащите цифровые PDF сюда\nили нажмите «Открыть PDF…»",
+                "Drop born‑digital PDFs here\nor click “Open PDF…”");
             A("ocr.status.converting", "Конвертация в Word…", "Converting to Word…");
+            A("ocr.status.convertingPage", "Конвертация: страница {0} из {1}…", "Converting: page {0} of {1}…");
             A("ocr.status.failed", "Не выполнено.", "Failed.");
             A("ocr.status.done", "✓ Готово: страниц {0} → Word (.docx).", "✓ Done: {0} pages → Word (.docx).");
             A("ocr.err.convertFailed", "Конвертация не выполнена", "Conversion failed");

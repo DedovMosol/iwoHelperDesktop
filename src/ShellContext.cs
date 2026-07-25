@@ -66,8 +66,25 @@ namespace ExcelMerger
             SpawnTool(key, name, factory, null, FormWindowState.Normal);
         }
 
-        /// <summary>Создать окно инструмента через фабрику, отследить и (опционально) поставить на место.</summary>
-        private void SpawnTool(string key, string name, Func<Action, Form> factory, Point? location, FormWindowState state)
+        /// <summary>
+        /// Открыть инструмент по ключу и передать ему файлы (дроп PDF на карточку хаба):
+        /// уже открытое окно получает файлы без диалога «уже открыт», новое — сразу после
+        /// показа. Инструмент грузит их сам (<see cref="IFileAcceptor"/>).
+        /// </summary>
+        public void OpenToolWithFiles(string key, string name, Func<Action, Form> factory, string[] files)
+        {
+            Form tool;
+            if (!_tools.TryGetOpen(key, out tool))
+                tool = SpawnTool(key, name, factory, null, FormWindowState.Normal);
+            else
+                BringToFront(tool);
+            var acceptor = tool as IFileAcceptor;
+            if (acceptor != null && files != null && files.Length > 0)
+                acceptor.AcceptFiles(files);
+        }
+
+        /// <summary>Создать окно инструмента через фабрику, отследить и (опционально) поставить на место. Возвращает окно.</summary>
+        private Form SpawnTool(string key, string name, Func<Action, Form> factory, Point? location, FormWindowState state)
         {
             Form tool = factory(ShowHub); // кнопка «Главная» в инструменте показывает хаб
             _tools.Add(key, tool);
@@ -80,6 +97,7 @@ namespace ExcelMerger
             else if (state != FormWindowState.Normal)
                 tool.WindowState = state;
             BringToFront(tool);
+            return tool;
         }
 
         /// <summary>

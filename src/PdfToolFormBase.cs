@@ -39,6 +39,9 @@ namespace ExcelMerger
         protected Label _progressPct;
         private readonly TaskbarProgress _taskbar = new TaskbarProgress();
         private int _lastPct; // последний показанный процент (UI-поток) — чтобы не перерисовывать зря
+        // «Страница N из M» в статусе во время операции: формат и всего единиц (0/null — только процент).
+        private int _progTotal;
+        private string _progFmt;
 
         protected PdfToolFormBase(Action showHub)
         {
@@ -76,7 +79,10 @@ namespace ExcelMerger
         /// </summary>
         protected void BuildHeaderWithHome(string title, string subtitle, Color colorTop, Color colorBottom, Action showHelp)
         {
-            MenuStrip menu = HelpMenu.Create(this, showHelp);
+            // Пункт «Горячие клавиши» — только у PDF-инструментов (у них сетка с клавишами).
+            var shortcuts = new ToolStripMenuItem(Loc.T("menu.shortcuts"));
+            shortcuts.Click += delegate { ShowShortcuts(); };
+            MenuStrip menu = HelpMenu.Create(this, showHelp, shortcuts);
             MainMenuStrip = menu;
             Controls.Add(menu);
 
@@ -99,6 +105,29 @@ namespace ExcelMerger
         {
             _lblStatus.Text = text;
             _lblStatus.ForeColor = color;
+        }
+
+        /// <summary>
+        /// Текст «покоя» статуса: при выделении — «Выбрано N из M», иначе — idle. Чистая — под тест.
+        /// </summary>
+        internal static string RestingStatus(int selected, int total, string idle, string selectedFormat)
+        {
+            return selected > 0 ? string.Format(selectedFormat, selected, total) : idle;
+        }
+
+        /// <summary>Idle-текст статуса конкретного инструмента (без выделения). Переопределяют формы.</summary>
+        protected virtual string IdleStatusText() { return ""; }
+
+        /// <summary>
+        /// Обновить статус «покоя»: счётчик выделения или idle-текст инструмента. Во время
+        /// операции не трогаем статус (там прогресс). Зовут формы на смене выделения и мутациях.
+        /// </summary>
+        protected void RefreshRestingStatus()
+        {
+            if (_busy || _grid == null)
+                return;
+            SetStatus(RestingStatus(_grid.SelectedCount, _grid.Count, IdleStatusText(),
+                Loc.T("common.status.selected")), Theme.TextMuted);
         }
 
         /// <summary>
@@ -179,9 +208,21 @@ namespace ExcelMerger
         }
 
         /// <summary>Показать полосу в начале операции. Только UI-поток.</summary>
-        protected void BeginProgress()
+        internal static int ProgressItem(int pct, int total)
+        {
+            if (total <= 0)
+                return 0;
+            int item = (int)Math.Round(pct / 100.0 * total, MidpointRounding.AwayFromZero);
+            if (item < 1) return 1;
+            if (item > total) return total;
+            return item;
+        }
+
+        protected void BeginProgress(int total = 0, string runningFormat = null)
         {
             _lastPct = -1;
+            _progTotal = total;
+            _progFmt = runningFormat;
             _progress.Value = 0;
             _progressPct.Text = "0 %";
             _progress.Visible = true;
@@ -195,6 +236,7 @@ namespace ExcelMerger
         {
             _progress.Visible = false;
             _progressPct.Visible = false;
+            _progFmt = null; // счётчик страниц больше не обновляем
             _taskbar.SetState(Handle, TaskbarProgressState.None);
         }
 
@@ -207,6 +249,8 @@ namespace ExcelMerger
             SetBarInstant(pct);
             _progressPct.Text = pct + " %";
             _taskbar.SetValue(Handle, pct, 100);
+            if (_progFmt != null && _progTotal > 0)
+                SetStatus(string.Format(_progFmt, ProgressItem(pct, _progTotal), _progTotal), Theme.TextMuted);
         }
 
         /// <summary>
@@ -378,6 +422,38 @@ namespace ExcelMerger
                 0, _grid.Count, 0);
             if (n >= 0)
                 _grid.MoveSelectedTo(n); // «после страницы N» = вставка перед позицией N
+        }
+
+        /// <summary>Шпаргалка горячих клавиш сетки: набор зависит от возможностей инструмента.</summary>
+        protected void ShowShortcuts()
+        {
+            if (_grid == null)
+                return;
+            Dialogs.Info(this, Loc.T("menu.shortcuts"), Loc.T("shortcuts.title"),
+                BuildShortcuts(_grid.AllowReorder, _grid.AllowRotate, Loc.T));
+        }
+
+        /// <summary>
+        /// Тело шпаргалки: общие клавиши всегда, буфер/перестановка — при reorder,
+        /// поворот — при rotate. Переводчик t инъектируется (чистая — под тест).
+        /// </summary>
+        internal static string BuildShortcuts(bool reorder, bool rotate, Func<string, string> t)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(t("shortcuts.zoom"));
+            sb.AppendLine(t("shortcuts.selectAll"));
+            sb.AppendLine(t("shortcuts.goto"));
+            if (reorder)
+            {
+                sb.AppendLine(t("shortcuts.move"));
+                sb.AppendLine(t("shortcuts.cutcopy"));
+                sb.AppendLine(t("shortcuts.paste"));
+                sb.AppendLine(t("shortcuts.delete"));
+                sb.AppendLine(t("shortcuts.undo"));
+            }
+            if (rotate)
+                sb.AppendLine(t("shortcuts.rotate"));
+            return sb.ToString().TrimEnd();
         }
 
         /// <summary>Откат последнего изменения порядка (Ctrl+Z). Переопределяют формы с моделью порядка.</summary>

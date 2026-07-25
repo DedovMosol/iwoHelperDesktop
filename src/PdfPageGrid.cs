@@ -29,22 +29,43 @@ namespace ExcelMerger
     {
         private const int EnqueueBuffer = 16;   // докачивать миниатюры чуть за пределами видимого
         private const int DragEdgePx = 28;      // зона автопрокрутки у верх/низ края при перетаскивании
+        private const int DropFramePx = 3;      // толщина акцентной рамки-подсветки при дропе файла
         private static readonly long PageCacheBudget =
             IntPtr.Size == 8 ? 192L << 20 : 48L << 20; // x86: адресное пространство ~2 ГБ
         private static readonly Color HoverMarkColor = Color.FromArgb(185, 185, 185);
+        private static readonly Color GridBack = Color.FromArgb(250, 250, 250);
 
-        /// <summary>ListView, извещающий о прокрутке — для ленивого рендера видимых страниц.</summary>
+        /// <summary>
+        /// ListView, извещающий о прокрутке (для ленивого рендера видимых страниц) и
+        /// рисующий подсказку по центру, когда список ПУСТ (owner-draw не вызывает
+        /// DrawItem без элементов, поэтому текст рисуем в WM_PAINT поверх фона).
+        /// </summary>
         private sealed class ScrollList : ListView
         {
+            private static readonly Color HintColor = Color.FromArgb(120, 120, 120);
             public event EventHandler Scrolled;
+            public string HintText;   // текст-подсказка пустого списка; null — не рисовать
+            public Font HintFont;     // владелец — грид (создаёт и освобождает)
+
             protected override void WndProc(ref Message m)
             {
                 base.WndProc(ref m);
-                const int WM_VSCROLL = 0x115, WM_MOUSEWHEEL = 0x20A, WM_KEYUP = 0x101;
+                const int WM_VSCROLL = 0x115, WM_MOUSEWHEEL = 0x20A, WM_KEYUP = 0x101, WM_PAINT = 0x0F;
                 if (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL || m.Msg == WM_KEYUP)
                 {
                     EventHandler h = Scrolled;
                     if (h != null) h(this, EventArgs.Empty);
+                }
+                else if (m.Msg == WM_PAINT && Items.Count == 0 && !string.IsNullOrEmpty(HintText))
+                {
+                    // Пустой список: DrawItem не вызывается, база залила фон — рисуем подсказку.
+                    using (var g = Graphics.FromHwnd(Handle))
+                    {
+                        Rectangle r = Rectangle.Inflate(ClientRectangle, -30, 0);
+                        TextRenderer.DrawText(g, HintText, HintFont ?? Font, r, HintColor,
+                            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                            TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                    }
                 }
             }
         }
@@ -87,6 +108,10 @@ namespace ExcelMerger
             new Dictionary<string, List<ListViewItem>>(StringComparer.OrdinalIgnoreCase);
         private int _tileWidth = ThumbZoom.DefaultWidth;
         private Font _badgeFont;
+        private Font _hintFont;   // подсказка пустого списка (крупнее подписей)
+        private bool _dropActive; // над сеткой тянут файл — рисуем акцентную рамку и меняем подсказку
+        private string _emptyHint; // текст подсказки для пустого списка (задаёт форма)
+        private string _dropHint;  // текст подсказки во время дропа файла (задаёт форма)
 
         private readonly object _qLock = new object();
         private readonly Queue<PdfPageRef> _thumbQueue = new Queue<PdfPageRef>();
@@ -161,7 +186,14 @@ namespace ExcelMerger
                 ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderHi), OnPageEvicted);
             _badgeFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
             _chipFont = new Font("Segoe UI Symbol", 9.5f); // глифы ↺/↻ hover-кнопок поворота
+            _hintFont = new Font("Segoe UI", 11f);         // подсказка пустого списка
+            // Тонкая внутренняя рамка (Padding) видна только когда закрашена акцентом при
+            // дропе: список Dock.Fill занимает клиент за вычетом Padding, его частичные
+            // перерисовки в неё не залезают — рамка держится без мерцания.
+            BackColor = GridBack;
+            Padding = new Padding(DropFramePx);
             _metrics.ColorDepth = ColorDepth.Depth32Bit;
+            _list.HintFont = _hintFont;
             _list.Dock = DockStyle.Fill;
             _list.View = View.LargeIcon;
             _list.LargeImageList = _metrics;
@@ -185,7 +217,7 @@ namespace ExcelMerger
             _list.DragEnter += OnListDragEnter;
             _list.DragOver += OnListDragOver;
             _list.DragDrop += OnListDragDrop;
-            _list.DragLeave += delegate { _list.InsertionMark.Index = -1; StopDragScroll(); };
+            _list.DragLeave += delegate { _list.InsertionMark.Index = -1; StopDragScroll(); SetDropActive(false); };
             _list.MouseWheel += OnListMouseWheel;
             _list.MouseUp += OnListMouseUp;
             _list.MouseMove += OnListMouseMove;
@@ -219,6 +251,55 @@ namespace ExcelMerger
         /// PDF → Word), false — номер ИСХОДНОЙ страницы (разделение одного файла).
         /// </summary>
         public bool ShowPositionNumbers { get; set; }
+
+        /// <summary>Подсказка по центру пустого списка (задаёт форма под свою кнопку добавления).</summary>
+        public string EmptyHint
+        {
+            get { return _emptyHint; }
+            set { _emptyHint = value; UpdateHint(); }
+        }
+
+        /// <summary>Подсказка по центру пустого списка во время дропа файла («Отпустите…»).</summary>
+        public string DropHint
+        {
+            get { return _dropHint; }
+            set { _dropHint = value; UpdateHint(); }
+        }
+
+        /// <summary>Текст подсказки пустого списка: во время дропа — «отпустите», иначе — «добавьте». Чистая — под тест.</summary>
+        internal static string HintFor(int count, bool dropActive, string emptyHint, string dropHint)
+        {
+            if (count > 0)
+                return null; // список не пуст — подсказка не рисуется
+            return dropActive ? (dropHint ?? emptyHint) : emptyHint;
+        }
+
+        /// <summary>Пересчитать и применить подсказку пустого списка (пусто/дроп).</summary>
+        private void UpdateHint()
+        {
+            string hint = HintFor(_list.Items.Count, _dropActive, _emptyHint, _dropHint);
+            if (string.Equals(_list.HintText, hint, StringComparison.Ordinal))
+                return;
+            _list.HintText = hint;
+            if (_list.IsHandleCreated)
+                _list.Invalidate();
+        }
+
+        /// <summary>Включить/снять акцентную рамку-подсветку дропа файла (рамка — Padding, текст — список).</summary>
+        private void SetDropActive(bool active)
+        {
+            if (_dropActive == active)
+                return;
+            _dropActive = active;
+            Invalidate();  // перерисовать рамку (Padding)
+            UpdateHint();  // возможная смена подсказки пусто→дроп
+        }
+
+        /// <summary>Рамка-подсветка при дропе рисуется закраской Padding (список поверх оставляет только рамку).</summary>
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.Clear(_dropActive ? Theme.Accent : BackColor);
+        }
 
         /// <summary>Заменить содержимое сетки списком страниц (в этом порядке).</summary>
         public void SetPages(IList<PdfPageRef> pages)
@@ -267,6 +348,7 @@ namespace ExcelMerger
                 }
             }
             _list.EndUpdate();
+            UpdateHint();            // пусто/не пусто → показать или снять подсказку
             ScheduleVisibleUpdate(); // рендерим только видимые страницы, а не все сразу
         }
 
@@ -1119,6 +1201,7 @@ namespace ExcelMerger
             // Ctrl+V вставил бы в невидимую позицию.
             ClearCaret();
             _list.InsertionMark.Color = SystemColors.Highlight; // метка драга — в полном цвете
+            SetDropActive(_dragHasFiles); // акцентная рамка только для импорта файлов, не для перестановки
         }
 
         private void OnListDragOver(object sender, DragEventArgs e)
@@ -1156,6 +1239,7 @@ namespace ExcelMerger
             bool after = _list.InsertionMark.AppearsAfterItem;
             _list.InsertionMark.Index = -1;
             StopDragScroll();
+            SetDropActive(false); // снять рамку до обработки дропа
 
             if (_dragHasFiles)
             {
@@ -1493,6 +1577,8 @@ namespace ExcelMerger
                     _badgeFont.Dispose();
                 if (_chipFont != null)
                     _chipFont.Dispose();
+                if (_hintFont != null)
+                    _hintFont.Dispose();
                 _metrics.Dispose(); // пустой ImageList метрик (не дочерний компонент)
                 _shuttingDown = true;    // вытеснение при Clear только освобождает bitmap
                 _pageCache.Clear();

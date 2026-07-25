@@ -13,7 +13,7 @@ namespace ExcelMerger
     /// перетаскиванием, удаление, сохранение в один PDF. Страницы копируются без
     /// переконвертации (PDFsharp).
     /// </summary>
-    public class PdfMergeForm : PdfToolFormBase
+    public class PdfMergeForm : PdfToolFormBase, IFileAcceptor
     {
         private static string Title { get { return Loc.T("hub.pdf.name"); } }
 
@@ -40,6 +40,20 @@ namespace ExcelMerger
             get { return Loc.T("common.busySaving"); }
         }
 
+        /// <summary>Idle-статус: пусто — подсказка добавления, иначе — число страниц.</summary>
+        protected override string IdleStatusText()
+        {
+            return _order.Count == 0
+                ? Loc.T("pdf.status.addPdf")
+                : string.Format(Loc.T("common.status.pageCountList"), _order.Count);
+        }
+
+        /// <summary>Дроп PDF на карточку хаба: добавить файлы в конец (как кнопкой).</summary>
+        public void AcceptFiles(string[] paths)
+        {
+            AddFiles(paths);
+        }
+
         private void BuildUi()
         {
             InitShell(Title, new Size(780, 660), new Size(660, 540), Theme.PdfRed);
@@ -56,9 +70,11 @@ namespace ExcelMerger
             _grid.AllowReorder = true;
             _grid.AllowRotate = true;          // поворот пишется в итоговый PDF (/Rotate)
             _grid.ShowPositionNumbers = true;  // под плиткой — позиция в итоговом наборе
+            _grid.EmptyHint = Loc.T("pdf.grid.empty");
+            _grid.DropHint = Loc.T("grid.dropHint");
             _grid.SetBounds(20, m + 80, right - 20 - 150, ClientSize.Height - (m + 80) - 152);
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            _grid.SelectionChanged += delegate { UpdateButtons(); };
+            _grid.SelectionChanged += delegate { UpdateButtons(); RefreshRestingStatus(); };
             _grid.ReorderRequested += OnReorder;
             _grid.MoveRangeRequested += OnMoveRange;
             _grid.InsertPagesRequested += OnInsertPages;
@@ -178,7 +194,7 @@ namespace ExcelMerger
                 RefreshGrid();
                 if (insertAt >= 0)
                     _grid.SelectRange(firstAdded, added); // показать место вставки дропа
-                SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
+                RefreshRestingStatus();
             }
             UpdateButtons();
         }
@@ -221,7 +237,7 @@ namespace ExcelMerger
             int landed = _order.InsertAt(insertAt, pages);
             RefreshGrid();
             _grid.SelectRange(landed, pages.Length);
-            SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
+            RefreshRestingStatus();
             UpdateButtons();
         }
 
@@ -246,7 +262,7 @@ namespace ExcelMerger
             _order.Checkpoint();
             _order.RemoveAt(_grid.GetSelectedIndices());
             RefreshGrid();
-            SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
+            RefreshRestingStatus();
             UpdateButtons();
         }
 
@@ -260,7 +276,7 @@ namespace ExcelMerger
             if (_busy || !_order.Undo())
                 return;
             RefreshGrid();
-            SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
+            RefreshRestingStatus();
             UpdateButtons();
         }
 
@@ -270,7 +286,7 @@ namespace ExcelMerger
             if (_busy || !_order.Redo())
                 return;
             RefreshGrid();
-            SetStatus(string.Format(Loc.T("common.status.pageCountList"), _order.Count), Theme.TextMuted);
+            RefreshRestingStatus();
             UpdateButtons();
         }
 
@@ -296,7 +312,7 @@ namespace ExcelMerger
             _busy = true;
             UpdateButtons();
             SetStatus(Loc.T("common.status.saving"), Theme.TextMuted);
-            BeginProgress();
+            BeginProgress(pages.Count, Loc.T("pdf.status.savingPage"));
             Action<int, int> onProgress = UiProgress();
 
             var thread = new Thread(delegate()
