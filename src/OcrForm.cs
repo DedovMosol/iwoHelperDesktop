@@ -174,8 +174,7 @@ namespace ExcelMerger
             }
             UsageStats.RecordPdfToWord();
             SetStatus(string.Format(Loc.T("ocr.status.done"), result.Pages), Theme.OkGreen);
-            try { Process.Start(outPath); }
-            catch { } // нет ассоциации .docx — файл всё равно создан
+            Ui.OpenPath(outPath); // авто-открытие результата; молча, если нет ассоциации .docx
         }
 
         /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>

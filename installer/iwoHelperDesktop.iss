@@ -66,10 +66,12 @@ UsePreviousAppDir=yes
 ; Показать страницу приветствия — на ней явно предупреждаем про установку
 ; только для текущего пользователя (см. [Messages] WelcomeLabel2).
 DisableWelcomePage=no
-; Всегда спрашивать язык в начале установки (RU/EN): выбранный язык мастера становится
-; языком приложения по умолчанию (см. [Code] SeedLanguage). Так англоязычному пользователю
-; не выскакивает русский интерфейс.
-ShowLanguageDialog=yes
+; Язык выбирается СВОИМ стартовым экраном с флагами (Великобритания / Россия — см. [Code]
+; InitializeWizard/PromptLanguageByFlags), а не стандартным дропдауном Inno: он не умеет
+; флаги. Дефолтный дропдаун выключен; язык мастера авто-определяется по системе, а при
+; выборе другого флага setup перезапускается с /LANG=. Выбранный язык становится и языком
+; приложения по умолчанию (см. SeedLanguage) — англоязычному не выскакивает русский.
+ShowLanguageDialog=no
 ; Минимальная ОС — Windows 8.1 (NT 6.3): раньше неё нет Windows.Data.Pdf (миниатюры).
 ; .NET Framework 4.8 проверяется в [Code] (в Windows 10 1903+ уже встроен).
 MinVersion=6.3
@@ -118,6 +120,9 @@ Source: "{#GsDir}\lib\*"; DestDir: "{app}\gs\lib"; Flags: ignoreversion recurses
 Source: "{#GsDir}\Resource\*"; DestDir: "{app}\gs\Resource"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#GsDir}\iccprofiles\*"; DestDir: "{app}\gs\iccprofiles"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#GsDir}\LICENSE"; DestDir: "{app}\gs"; DestName: "LICENSE.txt"; Flags: ignoreversion skipifsourcedoesntexist
+; Флаги для стартового выбора языка (извлекаются во временную папку, не устанавливаются).
+Source: "flag_en.bmp"; Flags: dontcopy
+Source: "flag_ru.bmp"; Flags: dontcopy
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -127,6 +132,94 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+// ExitProcess — закрыть текущий экземпляр после перезапуска в выбранном языке (Inno фиксирует
+// язык мастера до его создания; сменить на лету нельзя — только перезапуск).
+procedure ExitProcess(uExitCode: Cardinal);
+  external 'ExitProcess@kernel32.dll stdcall';
+
+// Есть ли среди аргументов командной строки переключатель с данным префиксом (например
+// «/SILENT» или «/LANG=»). Чтобы не показывать выбор языка при тихой установке и в уже
+// перезапущенном экземпляре (там передан /LANG=).
+function HasSwitch(const Prefix: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(Copy(ParamStr(I), 1, Length(Prefix)), Prefix) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+// Стартовый экран выбора языка флагами (Великобритания / Россия). Возвращает 'en' или 'ru';
+// по умолчанию (окно закрыли) — текущий язык. Свой, потому что дропдаун Inno флаги не умеет.
+function PromptLanguageByFlags(): String;
+var
+  Form: TSetupForm;
+  Title: TNewStaticText;
+  EnImg, RuImg: TBitmapImage;
+  EnBtn, RuBtn: TNewButton;
+  cw, colL, colR, flagY, btnY: Integer;
+begin
+  Result := ActiveLanguage();
+  ExtractTemporaryFile('flag_en.bmp');
+  ExtractTemporaryFile('flag_ru.bmp');
+  { Inno 7: CreateCustomForm(ClientWidth, ClientHeight, KeepSizeX, KeepSizeY). Без вызова
+    FlipAndCenterIfNeeded форма сама центрируется на экране — то, что нужно до мастера. }
+  Form := CreateCustomForm(ScaleX(400), ScaleY(210), False, True);
+  try
+    Form.Caption := 'iwo Helper Desktop';
+    cw := Form.ClientWidth;
+    colL := cw div 4;          { центр левой колонки — English }
+    colR := (cw * 3) div 4;    { центр правой колонки — Русский }
+    flagY := ScaleY(70);
+    btnY := ScaleY(132);
+
+    Title := TNewStaticText.Create(Form);
+    Title.Parent := Form;
+    Title.AutoSize := True;
+    Title.Font.Size := 11;
+    Title.Caption := 'Choose language  /  Выберите язык';
+    Title.Left := (cw - Title.Width) div 2;
+    Title.Top := ScaleY(22);
+
+    EnImg := TBitmapImage.Create(Form);
+    EnImg.Parent := Form;
+    EnImg.Stretch := True;
+    EnImg.Bitmap.LoadFromFile(ExpandConstant('{tmp}\flag_en.bmp'));
+    EnImg.SetBounds(colL - ScaleX(33), flagY, ScaleX(66), ScaleY(44));
+
+    RuImg := TBitmapImage.Create(Form);
+    RuImg.Parent := Form;
+    RuImg.Stretch := True;
+    RuImg.Bitmap.LoadFromFile(ExpandConstant('{tmp}\flag_ru.bmp'));
+    RuImg.SetBounds(colR - ScaleX(33), flagY, ScaleX(66), ScaleY(44));
+
+    EnBtn := TNewButton.Create(Form);
+    EnBtn.Parent := Form;
+    EnBtn.SetBounds(colL - ScaleX(48), btnY, ScaleX(96), ScaleY(30));
+    EnBtn.Caption := 'English';
+    EnBtn.ModalResult := 1;
+
+    RuBtn := TNewButton.Create(Form);
+    RuBtn.Parent := Form;
+    RuBtn.SetBounds(colR - ScaleX(48), btnY, ScaleX(96), ScaleY(30));
+    RuBtn.Caption := 'Русский';
+    RuBtn.ModalResult := 2;
+
+    if ActiveLanguage() = 'en' then EnBtn.Default := True else RuBtn.Default := True;
+
+    case Form.ShowModal() of
+      1: Result := 'en';
+      2: Result := 'ru';
+    end;
+  finally
+    Form.Free();
+  end;
+end;
+
 // Приложению нужен .NET Framework 4.8: в Windows 10 1903+ он встроен, на Windows 8.1
 // ставится один раз. Release >= 528040 означает 4.8+ (документированные значения
 // Microsoft). Читаем 64-битную ветку на 64-битных ОС: ключ NDP пишется именно туда,
@@ -149,6 +242,32 @@ begin
         'https://dotnet.microsoft.com/download/dotnet-framework/net48', '', '',
         SW_SHOWNORMAL, ewNoWait, ErrCode);
     Result := False;
+  end;
+end;
+
+// Показать флаг-пикер языка ПЕРВЫМ делом в мастере (это первое окно после стандартного диалога
+// режима установки Inno — раньше него кастомную форму показать нельзя: в InitializeSetup ещё нет
+// цикла сообщений, модальная форма не держится). Если выбран НЕ системный язык — перезапускаем
+// setup с /LANG= И тем же режимом установки (/ALLUSERS|/CURRENTUSER, чтобы диалог режима не
+// повторялся): весь мастер и приложение (см. SeedLanguage) получат выбранный язык. Пропуск —
+// тихая установка и уже перезапущенный экземпляр.
+procedure InitializeWizard();
+var
+  Chosen, Mode: String;
+  ErrCode: Integer;
+begin
+  if HasSwitch('/SILENT') or HasSwitch('/VERYSILENT') or HasSwitch('/LANG=') then
+    Exit;
+  try
+    Chosen := PromptLanguageByFlags();
+  except
+    Exit; // сбой показа не роняет установку — остаёмся на языке системы
+  end;
+  if Chosen <> ActiveLanguage() then
+  begin
+    if IsAdminInstallMode() then Mode := ' /ALLUSERS' else Mode := ' /CURRENTUSER';
+    if Exec(ExpandConstant('{srcexe}'), '/LANG=' + Chosen + Mode, '', SW_SHOW, ewNoWait, ErrCode) then
+      ExitProcess(0); // закрыть текущий экземпляр; перезапущенный идёт в выбранном языке
   end;
 end;
 

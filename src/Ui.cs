@@ -83,6 +83,26 @@ namespace ExcelMerger
             return l;
         }
 
+        /// <summary>
+        /// Открыть файл (или папку — asFolder) в проводнике/ShellExecute. Единая точка
+        /// авто-открытия результата операции (DRY): PDF-инструменты больше не зовут Process.Start
+        /// врозь с разным экранированием. Молча — нет ассоциации/проводника: файл всё равно создан.
+        /// Явное «Открыть…» с диалогом об ошибке — отдельно (см. MainForm.OpenPath).
+        /// </summary>
+        public static void OpenPath(string path, bool asFolder = false)
+        {
+            if (string.IsNullOrEmpty(path))
+                return;
+            try
+            {
+                if (asFolder)
+                    Process.Start("explorer.exe", "\"" + path + "\"");
+                else
+                    Process.Start(path);
+            }
+            catch { } // нет ассоциации/проводника — молча
+        }
+
         /// <summary>Ссылка, открывающая URL в браузере по умолчанию.</summary>
         public static LinkLabel UrlLink(Control parent, string text, int x, int y, string url)
         {

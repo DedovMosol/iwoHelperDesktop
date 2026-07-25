@@ -225,6 +225,7 @@ namespace ExcelMerger
                 _list.Invalidate();
                 var h = SelectionChanged;
                 if (h != null) h(this, EventArgs.Empty);
+                ScheduleVisibleUpdate(); // навигация клавишами меняет набор видимых миниатюр
             };
             _list.AllowDrop = true;
             _list.ItemDrag += OnItemDrag;
@@ -239,7 +240,6 @@ namespace ExcelMerger
             _list.MouseLeave += delegate { ClearHoverMark(); SetHotIndex(-1); };
             _list.Scrolled += delegate { ScheduleVisibleUpdate(); };
             _list.Resize += delegate { ScheduleVisibleUpdate(); };
-            _list.SelectedIndexChanged += delegate { ScheduleVisibleUpdate(); }; // навигация клавишами
             Ui.EnableDoubleBuffer(_list);
             Controls.Add(_list);
 
