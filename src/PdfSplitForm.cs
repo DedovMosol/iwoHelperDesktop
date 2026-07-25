@@ -113,6 +113,7 @@ namespace ExcelMerger
             _txtRanges = new TextBox();
             _txtRanges.SetBounds(px, m + 210, pw, 27);
             _txtRanges.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(_txtRanges, Loc.T("split.tip.ranges"));
             Controls.Add(_txtRanges);
 
             _lblN = Ui.Label(this, Loc.T("split.lbl.n"), px, m + 188, Font, Theme.TextMuted);
@@ -123,6 +124,7 @@ namespace ExcelMerger
             _numN.Value = 1;
             _numN.SetBounds(px, m + 210, 70, 27);
             _numN.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(_numN, Loc.T("split.tip.everyN"));
             Controls.Add(_numN);
 
             _lblHint = Ui.Label(this, "", px, m + 188, Font, Theme.TextMuted);

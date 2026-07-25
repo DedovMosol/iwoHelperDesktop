@@ -170,7 +170,7 @@ namespace ExcelMerger
         public event EventHandler SelectionChanged;
         /// <summary>Перетащили элемент from на позицию вставки to (0..Count).</summary>
         public event Action<int, int> ReorderRequested;
-        /// <summary>Масштаб изменён изнутри (Ctrl+колесо) — чтобы синхронизировать ползунок.</summary>
+        /// <summary>Масштаб изменён изнутри (Ctrl+колесо) — чтобы синхронизировать регулятор.</summary>
         public event Action<int> ZoomChanged;
         /// <summary>Вставка вырезанных: перенести страницы с индексами (по возрастанию) ПЕРЕД позицией.</summary>
         public event Action<int[], int> MoveRangeRequested;
@@ -883,7 +883,7 @@ namespace ExcelMerger
         public void SetTileWidth(int width)
         {
             width = ThumbZoom.Clamp(width);
-            _wheelPending = 0; // цель колеса применена (или перебита ползунком)
+            _wheelPending = 0; // цель колеса применена (или перебита регулятором)
             if (width == _tileWidth)
                 return;
             _tileWidth = width;
@@ -1478,7 +1478,7 @@ namespace ExcelMerger
 
         // ---------- масштаб ----------
 
-        // Целевая ширина Ctrl+колеса, ещё не применённая троттлингом ползунка (0 — нет).
+        // Целевая ширина Ctrl+колеса, ещё не применённая троттлингом регулятора (0 — нет).
         // Пока цель не применена, следующие щелчки шагают от неё, а не от устаревшей
         // _tileWidth — иначе быстрое вращение теряло бы шаги.
         private int _wheelPending;
@@ -1504,13 +1504,13 @@ namespace ExcelMerger
             if (h != null)
             {
                 // Пересборка плиток (ClearTiles + Invalidate) — дорогая: не на каждый щелчок,
-                // а через ползунок и его общий 60-мс троттлинг (как и перетаскивание ползунка).
-                // Подпись «%» при этом обновляется мгновенно из значения ползунка.
+                // а через регулятор и его общий 60-мс троттлинг (как и перетаскивание регулятора).
+                // Подпись «%» при этом обновляется мгновенно из значения регулятора.
                 _wheelPending = newWidth;
                 h(newWidth);
             }
             else
-                SetTileWidth(newWidth); // сетка без ползунка — применяем сразу
+                SetTileWidth(newWidth); // сетка без регулятора — применяем сразу
         }
 
         // ---------- фоновый рендер ----------

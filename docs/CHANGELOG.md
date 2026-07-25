@@ -3,6 +3,23 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.5] — 2026-07-25
+
+### Added
+- **Type an exact zoom percentage.** A “%” box next to the zoom slider lets you enter a
+  precise scale (or nudge it with the spin arrows), on top of the slider and Ctrl+wheel.
+  Ctrl+0, or a double‑click on the “%”, resets the zoom to 100%.
+- **The installer asks for a language.** Setup now offers Russian or English at the start
+  and runs in that language, and the chosen language becomes the app’s default, so an
+  English user is not shown a Russian interface. The portable build follows the system
+  language on first run.
+- **Windows remember their size and position.** Each tool window (and the Excel Digest
+  window) reopens where and at the size you left it, restored safely onto a visible screen
+  (never off‑screen or on a disconnected monitor).
+- **Clearer Split hints.** The “ranges” and “every N pages” fields show tooltips that
+  explain the format, and the shortcuts cheat sheet and per‑tool help now cover the new
+  zoom entry and the reset.
+
 ## [1.17.4] — 2026-07-25
 
 ### Fixed
@@ -59,7 +76,7 @@ versions follow [SemVer](https://semver.org/).
 - **Per-page progress.** While saving a merged PDF or converting to Word the status
   shows “page N of M”, next to the percentage.
 - **Keyboard-shortcuts cheat sheet.** A ☰ Menu → Keyboard shortcuts entry lists the grid
-  keys (zoom, select, cut/copy/paste, undo/redo, move, rotate, go to page); the list
+  keys (zoom, select, cut/copy/paste, undo/redo, move, rotate, go to page), the list
   adapts to what the tool supports.
 - **Drop PDFs onto the start-screen cards.** Dropping PDF files on the Merge, Split or
   PDF → Word card opens that tool with the files already loaded (an open tool receives
@@ -170,7 +187,7 @@ versions follow [SemVer](https://semver.org/).
   kept when it sits on a real backdrop (a scan image, a dark filled panel), so OCR layers and
   light-on-dark headers are unaffected.
 - **Single-row side-by-side zones are laid out next to each other.** Pieces of one line
-  separated by a huge gap (details on the left, a side note on the right; a signature
+  separated by a huge gap (details on the left, a side note on the right, a signature
   caption and a date) become columns of a borderless row band instead of gluing into one
   string or stacking under each other. Inside table cells the line stays whole.
 - **A column that starts lower keeps its height.** In a side-by-side band, a column whose
@@ -190,7 +207,7 @@ versions follow [SemVer](https://semver.org/).
 - **The installer's file properties now show the real version.** `VersionInfo*` resources
   of the setup executable carried 0.0.0.0 and an empty description.
 - **First-line indents are now per paragraph, from the source.** A document-wide indent is
-  applied only to paragraphs whose first line was actually indented; footnotes, contact
+  applied only to paragraphs whose first line was actually indented, footnotes, contact
   lines and flush-left details no longer inherit a false indent. In documents without a
   common indent, an actually indented paragraph keeps its own.
 - **Narrow right-hand notes keep their horizontal position.** A left-aligned paragraph that
@@ -276,7 +293,7 @@ versions follow [SemVer](https://semver.org/).
   “signature … date” rows are left as plain text.
 - **Detail blank lines survive as underscore placeholders.** A standalone horizontal rule
   (a fill-in line such as `______ №  ______`), including one drawn in several collinear pieces
-  with gaps under the labels, is carried across as an underscore run sized to the line; pieces
+  with gaps under the labels, is carried across as an underscore run sized to the line, pieces
   under a word stay underlines, double-drawn lines are de-duplicated, and a rule inside a table
   frame is left to the table.
 
@@ -289,7 +306,7 @@ versions follow [SemVer](https://semver.org/).
 - **Installed-but-non-native fonts no longer letter-space cyrillic.** Word tags cyrillic runs set
   in some installed families with an East-Asian hint and spaces the letters out under CJK
   justification. Cyrillic text now stays only in Word-native families and otherwise falls back to
-  Times New Roman (a metric twin of the common clones); latin text keeps its original font.
+  Times New Roman (a metric twin of the common clones), latin text keeps its original font.
 - **Private-use-area glyphs are dropped.** Field-placeholder and symbol-font glyphs that render as
   empty boxes outside their font are no longer emitted as garbage.
 
@@ -304,13 +321,13 @@ versions follow [SemVer](https://semver.org/).
   orders whole page blocks (paragraphs, tables, images), so a picture that belongs to the left
   column stays with it. Single‑column pages are a single block and read exactly as before.
 - **Pseudo‑bold text (drawn twice with a ~0.3 pt offset) is de‑duplicated and set in real
-  bold.** Some generators imitate bold by painting every glyph twice; extraction used to
+  bold.** Some generators imitate bold by painting every glyph twice, extraction used to
   produce doubled letters (“74” became “7744”), and the doubling also hid the intended weight.
   Duplicate glyphs are now dropped (the tolerance is far below the advance of genuinely
   repeated characters, so “77” is never collapsed) and the affected words are written bold.
 - **Rotated edge text is filtered out.** Vertical strings along a page edge (common on
   documents) used to shred into dozens of single‑character paragraphs wedged between normal
-  lines; text that is not horizontal is now skipped entirely.
+  lines, text that is not horizontal is now skipped entirely.
 
 ### Fixed
 - **First‑line indent survives a header.** The indent share used to be measured against
@@ -327,7 +344,7 @@ versions follow [SemVer](https://semver.org/).
   the new column detection: cell content is laid out without the vertical cut.
 - **Reading order of adjacent text lines no longer flips.** Blocks used to be grouped into a
   “row band” by the closeness of their tops (±12 pt), which could reorder two neighbouring
-  lines by their left edges; a band now requires a real vertical overlap of at least half the
+  lines by their left edges, a band now requires a real vertical overlap of at least half the
   smaller height (as with words within a line), so stacked lines always read top to bottom
   while genuinely side‑by‑side tables and images still read left to right.
 
@@ -368,7 +385,7 @@ versions follow [SemVer](https://semver.org/).
   mistaken for centered. Centered blocks also no longer skew the first‑line‑indent measurement.
 - **PDF → Word centers a horizontally centered image.** An image that sits centered on the page
   (a logo or emblem with near‑equal left/right margins) is placed centered in Word, as in the
-  source; images anchored to a margin, or stamps and signatures off to one side, stay left as
+  source, images anchored to a margin, or stamps and signatures off to one side, stay left as
   before. The centering test is a pure, unit‑tested method.
 
 ## [1.16.2] — 2026-07-23
@@ -377,7 +394,7 @@ versions follow [SemVer](https://semver.org/).
 - **English interface, with a language switch.** The whole UI — windows, menus, buttons,
   tooltips and messages — is now available in English as well as Russian. Pick the language
   from a globe icon in the top‑right corner of the start screen, or from **☰ Menu →
-  Язык / Language** in any tool window; each option shows a small country flag. The choice is
+  Язык / Language** in any tool window, each option shows a small country flag. The choice is
   saved and applied instantly — open windows rebuild in the new language on the spot. The
   tool menu was renamed from “Справка” to **☰ Menu**. Content of generated documents (the
   cover note, reports, the digest’s table of contents) intentionally stays in Russian.
@@ -398,7 +415,7 @@ versions follow [SemVer](https://semver.org/).
 - **PDF → Word turns a text‑drawn stamp into an image.** When a stamp is
   drawn as text rather than a picture, that region is rendered with the bundled Ghostscript
   and placed as an image, and its text is removed so it isn’t duplicated. Detection needs
-  several anchor words in a compact box, so ordinary prose is never affected; if the region
+  several anchor words in a compact box, so ordinary prose is never affected, if the region
   can’t be rendered (no Ghostscript) the text is kept unchanged — no regression. Picture
   stamps keep transferring as images as before. The region detector is a pure, unit‑tested method.
 
@@ -407,7 +424,7 @@ versions follow [SemVer](https://semver.org/).
 ### Added
 - **PDF → Word converts several PDFs into one document.** Add several PDFs (the button now
   takes a multi‑selection, or drop several at once) and every file’s pages appear in one
-  thumbnail grid; reorder or drop pages across all of them and convert once to a single
+  thumbnail grid, reorder or drop pages across all of them and convert once to a single
   `.docx` in the shown order. Pages from different files (and different page sizes) sit in
   the same document. The default output name is the file’s own name for a single source, or
   “Объединённый.docx” for several. The page assembler is a pure, unit‑tested method.
@@ -418,18 +435,18 @@ versions follow [SemVer](https://semver.org/).
   image skipped, e.g. a monochrome barcode coming out as a black box), the page region is
   rendered with the bundled Ghostscript and the image is cropped out by its bounding box —
   so it transfers faithfully, exactly as drawn. Normal images still take the fast decode
-  path untouched; the fallback simply skips when Ghostscript is unavailable.
+  path untouched, the fallback simply skips when Ghostscript is unavailable.
 
 ## [1.15.0] — 2026-07-22
 
 ### Added
 - **PDF → Word now reconstructs bordered tables as real Word tables.** Digital PDFs (Word
-  exports, “Microsoft Print to PDF”, browser exports) draw table grids as ruling lines;
+  exports, “Microsoft Print to PDF”, browser exports) draw table grids as ruling lines,
   those lines are now read from the page vector graphics and, together with the words,
   turned back into a Word table — column widths from the ruling geometry, per‑cell text
   (each cell laid out by the same reading‑order engine as the body), and **merged cells**
   (colspan/rowspan) inferred from missing internal borders. Before, a table came out as
-  garbled text read straight across the cells; now the structure and every cell are
+  garbled text read straight across the cells, now the structure and every cell are
   correct. Detection is conservative: only clearly bordered ≥2×2 grids become tables, and
   on any doubt the words stay in the ordinary text flow, so output is never worse than
   before. Borderless tables, multi‑column layouts and lists are still flattened.
@@ -437,7 +454,7 @@ versions follow [SemVer](https://semver.org/).
   own page size, so a document that mixes portrait and landscape pages is preserved and a
   wide landscape table is no longer clipped by a portrait page.
 - **Underline is carried over.** In a digital PDF an underline is a drawn line under the
-  text, not a text attribute; a horizontal rule sitting on a word’s baseline across its
+  text, not a text attribute, a horizontal rule sitting on a word’s baseline across its
   width now marks that word underlined in Word. A full‑width rule (a section divider) is
   not mistaken for an underline — it is far wider than the word above it.
 - **Images that PdfPig can’t turn into PNG (typically JPEG/DCTDecode) are now recovered.**

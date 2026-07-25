@@ -54,6 +54,19 @@ namespace ExcelMerger
             return string.Equals(code, "en", StringComparison.OrdinalIgnoreCase) ? Lang.En : Lang.Ru;
         }
 
+        /// <summary>
+        /// Язык по умолчанию для ПЕРВОГО запуска без настроек (portable-версия без инсталлера):
+        /// русская локаль UI («ru…») → русский, любая другая → английский. Установленную версию
+        /// сидит инсталлер (settings.txt), поэтому сюда попадает только portable-первый-запуск.
+        /// Чистая — под тест.
+        /// </summary>
+        public static Lang DefaultForCulture(string uiCultureName)
+        {
+            return uiCultureName != null &&
+                   uiCultureName.StartsWith("ru", StringComparison.OrdinalIgnoreCase)
+                ? Lang.Ru : Lang.En;
+        }
+
         /// <summary>Строка по ключу на текущем языке; нет ключа → сам ключ (видимый промах).</summary>
         public static string T(string key)
         {
@@ -87,7 +100,8 @@ namespace ExcelMerger
             A("menu.stats", "Статистика", "Statistics");
             A("menu.shortcuts", "Горячие клавиши", "Keyboard shortcuts");
             A("shortcuts.title", "Клавиши в сетке страниц", "Keys in the page grid");
-            A("shortcuts.zoom", "Ctrl+колесо — масштаб миниатюр", "Ctrl+Wheel — thumbnail zoom");
+            A("shortcuts.zoom", "Ctrl+колесо или поле «%» — масштаб (Ctrl+0 — сбросить в 100%)",
+                "Ctrl+Wheel or the “%” box — zoom (Ctrl+0 — reset to 100%)");
             A("shortcuts.selectAll", "Ctrl+A — выделить все страницы", "Ctrl+A — select all pages");
             A("shortcuts.goto", "Ctrl+G — перейти к странице", "Ctrl+G — go to page");
             A("shortcuts.move", "Alt+←/→ — переместить страницу раньше/позже", "Alt+←/→ — move the page earlier/later");
@@ -135,6 +149,8 @@ namespace ExcelMerger
             A("common.homeTip", "Открыть экран выбора инструмента", "Open the tool chooser");
             A("common.zoom", "Масштаб:", "Zoom:");
             A("common.tip.zoom", "Масштаб миниатюр (также Ctrl+колесо мыши)", "Thumbnail zoom (also Ctrl+mouse wheel)");
+            A("common.tip.zoomInput", "Масштаб в процентах (Ctrl+0 или двойной клик по «%» — 100%)",
+                "Zoom percentage (Ctrl+0 or double-click “%” for 100%)");
             A("common.busy", "Дождитесь завершения…", "Wait for it to finish…");
             A("common.err.openFailed", "Не удалось открыть", "Could not open");
             // Общие для PDF-инструментов: перестановка/удаление страниц, диалоги выбора файлов
@@ -335,6 +351,10 @@ namespace ExcelMerger
                 "Extract pages from a *.pdf document, with compression.");
             A("split.btn.open", "Открыть PDF…", "Open PDF…");
             A("split.tip.open", "Файл также можно перетащить в окно", "You can also drag the file onto the window");
+            A("split.tip.ranges", "Номера страниц через запятую: 1-3 — с 1 по 3, 5 — одна страница, 8- — с 8 до конца.",
+                "Page numbers separated by commas: 1-3 for pages 1 to 3, 5 for a single page, 8- from page 8 to the end.");
+            A("split.tip.everyN", "Документ режется на файлы по N страниц (1 — каждая страница отдельным файлом).",
+                "The document is split into files of N pages each (1 puts every page in its own file).");
             A("split.lbl.mode", "Режим:", "Mode:");
             A("split.mode.extract", "Извлечь выбранные", "Extract selected");
             A("split.mode.ranges", "По диапазонам", "By ranges");
@@ -389,6 +409,8 @@ namespace ExcelMerger
                 "(при разбиении к имени добавятся номера или метки).\n\n" +
                 "Страницы копируются как есть, без переконвертации. Исходный файл не изменяется; " +
                 "имена не перезаписываются (при совпадении добавляется номер).\n" +
+                "Масштаб сетки — регулятором, полем «%» (Ctrl+0 — 100%) или Ctrl+колесо. " +
+                "Окно запоминает свои размер и положение между запусками.\n" +
                 "Сжатие меняет содержимое файла, поэтому у подписанных PDF подпись станет " +
                 "недействительной (как и при сжатии в Acrobat) — сжимайте до подписания.",
                 "1. Open a PDF — with “Open PDF…” or by dragging it onto the window; a page grid appears.\n" +
@@ -404,6 +426,8 @@ namespace ExcelMerger
                 "(when splitting, numbers or labels are appended to the name).\n\n" +
                 "Pages are copied as‑is, without re‑conversion. The source file is not changed; " +
                 "names are not overwritten (a number is added on a clash).\n" +
+                "Grid zoom — the slider, the “%” box (Ctrl+0 — 100%) or Ctrl+wheel. " +
+                "The window remembers its size and position between runs.\n" +
                 "Compression changes the file bytes, so a signed PDF’s signature becomes " +
                 "invalid (as with Acrobat) — compress before signing.");
 
@@ -424,7 +448,8 @@ namespace ExcelMerger
             A("pdf.status.savedCompressed", "✓ Сохранено страниц: {0} · сжато.", "✓ Pages saved: {0} · compressed.");
             A("pdf.help.body",
                 "1. Добавьте PDF-файлы — кнопкой «Добавить PDF…» или перетащив их в окно.\n" +
-                "2. Появится сетка миниатюр страниц. Масштаб — ползунком внизу или Ctrl+колесо мыши.\n" +
+                "2. Появится сетка миниатюр страниц. Масштаб — регулятором, полем «%» рядом " +
+                "(впишите число, Ctrl+0 или двойной клик по «%» — 100%) или Ctrl+колесо мыши.\n" +
                 "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Раньше» / «Позже ▶».\n" +
                 "   Лишние страницы удаляйте кнопкой «Удалить».\n" +
                 "4. При необходимости выберите «Сжатие» (по умолчанию «Отлично» — без сжатия). " +
@@ -432,13 +457,15 @@ namespace ExcelMerger
                 "(как в Acrobat); текст сохраняется. Требуется Ghostscript.\n" +
                 "5. «Сохранить PDF…» соберёт один документ в выбранном порядке.\n\n" +
                 "Горячие клавиши: Delete — удалить выбранные, Alt+←/→ — порядок, " +
-                "Ctrl+A — выделить всё, Ctrl+колесо — масштаб.\n" +
+                "Ctrl+A — выделить всё, Ctrl+колесо или поле «%» — масштаб (Ctrl+0 — 100%).\n" +
+                "Окно запоминает свои размер и положение между запусками.\n" +
                 "Страницы копируются как есть, без переконвертации — сканы, печати и подписи " +
                 "не искажаются. Битые и защищённые паролем файлы пропускаются с причиной.\n" +
                 "Сжатие меняет содержимое файла, поэтому у подписанных PDF подпись станет " +
                 "недействительной (как и при сжатии в Acrobat) — сжимайте до подписания.",
                 "1. Add PDF files — with “Add PDF…” or by dragging them onto the window.\n" +
-                "2. A grid of page thumbnails appears. Zoom with the slider below or Ctrl+mouse wheel.\n" +
+                "2. A grid of page thumbnails appears. Zoom with the slider, the “%” box next to it " +
+                "(type a number, Ctrl+0 or double‑click “%” for 100%) or Ctrl+mouse wheel.\n" +
                 "3. Set the order: drag thumbnails or use “◀ Earlier” / “Later ▶”.\n" +
                 "   Remove pages you don’t need with “Remove”.\n" +
                 "4. Optionally choose “Compression” (default “Excellent” — no compression). " +
@@ -446,7 +473,8 @@ namespace ExcelMerger
                 "(as in Acrobat); text is preserved. Ghostscript required.\n" +
                 "5. “Save PDF…” assembles one document in the chosen order.\n\n" +
                 "Shortcuts: Delete — remove selected, Alt+←/→ — order, " +
-                "Ctrl+A — select all, Ctrl+wheel — zoom.\n" +
+                "Ctrl+A — select all, Ctrl+wheel or the “%” box — zoom (Ctrl+0 — 100%).\n" +
+                "The window remembers its size and position between runs.\n" +
                 "Pages are copied as‑is, without re‑conversion — scans, stamps and signatures " +
                 "are not distorted. Broken and password‑protected files are skipped with a reason.\n" +
                 "Compression changes the file bytes, so a signed PDF’s signature becomes " +
@@ -481,6 +509,8 @@ namespace ExcelMerger
                 "кнопкой «Удалить» (Delete). В Word попадут страницы в показанном порядке.\n" +
                 "3. Нажмите «Конвертировать в Word…» и укажите имя .docx — все выбранные страницы " +
                 "соберутся в один документ.\n\n" +
+                "Масштаб сетки — регулятором, полем «%» (Ctrl+0 — 100%) или Ctrl+колесо. " +
+                "Окно запоминает свои размер и положение между запусками.\n\n" +
                 "Извлекается ТЕКСТОВЫЙ СЛОЙ цифровых PDF (например, сохранённых из Word, " +
                 "«Microsoft Print to PDF», экспортированных из браузера). Переносятся: текст " +
                 "абзацами в порядке чтения — с шрифтом, размером, начертанием, цветом, " +
@@ -504,6 +534,8 @@ namespace ExcelMerger
                 "“Remove” (Delete). Word gets the pages in the order shown.\n" +
                 "3. Click “Convert to Word…” and choose a .docx name — all selected pages " +
                 "are assembled into one document.\n\n" +
+                "Grid zoom — the slider, the “%” box (Ctrl+0 — 100%) or Ctrl+wheel. " +
+                "The window remembers its size and position between runs.\n\n" +
                 "The TEXT LAYER of born‑digital PDFs is extracted (e.g. saved from Word, " +
                 "“Microsoft Print to PDF”, exported from a browser). Transferred: text as " +
                 "paragraphs in reading order — with font, size, weight, colour, underline, " +
