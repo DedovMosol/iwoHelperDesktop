@@ -60,10 +60,11 @@ namespace ExcelMerger
         /// ДО анализа макета, боковой текст становится горизонтальным. Битый/зашифрованный
         /// файл или запрет извлечения — <see cref="MergeException"/> с понятным сообщением.
         /// </summary>
-        public static List<PdfPageText> Extract(string path, Action<int, int> progress = null, IList<int> rotations = null)
+        public static List<PdfPageText> Extract(string path, Action<int, int> progress = null, IList<int> rotations = null,
+            Func<bool> cancelled = null)
         {
             EmbeddedAssemblies.Ensure();
-            return ExtractCore(path, progress, rotations);
+            return ExtractCore(path, progress, rotations, cancelled);
         }
 
         /// <summary>
@@ -95,7 +96,8 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<PdfPageText> ExtractCore(string path, Action<int, int> progress, IList<int> rotations)
+        private static List<PdfPageText> ExtractCore(string path, Action<int, int> progress, IList<int> rotations,
+            Func<bool> cancelled)
         {
             try
             {
@@ -105,6 +107,7 @@ namespace ExcelMerger
                     int pageCount = doc.NumberOfPages;
                     foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
                     {
+                        Cancellation.ThrowIf(cancelled); // отмена между страницами извлечения
                         int rotation = PageRotation.At(rotations, page.Number - 1);
                         // Картинки страницы перечисляются ОДИН раз (декода здесь нет): рамки
                         // нужны фильтрам невидимого текста и штампов, а сами объекты — переносу

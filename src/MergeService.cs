@@ -51,7 +51,9 @@ namespace ExcelMerger
         /// </summary>
         public static bool ShouldWrap(Exception ex)
         {
-            return !(ex is OutOfMemoryException);
+            // Отмену (OperationCanceledException) НЕ оборачиваем — это не ошибка файла, её
+            // ловят формы отдельно; OOM тоже пробрасываем как есть (нельзя маскировать).
+            return !(ex is OutOfMemoryException) && !(ex is OperationCanceledException);
         }
     }
 

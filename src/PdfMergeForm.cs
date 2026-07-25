@@ -107,6 +107,7 @@ namespace ExcelMerger
             Controls.Add(save);
             _btnSave = save;
             AcceptButton = save;
+            RegisterActionButton(save); // база подменит её кнопкой «Отмена» во время сохранения
         }
 
         private void ShowHelp()
@@ -314,6 +315,7 @@ namespace ExcelMerger
             SetStatus(Loc.T("common.status.saving"), Theme.TextMuted);
             BeginProgress(pages.Count, Loc.T("pdf.status.savingPage"));
             Action<int, int> onProgress = UiProgress();
+            Func<bool> cancel = CancelToken();
 
             var thread = new Thread(delegate()
             {
@@ -321,7 +323,7 @@ namespace ExcelMerger
                 bool compressed = false;
                 try
                 {
-                    PdfMergeService.Merge(pages, outputPath, onProgress);
+                    PdfMergeService.Merge(pages, outputPath, onProgress, cancel);
                 }
                 catch (Exception ex)
                 {
@@ -347,6 +349,11 @@ namespace ExcelMerger
             _busy = false;
             EndProgress();
             UpdateButtons();
+            if (error is OperationCanceledException)
+            {
+                SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // файл не создан
+                return;
+            }
             if (error != null)
             {
                 SetStatus(Loc.T("pdf.status.saveFailed"), Theme.ErrRed);

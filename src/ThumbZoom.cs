@@ -58,6 +58,12 @@ namespace ExcelMerger
             return Clamp(currentWidth + notches * WheelStep);
         }
 
+        /// <summary>Масштаб в процентах относительно ширины по умолчанию (DefaultWidth = 100%). Чистая — под тест.</summary>
+        public static int Percent(int width)
+        {
+            return (int)Math.Round(100.0 * Clamp(width) / DefaultWidth);
+        }
+
         /// <summary>
         /// Ширина рендера страницы в ФИЗИЧЕСКИХ пикселях для плитки maxTileWidth: плитка ×
         /// DPI-масштаб × запас на даунскейл, в пределах [300..640]. Базовый рендер считается

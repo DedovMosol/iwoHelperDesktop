@@ -14,6 +14,10 @@ namespace ExcelMerger
         public bool AllSheets;                  // все листы (по умолчанию — только первый)
         public string OutputExtension = ".xlsx";
         public string Language = "ru";          // язык интерфейса: «ru»/«en» (см. Loc)
+        // Вид PDF-инструментов между запусками: ширина плитки (0 — не задана, брать умолчание)
+        // и уровень сжатия (индекс CompressionLevel). Применяет/сохраняет PdfToolFormBase.
+        public int ZoomWidth;
+        public int CompressionLevel;
 
         private static string FilePath
         {
@@ -41,6 +45,8 @@ namespace ExcelMerger
                     else if (key == "allSheets" && bool.TryParse(value, out flag)) s.AllSheets = flag;
                     else if (key == "outputExtension" && OutputFormats.FileFormatFor("x" + value) != 0) s.OutputExtension = value;
                     else if (key == "language" && (value == "ru" || value == "en")) s.Language = value;
+                    else if (key == "zoomWidth") { int z; if (int.TryParse(value, out z)) s.ZoomWidth = z; }
+                    else if (key == "compression") { int c; if (int.TryParse(value, out c)) s.CompressionLevel = c; }
                 }
             }
             catch { } // повреждённые настройки не должны мешать запуску
@@ -59,6 +65,8 @@ namespace ExcelMerger
                     "addToc=" + AddToc,
                     "allSheets=" + AllSheets,
                     "outputExtension=" + (OutputExtension ?? ".xlsx"),
+                    "zoomWidth=" + ZoomWidth,
+                    "compression=" + CompressionLevel,
                     // Язык — из живого Loc (единый источник истины), а НЕ из поля этого
                     // экземпляра: другие формы держат устаревшую копию настроек и иначе
                     // затёрли бы язык обратно при своём Save.

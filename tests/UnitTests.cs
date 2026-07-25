@@ -137,6 +137,11 @@ namespace ExcelMerger.Tests
             Run("PdfToolFormBase.ProgressItem: страница из процента, границы", TestProgressItem);
             Run("PdfToolFormBase.BuildShortcuts: набор клавиш по возможностям", TestBuildShortcuts);
             Run("ChoiceCard.FilterByExtension: фильтр по расширению и существованию", TestCardFilter);
+            Run("ThumbZoom.Percent: масштаб в процентах от умолчания", TestZoomPercent);
+            Run("PdfPageGrid.IsOnLabel: точка в полосе номера, не в плитке", TestIsOnLabel);
+            Run("PdfToolFormBase.ShouldOfferCancel: отмена от порога страниц", TestShouldOfferCancel);
+            Run("Merge (живой): отмена бросает и не создаёт файл", TestCancelMergeLive);
+            Run("SplitEveryN (живой): отмена бросает и удаляет частичные файлы", TestCancelSplitLive);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
             Run("PdfPageGrid.StaleKeys: вытесняются только отсутствующие в keep", TestGridStaleKeys);
             Run("PdfPageGrid.LowerBound: бинарный поиск по монотонному предикату", TestLowerBound);
@@ -3938,6 +3943,88 @@ namespace ExcelMerger.Tests
                 AssertEqual(0, ChoiceCard.FilterByExtension(new[] { txt }, new[] { ".pdf" }).Length, ".txt отсеян");
                 AssertEqual(0, ChoiceCard.FilterByExtension(null, new[] { ".pdf" }).Length, "null-пути — пусто");
                 AssertEqual(0, ChoiceCard.FilterByExtension(new[] { pdf }, null).Length, "null-расширения — пусто");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        // ---------- 1.17.3: масштаб-%, полоса номера, отмена операций ----------
+
+        private static void TestZoomPercent()
+        {
+            AssertEqual(100, ThumbZoom.Percent(ThumbZoom.DefaultWidth), "умолчание — 100%");
+            AssertTrue(ThumbZoom.Percent(ThumbZoom.MinWidth) < 100, "минимум < 100%");
+            AssertTrue(ThumbZoom.Percent(ThumbZoom.MaxWidth) > 100, "максимум > 100%");
+            AssertEqual(ThumbZoom.Percent(ThumbZoom.MaxWidth), ThumbZoom.Percent(10000), "сверх максимума клампится");
+        }
+
+        private static void TestIsOnLabel()
+        {
+            var tile = new System.Drawing.Rectangle(100, 50, 132, 172); // низ плитки = 222
+            var cell = new System.Drawing.Rectangle(90, 46, 152, 210);  // низ ячейки = 256
+            AssertTrue(PdfPageGrid.IsOnLabel(new System.Drawing.Point(150, 235), tile, cell), "точка под плиткой — номер");
+            AssertTrue(!PdfPageGrid.IsOnLabel(new System.Drawing.Point(150, 120), tile, cell), "точка в плитке — не номер");
+            AssertTrue(!PdfPageGrid.IsOnLabel(new System.Drawing.Point(150, 300), tile, cell), "ниже ячейки — не номер");
+            AssertTrue(!PdfPageGrid.IsOnLabel(new System.Drawing.Point(50, 235), tile, cell), "левее ячейки — не номер");
+        }
+
+        private static void TestShouldOfferCancel()
+        {
+            AssertTrue(!PdfToolFormBase.ShouldOfferCancel(1), "1 страница — без отмены");
+            AssertTrue(!PdfToolFormBase.ShouldOfferCancel(4), "4 — без отмены");
+            AssertTrue(PdfToolFormBase.ShouldOfferCancel(5), "5 — отмена доступна (порог)");
+            AssertTrue(PdfToolFormBase.ShouldOfferCancel(500), "много — отмена доступна");
+        }
+
+        /// <summary>Многостраничный PDF во временной папке (для живых проверок отмены).</summary>
+        private static string MakePagesPdf(string dir, int pages)
+        {
+            string path = Path.Combine(dir, "cancel_src.pdf");
+            using (var doc = new PdfDocument())
+            {
+                for (int i = 0; i < pages; i++)
+                    doc.AddPage();
+                doc.Save(path);
+            }
+            return path;
+        }
+
+        private static void TestCancelMergeLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_cx_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = MakePagesPdf(dir, 6);
+                string outPath = Path.Combine(dir, "out.pdf");
+                var order = new List<PdfPageRef>();
+                for (int i = 0; i < 6; i++)
+                    order.Add(new PdfPageRef { SourcePath = src, PageIndex = i });
+
+                bool threw = false;
+                try { PdfMergeService.Merge(order, outPath, null, delegate { return true; }); }
+                catch (OperationCanceledException) { threw = true; }
+                AssertTrue(threw, "отмена бросает OperationCanceledException");
+                AssertTrue(!File.Exists(outPath), "при отмене файл не создан (сохранение — только в конце)");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        private static void TestCancelSplitLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_cs_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = MakePagesPdf(dir, 3);
+                // Отмена ПОСЛЕ первой части: первый pre-check пропускает, второй — отменяет.
+                int calls = 0;
+                Func<bool> cancel = delegate { return calls++ >= 1; };
+                bool threw = false;
+                try { PdfSplitService.SplitEveryN(src, 1, dir, "part", null, null, cancel); }
+                catch (OperationCanceledException) { threw = true; }
+                AssertTrue(threw, "отмена разбиения бросает OperationCanceledException");
+                string[] parts = Directory.GetFiles(dir, "part*.pdf");
+                AssertEqual(0, parts.Length, "частичные файлы удалены при отмене (осталось 0)");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }

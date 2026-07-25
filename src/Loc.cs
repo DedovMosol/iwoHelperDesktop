@@ -177,10 +177,15 @@ namespace ExcelMerger
             A("goto.prompt", "Страница (1–{0}):", "Page (1–{0}):");
             A("goto.ok", "Перейти", "Go");
             A("grid.menu.moveAfter", "Переместить после страницы…", "Move after page…");
+            A("preview.title", "Просмотр — стр. {0}", "Preview — p. {0}");
+            A("preview.loading", "Загрузка…", "Loading…");
+            A("preview.unavailable", "Предпросмотр недоступен", "Preview unavailable");
             A("moveafter.title", "Переместить после страницы", "Move after page");
             A("moveafter.prompt", "После страницы (0 — в начало, до {0}):", "After page (0 — to the start, up to {0}):");
             A("moveafter.ok", "Переместить", "Move");
             A("common.cancel", "Отмена", "Cancel");
+            A("common.canceling", "Отмена…", "Canceling…");
+            A("common.status.canceled", "Отменено.", "Canceled.");
             A("common.tip.compression",
                 "«Хорошо»/«Нормально» уменьшают размер, снижая разрешение изображений (как в Acrobat).\n" +
                 "Текст и вектор сохраняются. У подписанных PDF подпись станет недействительной.",

@@ -22,8 +22,8 @@ namespace ExcelMerger
         // страницы (0/90/180/270 по часовой; null или короче документа — без поворота).
         // Единая конвенция на все режимы, чтобы форма собирала одну карту.
 
-        /// <summary>Извлечь выбранные страницы (индексы с нуля) в один новый PDF. progress — «сделано/всего» частей (здесь одна).</summary>
-        public static void Extract(string sourcePath, IList<int> pageIndices, string outputPath, Action<int, int> progress = null, IList<int> rotations = null)
+        /// <summary>Извлечь выбранные страницы (индексы с нуля) в один новый PDF. progress — «сделано/всего» частей (здесь одна). cancelled — кооперативная отмена.</summary>
+        public static void Extract(string sourcePath, IList<int> pageIndices, string outputPath, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null)
         {
             if (pageIndices == null || pageIndices.Count == 0)
                 throw new MergeException(Loc.T("err.split.noPages"));
@@ -31,34 +31,41 @@ namespace ExcelMerger
             var order = new List<PdfPageRef>();
             foreach (int idx in pageIndices)
                 order.Add(new PdfPageRef { SourcePath = sourcePath, PageIndex = idx, Rotation = RotationAt(rotations, idx) });
-            PdfMergeService.Merge(order, outputPath);
+            PdfMergeService.Merge(order, outputPath, null, cancelled); // отмена между страницами; файл не создастся
             if (progress != null)
                 progress(1, 1); // одна часть (один итоговый файл)
         }
 
-        /// <summary>Разбить по диапазонам («1-3, 5, 8-») — каждый диапазон в свой файл. progress — «сделано/всего» частей.</summary>
-        public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null)
+        /// <summary>Разбить по диапазонам («1-3, 5, 8-») — каждый диапазон в свой файл. progress — «сделано/всего» частей. cancelled — кооперативная отмена (частичные файлы удаляются).</summary>
+        public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null)
         {
             if (ranges == null || ranges.Count == 0)
                 throw new MergeException(Loc.T("err.split.noRanges"));
             EmbeddedAssemblies.Ensure();
-            return SplitRangesCore(sourcePath, ranges, outDir, baseName, progress, rotations);
+            return SplitRangesCore(sourcePath, ranges, outDir, baseName, progress, rotations, cancelled);
         }
 
-        /// <summary>Разбить на части по n страниц (n=1 — каждая страница отдельным файлом). progress — «сделано/всего» частей.</summary>
-        public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null)
+        /// <summary>Разбить на части по n страниц (n=1 — каждая страница отдельным файлом). progress — «сделано/всего» частей. cancelled — кооперативная отмена (частичные файлы удаляются).</summary>
+        public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null)
         {
             if (n < 1)
                 throw new MergeException(Loc.T("err.split.badN"));
             EmbeddedAssemblies.Ensure();
-            return SplitEveryNCore(sourcePath, n, outDir, baseName, progress, rotations);
+            return SplitEveryNCore(sourcePath, n, outDir, baseName, progress, rotations, cancelled);
         }
 
-        /// <summary>Разбить по закладкам верхнего уровня — файлы именуются заголовками. progress — «сделано/всего» частей.</summary>
-        public static List<string> SplitByBookmarks(string sourcePath, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null)
+        /// <summary>Разбить по закладкам верхнего уровня — файлы именуются заголовками. progress — «сделано/всего» частей. cancelled — кооперативная отмена (частичные файлы удаляются).</summary>
+        public static List<string> SplitByBookmarks(string sourcePath, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null)
         {
             EmbeddedAssemblies.Ensure();
-            return SplitBookmarksCore(sourcePath, outDir, baseName, progress, rotations);
+            return SplitBookmarksCore(sourcePath, outDir, baseName, progress, rotations, cancelled);
+        }
+
+        /// <summary>Удалить файлы, созданные до отмены (best-effort — сбой удаления не важен).</summary>
+        private static void DeleteQuietly(IEnumerable<string> paths)
+        {
+            foreach (string p in paths)
+                try { if (File.Exists(p)) File.Delete(p); } catch { }
         }
 
         /// <summary>Поворот страницы pageIndex из карты (вне карты — 0). Единая реализация — <see cref="PageRotation.At"/>.</summary>
@@ -68,48 +75,58 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress, IList<int> rotations)
+        private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
             {
-                foreach (PageRange r in ranges)
+                try
                 {
-                    if (r.Start < 0 || r.End >= source.PageCount)
-                        throw new MergeException(string.Format(Loc.T("err.split.rangeOutside"), r.Label, source.PageCount));
-                    string path = UniquePath(outDir, baseName + "_" + r.Label);
-                    WriteRange(source, r, path, rotations);
-                    created.Add(path);
-                    if (progress != null)
-                        progress(created.Count, ranges.Count);
+                    foreach (PageRange r in ranges)
+                    {
+                        Cancellation.ThrowIf(cancelled);
+                        if (r.Start < 0 || r.End >= source.PageCount)
+                            throw new MergeException(string.Format(Loc.T("err.split.rangeOutside"), r.Label, source.PageCount));
+                        string path = UniquePath(outDir, baseName + "_" + r.Label);
+                        WriteRange(source, r, path, rotations);
+                        created.Add(path);
+                        if (progress != null)
+                            progress(created.Count, ranges.Count);
+                    }
                 }
+                catch (OperationCanceledException) { DeleteQuietly(created); throw; }
             }
             return created;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress, IList<int> rotations)
+        private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
             {
                 List<PageRange> chunks = PageRanges.EveryN(source.PageCount, n);
                 int part = 1;
-                foreach (PageRange r in chunks)
+                try
                 {
-                    string path = UniquePath(outDir, baseName + Loc.T("split.partInfix") + part);
-                    WriteRange(source, r, path, rotations);
-                    created.Add(path);
-                    part++;
-                    if (progress != null)
-                        progress(created.Count, chunks.Count);
+                    foreach (PageRange r in chunks)
+                    {
+                        Cancellation.ThrowIf(cancelled);
+                        string path = UniquePath(outDir, baseName + Loc.T("split.partInfix") + part);
+                        WriteRange(source, r, path, rotations);
+                        created.Add(path);
+                        part++;
+                        if (progress != null)
+                            progress(created.Count, chunks.Count);
+                    }
                 }
+                catch (OperationCanceledException) { DeleteQuietly(created); throw; }
             }
             return created;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName, Action<int, int> progress, IList<int> rotations)
+        private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled)
         {
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
@@ -132,18 +149,23 @@ namespace ExcelMerger
                     throw new MergeException(Loc.T("err.split.noBookmarks"));
                 marks.Sort(delegate(KeyValuePair<int, string> a, KeyValuePair<int, string> b) { return a.Key.CompareTo(b.Key); });
 
-                for (int m = 0; m < marks.Count; m++)
+                try
                 {
-                    int start = m == 0 ? 0 : marks[m].Key; // ведущие страницы — в первый файл
-                    int end = (m + 1 < marks.Count ? marks[m + 1].Key : source.PageCount) - 1;
-                    if (start > end)
-                        continue; // две закладки на одной странице — пустой раздел пропускаем
-                    string path = UniquePath(outDir, baseName + "_" + Sanitize(marks[m].Value));
-                    WriteRange(source, new PageRange(start, end), path, rotations);
-                    created.Add(path);
-                    if (progress != null)
-                        progress(created.Count, marks.Count);
+                    for (int m = 0; m < marks.Count; m++)
+                    {
+                        Cancellation.ThrowIf(cancelled);
+                        int start = m == 0 ? 0 : marks[m].Key; // ведущие страницы — в первый файл
+                        int end = (m + 1 < marks.Count ? marks[m + 1].Key : source.PageCount) - 1;
+                        if (start > end)
+                            continue; // две закладки на одной странице — пустой раздел пропускаем
+                        string path = UniquePath(outDir, baseName + "_" + Sanitize(marks[m].Value));
+                        WriteRange(source, new PageRange(start, end), path, rotations);
+                        created.Add(path);
+                        if (progress != null)
+                            progress(created.Count, marks.Count);
+                    }
                 }
+                catch (OperationCanceledException) { DeleteQuietly(created); throw; }
             }
             return created;
         }

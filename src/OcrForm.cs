@@ -109,6 +109,7 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnConvert, Loc.T("ocr.tip.convert"));
             Controls.Add(_btnConvert);
             AcceptButton = _btnConvert;
+            RegisterActionButton(_btnConvert); // база подменит её кнопкой «Отмена» во время конвертации
         }
 
         private void ShowHelp()
@@ -216,6 +217,7 @@ namespace ExcelMerger
             SetStatus(Loc.T("ocr.status.converting"), Theme.TextMuted);
             BeginProgress(order.Count, Loc.T("ocr.status.convertingPage"));
             Action<int, int> onProgress = UiProgress();
+            Func<bool> cancel = CancelToken();
 
             var thread = new Thread(delegate()
             {
@@ -223,7 +225,7 @@ namespace ExcelMerger
                 ConvertResult result = null;
                 try
                 {
-                    result = PdfToWordService.Convert(order, outPath, onProgress);
+                    result = PdfToWordService.Convert(order, outPath, onProgress, cancel);
                 }
                 catch (Exception ex)
                 {
@@ -246,6 +248,11 @@ namespace ExcelMerger
             _busy = false;
             EndProgress();
             UpdateControls();
+            if (error is OperationCanceledException)
+            {
+                SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // .docx не создан
+                return;
+            }
             if (error != null)
             {
                 SetStatus(Loc.T("ocr.status.failed"), Theme.ErrRed);

@@ -150,6 +150,7 @@ namespace ExcelMerger
             _btnDo.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _btnDo.Click += OnDoClick;
             Controls.Add(_btnDo);
+            RegisterActionButton(_btnDo); // база подменит её кнопкой «Отмена» во время операции
         }
 
         private void ShowHelp()
@@ -279,6 +280,7 @@ namespace ExcelMerger
             string src = _sourcePath;
             CompressionLevel level = _compress.Level; // с UI-потока до старта воркера
             int[] rotations = CurrentRotations();     // снимок поворотов — тоже до старта воркера
+            Func<bool> cancel = CancelToken();        // кооперативная отмена длинной операции
 
             // Один файл: «Извлечь выбранные» ИЛИ «По диапазонам» + объединить.
             if (mode == ModeExtract || combine)
@@ -310,7 +312,7 @@ namespace ExcelMerger
                         return;
                     outPath = dialog.FileName;
                 }
-                RunSplit(delegate(Action<int, int> pr) { PdfSplitService.Extract(src, indices, outPath, pr, rotations); return new List<string> { outPath }; },
+                RunSplit(delegate(Action<int, int> pr) { PdfSplitService.Extract(src, indices, outPath, pr, rotations, cancel); return new List<string> { outPath }; },
                     level, outPath, false, UsageStats.RecordPdfExtract);
                 return;
             }
@@ -350,15 +352,15 @@ namespace ExcelMerger
             switch (mode)
             {
                 case ModeRanges:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName, pr, rotations); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName, pr, rotations, cancel); };
                     record = UsageStats.RecordPdfSplitRanges;
                     break;
                 case ModeEveryN:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName, pr, rotations); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName, pr, rotations, cancel); };
                     record = UsageStats.RecordPdfSplitEveryN;
                     break;
                 case ModeBookmarks:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByBookmarks(src, dir, baseName, pr, rotations); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByBookmarks(src, dir, baseName, pr, rotations, cancel); };
                     record = UsageStats.RecordPdfSplitBookmarks;
                     break;
                 default:
@@ -396,7 +398,9 @@ namespace ExcelMerger
             _busy = true;
             UpdateControls();
             SetStatus(openAsFolder ? Loc.T("split.status.splitting") : Loc.T("split.status.extracting"), Theme.TextMuted);
-            BeginProgress();
+            // total = число страниц источника: включает кнопку «Отмена» от порога (счётчик
+            // «страница N из M» для разделения не показываем — единица работы здесь «часть»).
+            BeginProgress(_pageCount);
             Action<int, int> onProgress = UiProgress();
             long sourceSize = SafeLength(_sourcePath); // для подсказки о сжатии (UI-поток, до старта воркера)
             var thread = new Thread(delegate()
@@ -441,6 +445,11 @@ namespace ExcelMerger
             _busy = false;
             EndProgress();
             UpdateControls();
+            if (error is OperationCanceledException)
+            {
+                SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // частичные файлы удалены
+                return;
+            }
             if (error != null)
             {
                 SetStatus(Loc.T("common.status.notDone"), Theme.ErrRed);

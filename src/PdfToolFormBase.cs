@@ -21,11 +21,19 @@ namespace ExcelMerger
         protected readonly Action _showHub;
         protected PdfPageGrid _grid;
         protected TrackBar _zoom;
+        protected Label _zoomPct; // подпись текущего масштаба в процентах
         protected System.Windows.Forms.Timer _zoomTimer;
         protected CompressionPicker _compress;
         protected Label _lblStatus;
         protected ToolTip _tips;
         protected bool _busy; // идёт фоновая операция (только UI-поток)
+        // Отмена длинных операций: кнопка «Отмена» показывается поверх кнопки действия во
+        // время операции от CancelPageThreshold единиц. Флаг ставит UI-поток, читает воркер.
+        private Button _actionButton;
+        private Button _btnCancel;
+        private volatile bool _cancelRequested;
+        private bool _cancelOffered; // на эту операцию показана кнопка отмены (восстановить в EndProgress)
+        private const int CancelPageThreshold = 5; // от скольких единиц предлагать отмену
 
         /// <summary>Идёт операция: смена языка это окно не пересоздаёт (см. IBusyAware).</summary>
         public bool IsBusy
@@ -101,6 +109,26 @@ namespace ExcelMerger
             _zoomTimer.Start();
         }
 
+        /// <summary>Обновить подпись масштаба в процентах (от значения ползунка — мгновенно, до пересборки плиток).</summary>
+        private void UpdateZoomPercent()
+        {
+            if (_zoomPct != null)
+                _zoomPct.Text = ThumbZoom.Percent(_zoom.Value) + " %";
+        }
+
+        /// <summary>Ctrl+колесо над ползунком масштаба меняет масштаб шагом сетки (без Ctrl — родное поведение TrackBar).</summary>
+        private void OnZoomWheel(object sender, MouseEventArgs e)
+        {
+            if ((ModifierKeys & Keys.Control) == 0)
+                return;
+            var handled = e as HandledMouseEventArgs;
+            if (handled != null)
+                handled.Handled = true;
+            int w = ThumbZoom.StepFromWheel(_zoom.Value, e.Delta);
+            if (w != _zoom.Value)
+                _zoom.Value = w; // ValueChanged → ScheduleZoom + UpdateZoomPercent
+        }
+
         protected void SetStatus(string text, Color color)
         {
             _lblStatus.Text = text;
@@ -140,12 +168,17 @@ namespace ExcelMerger
         protected void BuildBottomStrip(int right, string statusText, int actionWidth, bool withCompress = true)
         {
             int h = ClientSize.Height;
+            // Восстановить масштаб прошлой сессии ДО создания ползунка (0 — не задан).
+            UserSettings prefs = UserSettings.Load();
+            if (prefs.ZoomWidth >= ThumbZoom.MinWidth)
+                _grid.SetTileWidth(prefs.ZoomWidth);
+
             Ui.Label(this, Loc.T("common.zoom"), 20, h - 144, Font, Theme.TextMuted)
                 .Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 
             _zoom = new TrackBar();
             // Реальная высота TrackBar — 45 (AutoSize), заданную меньшую он игнорирует.
-            _zoom.SetBounds(85, h - 148, 180, 45);
+            _zoom.SetBounds(85, h - 148, 170, 45);
             _zoom.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             _zoom.Minimum = ThumbZoom.MinWidth;
             _zoom.Maximum = ThumbZoom.MaxWidth;
@@ -153,10 +186,18 @@ namespace ExcelMerger
             _zoom.TickFrequency = 32;
             _zoom.SmallChange = 16;
             _zoom.LargeChange = 32;
-            _zoom.ValueChanged += delegate { ScheduleZoom(); };
+            _zoom.ValueChanged += delegate { ScheduleZoom(); UpdateZoomPercent(); };
+            _zoom.MouseWheel += OnZoomWheel; // Ctrl+колесо над ползунком — как в сетке
             _tips.SetToolTip(_zoom, Loc.T("common.tip.zoom"));
             Controls.Add(_zoom);
-            _grid.ZoomChanged += delegate(int w) { _zoom.Value = w; }; // Ctrl+колесо в сетке двигает ползунок
+            _grid.ZoomChanged += delegate(int w) { _zoom.Value = w; }; // Ctrl+колесо в сетке двигает ползунок (→ %)
+
+            // Текущий масштаб в процентах справа от ползунка.
+            _zoomPct = Ui.Label(this, "", 258, h - 138, Font, Theme.TextMuted);
+            _zoomPct.AutoSize = false;
+            _zoomPct.SetBounds(258, h - 138, 52, 20);
+            _zoomPct.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            UpdateZoomPercent();
 
             _zoomTimer = new System.Windows.Forms.Timer();
             _zoomTimer.Interval = 60; // троттлинг пересборки плиток при перетаскивании ползунка
@@ -165,6 +206,7 @@ namespace ExcelMerger
             if (withCompress)
             {
                 _compress = new CompressionPicker();
+                _compress.SetLevel((CompressionLevel)prefs.CompressionLevel); // сжатие прошлой сессии
                 _compress.Location = new Point(right - _compress.Width, h - 146);
                 _compress.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
                 Controls.Add(_compress);
@@ -231,12 +273,66 @@ namespace ExcelMerger
             _lastPct = -1;
             _progTotal = total;
             _progFmt = runningFormat;
+            _cancelRequested = false;
             _progress.Value = 0;
             _progressPct.Text = "0 %";
             _progress.Visible = true;
             _progressPct.Visible = true;
             _taskbar.SetState(Handle, TaskbarProgressState.Normal);
             _taskbar.SetValue(Handle, 0, 100);
+            ShowCancelButton(ShouldOfferCancel(total));
+        }
+
+        /// <summary>Стоит ли предлагать отмену для операции такого размера (в единицах). Чистая — под тест.</summary>
+        internal static bool ShouldOfferCancel(int total)
+        {
+            return total >= CancelPageThreshold;
+        }
+
+        /// <summary>Токен кооперативной отмены для сервисов: читает volatile-флаг «нажата Отмена».</summary>
+        protected Func<bool> CancelToken()
+        {
+            return delegate { return _cancelRequested; };
+        }
+
+        /// <summary>Форма сообщает базе кнопку действия — её база подменяет кнопкой «Отмена» на время операции.</summary>
+        protected void RegisterActionButton(Button b)
+        {
+            _actionButton = b;
+        }
+
+        /// <summary>Показать/скрыть кнопку «Отмена» поверх кнопки действия (создаётся один раз по её геометрии).</summary>
+        private void ShowCancelButton(bool show)
+        {
+            if (_actionButton == null)
+                return;
+            if (!show)
+            {
+                _cancelOffered = false;
+                if (_btnCancel != null)
+                    _btnCancel.Visible = false;
+                _actionButton.Visible = true;
+                return;
+            }
+            if (_btnCancel == null)
+            {
+                _btnCancel = new RoundedButton(false);
+                _btnCancel.Bounds = _actionButton.Bounds;
+                _btnCancel.Anchor = _actionButton.Anchor;
+                _btnCancel.Click += delegate
+                {
+                    _cancelRequested = true;
+                    _btnCancel.Enabled = false;
+                    _btnCancel.Text = Loc.T("common.canceling");
+                };
+                Controls.Add(_btnCancel);
+            }
+            _btnCancel.Text = Loc.T("common.cancel");
+            _btnCancel.Enabled = true;
+            _btnCancel.Visible = true;
+            _btnCancel.BringToFront();
+            _actionButton.Visible = false;
+            _cancelOffered = true;
         }
 
         /// <summary>Спрятать полосу по завершении/ошибке. Только UI-поток.</summary>
@@ -244,7 +340,9 @@ namespace ExcelMerger
         {
             _progress.Visible = false;
             _progressPct.Visible = false;
-            _progFmt = null; // счётчик страниц больше не обновляем
+            _progFmt = null;
+            if (_cancelOffered)
+                ShowCancelButton(false); // вернуть кнопку действия на место // счётчик страниц больше не обновляем
             _taskbar.SetState(Handle, TaskbarProgressState.None);
         }
 
@@ -476,6 +574,24 @@ namespace ExcelMerger
         /// <summary>Сдвинуть выбранную страницу раньше/позже (Alt+←/→). Зовётся только при AllowReorder.</summary>
         protected virtual void MoveSelectedPage(bool later) { }
 
+        /// <summary>
+        /// Запомнить масштаб и уровень сжатия (load-modify-save сохраняет прочие настройки:
+        /// другие окна держат устаревшую копию, поэтому пишем поверх свежей загрузки).
+        /// </summary>
+        private void SaveViewPrefs()
+        {
+            try
+            {
+                UserSettings s = UserSettings.Load();
+                if (_grid != null)
+                    s.ZoomWidth = _grid.TileWidth;
+                if (_compress != null)
+                    s.CompressionLevel = (int)_compress.Level;
+                s.Save();
+            }
+            catch { } // настройки — не критично: сбой сохранения не мешает закрытию
+        }
+
         /// <summary>Сообщение при попытке закрыть окно во время фоновой операции.</summary>
         protected virtual string BusyMessage
         {
@@ -490,6 +606,7 @@ namespace ExcelMerger
                 e.Cancel = true; // фоновая операция занимает секунды; иначе остался бы зомби-процесс
                 return;
             }
+            SaveViewPrefs(); // запомнить масштаб и уровень сжатия между запусками
             if (_grid != null)
                 _grid.StopRendering(); // разбудить и остановить фоновый рендер
             base.OnFormClosing(e);
