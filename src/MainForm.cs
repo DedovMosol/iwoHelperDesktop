@@ -1138,23 +1138,45 @@ namespace ExcelMerger
         /// пропущенные»), иначе «Снять все» уходит за нижний край окна, а «Отметить все»
         /// прячется под «Повторить» — и WindowPlacement этот размер ещё и запоминает.
         ///
-        /// Считать его можно ТОЛЬКО после base.OnLoad: масштабирование под экран (AutoScaleMode
-        /// .Dpi) WinForms доводит именно там, и до этого момента позиции контролов не
-        /// окончательные. На машине с масштабом 100% разницы нет, а на экране с другим —
-        /// кнопка стояла на 631 вместо 710, минимум выходил на 79 px мал, и проверка
-        /// раскладки честно падала. MinimumSize задаётся во ВНЕШНИХ размерах, а нужное
-        /// известно в клиентских: пересчёт делает <see cref="Form.SizeFromClientSize"/>
-        /// (вычитать ClientSize из Height нельзя — окно ещё не приняло свой размер).
-        ///
-        /// Второе — шапку с кнопкой «Главная» в конец обхода Tab, чтобы фокус при открытии
-        /// достался полю исходной папки, а не возврату в меню.
+        /// Сам минимум считает <see cref="EnsureMinimumSize"/> на каждой раскладке.
         /// </summary>
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            int neededClientHeight = _btnUncheckAll.Bottom + RowGap + BottomRowHeight;
-            MinimumSize = new Size(MinWidth, SizeFromClientSize(new Size(0, neededClientHeight)).Height);
             Ui.HeaderLastInTabOrder(this);
+        }
+
+        /// <summary>
+        /// Минимальный размер окна — от ФАКТИЧЕСКОЙ раскладки: под нижней кнопкой колонки
+        /// списка обязан помещаться нижний ряд (ссылки и «Повторить пропущенные»). Иначе
+        /// «Снять все» уходит за нижний край окна, «Отметить все» прячется под «Повторить»,
+        /// и WindowPlacement этот размер ещё и запоминает.
+        ///
+        /// Считаем на КАЖДОЙ раскладке, а не один раз при создании. Момент, когда WinForms
+        /// закончит масштабировать окно под экран, снаружи не виден: и в конструкторе, и в
+        /// OnLoad позиции контролов на машине с другим масштабом оказывались ещё старыми
+        /// (кнопка на 631 вместо 710), минимум выходил на 79 px мал, и проверка раскладки
+        /// честно падала. Пересчёт по факту от этого расписания не зависит вовсе.
+        /// Сходится сразу: кнопка прижата к ВЕРХУ, её низ от высоты окна не зависит.
+        ///
+        /// MinimumSize задаётся во ВНЕШНИХ размерах, а нужное известно в клиентских —
+        /// пересчитывает <see cref="Form.SizeFromClientSize"/>. Вычитать ClientSize из
+        /// Height нельзя: окно может ещё не принять свой настоящий размер.
+        /// </summary>
+        private void EnsureMinimumSize()
+        {
+            if (_btnUncheckAll == null)
+                return; // раскладка ещё строится
+            int needed = SizeFromClientSize(
+                new Size(0, _btnUncheckAll.Bottom + RowGap + BottomRowHeight)).Height;
+            if (MinimumSize.Height != needed)
+                MinimumSize = new Size(MinWidth, needed);
+        }
+
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            base.OnLayout(e);
+            EnsureMinimumSize();
         }
 
         protected override void OnActivated(EventArgs e)
