@@ -137,15 +137,10 @@ namespace ExcelMerger
             // «Повторить пропущенные»). Иначе «Снять все» уходит за нижний край окна,
             // «Отметить все» прячется под «Повторить», и WindowPlacement это ещё и запомнит.
             //
-            // Задаём здесь, рядом с ClientSize, и в тех же единицах: WinForms масштабирует
-            // минимум вместе со всем окном. Померить положение кнопки в рантайме нельзя —
-            // момента, когда масштабирование под экран уже завершено, снаружи не видно, и на
-            // машине с другим масштабом и в конструкторе, и в OnLoad кнопка ещё стояла на
-            // старом месте, отчего минимум выходил на 79 px мал. MinimumSize — внешний
-            // размер, поэтому переводим через SizeFromClientSize (вычитать ClientSize из
-            // Height нельзя: окно ещё не приняло свой настоящий размер).
-            MinimumSize = new Size(MinWidth, SizeFromClientSize(
-                new Size(0, UncheckAllTop + ListButtonHeight + RowGap + BottomRowHeight)).Height);
+            // Саму высоту минимума ставит <see cref="ClampToLayout"/> по факту: любой перевод
+            // «клиент → внешний размер» здесь оказался неверен на машине с другим масштабом
+            // экрана (см. там же).
+            MinimumSize = new Size(MinWidth, 0);
             WindowChrome.Enable(this, Theme.Accent); // зелёный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnDragEnter;
@@ -1155,6 +1150,49 @@ namespace ExcelMerger
         {
             base.OnLoad(e);
             Ui.HeaderLastInTabOrder(this);
+        }
+
+        /// <summary>
+        /// Не даём окну стать ниже собственной раскладки: под нижней кнопкой колонки списка
+        /// обязан помещаться нижний ряд (ссылки и «Повторить пропущенные»). Иначе «Снять все»
+        /// уходит за нижний край окна, «Отметить все» прячется под «Повторить», и
+        /// WindowPlacement этот размер ещё и запоминает между запусками.
+        ///
+        /// Работаем ТОЛЬКО в клиентских координатах и по ФАКТУ. Посчитать минимум заранее не
+        /// получается: MinimumSize задаётся во внешних размерах, а любой перевод «клиент →
+        /// внешний» (вычитание ClientSize из Height, SizeFromClientSize, проектная константа)
+        /// на машине с другим масштабом экрана давал результат на 79 px меньше нужного — ни
+        /// в конструкторе, ни в OnLoad, ни на раскладке нет момента, когда масштабирование
+        /// окна заведомо завершено. Здесь же и положение кнопки, и рамка уже настоящие:
+        /// растим клиентскую область, а получившуюся внешнюю высоту запоминаем как минимум,
+        /// чтобы дальше рамку останавливал сам WinForms, а не этот обработчик.
+        /// Повторно не срабатывает: кнопка прижата к верху, её низ от высоты окна не зависит.
+        /// </summary>
+        private void ClampToLayout()
+        {
+            if (_btnUncheckAll == null)
+                return; // раскладка ещё строится
+            int needed = _btnUncheckAll.Bottom + RowGap + BottomRowHeight;
+            if (ClientSize.Height >= needed)
+                return;
+            ClientSize = new Size(ClientSize.Width, needed);
+            if (MinimumSize.Height != Height)
+                MinimumSize = new Size(MinWidth, Height); // рамка теперь известна по факту
+        }
+
+        // Два входа, потому что положение кнопки меняют оба события: изменение размера окна
+        // и пересчёт раскладки (масштабирование под экран двигает контролы, не трогая окна).
+        // Метод идемпотентен, поэтому лишний вызов ничего не стоит.
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            ClampToLayout();
+        }
+
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            base.OnLayout(e);
+            ClampToLayout();
         }
 
         protected override void OnActivated(EventArgs e)
