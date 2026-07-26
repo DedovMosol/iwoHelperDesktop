@@ -40,9 +40,20 @@ jobs:
         shell: cmd
         run: call build.cmd ${{ matrix.arch }}
 
+      # Ghostscript ставим ДО юнит-тестов: иначе живой тест сжатия молча уходил в ветку
+      # «движка нет», и настоящие проверки (сжатие применилось, размер уменьшился, заголовок
+      # PDF цел, страницы не потеряны) в CI не выполнялись ни разу.
+      - name: Ghostscript и Inno Setup (сжатие и установщик)
+        shell: pwsh
+        run: |
+          choco install ghostscript --no-progress -y ${{ matrix.gs_choco }}
+          choco install innosetup --no-progress -y
+
+      # Тесты собираются СВОЕЙ разрядностью: иначе обе ветки матрицы гоняли один и тот же
+      # 64-битный exe и ветки IntPtr.Size == 4 не проверялись.
       - name: Юнит-тесты
         shell: cmd
-        run: call tests\build_tests.cmd
+        run: call tests\build_tests.cmd ${{ matrix.arch }}
 
       - name: Смоук-тест GUI (создание окон без показа)
         shell: pwsh
@@ -62,23 +73,24 @@ jobs:
           $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--pdftextcheck' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "pdftextcheck exit=$($p.ExitCode)"; exit 1 }
 
+      # Код 2 = рендер не состоялся: проверять было нечего, и это ТОЖЕ отказ шага —
+      # иначе защита от ERROR_USER_MAPPED_FILE могла бы пропасть при зелёном CI.
       - name: Чистый выход после рендера миниатюр (WinRT)
         shell: pwsh
         run: |
           $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--thumbcheck' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Host "thumbcheck exit=$($p.ExitCode)"; exit 1 }
+          if ($p.ExitCode -ne 0) { Write-Host "thumbcheck exit=$($p.ExitCode) (2 = рендер не состоялся)"; exit 1 }
 
-      - name: Ghostscript и Inno Setup (сжатие и установщик)
-        shell: pwsh
-        run: |
-          choco install ghostscript --no-progress -y ${{ matrix.gs_choco }}
-          choco install innosetup --no-progress -y
-
+      # Сам режим при отсутствии Ghostscript возвращает 0 (сжатие опционально), поэтому здесь
+      # дополнительно требуем в выводе «exe=»: без этого сорванная установка Ghostscript была
+      # бы неотличима от успешного round-trip.
       - name: Проверка сжатия PDF (Ghostscript round-trip)
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--gscheck' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Host "gscheck exit=$($p.ExitCode)"; exit 1 }
+          $out = & .\${{ matrix.dist }}\iwoHelperDesktop.exe --gscheck 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Write-Host "gscheck exit=$LASTEXITCODE"; exit 1 }
+          if ($out -notmatch 'exe=') { Write-Host 'Ghostscript не найден — round-trip не проверен'; exit 1 }
 
       - name: Подготовка Ghostscript для установщика
         shell: pwsh

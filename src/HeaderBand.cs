@@ -44,8 +44,11 @@ namespace ExcelMerger
             using (var pen = new Pen(Color.FromArgb(60, 0, 0, 0)))
                 e.Graphics.DrawLine(pen, 0, r.Height - 1, r.Width, r.Height - 1);
 
-            int subtitleY = Height - 28;
-            int titleY = subtitleY - 30;
+            // Высоты строк — РЕАЛЬНЫЕ высоты шрифтов: они заданы в пунктах и растут вместе с
+            // масштабом экрана, поэтому фиксированные прямоугольники срезали бы низ букв.
+            int titleH = TitleFont.Height, subtitleH = Font.Height;
+            int titleY, subtitleY;
+            TextRows(Height, titleH, subtitleH, out titleY, out subtitleY);
             TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis |
                 TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
 
@@ -53,10 +56,10 @@ namespace ExcelMerger
             {
                 flags |= TextFormatFlags.HorizontalCenter;
                 TextRenderer.DrawText(e.Graphics, _title, TitleFont,
-                    new Rectangle(10, titleY, Width - 20, 26), Color.White, flags);
+                    new Rectangle(10, titleY, Width - 20, titleH), Color.White, flags);
                 if (_subtitle.Length > 0)
                     TextRenderer.DrawText(e.Graphics, _subtitle, Font,
-                        new Rectangle(10, subtitleY, Width - 20, 20), SubtitleColor, flags);
+                        new Rectangle(10, subtitleY, Width - 20, subtitleH), SubtitleColor, flags);
                 return;
             }
 
@@ -70,7 +73,7 @@ namespace ExcelMerger
                 }
             int rightBound = TextRightBound(Width, leftmostChild);
             TextRenderer.DrawText(e.Graphics, _title, TitleFont,
-                new Rectangle(18, titleY, rightBound - 18, 26), Color.White, flags);
+                new Rectangle(18, titleY, rightBound - 18, titleH), Color.White, flags);
 
             if (_subtitle.Length > 0)
             {
@@ -78,14 +81,30 @@ namespace ExcelMerger
                 // текст режется у левого края кнопки. Если под кнопкой не помещается по высоте —
                 // остаёмся на прежнем месте, обрезая многоточием у кнопки.
                 int subY = subtitleY, subRight = rightBound;
-                if (childBottom + 2 + 18 <= Height)
+                if (childBottom + RowGap + subtitleH <= Height)
                 {
-                    subY = Math.Max(subtitleY, childBottom + 2);
+                    subY = Math.Max(subtitleY, childBottom + RowGap);
                     subRight = Width - 20;
                 }
                 TextRenderer.DrawText(e.Graphics, _subtitle, Font,
-                    new Rectangle(20, subY, subRight - 20, 20), SubtitleColor, flags);
+                    new Rectangle(20, subY, subRight - 20, subtitleH), SubtitleColor, flags);
             }
+        }
+
+        private const int BottomPad = 8; // просвет между подписью и нижней гранью шапки
+        private const int RowGap = 2;    // просвет между заголовком и подписью
+
+        /// <summary>
+        /// Вертикальная раскладка шапки: подпись прижата к низу, заголовок стоит над ней.
+        /// Высоты строк приходят снаружи, потому что это РЕАЛЬНЫЕ высоты шрифтов — они
+        /// заданы в пунктах и растут с масштабом экрана. Фиксированные прямоугольники
+        /// (было 26 и 20) на 125% и выше срезали низ заголовка. Чистая — под тест.
+        /// </summary>
+        internal static void TextRows(int bandHeight, int titleHeight, int subtitleHeight,
+            out int titleY, out int subtitleY)
+        {
+            subtitleY = bandHeight - BottomPad - subtitleHeight;
+            titleY = subtitleY - RowGap - titleHeight;
         }
 
         /// <summary>

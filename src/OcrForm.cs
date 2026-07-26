@@ -106,14 +106,7 @@ namespace ExcelMerger
 
         private void OnOpenClick(object sender, EventArgs e)
         {
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfFilter");
-                dialog.Multiselect = true;
-                dialog.Title = Loc.T("common.pickPdf");
-                if (dialog.ShowDialog(this) == DialogResult.OK)
-                    AddFiles(dialog.FileNames);
-            }
+            PickAndAddFiles();
         }
 
         // ---------- конвертация ----------
@@ -160,18 +153,8 @@ namespace ExcelMerger
 
         private void OnConvertFinished(Exception error, ConvertResult result, string outPath)
         {
-            EndOperation();
-            if (error is OperationCanceledException)
-            {
-                SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // .docx не создан
-                return;
-            }
-            if (error != null)
-            {
-                SetStatus(Loc.T("ocr.status.failed"), Theme.ErrRed);
-                Dialogs.Error(this, Title, Loc.T("ocr.err.convertFailed"), error.Message);
-                return;
-            }
+            if (!FinishOperation(error, Loc.T("ocr.status.failed"), Loc.T("ocr.err.convertFailed")))
+                return; // отмена или ошибка — статус и диалог уже показаны базой
             UsageStats.RecordPdfToWord();
             SetStatus(string.Format(Loc.T("ocr.status.done"), result.Pages), Theme.OkGreen);
             Ui.OpenPath(outPath); // авто-открытие результата; молча, если нет ассоциации .docx

@@ -45,7 +45,7 @@ namespace ExcelMerger
 
             int boxTop = (Height - BoxSize) / 2;
             var rect = new RectangleF(0.5f, boxTop + 0.5f, BoxSize - 1, BoxSize - 1);
-            using (GraphicsPath box = RoundedPath(rect, 4f))
+            using (GraphicsPath box = Ui.RoundedRect(rect, 4f))
             {
                 if (Checked)
                 {
@@ -84,7 +84,7 @@ namespace ExcelMerger
                     using (var pen = new Pen(Color.FromArgb(120, Theme.Accent), 1.5f))
                     {
                         var focus = new RectangleF(rect.X - 0.5f, rect.Y - 0.5f, rect.Width + 1, rect.Height + 1);
-                        using (GraphicsPath ring = RoundedPath(focus, 5f))
+                        using (GraphicsPath ring = Ui.RoundedRect(focus, 5f))
                             g.DrawPath(pen, ring);
                     }
                 }
@@ -96,16 +96,5 @@ namespace ExcelMerger
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
         }
 
-        private static GraphicsPath RoundedPath(RectangleF r, float radius)
-        {
-            var p = new GraphicsPath();
-            float d = radius * 2f;
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
-            return p;
-        }
     }
 }

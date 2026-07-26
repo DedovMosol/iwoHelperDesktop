@@ -45,19 +45,7 @@ namespace ExcelMerger
         private MessageForm(Kind kind, string title, string header, string body, bool confirm,
             string linkText, string linkUrl)
         {
-            Text = title ?? "iwo Helper Desktop";
-            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
-            BackColor = Color.White;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterParent;
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
-            Icon appIcon = Ui.AppIcon();
-            if (appIcon != null)
-                Icon = appIcon;
+            Ui.InitDialog(this, title ?? "iwo Helper Desktop");
 
             int textLeft = Pad + IconSize + 16;
             int textW = W - textLeft - Pad;
@@ -121,7 +109,7 @@ namespace ExcelMerger
             else
             {
                 var ok = new RoundedButton(true);
-                ok.Text = "OK";
+                ok.Text = Loc.T("common.ok");
                 ok.SetBounds(ButtonX(0, 1, W, BtnW, Pad), btnY, BtnW, BtnH);
                 ok.DialogResult = DialogResult.OK;
                 Controls.Add(ok);

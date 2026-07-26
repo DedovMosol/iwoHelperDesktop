@@ -194,6 +194,23 @@ namespace ExcelMerger
             SyncControls();
         }
 
+        /// <summary>
+        /// Диалог выбора PDF-файлов и добавление выбранного в порядок страниц. Оба
+        /// инструмента, собирающих результат из нескольких файлов («Объединение» и
+        /// «PDF → Word»), держали его дословно одинаковой копией.
+        /// </summary>
+        protected void PickAndAddFiles()
+        {
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Filter = Loc.T("common.pdfFilter");
+                dialog.Multiselect = true;
+                dialog.Title = Loc.T("common.pickPdf");
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    AddFiles(dialog.FileNames);
+            }
+        }
+
         // Горячие клавиши сетки (Delete, Alt+←/→) — в базе PdfToolFormBase.
         protected override void RemoveSelectedPages() { RemoveSelected(); }
         protected override void MoveSelectedPage(bool later) { MoveSelected(later); }

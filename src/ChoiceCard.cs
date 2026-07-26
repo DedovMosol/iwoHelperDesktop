@@ -174,7 +174,7 @@ namespace ExcelMerger
             g.Clear(Parent != null ? Parent.BackColor : Color.White);
 
             var rect = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
-            using (GraphicsPath card = Rounded(rect, 12f))
+            using (GraphicsPath card = Ui.RoundedRect(rect, 12f))
             {
                 Color fill = _pressed ? Theme.SecondaryPressed : (_hover ? Theme.SecondaryHover : Color.White);
                 using (var b = new SolidBrush(fill))
@@ -291,16 +291,5 @@ namespace ExcelMerger
             g.DrawLines(pen, points);
         }
 
-        private static GraphicsPath Rounded(RectangleF r, float radius)
-        {
-            var p = new GraphicsPath();
-            float d = radius * 2f;
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
-            return p;
-        }
     }
 }

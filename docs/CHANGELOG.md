@@ -3,6 +3,72 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.8] — 2026-07-26
+
+### Fixed
+- **Closing a PDF window could hang for two seconds and leak memory.** The thumbnail
+  renderer is asked to stop through a signal, and the render thread could clear that signal
+  in the same instant it arrived — after which it waited forever. The window then sat out
+  its two-second timeout on close, and the renderer, which holds a full in-memory copy of
+  every PDF it has open, was never released for the rest of the session.
+- **A window busy reading a PDF lost its work when the language changed.** Only a running
+  operation counted as “busy”, so switching language while a large or network PDF was still
+  being read closed the window mid-read. The freshly opened one came up empty, with nothing
+  said about the file that had been loading.
+- **The Excel Digest window broke when dragged to its smallest size.** “Uncheck all” ended
+  up below the bottom edge of the window and “Check all” disappeared underneath “Retry
+  skipped” — and that broken size was then remembered between runs. The minimum height is
+  now derived from the actual layout instead of a constant that had drifted away from it.
+- **Every tool window opened with the focus on “Home”**, so pressing Enter right after
+  opening one returned to the start screen without doing anything. The header really is last
+  in the tab order now, and the focus lands on the first useful control.
+- **The window header was clipped from 125% display scaling upwards.** Title and subtitle
+  were drawn into fixed-height boxes while their fonts grow with the scale, slicing off the
+  bottom of the letters. Both rows are measured from the fonts now.
+- **Merging with compression looked frozen.** The bar reached 100%, Cancel disappeared, and
+  the window then sat still for the whole compression run. Compression now names itself in
+  the status line and shows a moving bar, since its progress cannot be measured.
+- **Long messages ran off the edge of the Excel Digest window**, cut mid-word with no
+  ellipsis. Both lines now shorten with “…” and show the full text on hover, as the PDF
+  tools already did.
+- **A list item numbered with a non-ASCII digit silently lost its number** when written to
+  Word.
+- **Enter did nothing in PDF Split** while it started the action in the other two PDF tools,
+  and “Combine into one file” stayed clickable during a split.
+- **Checking for updates gave no sign of life:** the button stayed lit through a request
+  that can take ten seconds, and repeated clicks stacked up identical error dialogs.
+- **“About” and the page-number prompts showed a generic window icon**, unlike every other
+  dialog.
+- The language globe on the start screen could not be reached from the keyboard, and would
+  have been invisible on Windows 8.1, whose icon font does not have it — it now falls back to
+  the flag of the current language and answers Enter and Space.
+
+### Changed
+- **The shared parts really are shared now.** The dialog frame, the rounded-rectangle
+  outline, “select all rows”, the PDF file picker and the “operation finished” epilogue each
+  lived in three or four copies that had begun to drift apart — one was missing the window
+  icon, another the guard against a degenerate corner radius.
+- The taskbar progress object is released deterministically, like every other COM object in
+  the app, and process handles are closed at the six places that open a file or a folder.
+
+### Testing
+- Windows are opened for real and squeezed to their minimum size, with every control checked
+  for staying inside the window and no two buttons overlapping; the tab order of each tool
+  window is checked the same way. Both layout defects above were caught by these checks
+  before they were fixed.
+- Twelve new checks cover logic that had none: the median behind every PDF layout threshold,
+  the X-Y cut tree the header tables are built from, the missing-key fallback of the string
+  catalog, the compression labels, cancellation, the screen chosen when restoring a window,
+  the UI-thread delivery guard, and the rule that keeps a chosen language from being
+  overwritten by a stale window.
+- Two checks that could never fail were repaired: one compared two nulls, the other kept its
+  only assertion inside a loop that an empty result skipped entirely.
+- The runner refuses to pass if the number of checks drops, so a deleted one cannot slip by.
+- Continuous integration installs Ghostscript **before** running the checks, so the
+  compression round-trip is actually exercised instead of silently skipped; it builds the
+  checks for the architecture under test (the 32-bit branches had never been run); and the
+  thumbnail check now reports “nothing was rendered” as a failure instead of success.
+
 ## [1.17.7] — 2026-07-26
 
 ### Fixed

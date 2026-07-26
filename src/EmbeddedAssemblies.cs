@@ -36,20 +36,34 @@ namespace ExcelMerger
         private static Assembly OnResolve(object sender, ResolveEventArgs args)
         {
             string name = new AssemblyName(args.Name).Name;
+            Assembly cached;
             lock (Sync)
-            {
-                Assembly cached;
                 if (_loaded.TryGetValue(name, out cached))
                     return cached;
-                // Ресурс называется «<простое имя>.dll»; нет такого — сборка не наша.
-                using (Stream stream = typeof(EmbeddedAssemblies).Assembly.GetManifestResourceStream(name + ".dll"))
-                {
-                    if (stream == null)
-                        return null;
-                    Assembly asm = Assembly.Load(ReadAll(stream));
-                    _loaded[name] = asm;
-                    return asm;
-                }
+
+            // Ресурс называется «<простое имя>.dll»; нет такого — сборка не наша.
+            byte[] bytes;
+            using (Stream stream = typeof(EmbeddedAssemblies).Assembly.GetManifestResourceStream(name + ".dll"))
+            {
+                if (stream == null)
+                    return null;
+                bytes = ReadAll(stream);
+            }
+
+            // Assembly.Load зовём БЕЗ своего лока: обработчик AssemblyResolve выполняется
+            // внутри загрузчика CLR, и удерживать поверх него собственную блокировку — это
+            // инверсия блокировок (два воркера, впервые резолвящие РАЗНЫЕ вшитые сборки —
+            // PdfSharp в одном окне и PdfPig в другом, — могли встать намертво).
+            Assembly loaded = Assembly.Load(bytes);
+            lock (Sync)
+            {
+                // Гонку выиграл другой поток — отдаём ЕГО сборку: два Assembly.Load одних и тех
+                // же байтов дают РАЗНЫЕ типы, и вернуть разным вызывающим разные сборки значит
+                // получить InvalidCastException между ними. Лишняя копия останется без ссылок.
+                if (_loaded.TryGetValue(name, out cached))
+                    return cached;
+                _loaded[name] = loaded;
+                return loaded;
             }
         }
 

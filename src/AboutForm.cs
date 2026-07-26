@@ -16,16 +16,7 @@ namespace ExcelMerger
 
         public AboutForm()
         {
-            Text = Loc.T("hub.about");
-            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
-            BackColor = Color.White;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterParent;
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
+            Ui.InitDialog(this, Loc.T("hub.about"));
             ClientSize = new Size(460, 340); // высота уточняется в конце под контент
             WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11 — как на главной
 
@@ -81,7 +72,7 @@ namespace ExcelMerger
             ClientSize = new Size(ClientSize.Width, y + 16 + 36 + 16);
 
             var ok = new RoundedButton(true);
-            ok.Text = "OK";
+            ok.Text = Loc.T("common.ok");
             ok.SetBounds(ClientSize.Width - 124, ClientSize.Height - 52, 100, 36);
             ok.Click += delegate { Close(); };
             Controls.Add(ok);

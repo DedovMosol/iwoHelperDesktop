@@ -258,8 +258,32 @@ namespace ExcelMerger.Tests
             Run("Ui.Font: кэш по размеру/стилю/семейству, один экземпляр", TestFontCached);
             Run("PdfPageGrid.WheelBasis: неприменённая цель колеса старше текущей ширины", TestWheelBasis);
 
+            // ---------- 1.17.8 ----------
+            Run("Окна: при минимальном размере ничего не обрезано и кнопки не наложены", TestWindowsSurviveMinimumSize);
+            Run("Окна: «Главная» последняя в обходе Tab (фокус не на ней)", TestHomeHeaderLastInTabOrder);
+            Run("HeaderBand.TextRows: заголовок и подпись помещаются на любом масштабе экрана", TestHeaderRowsFitAnyDpi);
+            Run("MathUtil.Median: нижняя медиана, пустой вход, вход не переставлен", TestMedian);
+            Run("ListMarker: не-ASCII цифры («１.», «١.») номером списка не считаются", TestListMarkerNonAsciiDigits);
+            Run("Loc.T: отсутствующий ключ возвращается как есть, null не роняет", TestLocMissingKey);
+            Run("PdfCompression.LevelLabels: три подписи, переводы, а не ключи (оба языка)", TestCompressionLevelLabels);
+            Run("Cancellation.ThrowIf: null молчит, поднятый флаг бросает", TestCancellationThrowIf);
+            Run("WindowPlacement.BestWorkArea: экран по наибольшему пересечению, фолбэк без него", TestBestWorkArea);
+            Run("XyCut.OrderTree: этажи и колонки деревом, AvailRight по соседней колонке", TestXyCutOrderTreeShape);
+            Run("Ui.OnUi: null/без хэндла/разрушенное окно — false без исключения", TestOnUiGuard);
+            Run("UserSettings: язык не затирается записью устаревшего экземпляра", TestSettingsLanguageNotClobbered);
+
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
+            // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
+            // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
+            const int MinTests = 246;
+            int total = _passed + _failed;
+            if (total < MinTests)
+            {
+                Console.WriteLine("ОШИБКА: тестов " + total + ", а должно быть не меньше " + MinTests +
+                    " — из прогона пропала проверка.");
+                return 1;
+            }
             return _failed == 0 ? 0 : 1;
         }
 
@@ -3296,12 +3320,20 @@ namespace ExcelMerger.Tests
                 W("Всего:", 0, 160, 40, 10),   W("113", 200, 160, 30, 10)
             };
             List<OcrParagraph> paras = OcrLayout.Analyze(words, false).Paragraphs;
+            // Пустой результат раньше проходил молча — тело foreach просто не выполнялось.
+            AssertTrue(paras.Count > 0, "разбор дал хотя бы один абзац");
+            var all = new System.Text.StringBuilder();
             foreach (OcrParagraph p in paras)
             {
                 bool label = p.Text.Contains("Итого") || p.Text.Contains("НДС") || p.Text.Contains("Всего");
                 bool number = p.Text.Contains("112") || p.Text.Contains("20") || p.Text.Contains("113");
                 AssertTrue(label == number, "метка и её число не разлучены: " + p.Text);
+                all.Append(p.Text).Append(' ');
             }
+            // Предикат выше истинен и когда в абзаце НЕТ ни метки, ни числа, поэтому отдельно
+            // требуем, чтобы ни одна метка и ни одно число не потерялись при разборе.
+            foreach (string token in new[] { "Итого", "НДС", "Всего", "112", "20", "113" })
+                AssertTrue(all.ToString().Contains(token), "в разборе сохранилось «" + token + "»");
         }
 
         private static void TestOcrIndentWithHeader()
@@ -4640,7 +4672,10 @@ namespace ExcelMerger.Tests
         {
             System.Drawing.Icon first = Ui.AppIcon();
             System.Drawing.Icon second = Ui.AppIcon();
-            AssertTrue(ReferenceEquals(first, second), "оба вызова возвращают один экземпляр (или общий null)");
+            // Без этой проверки тест не мог упасть: у неудачной выборки кэшируется null, а
+            // ReferenceEquals(null, null) — истина. Из своего exe иконка достаётся всегда.
+            AssertTrue(first != null, "иконка приложения извлечена из exe");
+            AssertTrue(ReferenceEquals(first, second), "оба вызова возвращают ОДИН экземпляр (HICON не плодится)");
         }
 
         private static void TestFontCached()
@@ -4668,6 +4703,356 @@ namespace ExcelMerger.Tests
             int second = ThumbZoom.StepFromWheel(PdfPageGrid.WheelBasis(first, 132), 120);
             AssertEqual(148, first, "первый щелчок: +16");
             AssertEqual(164, second, "второй щелчок шагает от цели, а не от устаревшей ширины");
+        }
+
+        /// <summary>
+        /// Median — общий знаменатель ВСЕХ порогов разбора PDF (14 мест вызова: кегли, зазоры,
+        /// шаг сетки). Контракт: НИЖНЯЯ медиана при чётном числе значений, 0 на пустом входе,
+        /// исходный список не переставляется. Без теста «уточнение» до среднего или до верхней
+        /// медианы сдвинуло бы разом все пороги, а фикстуры остались бы зелёными.
+        /// </summary>
+        private static void TestMedian()
+        {
+            AssertEqual(0.0, MathUtil.Median(null), "null → 0");
+            AssertEqual(0.0, MathUtil.Median(new List<double>()), "пустой список → 0");
+            AssertEqual(5.0, MathUtil.Median(new List<double> { 5 }), "один элемент");
+            AssertEqual(2.0, MathUtil.Median(new List<double> { 1, 2, 3, 4 }), "чётное число — НИЖНЯЯ медиана");
+            AssertEqual(3.0, MathUtil.Median(new List<double> { 5, 1, 3 }), "порядок на входе не важен");
+            var src = new List<double> { 9, 1, 5 };
+            MathUtil.Median(src);
+            AssertEqual("9,1,5", string.Join(",", src), "исходный список не переставлен");
+        }
+
+        /// <summary>
+        /// Номер списка распознаём только по ASCII-цифрам. char.IsDigit пропускает и другие
+        /// десятичные цифры Юникода, а вычитание '0' превращало «１.» в номер 65249 — Word такой
+        /// начальный номер отвергает, исключение глушится, и пункт молча остаётся без номера.
+        /// </summary>
+        private static void TestListMarkerNonAsciiDigits()
+        {
+            AssertEqual(ListKind.None, ListMarker.Detect("１. текст").Kind, "полноширинная «１» — не номер");
+            AssertEqual(ListKind.None, ListMarker.Detect("١. текст").Kind, "арабско-индийская «١» — не номер");
+            ListMarker.Result ok = ListMarker.Detect("1. текст");
+            AssertEqual(ListKind.Numbered, ok.Kind, "обычная ASCII-цифра по-прежнему номер");
+            AssertEqual(1, ok.Number, "номер разобран");
+        }
+
+        /// <summary>
+        /// Отсутствующий ключ Loc.T возвращает сам ключ — на этом держится проверка каталога:
+        /// переименовали ключ, а в коде забыли — и в интерфейс попадёт «compress.level.none».
+        /// </summary>
+        private static void TestLocMissingKey()
+        {
+            AssertEqual("нет.такого.ключа", Loc.T("нет.такого.ключа"), "нет ключа — возвращается сам ключ");
+            AssertEqual(null, Loc.T(null), "null-ключ отдаётся как есть, без исключения");
+            AssertEqual("", Loc.T(""), "пустой ключ отдаётся как есть, без исключения");
+        }
+
+        /// <summary>
+        /// Подписи уровней сжатия лежат в списке по индексу = CompressionLevel и уходят прямо в
+        /// выпадающий список. Промах по ключу Loc.T не бросает, а тихо отдаёт сам ключ, поэтому
+        /// «compress.level.none» уехал бы в интерфейс при всех зелёных тестах.
+        /// </summary>
+        private static void TestCompressionLevelLabels()
+        {
+            Lang saved = Loc.Current;
+            try
+            {
+                foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                {
+                    Loc.Init(lang);
+                    string[] labels = PdfCompression.LevelLabels();
+                    AssertEqual(3, labels.Length, "по подписи на каждый уровень (" + lang + ")");
+                    for (int i = 0; i < labels.Length; i++)
+                    {
+                        AssertTrue(!string.IsNullOrEmpty(labels[i]), "подпись уровня " + i + " не пуста (" + lang + ")");
+                        AssertTrue(labels[i].IndexOf("compress.level", StringComparison.Ordinal) < 0,
+                            "подпись уровня " + i + " — перевод, а не сам ключ (" + lang + ")");
+                    }
+                    AssertTrue(labels[0] != labels[1] && labels[1] != labels[2] && labels[0] != labels[2],
+                        "уровни различимы на глаз (" + lang + ")");
+                }
+            }
+            finally { Loc.Init(saved); }
+        }
+
+        /// <summary>
+        /// ThrowIf — единственная точка кооперативной отмены во всех сервисах. Отдельно проверяем
+        /// ветку null: она означает «отмена не предусмотрена» и не должна ничего бросать.
+        /// </summary>
+        private static void TestCancellationThrowIf()
+        {
+            Cancellation.ThrowIf(null); // «отмены нет» — молча продолжаем
+            Cancellation.ThrowIf(delegate { return false; });
+            bool thrown = false;
+            try { Cancellation.ThrowIf(delegate { return true; }); }
+            catch (OperationCanceledException) { thrown = true; }
+            AssertTrue(thrown, "поднятый флаг бросает OperationCanceledException");
+        }
+
+        /// <summary>
+        /// Экран для восстановления окна: тот, с которым пересечение больше. Отдельно нужна
+        /// ветка «пересечения нет вовсе» (монитор отключили) — иначе окно осталось бы за краем.
+        /// </summary>
+        private static void TestBestWorkArea()
+        {
+            var left = new System.Drawing.Rectangle(0, 0, 1000, 800);
+            var right = new System.Drawing.Rectangle(1000, 0, 1000, 800);
+            var areas = new[] { left, right };
+            AssertEqual(right, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(1200, 100, 400, 300), areas),
+                "окно целиком на втором экране");
+            AssertEqual(left, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(850, 100, 200, 300), areas),
+                "окно на стыке (150 px слева, 50 справа) — где пересечение больше");
+            AssertEqual(right, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(950, 100, 200, 300), areas),
+                "перевес в другую сторону (50 px слева, 150 справа)");
+            AssertEqual(left, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(5000, 5000, 400, 300), areas),
+                "монитора больше нет — первый экран, а не пустота");
+        }
+
+        /// <summary>
+        /// Дерево XY-разреза (не плоский порядок чтения): писатель по нему выводит колонки
+        /// таблицей, поэтому проверяем ИМЕННО вложенность и AvailRight. Изменение, сохраняющее
+        /// плоский порядок, но схлопывающее уровень дерева, ломает шапки при зелёном Order.
+        /// </summary>
+        private static void TestXyCutOrderTreeShape()
+        {
+            // Два блока бок о бок сверху и один во всю ширину снизу. Высота верхних — 40 pt:
+            // колонка ниже minColumnExtent считается ложной и в колонки не режется.
+            var boxes = new[]
+            {
+                CB(0, 0, 200, 80, 40), CB(1, 300, 200, 80, 40),
+                CB(2, 0, 100, 380, 20)
+            };
+            CutNode root = XyCut.OrderTree(boxes, 30, 30, 25, 1);
+            AssertTrue(root != null && !root.IsLeaf, "корень — внутренний узел");
+            AssertTrue(!root.SideBySide, "верхний уровень — этажи (стек сверху вниз)");
+            AssertEqual(2, root.Children.Count, "два этажа: пара колонок и нижний блок");
+            CutNode floor = root.Children[0];
+            AssertTrue(!floor.IsLeaf && floor.SideBySide, "верхний этаж — колонки бок о бок");
+            AssertEqual(2, floor.Children.Count, "в этаже две колонки");
+            AssertTrue(floor.Children[0].AvailRight <= floor.Children[1].ColumnLeft,
+                "доступное место левой колонки упирается в содержимое правой");
+            AssertTrue(root.Children[1].IsLeaf, "нижний этаж — один блок");
+        }
+
+        /// <summary>
+        /// Ui.OnUi — общий guard доставки в UI-поток. В его собственном комментарии сказано, что
+        /// ручные копии guard'а уже дважды теряли catch, а теста на него не было.
+        /// </summary>
+        private static void TestOnUiGuard()
+        {
+            var results = new List<string>();
+            InIsolatedSettings("iwo_onui_", delegate
+            {
+                AssertLocal(!Ui.OnUi(null, delegate { }), "null-контрол — доставки нет", results);
+                using (var f = new System.Windows.Forms.Form())
+                {
+                    AssertLocal(!Ui.OnUi(f, delegate { }), "окно без хэндла — доставки нет", results);
+                    f.Show();
+                    AssertLocal(Ui.OnUi(f, delegate { }), "живое окно принимает делегат", results);
+                    f.Close();
+                }
+                var dead = new System.Windows.Forms.Form();
+                dead.Show();
+                dead.Dispose();
+                AssertLocal(!Ui.OnUi(dead, delegate { }), "разрушенное окно — доставки нет, без исключения", results);
+            });
+            AssertTrue(results.Count == 0, "Ui.OnUi: " + string.Join(" | ", results.ToArray()));
+        }
+
+        /// <summary>Проверка внутри чужого потока: копим отказы, а бросаем уже в основном.</summary>
+        private static void AssertLocal(bool condition, string what, List<string> failures)
+        {
+            if (!condition)
+                failures.Add(what);
+        }
+
+        /// <summary>
+        /// Выбранный язык обязан пережить запись настроек чужим окном: WriteAll берёт язык из
+        /// ЖИВОГО Loc, а не из своего поля, ровно потому, что устаревший экземпляр однажды уже
+        /// стирал выбор пользователя. Ветки zoom/compression и границ окон покрыты отдельно.
+        /// </summary>
+        private static void TestSettingsLanguageNotClobbered()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "iwo_lang_" + Guid.NewGuid().ToString("N"));
+            Lang saved = Loc.Current;
+            AppPaths.SetRootForTests(root);
+            try
+            {
+                UserSettings stale = UserSettings.Load(); // «старое» окно держит копию с прежним языком
+                Loc.Set(Lang.En);
+                AssertEqual("en", UserSettings.Load().Language, "Loc.Set записал выбор на диск");
+
+                stale.Save(); // устаревший экземпляр сохраняет свои поля
+                AssertEqual("en", UserSettings.Load().Language, "чужая запись не вернула прежний язык");
+            }
+            finally
+            {
+                Loc.Init(saved);
+                AppPaths.SetRootForTests(null);
+                try { Directory.Delete(root, true); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Каждое настоящее окно, сжатое до своего МИНИМАЛЬНОГО размера, обязано остаться
+        /// целым: ни один контрол не свисает за клиентскую область и никакие две кнопки не
+        /// накладываются. Глазами это ловится плохо (нужно дотащить рамку до упора и ещё
+        /// угадать, при каком состоянии появится скрытая кнопка), а пользователь упирается
+        /// сразу — и WindowPlacement потом ЗАПОМНИТ сломанный размер. Невидимые кнопки
+        /// проверяются наравне с видимыми: кнопка, которая появится позже (например
+        /// «Повторить пропущенные»), обязана иметь своё место уже сейчас.
+        /// </summary>
+        private static void TestWindowsSurviveMinimumSize()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_minsize_", delegate
+            {
+                foreach (System.Windows.Forms.Form f in NewAllToolWindows())
+                    using (f)
+                    {
+                        string where = f.GetType().Name;
+                        try
+                        {
+                            f.Show();
+                            f.Size = f.MinimumSize; // пользователь дотащил рамку до упора
+                            f.PerformLayout();
+                            CheckFits(f, where, offenders);
+                            CheckButtonsDoNotOverlap(f, where, offenders);
+                            f.Close();
+                        }
+                        catch (Exception ex) { offenders.Add(where + " — раскладка: " + ex.Message); }
+                    }
+            });
+            AssertTrue(offenders.Count == 0, "при минимальном размере окна: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Рекурсивно: каждый контрол лежит внутри клиентской области своего родителя.</summary>
+        private static void CheckFits(System.Windows.Forms.Control parent, string where, List<string> offenders)
+        {
+            System.Drawing.Rectangle box = parent.ClientRectangle;
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+            {
+                if (!box.Contains(c.Bounds))
+                    offenders.Add(where + " → " + Describe(c) + " " + c.Bounds + " вне " + box);
+                CheckFits(c, where, offenders);
+            }
+        }
+
+        /// <summary>Кнопки одного контейнера не должны перекрывать друг друга.</summary>
+        private static void CheckButtonsDoNotOverlap(System.Windows.Forms.Control parent, string where, List<string> offenders)
+        {
+            var buttons = new List<System.Windows.Forms.Control>();
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+                if (c is System.Windows.Forms.ButtonBase)
+                    buttons.Add(c);
+            for (int i = 0; i < buttons.Count; i++)
+                for (int j = i + 1; j < buttons.Count; j++)
+                    if (buttons[i].Bounds.IntersectsWith(buttons[j].Bounds))
+                        offenders.Add(where + " → " + Describe(buttons[i]) + " накрывает " + Describe(buttons[j]));
+        }
+
+        private static string Describe(System.Windows.Forms.Control c)
+        {
+            return c.GetType().Name + (string.IsNullOrEmpty(c.Text) ? "" : "«" + c.Text + "»");
+        }
+
+        /// <summary>
+        /// Кнопка «Главная» на шапке обязана быть ПОСЛЕДНЕЙ в обходе Tab, а не первой:
+        /// иначе окно открывается с фокусом на ней и первый же Enter выкидывает
+        /// пользователя обратно в меню, ничего не сделав. Ловушка тонкая:
+        /// ControlCollection.Add раздаёт следующий свободный TabIndex, поэтому «большой»
+        /// индекс, заданный шапке ПРИ ДОБАВЛЕНИИ, ставит её, наоборот, первой.
+        /// </summary>
+        private static void TestHomeHeaderLastInTabOrder()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_tab_", delegate
+            {
+                foreach (System.Windows.Forms.Form f in NewAllToolWindows())
+                    using (f)
+                    {
+                        string where = f.GetType().Name;
+                        try
+                        {
+                            f.Show();
+                            HeaderBand header = null;
+                            System.Windows.Forms.Control first = null;
+                            foreach (System.Windows.Forms.Control c in f.Controls)
+                            {
+                                if (c is HeaderBand)
+                                    header = (HeaderBand)c;
+                                if ((c.TabStop || c.Controls.Count > 0) &&
+                                    (first == null || c.TabIndex < first.TabIndex))
+                                    first = c;
+                            }
+                            if (header == null)
+                                offenders.Add(where + ": шапки нет");
+                            else if (ReferenceEquals(first, header))
+                                offenders.Add(where + ": шапка первая в обходе Tab (TabIndex=" +
+                                    header.TabIndex + ") — фокус попадёт на «Главная»");
+                            f.Close();
+                        }
+                        catch (Exception ex) { offenders.Add(where + ": " + ex.Message); }
+                    }
+            });
+            AssertTrue(offenders.Count == 0, "обход Tab: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Все окна-инструменты (с непустой «Главной») — по ним идут живые проверки раскладки.</summary>
+        private static System.Windows.Forms.Form[] NewAllToolWindows()
+        {
+            Action back = delegate { };
+            return new System.Windows.Forms.Form[]
+            {
+                new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back), new OcrForm(back)
+            };
+        }
+
+        /// <summary>
+        /// Выполнить тело на STA-потоке с настройками в отдельной временной папке: живые окна
+        /// пишут размеры и положение при закрытии, и без изоляции тест затирал бы НАСТОЯЩИЕ
+        /// настройки пользователя. Общая обвязка (DRY: три живых теста делали это копией).
+        /// </summary>
+        private static void InIsolatedSettings(string prefix, Action body)
+        {
+            string root = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
+            AppPaths.SetRootForTests(root);
+            try
+            {
+                var th = new System.Threading.Thread(delegate() { body(); });
+                th.SetApartmentState(System.Threading.ApartmentState.STA); // окна WinForms требуют STA
+                th.IsBackground = true;
+                th.Start();
+                th.Join();
+            }
+            finally
+            {
+                AppPaths.SetRootForTests(null);
+                try { Directory.Delete(root, true); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Строки шапки считаются от РЕАЛЬНЫХ высот шрифтов: шрифт задан в пунктах и растёт
+        /// вместе с масштабом экрана, а прежние литералы 26/20 не росли — на 125% и выше низ
+        /// заголовка срезался. Проверяем весь диапазон масштабов (96…192 dpi).
+        /// </summary>
+        private static void TestHeaderRowsFitAnyDpi()
+        {
+            foreach (double scale in new double[] { 1.0, 1.25, 1.5, 1.75, 2.0 })
+            {
+                // Полоса шапки и шрифты масштабируются вместе (AutoScaleMode.Dpi).
+                int band = (int)(76 * scale);
+                int titleH = (int)Math.Ceiling(28 * scale);    // 15 pt Bold
+                int subtitleH = (int)Math.Ceiling(18 * scale); // 9.75 pt
+                int titleY, subtitleY;
+                HeaderBand.TextRows(band, titleH, subtitleH, out titleY, out subtitleY);
+                string at = " при масштабе " + scale;
+                AssertTrue(titleY >= 0, "заголовок не выше шапки" + at);
+                AssertTrue(titleY + titleH <= subtitleY, "заголовок не наезжает на подпись" + at);
+                AssertTrue(subtitleY + subtitleH <= band, "подпись не свисает из шапки" + at);
+            }
         }
 
         private static void AssertEqual(object expected, object actual, string what)
