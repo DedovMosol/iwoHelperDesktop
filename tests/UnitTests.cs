@@ -4917,6 +4917,10 @@ namespace ExcelMerger.Tests
                             f.Show();
                             f.Size = f.MinimumSize; // пользователь дотащил рамку до упора
                             f.PerformLayout();
+                            // Размеры — прямо в описание отказа: рамка окна на другой машине
+                            // другая, и без этих чисел причина падения не восстанавливается.
+                            where += " (Min=" + f.MinimumSize.Height + ", рамка=" +
+                                (f.Height - f.ClientSize.Height) + ")";
                             CheckFits(f, where, offenders);
                             CheckButtonsDoNotOverlap(f, where, offenders);
                             f.Close();
