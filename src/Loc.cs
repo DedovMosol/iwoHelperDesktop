@@ -179,6 +179,51 @@ namespace ExcelMerger
             // Сжатие идёт отдельным процессом (Ghostscript) и о ходе не сообщает, поэтому
             // фаза называется в статусе, а полоса на это время становится бегущей.
             A("common.status.compressing", "Сжатие…", "Compressing…");
+            // Полноэкранный просмотр: лупа и подгонка по окну.
+            // Чередование страниц («Объединение PDF» → меню).
+            A("pdf.menu.interleave", "Чередовать страницы документов", "Interleave pages of the documents");
+            A("pdf.interleave.needTwo.title", "Нужно минимум два документа", "At least two documents are needed");
+            A("pdf.interleave.needTwo.body",
+                "Чередование собирает страницы нескольких документов по очереди. Добавьте второй файл — например пачку оборотных сторон.",
+                "Interleaving takes pages from several documents in turn. Add a second file — the back sides, for example.");
+            A("pdf.interleave.reverse.title", "Второй документ отсканирован задом наперёд?",
+                "Is the second document scanned back to front?");
+            A("pdf.interleave.reverse.body",
+                "Односторонний сканер обычно выдаёт оборотные стороны в обратном порядке.\n\n«Да» — брать второй документ с конца, «Нет» — по порядку.",
+                "A single-sided scanner usually produces the back sides in reverse order.\n\n“Yes” — take the second document from the end, “No” — in order.");
+            A("pdf.interleave.done", "Страницы чередуются, документов: {0}", "Pages interleaved, documents: {0}");
+            // Дополнительные преобразования одного документа («Разделение PDF» → меню «Ещё»).
+            A("split.menu.more", "Ещё с документом", "More with this document");
+            A("split.menu.toImages", "Сохранить страницы картинками", "Save pages as images");
+            A("split.menu.dpi", "{0} dpi", "{0} dpi");
+            A("split.menu.toText", "Извлечь текст в .txt", "Extract text to .txt");
+            A("split.menu.grayscale", "Перевести в оттенки серого", "Convert to grayscale");
+            A("split.menu.repair", "Восстановить повреждённый PDF", "Repair a damaged PDF");
+            A("split.pick.imagesDir", "Куда сохранить картинки", "Where to save the images");
+            A("split.pick.repair", "Выберите повреждённый PDF", "Choose the damaged PDF");
+            A("split.txtFilter", "Текстовый файл (*.txt)|*.txt", "Text file (*.txt)|*.txt");
+            A("split.ask.jpeg.title", "Сохранить в JPEG?", "Save as JPEG?");
+            A("split.ask.jpeg.body",
+                "JPEG заметно компактнее, но сжимает с потерями. PNG крупнее и сохраняет страницу точно.\n\n«Да» — JPEG, «Нет» — PNG.",
+                "JPEG is much smaller but compresses with losses. PNG is larger and keeps the page exactly.\n\n“Yes” — JPEG, “No” — PNG.");
+            A("split.status.exporting", "Сохранение картинок…", "Saving images…");
+            A("split.status.exportingPage", "Сохранение: страница {0} из {1}…", "Saving: page {0} of {1}…");
+            A("split.status.extractingText", "Извлечение текста…", "Extracting text…");
+            A("split.status.exported", "Сохранено файлов: {0}", "Files saved: {0}");
+            A("split.status.converting", "Преобразование…", "Converting…");
+            A("split.status.converted", "Преобразование выполнено", "Conversion done");
+            A("split.status.convertFailed", "Преобразовать не удалось — файл оставлен без изменений.",
+                "The conversion failed — the file was left unchanged.");
+            A("split.suffix.gray", "_серый", "_gray");
+            A("split.suffix.repaired", "_восстановленный", "_repaired");
+            A("split.err.exportFailed", "Не удалось сохранить", "Could not save");
+            A("split.err.convertFailed", "Не удалось преобразовать", "Could not convert");
+            A("preview.fit", "По окну", "Fit to window");
+            A("preview.tip.zoomIn", "Увеличить (Ctrl+колесо)", "Zoom in (Ctrl+wheel)");
+            A("preview.tip.zoomOut", "Уменьшить (Ctrl+колесо)", "Zoom out (Ctrl+wheel)");
+            A("err.export.noPages", "Не выбрано ни одной страницы для сохранения.",
+                "No pages are selected to save.");
+            A("err.export.pageFailed", "Не удалось отрисовать страницу {0}.", "Page {0} could not be rendered.");
             A("common.ok", "ОК", "OK");
             A("common.busySaving", "Дождитесь завершения сохранения…", "Wait for saving to finish…");
             A("common.status.notDone", "Не выполнено.", "Failed.");

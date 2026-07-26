@@ -187,6 +187,11 @@ on the header while building would put it *first* and land the focus on “Home�
 | `Ghostscript.cs` | Locates gs (bundled → registry → `Program Files` → user profile → `PATH`) and runs it with a timeout. |
 | `PdfCompression.cs` | `pdfwrite` downsampling (`/ebook`, `/screen`), PDF 1.4 output, the result replaces the original only if it is a valid PDF **and** strictly smaller. `ImageDpi` is the single place that knows what each preset does to images (150 and 72 dpi, the values Ghostscript itself sets in `Resource\Init\gs_pdfwr.ps`) so the result messages can name it. Only raster images are downsampled — text and vectors are never rasterized, which is why the wording is “images to N dpi” and not “compressed at N dpi”. |
 | `PageRasterizer.cs` | Renders a page region to PNG via gs — the raster fallback used for soft-masked images and rasterized regions. |
+| `PdfExportService.cs`, `PlainText.cs` | Export out of PDF: pages to PNG/JPEG at a chosen dpi through the same renderer as the thumbnails, and the text layer to `.txt`. `PlainText` is the pure half — it merges paragraphs **and tables** back into reading order by vertical position, because the analysis moves table words out of the paragraph stream and a naive dump loses them. |
+| `PdfConvert.cs`, `GsRewrite.cs` | Grayscale and repair through Ghostscript. `GsRewrite` is the pipeline both they and compression share: run, validate, replace only when the caller's policy allows, restore the original on any failure. Compression replaces only a **smaller** file, the conversions replace any sound one. |
+| `PageInterleave.cs` | Pure interleaving of the page order — assembling the two stacks a single-sided scanner produces (fronts, and backs in reverse). |
+| `NameTemplate.cs`, `OutputFile.cs` | Output names: pure token substitution (`[BASENAME]`, `[FILENUMBER###10]`, …) and the one place that picks a free file name. |
+| `PreviewZoom.cs` | Pure zoom and pan maths of the full-size preview: the step ladder, fit-to-window, the scroll offset that keeps the point under the cursor in place, and when a click closes the window. |
 | `PdfDrop.cs`, `PageRanges.cs`, `PdfProbe.cs` | Drag-and-drop extraction, `1,3-5`-style range parsing, a tiny generated PDF for self-checks. |
 
 ### PDF Merge and Split

@@ -181,5 +181,17 @@ namespace ExcelMerger
         {
             return new List<PdfPageRef>(_items);
         }
+
+        /// <summary>
+        /// Заменить порядок готовой ПЕРЕСТАНОВКОЙ тех же страниц (чередование пачек).
+        /// В отличие от <see cref="Clear"/> не трогает стопки отмены: снимок для Ctrl+Z
+        /// вызывающий делает сам через <see cref="Checkpoint"/> перед вызовом.
+        /// </summary>
+        public void SetOrder(IList<PdfPageRef> pages)
+        {
+            _items.Clear();
+            if (pages != null)
+                _items.AddRange(pages);
+        }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -52,9 +53,11 @@ namespace ExcelMerger
         {
             InitShell(Title, new Size(780, 660), new Size(660, 540), Theme.PdfRed);
             WireFileDropAppend(); // дроп PDF на окно — добавить в конец (общая обвязка базы)
+            var interleave = new ToolStripMenuItem(Loc.T("pdf.menu.interleave"), null,
+                delegate { InterleavePages(); });
             BuildHeaderWithHome(Title,
                 Loc.T("pdf.header.subtitle"),
-                Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
+                Theme.PdfRed, Theme.PdfRedDark, ShowHelp, interleave);
 
             int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
@@ -115,6 +118,40 @@ namespace ExcelMerger
         private void OnAddClick(object sender, EventArgs e)
         {
             PickAndAddFiles();
+        }
+
+        /// <summary>
+        /// Чередование страниц добавленных документов — сборка пачек одностороннего сканера:
+        /// лицевые стороны в одном файле, оборотные в другом и, как правило, задом наперёд.
+        /// Берём по странице из каждой пачки по кругу.
+        ///
+        /// Вопрос про обратный порядок задаём только для ДВУХ пачек: это и есть случай
+        /// двусторонней печати, а для трёх и более «которая из них перевёрнута» без отдельного
+        /// диалога не выяснить — там просто чередуем по порядку. Перестановка идёт под
+        /// снимком отмены, поэтому Ctrl+Z возвращает как было.
+        /// </summary>
+        private void InterleavePages()
+        {
+            if (Working || _order.Count == 0)
+                return;
+            List<PdfPageRef> pages = _order.ToList();
+            List<PageRun> runs = PageInterleave.SplitIntoRuns(pages);
+            if (!PageInterleave.CanInterleave(runs))
+            {
+                Dialogs.Info(this, Title, Loc.T("pdf.interleave.needTwo.title"), Loc.T("pdf.interleave.needTwo.body"));
+                return;
+            }
+            if (runs.Count == 2 &&
+                Dialogs.ConfirmWarning(this, Title, Loc.T("pdf.interleave.reverse.title"),
+                    Loc.T("pdf.interleave.reverse.body")))
+                runs[runs.Count - 1].Reverse = true;
+
+            _order.Checkpoint(); // отмена одним Ctrl+Z
+            _order.SetOrder(PageInterleave.Interleave(pages, runs, 1));
+            RefreshGrid();
+            RefreshRestingStatus();
+            SyncControls();
+            SetStatus(SuccessStatus(string.Format(Loc.T("pdf.interleave.done"), runs.Count)), Theme.OkGreen);
         }
 
         // ---------- сохранение ----------

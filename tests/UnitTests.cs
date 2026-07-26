@@ -272,11 +272,32 @@ namespace ExcelMerger.Tests
             Run("Ui.OnUi: null/без хэндла/разрушенное окно — false без исключения", TestOnUiGuard);
             Run("UserSettings: язык не затирается записью устаревшего экземпляра", TestSettingsLanguageNotClobbered);
 
+            // ---------- 1.17.8 ----------
+            Run("Чередование: порядок разбирается на документы по непрерывным отрезкам", TestInterleaveRuns);
+            Run("Чередование: пачки одностороннего сканера (обратная сторона с конца)", TestInterleaveScannerCase);
+            Run("Чередование: шаг, хвост длинной пачки, перестановка тех же ссылок", TestInterleavePaceAndTails);
+            Run("Шаблон имени: подстановка токенов", TestNameTemplateBasics);
+            Run("Шаблон имени: дополнение нулями и смещение нумерации", TestNameTemplatePadAndOffset);
+            Run("Шаблон имени: неизвестные токены текстом, путь обезврежен", TestNameTemplateUnknownAndUnsafe);
+            Run("Шаблон имени: различает ли шаблон файлы между собой", TestNameTemplateUniqueness);
+            Run("Текст: таблицы не теряются, ячейки через табуляцию", TestPlainTextKeepsTables);
+            Run("Текст: порядок чтения сверху вниз и слева направо", TestPlainTextReadingOrder);
+            Run("Текст: накрытые ячейки не сдвигают колонки", TestPlainTextMergedCells);
+            Run("Текст: страницы через перевод страницы, пустые на месте", TestPlainTextDocument);
+            Run("Экспорт: ширина в пикселях по разрешению, расширения файлов", TestExportPixelWidth);
+            Run("Ghostscript: аргументы режимов серого и починки", TestConvertArguments);
+            Run("Ghostscript: политика замены мягче, чем у сжатия", TestConvertShouldReplace);
+            Run("Ghostscript (живой): серое действительно серое, битый файл чинится", TestConvertLive);
+            Run("Просмотр: ступени масштаба и проценты", TestPreviewZoomSteps);
+            Run("Просмотр: вписывание по окну без растягивания мелкой страницы", TestPreviewZoomFit);
+            Run("Просмотр: Ctrl+колесо увеличивает к точке под курсором", TestPreviewZoomAnchor);
+            Run("Просмотр: панорама и когда клик закрывает окно", TestPreviewPanAndClose);
+
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 246;
+            const int MinTests = 265;
             int total = _passed + _failed;
             if (total < MinTests)
             {
@@ -4215,7 +4236,7 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestPreviewClosesOnLeftClickOnly()
         {
-            AssertTrue(PagePreviewForm.ClosesOnClick(System.Windows.Forms.MouseButtons.Left),
+            AssertTrue(PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Left, false, false),
                 "левая кнопка закрывает предпросмотр");
             foreach (System.Windows.Forms.MouseButtons other in new[]
             {
@@ -4225,7 +4246,7 @@ namespace ExcelMerger.Tests
                 System.Windows.Forms.MouseButtons.XButton2,
                 System.Windows.Forms.MouseButtons.None
             })
-                AssertTrue(!PagePreviewForm.ClosesOnClick(other), "кнопка " + other + " не должна закрывать окно");
+                AssertTrue(!PreviewZoom.ClosesOnClick(other, false, false), "кнопка " + other + " не должна закрывать окно");
         }
 
         /// <summary>
@@ -5062,6 +5083,447 @@ namespace ExcelMerger.Tests
                 AssertTrue(titleY + titleH <= subtitleY, "заголовок не наезжает на подпись" + at);
                 AssertTrue(subtitleY + subtitleH <= band, "подпись не свисает из шапки" + at);
             }
+        }
+
+        // ---------- Масштаб просмотра ----------
+
+        private static void TestPreviewZoomSteps()
+        {
+            AssertEqual(1.25, PreviewZoom.Next(1.00, +1), "следующая ступень вверх от натуральной");
+            AssertEqual(0.75, PreviewZoom.Next(1.00, -1), "следующая ступень вниз от натуральной");
+            // Подгонка по окну даёт масштаб МЕЖДУ ступенями — шаг обязан вести к соседней.
+            AssertEqual(0.50, PreviewZoom.Next(0.42, +1), "вверх от промежуточного значения");
+            AssertEqual(0.33, PreviewZoom.Next(0.42, -1), "вниз от промежуточного значения");
+            AssertEqual(PreviewZoom.Max, PreviewZoom.Next(PreviewZoom.Max, +1), "выше предела не уходим");
+            AssertEqual(PreviewZoom.Min, PreviewZoom.Next(PreviewZoom.Min, -1), "ниже предела не уходим");
+            AssertEqual(100, PreviewZoom.Percent(1.0), "проценты для подписи");
+            AssertEqual(33, PreviewZoom.Percent(0.33), "дробный масштаб округляется");
+        }
+
+        private static void TestPreviewZoomFit()
+        {
+            // Широкая страница в узком окне ограничена шириной, высокая — высотой.
+            AssertEqual(0.5, PreviewZoom.Fit(new System.Drawing.Size(1000, 500), new System.Drawing.Size(500, 500)),
+                "вписывание по ширине");
+            AssertEqual(0.5, PreviewZoom.Fit(new System.Drawing.Size(500, 1000), new System.Drawing.Size(500, 500)),
+                "вписывание по высоте");
+            // Мелкую страницу не растягиваем: увеличенное мыло хуже честного размера.
+            AssertEqual(1.0, PreviewZoom.Fit(new System.Drawing.Size(100, 100), new System.Drawing.Size(900, 900)),
+                "мелкая страница не растягивается");
+            AssertEqual(1.0, PreviewZoom.Fit(new System.Drawing.Size(0, 0), new System.Drawing.Size(500, 500)),
+                "пустая картинка не роняет расчёт");
+        }
+
+        /// <summary>
+        /// Ctrl+колесо обязано увеличивать К ТОЧКЕ ПОД КУРСОРОМ, а не к центру: иначе
+        /// интересное место уезжает за край, и пользователь его догоняет прокруткой.
+        /// </summary>
+        private static void TestPreviewZoomAnchor()
+        {
+            // Курсор в 100 px от края области, прокрутка 200 -> под курсором точка 300.
+            // При удвоении масштаба та же точка обязана остаться под курсором: 300*2-100 = 500.
+            AssertEqual(500, PreviewZoom.Anchor(200, 100, 1.0, 2.0), "точка под курсором осталась на месте");
+            AssertEqual(50, PreviewZoom.Anchor(200, 100, 1.0, 0.5), "то же при уменьшении");
+            AssertEqual(200, PreviewZoom.Anchor(200, 100, 1.0, 1.0), "без смены масштаба ничего не двигается");
+            AssertEqual(0, PreviewZoom.Anchor(0, 100, 1.0, 0.25), "отрицательная прокрутка обрезается нулём");
+            AssertEqual(200, PreviewZoom.Anchor(200, 100, 0, 2.0), "нулевой исходный масштаб не ломает расчёт");
+        }
+
+        private static void TestPreviewPanAndClose()
+        {
+            var viewport = new System.Drawing.Size(800, 600);
+            AssertTrue(PreviewZoom.FitsEntirely(new System.Drawing.Size(800, 600), viewport), "точно по размеру — панорама не нужна");
+            AssertTrue(!PreviewZoom.FitsEntirely(new System.Drawing.Size(801, 600), viewport), "шире области — нужна панорама");
+
+            // Клик закрывает окно, только когда таскать нечего и это именно клик.
+            AssertTrue(PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Left, false, false), "обычный клик закрывает");
+            AssertTrue(!PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Left, true, false), "перетаскивание не закрывает");
+            AssertTrue(!PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Left, false, true), "на увеличенной странице клик не закрывает");
+            AssertTrue(!PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Right, false, false), "правая кнопка принадлежит меню");
+
+            var t = new System.Drawing.Size(8, 8);
+            AssertTrue(!PreviewZoom.IsDrag(new System.Drawing.Point(10, 10), new System.Drawing.Point(13, 13), t),
+                "дрожание руки при клике перетаскиванием не считается");
+            AssertTrue(PreviewZoom.IsDrag(new System.Drawing.Point(10, 10), new System.Drawing.Point(30, 10), t),
+                "заметное движение — перетаскивание");
+        }
+
+        // ---------- Преобразования Ghostscript ----------
+
+        /// <summary>
+        /// ЖИВАЯ проверка новых режимов на настоящем движке: аргументы можно сверить и
+        /// глазами, а вот что цвет действительно ушёл и что битый файл действительно снова
+        /// открылся — только запуском. Ghostscript в сборочной среде ставится раньше тестов,
+        /// поэтому проверка выполняется и там, а не только на машине разработчика.
+        /// </summary>
+        private static void TestConvertLive()
+        {
+            if (!Ghostscript.Available)
+            {
+                // Без движка режимы обязаны быть безопасным бездействием, а не ошибкой.
+                string tmp = Path.Combine(Path.GetTempPath(), "ExcelMergerConv_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tmp);
+                try
+                {
+                    string p = Path.Combine(tmp, "файл.pdf");
+                    MakeColorPdf(p);
+                    long before = new FileInfo(p).Length;
+                    AssertTrue(!PdfConvert.Apply(p, PdfConvertMode.Grayscale), "без движка — без изменений");
+                    AssertEqual(before, new FileInfo(p).Length, "файл не тронут");
+                }
+                finally { try { Directory.Delete(tmp, true); } catch { } }
+                return;
+            }
+
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerConv_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                // 1. Оттенки серого: на странице ярко-красный прямоугольник.
+                string gray = Path.Combine(dir, "цветной.pdf");
+                MakeColorPdf(gray);
+                AssertTrue(HasColor(gray), "в исходнике есть цвет");
+                AssertTrue(PdfConvert.Apply(gray, PdfConvertMode.Grayscale), "перевод в серое применён");
+                AssertTrue(PdfCompression.LooksLikePdf(gray), "результат — валидный PDF");
+                AssertTrue(!HasColor(gray), "после перевода цветных пикселей не осталось");
+                AssertEqual(1, PdfPageCount(gray), "страница на месте");
+
+                // 2. Восстановление: портим таблицу ссылок так, что файл перестаёт открываться.
+                string broken = Path.Combine(dir, "битый.pdf");
+                MakeColorPdf(broken);
+                byte[] bytes = File.ReadAllBytes(broken);
+                int at = LastIndexOf(bytes, System.Text.Encoding.ASCII.GetBytes("startxref"));
+                AssertTrue(at > 0, "в исходнике есть таблица ссылок");
+                var damaged = new List<byte>();
+                damaged.AddRange(new List<byte>(bytes).GetRange(0, at));
+                damaged.AddRange(System.Text.Encoding.ASCII.GetBytes("startxref\n999999999\n%%EOF\n"));
+                File.WriteAllBytes(broken, damaged.ToArray());
+                AssertThrowsAny("битый файл не открывается", delegate { PdfPageCount(broken); });
+
+                AssertTrue(PdfConvert.Apply(broken, PdfConvertMode.Repair), "восстановление применено");
+                AssertEqual(1, PdfPageCount(broken), "починенный файл снова открывается");
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { }
+            }
+        }
+
+        /// <summary>Одностраничный PDF с заведомо цветным прямоугольником.</summary>
+        private static void MakeColorPdf(string path)
+        {
+            using (var doc = new PdfDocument())
+            {
+                PdfSharp.Pdf.PdfPage page = doc.AddPage();
+                using (XGraphics g = XGraphics.FromPdfPage(page))
+                    g.DrawRectangle(new XSolidBrush(XColors.Red), 40, 40, 300, 200);
+                doc.Save(path);
+            }
+        }
+
+        /// <summary>Есть ли на первой странице насыщенный цвет (рендер движком в растр).</summary>
+        private static bool HasColor(string pdf)
+        {
+            string png = pdf + ".probe.png";
+            string args = "-sDEVICE=png16m -r36 -dFirstPage=1 -dLastPage=1 -dNOPAUSE -dBATCH -dQUIET -dSAFER" +
+                          " -sOutputFile=\"" + png + "\" \"" + pdf + "\"";
+            string stderr;
+            try
+            {
+                if (Ghostscript.Run(args, 60000, out stderr) != 0 || !File.Exists(png))
+                    return false;
+                using (var bmp = new System.Drawing.Bitmap(png))
+                    for (int y = 0; y < bmp.Height; y += 2)
+                        for (int x = 0; x < bmp.Width; x += 2)
+                        {
+                            System.Drawing.Color c = bmp.GetPixel(x, y);
+                            int max = Math.Max(c.R, Math.Max(c.G, c.B));
+                            int min = Math.Min(c.R, Math.Min(c.G, c.B));
+                            if (max - min > 24) // насыщенность — признак цвета, а не серого
+                                return true;
+                        }
+                return false;
+            }
+            finally { try { File.Delete(png); } catch { } }
+        }
+
+        private static int LastIndexOf(byte[] haystack, byte[] needle)
+        {
+            for (int i = haystack.Length - needle.Length; i >= 0; i--)
+            {
+                bool hit = true;
+                for (int j = 0; j < needle.Length && hit; j++)
+                    if (haystack[i + j] != needle[j])
+                        hit = false;
+                if (hit)
+                    return i;
+            }
+            return -1;
+        }
+
+        private static void AssertThrowsAny(string what, Action action)
+        {
+            try { action(); }
+            catch { return; }
+            throw new Exception(what + ": ожидалось исключение, но его не было");
+        }
+
+        private static void TestConvertArguments()
+        {
+            string gray = PdfConvert.BuildArguments("in.pdf", "out.pdf", PdfConvertMode.Grayscale, null);
+            AssertTrue(gray.Contains("-sColorConversionStrategy=Gray"), "перевод цветов в серое");
+            // Без модели устройства движок возвращает цвет на отдельных объектах — нужны обе части.
+            AssertTrue(gray.Contains("-dProcessColorModel=/DeviceGray"), "модель устройства — серая");
+            string repair = PdfConvert.BuildArguments("in.pdf", "out.pdf", PdfConvertMode.Repair, null);
+            AssertTrue(!repair.Contains("ColorConversionStrategy"), "починка цвета не трогает");
+            foreach (string args in new[] { gray, repair })
+            {
+                // Версия вывода 1.4: иначе наш же PdfSharp не откроет результат повторно.
+                AssertTrue(args.Contains("-dCompatibilityLevel=1.4"), "версия вывода — 1.4");
+                AssertTrue(args.Contains("-dSAFER"), "движок запускается в безопасном режиме");
+                AssertTrue(args.Contains("\"in.pdf\"") && args.Contains("-sOutputFile=\"out.pdf\""),
+                    "пути в кавычках (пробелы в путях)");
+            }
+            string bundled = PdfConvert.BuildArguments("in.pdf", "out.pdf", PdfConvertMode.Repair, @"C:\app\gs");
+            AssertTrue(bundled.Contains(@"-I ""C:\app\gs\lib"""), "вшитому движку указываются его ресурсы");
+        }
+
+        private static void TestConvertShouldReplace()
+        {
+            // В отличие от сжатия, размер здесь не критерий: серый вариант бывает и больше.
+            AssertTrue(PdfConvert.ShouldReplace(1000, 1200, true), "годный результат применяется, даже если больше");
+            AssertTrue(PdfConvert.ShouldReplace(1000, 10, true), "годный результат применяется, если меньше");
+            AssertTrue(!PdfConvert.ShouldReplace(1000, 1200, false), "негодный вывод оригинал не заменяет");
+            AssertTrue(!PdfConvert.ShouldReplace(1000, 0, true), "пустой вывод оригинал не заменяет");
+            // А у сжатия — строго меньше, иначе в нём нет смысла.
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 1200, true), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Простой текст (экспорт в .txt) ----------
+
+        private static OcrParagraph Par(string text, double top, double left)
+        {
+            var p = new OcrParagraph { TopPt = top, LeftPt = left };
+            p.Runs.Add(new OcrRun { Text = text });
+            return p;
+        }
+
+        private static OcrTableCell Cell(string text)
+        {
+            var c = new OcrTableCell();
+            if (text != null)
+                c.Paragraphs.Add(Par(text, 0, 0));
+            return c;
+        }
+
+        private static OcrTable Grid(double top, double left, params string[][] rows)
+        {
+            var t = new OcrTable { TopPt = top, LeftPt = left };
+            foreach (string[] row in rows)
+            {
+                var r = new OcrTableRow();
+                foreach (string cell in row)
+                    r.Cells.Add(Cell(cell));
+                t.Rows.Add(r);
+                t.ColumnWidthsPt.Clear();
+                for (int i = 0; i < row.Length; i++)
+                    t.ColumnWidthsPt.Add(10);
+            }
+            return t;
+        }
+
+        /// <summary>
+        /// Таблицы обязаны попадать в текст. Разбор УБИРАЕТ слова таблиц из потока абзацев
+        /// (они уходят в ячейки), поэтому наивная склейка абзацев теряла бы их целиком —
+        /// именно это и проверяем: сборка сводит абзацы и таблицы обратно по вертикали.
+        /// </summary>
+        private static void TestPlainTextKeepsTables()
+        {
+            var page = new PdfPageText();
+            page.Paragraphs.Add(Par("Заголовок", 800, 50));
+            page.Paragraphs.Add(Par("Подпись внизу", 100, 50));
+            page.Tables.Add(Grid(500, 50,
+                new[] { "Товар", "Цена" },
+                new[] { "Болт", "10" }));
+
+            string text = PlainText.Page(page);
+            AssertEqual("Заголовок\n\nТовар\tЦена\nБолт\t10\n\nПодпись внизу", text,
+                "абзацы и таблица идут сверху вниз, ячейки через табуляцию");
+        }
+
+        /// <summary>Ось Y направлена вверх: больший TopPt — выше на странице, значит раньше.</summary>
+        private static void TestPlainTextReadingOrder()
+        {
+            var page = new PdfPageText();
+            page.Paragraphs.Add(Par("низ", 100, 50));
+            page.Paragraphs.Add(Par("верх", 700, 50));
+            page.Paragraphs.Add(Par("середина справа", 400, 300));
+            page.Paragraphs.Add(Par("середина слева", 400, 50));
+            AssertEqual("верх\n\nсередина слева\n\nсередина справа\n\nниз", PlainText.Page(page),
+                "сверху вниз, при равной высоте — слева направо");
+            AssertEqual("", PlainText.Page(null), "страницы нет — пустой текст");
+            AssertEqual("", PlainText.Page(new PdfPageText()), "пустая страница — пустой текст");
+        }
+
+        /// <summary>Накрытые объединением ячейки дают пустое поле, иначе колонки разъезжаются.</summary>
+        private static void TestPlainTextMergedCells()
+        {
+            var t = new OcrTable { TopPt = 500 };
+            var row = new OcrTableRow();
+            row.Cells.Add(Cell("Итого"));
+            var covered = Cell(null);
+            covered.Covered = true;
+            row.Cells.Add(covered);
+            row.Cells.Add(Cell("42"));
+            t.Rows.Add(row);
+            AssertEqual("Итого\t\t42", PlainText.Table(t), "накрытая ячейка — пустое поле, колонки на месте");
+        }
+
+        /// <summary>Страницы разделяются переводом страницы, пустые не съедаются — нумерация не съезжает.</summary>
+        private static void TestPlainTextDocument()
+        {
+            var one = new PdfPageText();
+            one.Paragraphs.Add(Par("первая", 700, 50));
+            var empty = new PdfPageText();
+            var three = new PdfPageText();
+            three.Paragraphs.Add(Par("третья", 700, 50));
+            AssertEqual("первая\n\f\n\n\f\nтретья",
+                PlainText.Document(new List<PdfPageText> { one, empty, three }),
+                "пустая страница остаётся на своём месте");
+            AssertEqual("", PlainText.Document(null), "нет страниц — пустой текст");
+        }
+
+        // ---------- Экспорт в картинки ----------
+
+        private static void TestExportPixelWidth()
+        {
+            // A4 шириной 595.28 pt: 96 dpi → 794 px, 300 dpi → 2480 px.
+            AssertEqual(794, PdfExportService.PixelWidth(595.28, 96), "экранное разрешение");
+            AssertEqual(2480, PdfExportService.PixelWidth(595.28, 300), "разрешение печати");
+            AssertEqual(1, PdfExportService.PixelWidth(0, 300), "нулевая ширина не даёт нулевую картинку");
+            AssertEqual(1, PdfExportService.PixelWidth(595.28, 0), "нулевое разрешение не даёт нулевую картинку");
+            AssertEqual(".png", PdfExportService.Extension(ImageExportFormat.Png), "расширение PNG");
+            AssertEqual(".jpg", PdfExportService.Extension(ImageExportFormat.Jpeg), "расширение JPEG");
+        }
+
+        // ---------- Чередование страниц ----------
+
+        private static PdfPageRef PR(string path, int index)
+        {
+            return new PdfPageRef { SourcePath = path, PageIndex = index };
+        }
+
+        private static string PagesOf(IList<PdfPageRef> pages)
+        {
+            var parts = new List<string>();
+            foreach (PdfPageRef p in pages)
+                parts.Add((p.SourcePath ?? "-") + p.PageIndex);
+            return string.Join(",", parts.ToArray());
+        }
+
+        /// <summary>Порядок разбирается на документы по непрерывным отрезкам одного файла.</summary>
+        private static void TestInterleaveRuns()
+        {
+            var pages = new List<PdfPageRef> { PR("a", 0), PR("a", 1), PR("b", 0), PR("b", 1), PR("b", 2) };
+            List<PageRun> runs = PageInterleave.SplitIntoRuns(pages);
+            AssertEqual(2, runs.Count, "два документа");
+            AssertEqual(0, runs[0].Start, "первый начинается с нуля");
+            AssertEqual(2, runs[0].Count, "в первом две страницы");
+            AssertEqual(3, runs[1].Count, "во втором три");
+            AssertTrue(PageInterleave.CanInterleave(runs), "два документа — чередовать есть что");
+
+            // Тот же файл, добавленный дважды, — это две пачки: пользователь видит их отдельно.
+            List<PageRun> twice = PageInterleave.SplitIntoRuns(
+                new List<PdfPageRef> { PR("a", 0), PR("b", 0), PR("a", 1) });
+            AssertEqual(3, twice.Count, "перемежающиеся страницы дают три отрезка");
+            AssertTrue(!PageInterleave.CanInterleave(PageInterleave.SplitIntoRuns(
+                new List<PdfPageRef> { PR("a", 0), PR("a", 1) })), "один документ чередовать не с чем");
+            AssertTrue(!PageInterleave.CanInterleave(null), "пустой ввод — нечего чередовать");
+        }
+
+        /// <summary>
+        /// Главный сценарий: односторонний сканер дал лицевые стороны в одном файле, а
+        /// оборотные — в другом и в обратном порядке. После чередования должно получиться
+        /// 1,2,3,4,5,6 подряд.
+        /// </summary>
+        private static void TestInterleaveScannerCase()
+        {
+            // face: стр. 1,3,5 (индексы 0,1,2); back: стр. 6,4,2 (индексы 0,1,2 в обратном порядке)
+            var pages = new List<PdfPageRef>
+            {
+                PR("face", 0), PR("face", 1), PR("face", 2),
+                PR("back", 0), PR("back", 1), PR("back", 2)
+            };
+            List<PageRun> runs = PageInterleave.SplitIntoRuns(pages);
+            runs[1].Reverse = true; // оборотная пачка идёт с конца
+            List<PdfPageRef> mixed = PageInterleave.Interleave(pages, runs, 1);
+            AssertEqual("face0,back2,face1,back1,face2,back0", PagesOf(mixed), "лицевая и оборотная сторона чередуются");
+            AssertEqual(pages.Count, mixed.Count, "ни одна страница не потеряна и не задвоена");
+        }
+
+        /// <summary>Шаг больше единицы, разная длина пачек и перестановка тех же ссылок.</summary>
+        private static void TestInterleavePaceAndTails()
+        {
+            var pages = new List<PdfPageRef>
+            {
+                PR("a", 0), PR("a", 1), PR("a", 2), PR("a", 3), PR("b", 0), PR("b", 1)
+            };
+            List<PageRun> runs = PageInterleave.SplitIntoRuns(pages);
+            AssertEqual("a0,a1,b0,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 2)), "по две страницы по кругу");
+            // Более длинный документ дописывает хвост, когда короткий кончился.
+            AssertEqual("a0,b0,a1,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 1)), "хвост длинной пачки в конце");
+            AssertEqual("a0,b0,a1,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 0)), "шаг меньше единицы считается за единицу");
+
+            // Это перестановка: те же самые объекты, а не копии — назначенные повороты уедут со страницами.
+            List<PdfPageRef> mixed = PageInterleave.Interleave(pages, runs, 1);
+            foreach (PdfPageRef p in mixed)
+                AssertTrue(pages.Contains(p), "в результате те же ссылки на страницы");
+        }
+
+        // ---------- Шаблон имени выходного файла ----------
+
+        private static void TestNameTemplateBasics()
+        {
+            var v = new NameValues { BaseName = "отчёт", FileNumber = 2, TotalFiles = 12, CurrentPage = 7 };
+            AssertEqual("отчёт_2", NameTemplate.Apply("[BASENAME]_[FILENUMBER]", v), "имя и номер файла");
+            AssertEqual("2_из_12", NameTemplate.Apply("[FILENUMBER]_из_[TOTAL_FILES]", v), "номер из всего");
+            AssertEqual("стр7", NameTemplate.Apply("стр[CURRENTPAGE]", v), "номер страницы источника");
+            AssertEqual("отчёт_2", NameTemplate.Apply(null, v), "пустой шаблон — прежнее поведение");
+            AssertEqual("отчёт_2", NameTemplate.Apply("", v), "пустая строка — прежнее поведение");
+            AssertEqual("без токенов", NameTemplate.Apply("без токенов", v), "текст без токенов идёт как есть");
+        }
+
+        private static void TestNameTemplatePadAndOffset()
+        {
+            var v = new NameValues { FileNumber = 2, CurrentPage = 3 };
+            AssertEqual("002", NameTemplate.Apply("[FILENUMBER###]", v), "решётки дополняют нулями");
+            AssertEqual("12", NameTemplate.Apply("[FILENUMBER10]", v), "число — смещение нумерации");
+            AssertEqual("012", NameTemplate.Apply("[FILENUMBER###10]", v), "дополнение и смещение вместе");
+            AssertEqual("3", NameTemplate.Apply("[CURRENTPAGE#]", v), "одна решётка ничего не дополняет");
+        }
+
+        private static void TestNameTemplateUnknownAndUnsafe()
+        {
+            var v = new NameValues { BaseName = "имя", FileNumber = 1 };
+            // Неизвестный токен и одиночные скобки — обычный текст, а не ошибка.
+            AssertEqual("[НЕТ]_имя", NameTemplate.Apply("[НЕТ]_[BASENAME]", v), "неизвестный токен остаётся текстом");
+            AssertEqual("[незакрытая имя", NameTemplate.Apply("[незакрытая [BASENAME]", v), "незакрытая скобка не ломает разбор");
+            // Разделители пути обязаны исчезнуть: шаблон не должен писать за пределы выбранной папки.
+            AssertEqual("_.._тайно_имя", NameTemplate.Apply("/../тайно/[BASENAME]", v), "разделители пути обезврежены");
+            AssertEqual("имя", NameTemplate.Apply("[BASENAME]...", v), "точки на конце срезаны");
+            AssertEqual("___", NameTemplate.Apply(":::", v), "запрещённые символы заменяются, а не выбрасываются");
+            // Шаблон, давший пустое имя, откатывается к обычному: файла без имени быть не может.
+            AssertEqual("имя_1", NameTemplate.Apply("[BOOKMARK]", v), "нет закладки — откат к шаблону по умолчанию");
+            AssertTrue(NameTemplate.Apply("[TIMESTAMP]", v).Length > 0, "без времени шаблон всё равно даёт имя");
+        }
+
+        private static void TestNameTemplateUniqueness()
+        {
+            AssertTrue(NameTemplate.IsUniquePerFile("[BASENAME]_[FILENUMBER]"), "номер файла различает части");
+            AssertTrue(NameTemplate.IsUniquePerFile("[CURRENTPAGE###]"), "номер страницы различает части");
+            AssertTrue(NameTemplate.IsUniquePerFile(null), "шаблон по умолчанию различает части");
+            AssertTrue(!NameTemplate.IsUniquePerFile("[BASENAME]"), "одно имя источника — все части совпадут");
+            AssertTrue(!NameTemplate.IsUniquePerFile("постоянное"), "текст без токенов — все части совпадут");
         }
 
         private static void AssertEqual(object expected, object actual, string what)
