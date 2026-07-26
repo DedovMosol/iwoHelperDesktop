@@ -129,9 +129,23 @@ namespace ExcelMerger
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(780, 785);
-            // Ширина минимума не даёт нижним ссылкам («Записка Word») перекрыться
-            // с правой кнопкой «Повторить пропущенные». Высота минимума считается от
-            // фактической раскладки в конце BuildUi — константой она разъезжалась с ней.
+            // Ширина минимума не даёт нижним ссылкам («Записка Word») перекрыться с правой
+            // кнопкой «Повторить пропущенные».
+            //
+            // Высота минимума выведена из ТЕХ ЖЕ проектных констант, что и сама раскладка:
+            // под нижней кнопкой колонки списка обязан помещаться нижний ряд (ссылки и
+            // «Повторить пропущенные»). Иначе «Снять все» уходит за нижний край окна,
+            // «Отметить все» прячется под «Повторить», и WindowPlacement это ещё и запомнит.
+            //
+            // Задаём здесь, рядом с ClientSize, и в тех же единицах: WinForms масштабирует
+            // минимум вместе со всем окном. Померить положение кнопки в рантайме нельзя —
+            // момента, когда масштабирование под экран уже завершено, снаружи не видно, и на
+            // машине с другим масштабом и в конструкторе, и в OnLoad кнопка ещё стояла на
+            // старом месте, отчего минимум выходил на 79 px мал. MinimumSize — внешний
+            // размер, поэтому переводим через SizeFromClientSize (вычитать ClientSize из
+            // Height нельзя: окно ещё не приняло свой настоящий размер).
+            MinimumSize = new Size(MinWidth, SizeFromClientSize(
+                new Size(0, UncheckAllTop + ListButtonHeight + RowGap + BottomRowHeight)).Height);
             WindowChrome.Enable(this, Theme.Accent); // зелёный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnDragEnter;
@@ -272,7 +286,7 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnSortName, Loc.T("excel.tip.sortName"));
             _btnCheckAll = AddListButton(Loc.T("excel.btn.checkAll"), fcol, 646);
             _btnCheckAll.Click += delegate { SetAllChecked(true); };
-            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, 680);
+            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, UncheckAllTop);
             _btnUncheckAll.Click += delegate { SetAllChecked(false); };
 
             _dropLine = new Panel();
@@ -308,9 +322,11 @@ namespace ExcelMerger
             UpdateReadiness();
         }
 
-        private const int MinWidth = 760;       // ширина: нижние ссылки не лезут под «Повторить»
-        private const int RowGap = 8;           // просвет между колонкой списка и нижним рядом
-        private const int BottomRowHeight = 40; // нижний ряд отсчитывается от низа клиентской области
+        private const int MinWidth = 760;         // ширина: нижние ссылки не лезут под «Повторить»
+        private const int UncheckAllTop = 680;    // верх нижней кнопки колонки списка
+        private const int ListButtonHeight = 30;  // высота кнопок этой колонки
+        private const int RowGap = 8;             // просвет между колонкой списка и нижним рядом
+        private const int BottomRowHeight = 40;   // нижний ряд отсчитывается от низа клиентской области
 
         private void BuildMenu()
         {
@@ -421,7 +437,7 @@ namespace ExcelMerger
         {
             var b = new RoundedButton(false);
             b.Text = text;
-            b.SetBounds(x, y, 130, 30);
+            b.SetBounds(x, y, 130, ListButtonHeight);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             Controls.Add(b);
             return b;
@@ -1131,52 +1147,14 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Окно создано. Здесь два дела, которые в конструкторе сделать нельзя.
-        ///
-        /// Первое — минимальный РАЗМЕР, считанный от фактической раскладки: под нижней
-        /// кнопкой колонки списка обязан помещаться нижний ряд (ссылки и «Повторить
-        /// пропущенные»), иначе «Снять все» уходит за нижний край окна, а «Отметить все»
-        /// прячется под «Повторить» — и WindowPlacement этот размер ещё и запоминает.
-        ///
-        /// Сам минимум считает <see cref="EnsureMinimumSize"/> на каждой раскладке.
+        /// Окно собрано: шапку с кнопкой «Главная» — в конец обхода Tab, чтобы фокус при
+        /// открытии достался полю исходной папки, а не возврату в меню. В конструкторе это
+        /// сделать нельзя — см. <see cref="Ui.HeaderLastInTabOrder"/>.
         /// </summary>
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
             Ui.HeaderLastInTabOrder(this);
-        }
-
-        /// <summary>
-        /// Минимальный размер окна — от ФАКТИЧЕСКОЙ раскладки: под нижней кнопкой колонки
-        /// списка обязан помещаться нижний ряд (ссылки и «Повторить пропущенные»). Иначе
-        /// «Снять все» уходит за нижний край окна, «Отметить все» прячется под «Повторить»,
-        /// и WindowPlacement этот размер ещё и запоминает.
-        ///
-        /// Считаем на КАЖДОЙ раскладке, а не один раз при создании. Момент, когда WinForms
-        /// закончит масштабировать окно под экран, снаружи не виден: и в конструкторе, и в
-        /// OnLoad позиции контролов на машине с другим масштабом оказывались ещё старыми
-        /// (кнопка на 631 вместо 710), минимум выходил на 79 px мал, и проверка раскладки
-        /// честно падала. Пересчёт по факту от этого расписания не зависит вовсе.
-        /// Сходится сразу: кнопка прижата к ВЕРХУ, её низ от высоты окна не зависит.
-        ///
-        /// MinimumSize задаётся во ВНЕШНИХ размерах, а нужное известно в клиентских —
-        /// пересчитывает <see cref="Form.SizeFromClientSize"/>. Вычитать ClientSize из
-        /// Height нельзя: окно может ещё не принять свой настоящий размер.
-        /// </summary>
-        private void EnsureMinimumSize()
-        {
-            if (_btnUncheckAll == null)
-                return; // раскладка ещё строится
-            int needed = SizeFromClientSize(
-                new Size(0, _btnUncheckAll.Bottom + RowGap + BottomRowHeight)).Height;
-            if (MinimumSize.Height != needed)
-                MinimumSize = new Size(MinWidth, needed);
-        }
-
-        protected override void OnLayout(LayoutEventArgs e)
-        {
-            base.OnLayout(e);
-            EnsureMinimumSize();
         }
 
         protected override void OnActivated(EventArgs e)
