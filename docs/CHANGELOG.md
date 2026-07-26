@@ -97,7 +97,7 @@ versions follow [SemVer](https://semver.org/).
 - **Rotation in PDF → Word.** A sideways page can be rotated right in the grid
   (right-click or Ctrl+Shift+«+»/«−») and is straightened BEFORE layout analysis: its
   sideways text becomes normal lines and paragraphs, tables and margins are rebuilt in
-  the upright space, images and a text stamp turn together with the page,
+  the upright space, images and a text-drawn stamp turn together with the page,
   and the produced `.docx` page swaps orientation accordingly. Without rotation the old
   behaviour is intact (sideways text is filtered out).
 - **Mass rotation.** The rotate submenu now also turns ALL pages of the document at
@@ -184,20 +184,19 @@ versions follow [SemVer](https://semver.org/).
 ## [1.16.8] — 2026-07-24
 
 ### Added
-- **A date/number overlay stamped over a form transfers cleanly.** A low image placed
-  over a `______ № ______` form (the number/date overlay of a tracking system) is carried
-  as the image it is: the form placeholders underneath are not duplicated as text, and
-  invisible white marks around such overlays are dropped. White or invisible text is
-  kept when it sits on a real backdrop (a scan image, a dark filled panel), so OCR layers and
-  light-on-dark headers are unaffected.
+- **A date/number stamp over a form transfers cleanly.** A low image placed over a
+  `______ № ______` blank-field row is carried as the image it is: the underlying placeholders
+  are not duplicated as text, and invisible white marks around such images are dropped. White
+  or invisible text is kept when it sits on a real backdrop (a scan image, a dark filled
+  panel), so OCR layers and light-on-dark headers are unaffected.
 - **Single-row side-by-side zones are laid out next to each other.** Pieces of one line
-  separated by a huge gap (details on the left, a side note on the right, a signature
-  caption and a date) become columns of a borderless row band instead of gluing into one
-  string or stacking under each other. Inside table cells the line stays whole.
+  separated by a huge gap (a label on the left, a note on the right, a caption and a date)
+  become columns of a borderless row band instead of gluing into one string or stacking under
+  each other. Inside table cells the line stays whole.
 - **A column that starts lower keeps its height.** In a side-by-side band, a column whose
   content begins below the top of the band (a name opposite the last line of a multi-line
-  signature) is offset by the source distance instead of floating up to the first row.
-- **Contact block at the bottom of a sparse page stays at the bottom.** The between-block
+  block) is offset by the source distance instead of floating up to the first row.
+- **A block at the bottom of a sparse page stays at the bottom.** The between-block
   spacing cap is raised (the pagination guard still prevents extra pages).
 
 ### Fixed
@@ -211,12 +210,12 @@ versions follow [SemVer](https://semver.org/).
 - **The installer's file properties now show the real version.** `VersionInfo*` resources
   of the setup executable carried 0.0.0.0 and an empty description.
 - **First-line indents are now per paragraph, from the source.** A document-wide indent is
-  applied only to paragraphs whose first line was actually indented, footnotes, contact
-  lines and flush-left details no longer inherit a false indent. In documents without a
-  common indent, an actually indented paragraph keeps its own.
+  applied only to paragraphs whose first line was actually indented, footnotes and other
+  flush-left lines no longer inherit a false indent. In documents without a common indent,
+  an actually indented paragraph keeps its own.
 - **Narrow right-hand notes keep their horizontal position.** A left-aligned paragraph that
-  starts deep inside the text area (an recipient name, a corner mark) is anchored at its
-  source position instead of jumping to the left margin.
+  starts deep inside the text area (a name, a corner mark) is anchored at its source
+  position instead of jumping to the left margin.
 - **A list item whose Word list template failed to apply keeps its marker.** The stripped
   `1.` / `•` is put back as text instead of silently losing the number.
 - **Mixed-alphabet compound words keep their hyphen** at a line break (Cyrillic on either
@@ -225,7 +224,7 @@ versions follow [SemVer](https://semver.org/).
   taken from its widest word, so a two-word line («№ 250» + a small mark) resolves correctly.
 - **Ruling connectivity is found via a spatial grid.** Densely dashed borders (thousands of
   strokes) no longer cost a quadratic pass during extraction.
-- Small ones: the signature/stamp column split tolerates a narrower channel, the folder
+- Small ones: the two-column split tolerates a narrower channel, the folder
   picker releases its COM objects deterministically, the justified label measures each word
   once per paint, and the tool cards reuse a cached title font.
 
@@ -234,7 +233,7 @@ versions follow [SemVer](https://semver.org/).
 ### Added
 - **Intentional line breaks survive in short-line blocks.** A new line whose first word would
   still have fit on the previous one is a deliberate break, not a soft wrap — multi-line
-  signatures, fill-in detail lines and contact footers now stay as separate paragraphs
+  signatures, blank-field lines and contact footers now stay as separate paragraphs
   instead of being glued together and re-flowed by Word. The check uses the width actually
   available up to the neighbouring column, not just the block's own frame.
 - **Vertical rhythm of the page is reproduced.** Extra space between blocks beyond the page's
@@ -271,11 +270,11 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 - **Two-column headers are laid out side by side.** A header area that the reading-order
-  analysis splits into columns (a header on the left, an recipient block on the right) is now
-  emitted as a borderless Word table, so the columns sit next to each other exactly as in the
-  original — a logo is centred above its column, and the right-hand block lines up with the top of
-  the left one — instead of being stacked one under another. Single-column pages and page-wide
-  content are unaffected.
+  analysis splits into columns (one block on the left, another on the right) is now emitted as a
+  borderless Word table, so the columns sit next to each other exactly as in the original — a
+  logo is centred above its column, and the right-hand block lines up with the top of the left
+  one — instead of being stacked one under another. Single-column pages and page-wide content
+  are unaffected.
 - **Label/value forms keep their vertical grouping.** In a borderless grid (a receipt), extra
   space between groups of fields is measured from the source and reproduced as spacing after the
   row, instead of collapsing every row to a uniform tight pitch.
@@ -295,7 +294,7 @@ versions follow [SemVer](https://semver.org/).
   table with borders off, so the pairs stay aligned on their own rows instead of being read as
   one flat stream. Thresholds are strict — ordinary paragraphs, justified text and single
   “signature … date” rows are left as plain text.
-- **Detail blank lines survive as underscore placeholders.** A standalone horizontal rule
+- **Blank fill-in lines survive as underscore placeholders.** A standalone horizontal rule
   (a fill-in line such as `______ №  ______`), including one drawn in several collinear pieces
   with gaps under the labels, is carried across as an underscore run sized to the line, pieces
   under a word stay underlines, double-drawn lines are de-duplicated, and a rule inside a table
@@ -303,7 +302,7 @@ versions follow [SemVer](https://semver.org/).
 
 ### Fixed
 - **Two-column headers keep each block in its own column.** A centred paragraph that belongs
-  to a narrow column (the recipient block on the right, the header on the left) is now centred
+  to a narrow column (a block on the right, a block on the left) is now centred
   **within that column** via left/right indents, instead of on the whole page where the two
   columns overlapped into one confused centred stack. Full-width content and a page-wide centred
   title are unaffected.
@@ -329,19 +328,19 @@ versions follow [SemVer](https://semver.org/).
   produce doubled letters (“74” became “7744”), and the doubling also hid the intended weight.
   Duplicate glyphs are now dropped (the tolerance is far below the advance of genuinely
   repeated characters, so “77” is never collapsed) and the affected words are written bold.
-- **Rotated edge text is filtered out.** Vertical strings along a page edge (common on
-  documents) used to shred into dozens of single‑character paragraphs wedged between normal
+- **Rotated edge text is filtered out.** Vertical strings along a page edge used to shred into
+  dozens of single‑character paragraphs wedged between normal
   lines, text that is not horizontal is now skipped entirely.
 
 ### Fixed
-- **First‑line indent survives a header.** The indent share used to be measured against
+- **First‑line indent survives a header block.** The indent share used to be measured against
   all paragraphs of a page, so a dozen short header lines diluted it below the threshold
   and the body lost its indent. The share is now measured among justified paragraphs (with the
   old page‑wide rule as a fallback for ragged‑right documents).
-- **Page margins account for images.** Margins were computed from words only: a logo
-  above the first line was pushed out of the top margin and shifted the whole page down by its
-  height, and a stamp below the last line inflated the bottom margin up to half a page — which,
-  combined with inline image insertion, spilled a one‑page document onto a second page. Margins
+- **Page margins account for images.** Margins were computed from words only: a logo above the
+  first line was pushed out of the top margin and shifted the whole page down by its height, and
+  an image below the last line inflated the bottom margin up to half a page — which, combined
+  with inline image insertion, spilled a one‑page document onto a second page. Margins
   now cover words and images, and the bottom margin is capped (it only limits page fill, so
   the cap cannot hurt fidelity).
 - **Inside a table cell, “label … value” rows are no longer split into separate columns** by
@@ -416,12 +415,12 @@ versions follow [SemVer](https://semver.org/).
   starts over correctly. Detection is deliberately strict (marker punctuation + space +
   content) so “2025 г.” or “12.5 %” are never mistaken for a list. The marker classifier is a
   pure, unit‑tested method.
-- **PDF → Word turns a text‑drawn stamp into an image.** When a stamp is
-  drawn as text rather than a picture, that region is rendered with the bundled Ghostscript
-  and placed as an image, and its text is removed so it isn’t duplicated. Detection needs
-  several anchor words in a compact box, so ordinary prose is never affected, if the region
-  can’t be rendered (no Ghostscript) the text is kept unchanged — no regression. Picture
-  stamps keep transferring as images as before. The region detector is a pure, unit‑tested method.
+- **PDF → Word turns a text‑drawn stamp into an image.** When a stamp is drawn as text rather
+  than a picture, that region is rendered with the bundled Ghostscript and placed as an image,
+  and its text is removed so it isn’t duplicated. Detection needs several anchor words in a
+  compact box, so ordinary prose is never affected, if the region can’t be rendered (no
+  Ghostscript) the text is kept unchanged — no regression. Picture stamps keep transferring as
+  images as before. The region detector is a pure, unit‑tested method.
 
 ## [1.16.0] — 2026-07-23
 
@@ -1108,8 +1107,8 @@ versions follow [SemVer](https://semver.org/).
 
 ### Added
 - **Word cover note**: a “Word note” link after the merge — a `.docx` next to the
-  digest (period, counters, a table of skipped files with reasons), formatted per
-  a fixed layout and generated through the COM of an installed Word. The pure
+  digest (period, counters, a table of skipped files with reasons), generated through
+  the COM of an installed Word. The pure
   text model is covered by unit tests, the document by an integration test
   (`tests/verify_note.ps1`).
 - Sorting the log by clicking a column header (natural comparison, a second click

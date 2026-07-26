@@ -40,7 +40,7 @@ offline tools** behind one start screen:
    (PdfPig extraction → own layout analysis → Word COM writing).
 
 Cross-cutting services: optional **PDF compression** (Ghostscript as a child process),
-page **thumbnails** (WinRT `Windows.Data.Pdf`), a standard Word cover note, reports,
+page **thumbnails** (WinRT `Windows.Data.Pdf`), a Word cover note, reports,
 usage counters, a manual update check, and a Russian/English UI.
 
 The guiding principles, in priority order:
@@ -79,7 +79,7 @@ flowchart LR
 | PdfSharp (MIT) | embedded assembly | PDF page copy for merge/split | PDF Merge/Split |
 | PdfPig (Apache 2.0) | embedded assemblies | glyph-level text extraction | PDF → Word |
 | `Windows.Data.Pdf` (WinRT) | OS component (Windows 8.1+) | rendering page thumbnails | all PDF tools |
-| Ghostscript (AGPL) | separate process | image downsampling, raster fallbacks | compression (optional), PDF → Word stamps |
+| Ghostscript (AGPL) | separate process | image downsampling, raster fallbacks | compression (optional), PDF → Word raster fallbacks |
 | GitHub Releases API | HTTPS, manual | latest version tag | update check only |
 
 Excel and Word are **optional**: PDF Merge, Split and Compression run without any Office.
@@ -153,7 +153,7 @@ process by `Ui` (WinForms never disposes `Control.Font`/`Form.Icon`).
 | `SheetNamer.cs`, `CellText.cs`, `OutputFormats.cs` | Legal/unique sheet names (31 chars, `_2` suffixes), cell-entry escaping, `XlFileFormat` mapping. |
 | `TocBuilder.cs` | The «Содержание» sheet: hyperlinked table of contents, per-sheet return buttons, frozen header. |
 | `ReportWriter.cs` | Plain-text run report, keeps the three latest in `%APPDATA%\…\reports`. |
-| `NoteText.cs`, `WordNoteWriter.cs` | Cover-note content (pure) and its a fixed layout rendering through Word COM. |
+| `NoteText.cs`, `WordNoteWriter.cs` | Cover-note content (pure) and its rendering through Word COM. |
 
 ### Office COM infrastructure
 
@@ -177,7 +177,7 @@ process by `Ui` (WinForms never disposes `Control.Font`/`Form.Icon`).
 | `Cancellation.cs` | One tiny helper — `ThrowIf(Func<bool>)` throws `OperationCanceledException` when the cooperative cancel flag is set. Services call it between work units, every PDF service saves at the very end, so a cancel leaves no partial output (multi-file splits delete the parts already produced). |
 | `Ghostscript.cs` | Locates gs (bundled → registry → `Program Files` → user profile → `PATH`) and runs it with a timeout. |
 | `PdfCompression.cs` | `pdfwrite` downsampling (`/ebook`, `/screen`), PDF 1.4 output, the result replaces the original only if it is a valid PDF **and** strictly smaller. |
-| `PageRasterizer.cs` | Renders a page region to PNG via gs — the raster fallback used for soft-masked images and text stamps. |
+| `PageRasterizer.cs` | Renders a page region to PNG via gs — the raster fallback used for soft-masked images and rasterized regions. |
 | `PdfDrop.cs`, `PageRanges.cs`, `PdfProbe.cs` | Drag-and-drop extraction, `1,3-5`-style range parsing, a tiny generated PDF for self-checks. |
 
 ### PDF Merge and Split
@@ -194,7 +194,7 @@ Ghostscript compression that follows runs past the point of no return and is not
 |---|---|
 | `OcrForm.cs` | Tool window: multi-file thumbnail grid, cross-file page ordering, convert action. |
 | `PdfToWordService.cs` | Orchestrator: scan gate (`AnyPageHasText`), per-source extraction cache, page assembly in shown order, progress split extraction/writing. The single point where a scanned-PDF (OCR) branch would plug in later. |
-| `PdfTextExtract.cs` | PdfPig-based extraction to `PdfPageText`: words with geometry/font/colour, ruling lines, images, hyperlinks, page margins. Filters: rotated text, private-use glyphs, invisible ink (kept on real backdrops), doubled glyphs → real bold, text under low overlay images. Detects the text stamp and carries it as a rendered crop. A user page rotation from the grid is applied HERE, before any layout analysis: the orientation filter keeps the text that becomes horizontal, `PageRotation` transforms words/ruling/images (bounds and pixels) and swaps the page dimensions, raster crops are inverse-mapped into the source space. |
+| `PdfTextExtract.cs` | PdfPig-based extraction to `PdfPageText`: words with geometry/font/colour, ruling lines, images, hyperlinks, page margins. Filters: rotated text, private-use glyphs, invisible ink (kept on real backdrops), doubled glyphs → real bold, text under low overlay images. Detects a text-drawn stamp and carries it as a rendered crop. A user page rotation from the grid is applied HERE, before any layout analysis: the orientation filter keeps the text that becomes horizontal, `PageRotation` transforms words/ruling/images (bounds and pixels) and swaps the page dimensions, raster crops are inverse-mapped into the source space. |
 | `PageRotation.cs` | Pure page-space rotation math (points, boxes, PNG pixels, H↔V ruling, dimension swap) shared by the extraction pipeline and the grid tiles. |
 | `OcrLayout.cs` | Layout analysis: words → lines → blocks → paragraphs (`OcrParagraph`/`OcrRun`). Paragraph boundaries (gaps, indents, short lines, list markers, deliberate hard breaks), alignment classification (left/justify/centre), per-paragraph first-line indents, super/subscript and footnote marks, Cyrillic-aware hyphenation rules. |
 | `XyCut.cs` | Recursive X-Y cut: whitespace bands split a page into floors and columns, `OrderTree` keeps side-by-side siblings marked for band layout. |
@@ -227,8 +227,7 @@ Ghostscript compression that follows runs past the point of no return and is not
   in a 32-bit process), tile keys include the rotation, so duplicated pages can carry
   different rotations. An evicted page silently re-renders when scrolled into view.
 - **User-visible strings go through `Loc.T`** (both languages), *generated documents*
-  (cover note, TOC sheet, reports) are deliberately Russian regardless of UI language —
-  they follow the Russian document layout (a fixed layout).
+  (cover note, TOC sheet, reports) are deliberately Russian regardless of UI language.
 - **No new runtime dependencies** unless embedded as a resource and MIT-compatible,
   AGPL code (Ghostscript) is only ever invoked as a separate process.
 
@@ -258,8 +257,8 @@ wording into the list UI, the report and the cover note.
 
 ### PDF Merge and Split
 
-PdfSharp opens sources read-only and copies page objects as-is — scans, stamps and
-signatures are not re-encoded. The thumbnail grid renders through WinRT in a background
+PdfSharp opens sources read-only and copies page objects as-is — nothing on the page is
+re-encoded. The thumbnail grid renders through WinRT in a background
 thread with an LRU document cache, merge writes pages in the exact shown order (across
 files), split writes selections/ranges/every-N/bookmark chapters. User-assigned page
 rotation travels with the page: merge reads it from each `PdfPageRef`, split takes a
