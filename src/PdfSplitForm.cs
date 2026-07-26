@@ -462,13 +462,19 @@ namespace ExcelMerger
             // Разбиение на части считаем файлами (страницы по частям расходятся неравномерно,
             // а при разбиении по диапазонам часть страниц может вообще не попасть в результат).
             // Извлечение даёт ОДИН файл, и число его страниц известно точно — показываем его.
-            string status = openAsFolder
-                ? SuccessStatus(string.Format(Loc.T("split.status.filesCreated"), count),
-                    compressed > 0
-                        ? string.Format(Loc.T("split.suffix.compressed"), compressed, PdfCompression.ImageDpi(level))
-                        : null)
-                : SuccessStatus(string.Format(Loc.T("split.status.pagesExtracted"), pageCount),
+            string status;
+            if (openAsFolder)
+            {
+                string manyFiles = compressed > 0
+                    ? string.Format(Loc.T("split.suffix.compressed"), compressed, PdfCompression.ImageDpi(level))
+                    : null;
+                status = SuccessStatus(string.Format(Loc.T("split.status.filesCreated"), count), manyFiles);
+            }
+            else
+            {
+                status = SuccessStatus(string.Format(Loc.T("split.status.pagesExtracted"), pageCount),
                     CompressedPart(compressed > 0, level));
+            }
             // Если без сжатия результат вышел почти как исходник (общие ресурсы страниц
             // едут вместе с ними) — ненавязчиво подсказать про «Сжатие».
             if (ShouldSuggestCompression(level, sourceSize, largestOutput))

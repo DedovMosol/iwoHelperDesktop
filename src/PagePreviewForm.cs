@@ -197,10 +197,19 @@ namespace ExcelMerger
             _appliedRotation = desired;
         }
 
-        /// <summary>Левый клик по поверхности закрывает окно, правый оставляем контекстному меню.</summary>
+        /// <summary>
+        /// Закрывает ли клик окно предпросмотра. Окно закрывает только ЛЕВАЯ кнопка: правая
+        /// принадлежит контекстному меню, и раньше она закрывала окно прямо под открывающимся
+        /// меню, потому что событие Click у PictureBox приходит по любой кнопке. Чистая — под тест.
+        /// </summary>
+        internal static bool ClosesOnClick(MouseButtons button)
+        {
+            return button == MouseButtons.Left;
+        }
+
         private void OnSurfaceMouseClick(object sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left)
+            if (ClosesOnClick(e.Button))
                 Close();
         }
 
@@ -212,16 +221,20 @@ namespace ExcelMerger
                 return;
             }
             // Те же сочетания поворота, что и в сетке — разбор один на всё приложение.
-            switch (PdfToolFormBase.ClassifyPageKey(e.KeyData))
+            // Когда поворот запрещён, клавишу НЕ съедаем: пусть уходит дальше как обычно.
+            if (_rotate != null)
             {
-                case PdfToolFormBase.PageKeyAction.RotateRight:
-                    Rotate(90);
-                    e.Handled = true;
-                    return;
-                case PdfToolFormBase.PageKeyAction.RotateLeft:
-                    Rotate(-90);
-                    e.Handled = true;
-                    return;
+                switch (PdfToolFormBase.ClassifyPageKey(e.KeyData))
+                {
+                    case PdfToolFormBase.PageKeyAction.RotateRight:
+                        Rotate(90);
+                        e.Handled = true;
+                        return;
+                    case PdfToolFormBase.PageKeyAction.RotateLeft:
+                        Rotate(-90);
+                        e.Handled = true;
+                        return;
+                }
             }
             base.OnKeyDown(e);
         }
@@ -248,8 +261,10 @@ namespace ExcelMerger
         {
             // ContextMenuStrip назначен свойством, а не добавлен в Controls: сам он не освободится.
             // Освобождаем здесь, а не в Closed — там меню ещё может обрабатывать свой клик.
+            // Сначала отвязываем от формы, чтобы база не трогала уже освобождённый объект.
             if (disposing && _menu != null)
             {
+                ContextMenuStrip = null;
                 _menu.Dispose();
                 _menu = null;
             }
