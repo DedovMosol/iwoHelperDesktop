@@ -135,7 +135,7 @@ are conceptual.
 ### UI toolkit (owner-drawn, shared by all tools)
 
 `HeaderBand` (gradient window header), `ChoiceCard`, `RoundedButton`, `AccentCheckBox`,
-`JustifiedLabel`, `WindowChrome` (title-bar colouring), `WindowFlasher` (completion
+`WindowChrome` (title-bar colouring), `WindowFlasher` (completion
 flash), `TaskbarProgress` (`ITaskbarList3`), `MessageForm`/`Dialogs` (branded message
 boxes), `NumberPromptDialog` (Ctrl+G / “move after page…”, sized to its prompt),
 `AboutForm`, `StatsForm`, `FolderPicker`, `CompressionPicker`, `ThumbZoom` (tile sizing,

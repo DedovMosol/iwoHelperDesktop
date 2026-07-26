@@ -47,18 +47,12 @@ namespace ExcelMerger
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             Ui.Label(this, string.Format(Loc.T("about.version"), version.ToString(3)), 88, 58, Font, Theme.TextMuted);
 
-            // Описание — выравнивание по ширине; ширина ограничена окном (не вылезает за край).
-            var desc = new JustifiedLabel();
-            desc.Font = Font;
-            desc.ForeColor = Theme.TextPrimary;
-            desc.SetBounds(24, 96, ClientSize.Width - 48, 10);
-            desc.Text = Loc.T("about.desc");
-            desc.Height = desc.GetPreferredHeight();
-            Controls.Add(desc);
+            // Описание — выделяемое и копируемое, поэтому read-only поле, а не подпись.
+            // Ширина ограничена окном (текст не вылезает за край), высота считается под перенос.
+            TextBox desc = SelectableText(Loc.T("about.desc"), 24, 96, ClientSize.Width - 48, true);
 
             int y = desc.Bottom + 14;
             Ui.Label(this, Loc.T("about.author"), 24, y, Font, Theme.TextPrimary); y += 24;
-            Ui.Label(this, Loc.T("about.license"), 24, y, Font, Theme.TextMuted); y += 30;
 
             Label tg = Ui.Label(this, "Telegram:", 24, y, Font, Theme.TextPrimary);
             Ui.UrlLink(this, "t.me/i_wantout", tg.Right + 6, y, "https://t.me/i_wantout"); y += 24;
@@ -76,14 +70,14 @@ namespace ExcelMerger
             // Пункты — выделяемые read-only поля: копируются правым кликом или Ctrl+C
             // (отдельная кнопка «копировать» не нужна).
             Label accCap = Ui.Label(this, Loc.T("about.account"), 24, y, Font, Theme.TextPrimary);
-            SelectableValue(DonationAccount, accCap.Right + 6, y - 1, ClientSize.Width - (accCap.Right + 6) - 24);
+            SelectableText(DonationAccount, accCap.Right + 6, y - 1, ClientSize.Width - (accCap.Right + 6) - 24, false);
             y += 26;
 
             Label bankCap = Ui.Label(this, Loc.T("about.bank"), 24, y, Font, Theme.TextPrimary);
-            SelectableValue(DonationBank, bankCap.Right + 6, y - 1, ClientSize.Width - (bankCap.Right + 6) - 24);
+            SelectableText(DonationBank, bankCap.Right + 6, y - 1, ClientSize.Width - (bankCap.Right + 6) - 24, false);
             y += 30;
 
-            // Высота окна — под весь контент плюс кнопка снизу.
+            // Высота окна — под весь контент плюс нижняя строка с кнопкой.
             ClientSize = new Size(ClientSize.Width, y + 16 + 36 + 16);
 
             var ok = new RoundedButton(true);
@@ -93,6 +87,10 @@ namespace ExcelMerger
             Controls.Add(ok);
             AcceptButton = ok;
             CancelButton = ok; // Esc тоже закрывает
+
+            // Копирайт и лицензия — в самом низу слева, на одной линии с кнопкой справа.
+            Label license = Ui.Label(this, Loc.T("about.license"), 24, ok.Top, Font, Theme.TextMuted);
+            license.Top = ok.Top + (ok.Height - license.Height) / 2; // по центру относительно кнопки
         }
 
         protected override void Dispose(bool disposing)
@@ -102,10 +100,17 @@ namespace ExcelMerger
             base.Dispose(disposing);
         }
 
-        /// <summary>Значение только для чтения, но выделяемое и копируемое (Ctrl+C), без рамки.</summary>
-        private TextBox SelectableValue(string text, int x, int y, int width)
+        /// <summary>
+        /// Текст только для чтения, но выделяемый и копируемый (Ctrl+C), без рамки и на белом —
+        /// внешне подпись, на деле поле. paragraph=true включает перенос по словам и считает
+        /// высоту под весь текст, иначе это одна строка фиксированной высоты.
+        /// </summary>
+        private TextBox SelectableText(string text, int x, int y, int width, bool paragraph)
         {
             var tb = new TextBox();
+            tb.Multiline = paragraph;
+            tb.WordWrap = paragraph;
+            tb.ScrollBars = ScrollBars.None; // высота подобрана под текст, полосы не нужны
             tb.Text = text;
             tb.ReadOnly = true;
             tb.BorderStyle = BorderStyle.None;
@@ -113,9 +118,22 @@ namespace ExcelMerger
             tb.ForeColor = Theme.TextPrimary;
             tb.Font = Font;
             tb.TabStop = false;
-            tb.SetBounds(x, y, width, 20);
+            tb.SetBounds(x, y, width, paragraph ? ParagraphHeight(text, width) : 20);
             Controls.Add(tb);
             return tb;
+        }
+
+        /// <summary>
+        /// Высота абзаца под заданную ширину. Меряем чуть более узкой строкой и добавляем запас:
+        /// TextBox переносит слова по своей внутренней ширине, которая на пару пикселей меньше
+        /// заданной, и без запаса последняя строка обрезалась бы.
+        /// </summary>
+        private int ParagraphHeight(string text, int width)
+        {
+            const int Inset = 4; // внутренние поля TextBox с обеих сторон
+            Size measured = TextRenderer.MeasureText(text, Font,
+                new Size(Math.Max(width - Inset, 1), int.MaxValue), TextFormatFlags.WordBreak);
+            return measured.Height + Inset;
         }
 
     }

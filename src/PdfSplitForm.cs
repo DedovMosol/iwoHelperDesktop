@@ -397,7 +397,9 @@ namespace ExcelMerger
         /// Выполнить работу в фоне; сжать полученные файлы (на этом же воркере, до
         /// открытия результата); по завершении — статус, счётчик, открытие результата.
         /// workUnits — фактический объём работы в страницах (у «Извлечь выбранные» —
-        /// число выбранных, не страницы источника): от него порог кнопки «Отмена».
+        /// число выбранных, не страницы источника): от него порог кнопки «Отмена», а у
+        /// извлечения ещё и число страниц в итоговом файле (Extract пишет ровно по странице
+        /// на индекс), которое уходит в статус.
         /// </summary>
         private void RunSplit(Func<Action<int, int>, List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record, int workUnits)
         {
@@ -433,12 +435,12 @@ namespace ExcelMerger
                 catch (Exception ex) { error = ex; }
                 int resultCount = count, resultCompressed = compressed;
                 long resultLargest = largest;
-                OnUi(delegate { OnSplitFinished(error, resultCount, resultCompressed, openTarget, openAsFolder, record, level, sourceSize, resultLargest); });
+                OnUi(delegate { OnSplitFinished(error, resultCount, resultCompressed, openTarget, openAsFolder, record, level, sourceSize, resultLargest, workUnits); });
             });
         }
 
         private void OnSplitFinished(Exception error, int count, int compressed, string openTarget, bool openAsFolder, Action record,
-            CompressionLevel level, long sourceSize, long largestOutput)
+            CompressionLevel level, long sourceSize, long largestOutput, int pageCount)
         {
             EndOperation();
             if (error is OperationCanceledException)
@@ -457,9 +459,16 @@ namespace ExcelMerger
                 record(); // успех — учитываем в статистике
             if (compressed > 0)
                 UsageStats.RecordPdfCompress(compressed);
-            string suffix = compressed > 0 ? string.Format(Loc.T("split.suffix.compressed"), compressed) : "";
-            string status = openAsFolder ? (string.Format(Loc.T("split.status.created"), count) + suffix)
-                                          : (Loc.T("split.status.done") + suffix);
+            // Разбиение на части считаем файлами (страницы по частям расходятся неравномерно,
+            // а при разбиении по диапазонам часть страниц может вообще не попасть в результат).
+            // Извлечение даёт ОДИН файл, и число его страниц известно точно — показываем его.
+            string status = openAsFolder
+                ? SuccessStatus(string.Format(Loc.T("split.status.filesCreated"), count),
+                    compressed > 0
+                        ? string.Format(Loc.T("split.suffix.compressed"), compressed, PdfCompression.ImageDpi(level))
+                        : null)
+                : SuccessStatus(string.Format(Loc.T("split.status.pagesExtracted"), pageCount),
+                    CompressedPart(compressed > 0, level));
             // Если без сжатия результат вышел почти как исходник (общие ресурсы страниц
             // едут вместе с ними) — ненавязчиво подсказать про «Сжатие».
             if (ShouldSuggestCompression(level, sourceSize, largestOutput))

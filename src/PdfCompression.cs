@@ -47,6 +47,24 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// До какого разрешения пресет уменьшает цветные и серые изображения, dpi.
+        /// Значения заданы самим Ghostscript в Resource\Init\gs_pdfwr.ps: /ebook — 150,
+        /// /screen — 72. Штриховые (1-битные) изображения оба пресета оставляют на 300 dpi,
+        /// а текст и вектор не растрируются вовсе. Единственное место, где живут эти числа,
+        /// поэтому статусы инструментов берут их отсюда. 0 — уровень без сжатия.
+        /// Чистая — под тест.
+        /// </summary>
+        public static int ImageDpi(CompressionLevel level)
+        {
+            switch (level)
+            {
+                case CompressionLevel.Good: return 150;
+                case CompressionLevel.Small: return 72;
+                default: return 0;
+            }
+        }
+
+        /// <summary>
         /// Аргументы командной строки Ghostscript. Все пути в кавычках (пробелы!).
         /// bundledGsRoot != null (вшитый GS) добавляет -I на его lib/Resource\Init.
         /// Чистая — под тест. -dSAFER безопасен: он не блокирует чтение входа/записи

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace ExcelMerger
@@ -165,7 +165,7 @@ namespace ExcelMerger
             A("common.pickPdf", "Выберите PDF-файлы", "Choose PDF files");
             A("common.fileNotAdded", "Файл не добавлен", "File not added");
             A("common.addPdf", "Добавить PDF…", "Add PDF…");
-            A("common.tip.addPdf", "Файлы также можно перетащить в окно", "You can also drag files onto the window");
+            A("common.tip.addPdf", "Файлы также можно перетащить в окно программы", "You can also drag files onto the program window");
             A("common.tip.removePages", "Удалить выбранные страницы (Delete)", "Remove the selected pages (Delete)");
             A("common.status.pageCountList", "Страниц в списке: {0}.", "Pages in the list: {0}.");
             A("common.status.selected", "Выбрано {0} из {1}.", "{0} of {1} selected.");
@@ -178,6 +178,9 @@ namespace ExcelMerger
             A("common.yes", "Да", "Yes");
             A("common.no", "Нет", "No");
             A("common.compression", "Сжатие:", "Compression:");
+            // Часть статуса про сжатие для инструментов с ОДНИМ результатом. Разрешение
+            // подставляет PdfCompression.ImageDpi, чтобы число жило в одном месте.
+            A("common.suffix.compressed", "сжато, изображения до {0} dpi", "compressed, images to {0} dpi");
             A("grid.pageTip", "{0} — стр. {1}", "{0} — p. {1}");
             // Контекстное меню сетки страниц (подписи плиток — просто номера, без строк).
             A("grid.menu.cut", "Вырезать", "Cut");
@@ -197,6 +200,10 @@ namespace ExcelMerger
             A("preview.title", "Просмотр — стр. {0}", "Preview — p. {0}");
             A("preview.loading", "Загрузка…", "Loading…");
             A("preview.unavailable", "Предпросмотр недоступен", "Preview unavailable");
+            // Контекстное меню предпросмотра: пункты верхнего уровня, поэтому формулировка
+            // полная, а не «Вправо на 90°» из подменю сетки.
+            A("preview.menu.rotateRight", "Повернуть вправо на 90°", "Rotate right 90°");
+            A("preview.menu.rotateLeft", "Повернуть влево на 90°", "Rotate left 90°");
             A("moveafter.title", "Переместить после страницы", "Move after page");
             A("moveafter.prompt", "После страницы (0 — в начало, до {0}):", "After page (0 — to the start, up to {0}):");
             A("moveafter.ok", "Переместить", "Move");
@@ -313,8 +320,10 @@ namespace ExcelMerger
             // about.* — окно «О программе» (AboutForm)
             A("about.version", "Версия {0}", "Version {0}");
             A("about.desc",
-                "Офисные инструменты: свод листов Excel, объединение, разделение и сжатие PDF, конвертация PDF → Word.",
-                "Office tools: Excel sheet digest, merge, split and compress PDFs, convert PDF → Word.");
+                "Офисные инструменты: свод листов Excel, объединение, разделение и сжатие PDF, " +
+                "конвертация цифрового PDF в Word (отсканированные документы пока не поддерживаются).",
+                "Office tools: Excel sheet digest, merge, split and compress PDFs, " +
+                "convert a born‑digital PDF to Word (scanned documents are not supported yet).");
             A("about.author", "Автор: Dodonov Andrey (DedovMosol)", "Author: Dodonov Andrey (DedovMosol)");
             A("about.license", "© 2026 · Лицензия MIT", "© 2026 · MIT License");
             A("about.privacy", "Политика конфиденциальности", "Privacy Policy");
@@ -350,7 +359,7 @@ namespace ExcelMerger
             A("split.header.subtitle", "Извлечение страниц из документа формата *.pdf со сжатием.",
                 "Extract pages from a *.pdf document, with compression.");
             A("split.btn.open", "Открыть PDF…", "Open PDF…");
-            A("split.tip.open", "Файл также можно перетащить в окно", "You can also drag the file onto the window");
+            A("split.tip.open", "Файл также можно перетащить в окно программы", "You can also drag the file onto the program window");
             A("split.tip.ranges", "Номера страниц через запятую: 1-3 — с 1 по 3, 5 — одна страница, 8- — с 8 до конца.",
                 "Page numbers separated by commas: 1-3 for pages 1 to 3, 5 for a single page, 8- from page 8 to the end.");
             A("split.tip.everyN", "Документ режется на файлы по N страниц (1 — каждая страница отдельным файлом).",
@@ -365,8 +374,8 @@ namespace ExcelMerger
             A("split.chk.combine", "Объединить в один файл", "Combine into one file");
             A("split.tip.combine", "Все указанные страницы — в один PDF, а не по файлу на диапазон",
                 "All listed pages into one PDF, not one file per range");
-            A("split.status.openPdf", "Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно.",
-                "Open a PDF — with “Open PDF…” or by dragging it onto the window.");
+            A("split.status.openPdf", "Откройте PDF — кнопкой «Открыть PDF…» или перетащите его в окно программы.",
+                "Open a PDF — with “Open PDF…” or drag it onto the program window.");
             A("split.pickPdf", "Выберите PDF для разделения", "Choose a PDF to split");
             A("split.err.fileNotOpened", "Файл не открыт", "File not opened");
             A("split.status.opened", "Открыт «{0}»: страниц {1}.", "Opened “{0}”: {1} pages.");
@@ -390,13 +399,16 @@ namespace ExcelMerger
             A("split.status.extracting", "Извлечение…", "Extracting…");
             A("split.err.splitFailed", "Разделение не выполнено", "Split failed");
             A("split.err.extractFailed", "Извлечение не выполнено", "Extraction failed");
-            A("split.status.created", "✓ Создано файлов: {0}.", "✓ Files created: {0}.");
-            A("split.status.done", "✓ Готово.", "✓ Done.");
-            A("split.suffix.compressed", " · сжато: {0}", " · compressed: {0}");
-            A("split.status.largeHint", " · файл крупный — включите «Сжатие», чтобы уменьшить размер.",
-                " · the file is large — turn on “Compression” to reduce its size.");
+            // Части статуса — без галочки, разделителей и точки: пунктуацию ставит
+            // PdfToolFormBase.SuccessStatus, одинаково во всех инструментах.
+            A("split.status.filesCreated", "Создано файлов: {0}", "Files created: {0}");
+            A("split.status.pagesExtracted", "Извлечено страниц: {0}", "Pages extracted: {0}");
+            A("split.suffix.compressed", "сжато файлов: {0}, изображения до {1} dpi",
+                "compressed: {0} files, images to {1} dpi");
+            A("split.status.largeHint", " Файл крупный — включите «Сжатие», чтобы уменьшить размер.",
+                " The file is large — turn on “Compression” to reduce its size.");
             A("split.help.body",
-                "1. Откройте PDF — кнопкой «Открыть PDF…» или перетащив его в окно; появится сетка страниц.\n" +
+                "1. Откройте PDF — кнопкой «Открыть PDF…» или перетащите его в окно программы. Появится сетка страниц.\n" +
                 "2. Выберите режим:\n" +
                 "   • «Извлечь выбранные» — выделите страницы в сетке (Ctrl+A — все) → сохранит их в один PDF;\n" +
                 "   • «По диапазонам» — «1-3, 5, 8-»: каждый диапазон → отдельный файл;\n" +
@@ -413,7 +425,7 @@ namespace ExcelMerger
                 "Окно запоминает свои размер и положение между запусками.\n" +
                 "Сжатие меняет содержимое файла, поэтому у подписанных PDF подпись станет " +
                 "недействительной (как и при сжатии в Acrobat) — сжимайте до подписания.",
-                "1. Open a PDF — with “Open PDF…” or by dragging it onto the window; a page grid appears.\n" +
+                "1. Open a PDF — with “Open PDF…” or drag it onto the program window. A page grid appears.\n" +
                 "2. Choose a mode:\n" +
                 "   • “Extract selected” — select pages in the grid (Ctrl+A — all) → saves them into one PDF;\n" +
                 "   • “By ranges” — “1-3, 5, 8-”: each range → a separate file;\n" +
@@ -435,8 +447,8 @@ namespace ExcelMerger
             A("pdf.header.subtitle",
                 "Объединение документов формата *.pdf с возможностью изменения порядка страниц и сжатием.",
                 "Merge *.pdf documents with page reordering and compression.");
-            A("pdf.status.addPdf", "Добавьте PDF-файлы — кнопкой или перетащив их в окно.",
-                "Add PDF files — with the button or by dragging them onto the window.");
+            A("pdf.status.addPdf", "Добавьте PDF-файлы — кнопкой или перетащите их в окно программы.",
+                "Add PDF files — with the button or drag them onto the program window.");
             A("pdf.grid.empty", "Перетащите PDF сюда\nили нажмите «Добавить PDF…»",
                 "Drop PDFs here\nor click “Add PDF…”");
             A("pdf.status.savingPage", "Сохранение: страница {0} из {1}…", "Saving: page {0} of {1}…");
@@ -444,10 +456,9 @@ namespace ExcelMerger
             A("pdf.defaultName", "Объединённый.pdf", "Merged.pdf");
             A("pdf.status.saveFailed", "PDF не сохранён.", "PDF was not saved.");
             A("pdf.err.saveFailed", "PDF не сохранён", "PDF was not saved");
-            A("pdf.status.saved", "✓ Сохранено страниц: {0}.", "✓ Pages saved: {0}.");
-            A("pdf.status.savedCompressed", "✓ Сохранено страниц: {0} · сжато.", "✓ Pages saved: {0} · compressed.");
+            A("pdf.status.pagesSaved", "Сохранено страниц: {0}", "Pages saved: {0}");
             A("pdf.help.body",
-                "1. Добавьте PDF-файлы — кнопкой «Добавить PDF…» или перетащив их в окно.\n" +
+                "1. Добавьте PDF-файлы — кнопкой «Добавить PDF…» или перетащите их в окно программы.\n" +
                 "2. Появится сетка миниатюр страниц. Масштаб — регулятором, полем «%» рядом " +
                 "(впишите число, Ctrl+0 или двойной клик по «%» — 100%) или Ctrl+колесо мыши.\n" +
                 "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Раньше» / «Позже ▶».\n" +
@@ -463,7 +474,7 @@ namespace ExcelMerger
                 "не искажаются. Битые и защищённые паролем файлы пропускаются с причиной.\n" +
                 "Сжатие меняет содержимое файла, поэтому у подписанных PDF подпись станет " +
                 "недействительной (как и при сжатии в Acrobat) — сжимайте до подписания.",
-                "1. Add PDF files — with “Add PDF…” or by dragging them onto the window.\n" +
+                "1. Add PDF files — with “Add PDF…” or drag them onto the program window.\n" +
                 "2. A grid of page thumbnails appears. Zoom with the slider, the “%” box next to it " +
                 "(type a number, Ctrl+0 or double‑click “%” for 100%) or Ctrl+mouse wheel.\n" +
                 "3. Set the order: drag thumbnails or use “◀ Earlier” / “Later ▶”.\n" +
@@ -485,12 +496,12 @@ namespace ExcelMerger
                 "Извлечение текста и таблиц из документов формата *.pdf с возможностью изменения порядка страниц.",
                 "Extract text and tables from *.pdf documents, with page reordering.");
             A("ocr.btn.open", "Добавить PDF…", "Add PDF…");
-            A("ocr.tip.open", "Можно выбрать несколько файлов или перетащить их в окно",
-                "Pick several files, or drag them onto the window");
+            A("ocr.tip.open", "Можно выбрать несколько файлов или перетащить их в окно программы",
+                "Pick several files, or drag them onto the program window");
             A("ocr.btn.convert", "Конвертировать в Word…", "Convert to Word…");
             A("ocr.tip.convert", "Извлечь текст в редактируемый .docx", "Extract the text into an editable .docx");
-            A("ocr.status.addPdf", "Добавьте цифровые PDF — кнопкой или перетащив их в окно.",
-                "Add born‑digital PDFs — with the button or by dragging them onto the window.");
+            A("ocr.status.addPdf", "Добавьте цифровые PDF — кнопкой или перетащите их в окно программы.",
+                "Add born‑digital PDFs — with the button or drag them onto the program window.");
             A("ocr.status.pageCount", "Страниц к переводу: {0}.", "Pages to convert: {0}.");
             A("ocr.grid.empty", "Перетащите цифровые PDF сюда\nили нажмите «Добавить PDF…»",
                 "Drop born‑digital PDFs here\nor click “Add PDF…”");
@@ -503,7 +514,7 @@ namespace ExcelMerger
             A("ocr.defaultMerged", "Объединённый.docx", "Merged.docx");
             A("ocr.help.body",
                 "1. Добавьте один или несколько PDF — кнопкой «Добавить PDF…» (можно выбрать сразу " +
-                "несколько) или перетащив их в окно. Страницы всех файлов показываются одной сеткой.\n" +
+                "несколько) или перетащите их в окно программы. Страницы всех файлов показываются одной сеткой.\n" +
                 "2. При необходимости измените порядок страниц: перетащите миниатюру или выделите " +
                 "её и нажмите «◀ Раньше»/«Позже ▶» (Alt+←/→). Лишние страницы уберите из вывода " +
                 "кнопкой «Удалить» (Delete). В Word попадут страницы в показанном порядке.\n" +
@@ -528,7 +539,7 @@ namespace ExcelMerger
                 "извлечённый текст будет нечитаемым — это дефект самого файла, а не конвертации; " +
                 "проверить можно, скопировав текст в самом PDF (Ctrl+C).",
                 "1. Add one or several PDFs — with “Add PDF…” (you can pick several at once) or by " +
-                "dragging them onto the window. Pages of all files are shown in a single grid.\n" +
+                "drag them onto the program window. Pages of all files are shown in a single grid.\n" +
                 "2. Reorder pages if needed: drag a thumbnail, or select it and click " +
                 "“◀ Earlier”/“Later ▶” (Alt+←/→). Drop pages you don’t need with " +
                 "“Remove” (Delete). Word gets the pages in the order shown.\n" +
@@ -602,7 +613,7 @@ namespace ExcelMerger
             A("excel.link.note", "Записка Word", "Word note");
             A("excel.tip.note", "Сопроводительная записка к своду (.docx): итоги, пропущенные файлы, стандартное оформление",
                 "A cover note for the digest (.docx): totals, skipped files, standard formatting");
-            A("excel.tip.input", "Папку можно перетащить мышью в окно программы", "You can drag a folder onto the window");
+            A("excel.tip.input", "Папку можно перетащить мышью в окно программы", "You can drag a folder onto the program window");
             A("excel.tip.name", "Расширение .xlsx добавится автоматически", "The .xlsx extension is added automatically");
             A("excel.tip.outDir", "Пусто — итоговый файл сохранится в папку с исходными",
                 "Empty — the output is saved next to the sources");
@@ -624,7 +635,7 @@ namespace ExcelMerger
             A("excel.status.noteFailed", "Записка не создана.", "The note was not created.");
             A("excel.status.noteSaved", "Записка сохранена рядом со сводом.", "The note was saved next to the digest.");
             A("excel.status.waitNote", "Дождитесь завершения записки Word…", "Wait for the Word note to finish…");
-            A("excel.found.chooseFolder", "Укажите папку или перетащите её в окно.", "Choose a folder or drag it onto the window.");
+            A("excel.found.chooseFolder", "Укажите папку или перетащите её в окно программы.", "Choose a folder or drag it onto the program window.");
             A("excel.found.notFound", "Папка не найдена.", "Folder not found.");
             A("excel.found.readError", "Не удалось прочитать папку: {0}", "Could not read the folder: {0}");
             A("excel.found.noExcel", "Файлы Excel (.xlsx, .xls, .xlsm, .xlsb) не найдены.",
@@ -659,7 +670,7 @@ namespace ExcelMerger
             A("excel.confirm.closeBusy.title", "Идёт объединение", "Merge in progress");
             A("excel.confirm.closeBusy.body", "Прервать объединение и закрыть программу?", "Stop the merge and close the app?");
             A("excel.help.body",
-                "1. Укажите папку с исходными файлами — «Обзор…» или перетащите папку в окно.\n" +
+                "1. Укажите папку с исходными файлами — «Обзор…» или перетащите папку в окно программы.\n" +
                 "2. Задайте имя свода; папку сохранения можно сменить (пустая — папка с исходными).\n" +
                 "3. В списке «Файлы для объединения» задайте порядок и состав: перетаскиванием " +
                 "строк или кнопками «▲ Выше»/«▼ Ниже»; снимите галочку у ненужного файла. " +
@@ -675,7 +686,7 @@ namespace ExcelMerger
                 "Горячие клавиши в списке: Alt+↑/↓ — порядок, Delete — исключить, " +
                 "Ctrl+A — выделить всё, Ctrl+C — копировать.\n" +
                 "Отчёты (три последних): ☰ Меню → «Папка отчётов».",
-                "1. Choose the source files folder — “Browse…” or drag a folder onto the window.\n" +
+                "1. Choose the source files folder — “Browse…” or drag a folder onto the program window.\n" +
                 "2. Set the digest name; you can change the save folder (empty — the sources folder).\n" +
                 "3. In the “Files to merge” list set the order and selection: drag rows or use " +
                 "“▲ Up”/“▼ Down”; untick a file you don’t need. " +

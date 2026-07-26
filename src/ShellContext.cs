@@ -22,6 +22,7 @@ namespace ExcelMerger
         private readonly Dictionary<string, ToolEntry> _openTools = new Dictionary<string, ToolEntry>();
         private StartForm _hub;
         private bool _rebuilding; // идёт пересборка окон при смене языка — не завершать приложение
+        private IDisposable _activation; // скрытое окно: повторный запуск ярлыка поднимает хаб
 
         internal sealed class ToolEntry
         {
@@ -31,6 +32,10 @@ namespace ExcelMerger
 
         public ShellContext()
         {
+            // Слушателя создаём ДО первого окна: повторный запуск, случившийся сразу за нашим,
+            // должен застать его на месте. ShowHub годится обработчиком как есть — он идемпотентен
+            // и поднимает уже открытый хаб вместо создания второго.
+            _activation = SingleInstance.Listen(ShowHub);
             Loc.Changed += OnLanguageChanged;
             ShowHub();
         }
@@ -267,6 +272,17 @@ namespace ExcelMerger
                 _hub = null; // хаб закрыт — инструменты продолжают работать
             if (_windows.Count == 0 && !_rebuilding)
                 ExitThread(); // закрыто последнее окно — завершаем приложение (не во время пересборки)
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            // Скрытое окно-слушатель не дочернее ничему, поэтому убираем его сами.
+            if (disposing && _activation != null)
+            {
+                _activation.Dispose();
+                _activation = null;
+            }
+            base.Dispose(disposing);
         }
 
         private static void BringToFront(Form form)

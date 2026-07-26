@@ -72,6 +72,11 @@ DisableWelcomePage=no
 ; выборе другого флага setup перезапускается с /LANG=. Выбранный язык становится и языком
 ; приложения по умолчанию (см. SeedLanguage) — англоязычному не выскакивает русский.
 ShowLanguageDialog=no
+; НЕ подхватывать язык прошлой установки (по умолчанию Inno делает именно это, запоминая его
+; в «Inno Setup: Language» ветки удаления). Иначе однажды поставленный английский становится
+; вечным: язык системы больше не учитывается, диалог режима идёт по-русски, а мастер — уже
+; по-английски, потому что режим спрашивается ДО чтения пользовательской ветки реестра.
+UsePreviousLanguage=no
 ; Минимальная ОС — Windows 8.1 (NT 6.3): раньше неё нет Windows.Data.Pdf (миниатюры).
 ; .NET Framework 4.8 проверяется в [Code] (в Windows 10 1903+ уже встроен).
 MinVersion=6.3
@@ -95,12 +100,17 @@ WizardSmallImageFile=wizard_small.bmp
 LicenseFile=license_installer.txt
 
 [Languages]
-; Английский (Default.isl) и русский. Язык выбирается в начале установки (ShowLanguageDialog)
+; Английский (Default.isl) и русский. Язык выбирается своим стартовым экраном с флагами
 ; и задаёт ЯЗЫК ПРИЛОЖЕНИЯ по умолчанию — [Code] сидит его в settings.txt. По умолчанию
-; предлагается язык системы (LanguageDetectionMethod=uilanguage); англ. — первый в списке,
+; предлагается язык системы (LanguageDetectionMethod=uilanguage), а англ. стоит первым,
 ; поэтому нераспознанная локаль получает английский мастер, а не русский.
 Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
+
+[CustomMessages]
+; Показывается, только если перезапуск на выбранном языке не удался (см. InitializeWizard).
+ru.LangSwitchFailed=Не удалось перезапустить установку на выбранном языке — она продолжится на текущем.%n%nНа выбор языка самой программы это не влияет.
+en.LangSwitchFailed=Setup could not restart in the selected language and will continue in the current one.%n%nThe language of the app itself is not affected.
 
 [Messages]
 ; Явное предупреждение про режим установки на странице приветствия (на языке мастера).
@@ -136,6 +146,18 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags
 // язык мастера до его создания; сменить на лету нельзя — только перезапуск).
 procedure ExitProcess(uExitCode: Cardinal);
   external 'ExitProcess@kernel32.dll stdcall';
+
+const
+  // Свои значения ModalResult для кнопок выбора языка. Брать 1 и 2 нельзя: 2 — это mrCancel,
+  // который форма возвращает и при закрытии крестиком или по Esc, то есть «закрыл окно»
+  // молча означало бы «выбрал русский».
+  LangResultEn = 101;
+  LangResultRu = 102;
+
+var
+  // Выбор пользователя на стартовом экране. Может отличаться от языка мастера, если
+  // перезапуск не удался, поэтому язык ПРОГРАММЫ берём отсюда (см. SeedLanguage).
+  ChosenLanguage: String;
 
 // Есть ли среди аргументов командной строки переключатель с данным префиксом (например
 // «/SILENT» или «/LANG=»). Чтобы не показывать выбор языка при тихой установке и в уже
@@ -201,19 +223,20 @@ begin
     EnBtn.Parent := Form;
     EnBtn.SetBounds(colL - ScaleX(48), btnY, ScaleX(96), ScaleY(30));
     EnBtn.Caption := 'English';
-    EnBtn.ModalResult := 1;
+    EnBtn.ModalResult := LangResultEn;
 
     RuBtn := TNewButton.Create(Form);
     RuBtn.Parent := Form;
     RuBtn.SetBounds(colR - ScaleX(48), btnY, ScaleX(96), ScaleY(30));
     RuBtn.Caption := 'Русский';
-    RuBtn.ModalResult := 2;
+    RuBtn.ModalResult := LangResultRu;
 
     if ActiveLanguage() = 'en' then EnBtn.Default := True else RuBtn.Default := True;
 
+    // Любой иной итог (крестик, Esc) оставляет Result равным текущему языку.
     case Form.ShowModal() of
-      1: Result := 'en';
-      2: Result := 'ru';
+      LangResultEn: Result := 'en';
+      LangResultRu: Result := 'ru';
     end;
   finally
     Form.Free();
@@ -263,12 +286,22 @@ begin
   except
     Exit; // сбой показа не роняет установку — остаёмся на языке системы
   end;
-  if Chosen <> ActiveLanguage() then
-  begin
-    if IsAdminInstallMode() then Mode := ' /ALLUSERS' else Mode := ' /CURRENTUSER';
-    if Exec(ExpandConstant('{srcexe}'), '/LANG=' + Chosen + Mode, '', SW_SHOW, ewNoWait, ErrCode) then
-      ExitProcess(0); // закрыть текущий экземпляр; перезапущенный идёт в выбранном языке
-  end;
+  ChosenLanguage := Chosen; // язык программы задаёт выбор пользователя, а не язык мастера
+  if Chosen = ActiveLanguage() then
+    Exit; // мастер уже на нужном языке, перезапускать нечего
+  if IsAdminInstallMode() then Mode := ' /ALLUSERS' else Mode := ' /CURRENTUSER';
+  // Перезапуск ЧУЖИМИ РУКАМИ, через cmd. Свой файл запустить нельзя: пока setup работает,
+  // обращение к собственному exe отбивается ошибкой 5 «отказано в доступе» — одинаково у
+  // Exec, ShellExec, ExecAsOriginalUser и даже FileCopy, при том что тот же файл свободно
+  // читают и запускают другие процессы. Запуск cmd проходит штатно, и он поднимает setup
+  // заново уже с нужным /LANG=.
+  if Exec(ExpandConstant('{sys}\cmd.exe'),
+      '/c start "" "' + ExpandConstant('{srcexe}') + '" /LANG=' + Chosen + Mode,
+      '', SW_HIDE, ewNoWait, ErrCode) then
+    ExitProcess(0) // закрыть текущий экземпляр, перезапущенный идёт в выбранном языке
+  else
+    // Молча продолжать нельзя: мастер остался бы на другом языке без объяснений.
+    MsgBox(CustomMessage('LangSwitchFailed'), mbInformation, MB_OK);
 end;
 
 // Записать язык приложения по умолчанию из выбранного языка мастера в settings.txt
@@ -287,7 +320,11 @@ begin
   FilePath := Dir + '\settings.txt';
   if FileExists(FilePath) then
     Exit; // настройки уже есть — язык задан, кодировку не рискуем
-  if ActiveLanguage() = 'en' then Code := 'en' else Code := 'ru';
+  // Приоритет у выбора на стартовом экране: если перезапустить мастер на нём не удалось,
+  // язык мастера и выбор пользователя расходятся, и верен именно выбор.
+  if ChosenLanguage <> '' then Code := ChosenLanguage
+  else if ActiveLanguage() = 'en' then Code := 'en'
+  else Code := 'ru';
   ForceDirectories(Dir);
   SetArrayLength(Lines, 1);
   Lines[0] := 'language=' + Code; // единственная строка, чистый ASCII
