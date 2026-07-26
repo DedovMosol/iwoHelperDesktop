@@ -13,7 +13,7 @@ namespace ExcelMerger
     /// пересобираются подписчиками на <see cref="Changed"/> (см. ShellContext). Промах по ключу
     /// возвращает сам ключ — чтобы пропущенная строка сразу бросалась в глаза.
     ///
-    /// СОДЕРЖИМОЕ генерируемых документов (записка стандарту, отчёты, оглавление свода) НЕ
+    /// СОДЕРЖИМОЕ генерируемых документов (записка, отчёты, оглавление свода) НЕ
     /// локализуется — по решению остаётся русским независимо от языка UI.
     /// </summary>
     internal static class Loc
@@ -600,7 +600,7 @@ namespace ExcelMerger
             A("excel.tip.openReport", "Отчёт о слиянии; в истории хранятся три последних",
                 "The merge report; the three latest are kept in history");
             A("excel.link.note", "Записка Word", "Word note");
-            A("excel.tip.note", "Сопроводительная записка к своду (.docx): итоги, пропущенные файлы, оформление по стандарт",
+            A("excel.tip.note", "Сопроводительная записка к своду (.docx): итоги, пропущенные файлы, стандартное оформление",
                 "A cover note for the digest (.docx): totals, skipped files, standard formatting");
             A("excel.tip.input", "Папку можно перетащить мышью в окно программы", "You can drag a folder onto the window");
             A("excel.tip.name", "Расширение .xlsx добавится автоматически", "The .xlsx extension is added automatically");

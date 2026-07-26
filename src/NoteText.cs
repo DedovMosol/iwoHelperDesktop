@@ -67,7 +67,7 @@ namespace ExcelMerger
             if (result.TocError != null)
                 note.Tail.Add("Внимание: " + result.TocError + ".");
 
-            note.Signature = "Составитель: ________________________";
+            note.Signature = "Подпись: ________________________";
             return note;
         }
 

@@ -38,12 +38,12 @@ try {
     if ($text -notmatch '16 июля 2026') { $fails += 'нет периода' }
     if ($text -notmatch 'Обработано файлов: 2') { $fails += 'нет счётчиков' }
     if ($text -notmatch 'файл защищён паролем') { $fails += 'нет причины пропуска' }
-    if ($text -notmatch 'Составитель') { $fails += 'нет подписи' }
+    if ($text -notmatch 'Подпись') { $fails += 'нет подписи' }
 
     if ($doc.Tables.Count -ne 1) { $fails += "таблиц $($doc.Tables.Count), ожидалась 1" }
     elseif ($doc.Tables.Item(1).Rows.Count -ne 2) { $fails += "строк таблицы $($doc.Tables.Item(1).Rows.Count), ожидалось 2" }
 
-    # a standard layout: margins 30/15/20/20 mm and the body font
+    # Layout: margins 30/15/20/20 mm and the body font
     $ps = $doc.PageSetup
     if ([math]::Abs($ps.LeftMargin - 85.05) -gt 1) { $fails += "левое поле $($ps.LeftMargin)pt, ожидалось ~85" }
     if ([math]::Abs($ps.RightMargin - 42.55) -gt 1) { $fails += "правое поле $($ps.RightMargin)pt" }
