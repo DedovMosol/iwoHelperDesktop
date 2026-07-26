@@ -38,7 +38,7 @@ try {
     if ($text -notmatch '16 июля 2026') { $fails += 'нет периода' }
     if ($text -notmatch 'Обработано файлов: 2') { $fails += 'нет счётчиков' }
     if ($text -notmatch 'файл защищён паролем') { $fails += 'нет причины пропуска' }
-    if ($text -notmatch 'Подпись') { $fails += 'нет подписи' }
+    if ($text -notmatch 'Исполнитель') { $fails += 'нет подписи' }
 
     if ($doc.Tables.Count -ne 1) { $fails += "таблиц $($doc.Tables.Count), ожидалась 1" }
     elseif ($doc.Tables.Item(1).Rows.Count -ne 2) { $fails += "строк таблицы $($doc.Tables.Item(1).Rows.Count), ожидалось 2" }

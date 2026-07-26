@@ -1198,7 +1198,7 @@ namespace ExcelMerger.Tests
             AssertTrue(all.Contains("Пропущено файлов: 2"), "пропущено");
             AssertTrue(all.Contains(res.OutputPath) && all.Contains("(XLSX)"), "файл свода и формат");
             AssertTrue(all.Contains("лист «Содержание» — да"), "параметры");
-            AssertTrue(note.Signature.Contains("Подпись"), "подпись");
+            AssertTrue(note.Signature.Contains("Исполнитель"), "подпись");
         }
 
         private static void TestNoteSkippedTable()
