@@ -20,7 +20,7 @@ namespace ExcelMerger
 
         /// <summary>
         /// Проставить <see cref="PdfWord.Underline"/> словам, под которыми есть линовка.
-        /// Возвращает линии, опознанные как подчёркивания, — прочерками пунктов
+        /// Возвращает линии, опознанные как подчёркивания, — прочерками полей
         /// (<see cref="PdfTextExtract"/>) они уже не станут.
         /// </summary>
         public static HashSet<PdfLine> Mark(IList<PdfWord> words, IList<PdfLine> lines)

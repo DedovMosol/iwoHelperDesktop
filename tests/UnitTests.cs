@@ -186,7 +186,7 @@ namespace ExcelMerger.Tests
             Run("WordDocxWriter.CoalesceRowBands: блоки одной строки — в полосу", TestCoalesceRowBands);
             Run("WordDocxWriter.AnchorIndents: красная строка по факту / позиция колонки", TestAnchorIndents);
             Run("OcrLayout: дефис лат+кириллица на переносе сохраняется", TestOcrHyphenMixedKept);
-            Run("PdfTextExtract: слово под низкой картинкой-штампом скрывается", TestCoveredByLowImage);
+            Run("PdfTextExtract: слово под низкой наложенной картинкой скрывается", TestCoveredByLowImage);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
             Run("ListMarker: нумерованный «1.»/«12)»", TestListMarkerNumbered);
             Run("ListMarker: маркированный «•»/«—»", TestListMarkerBulleted);
@@ -240,7 +240,7 @@ namespace ExcelMerger.Tests
             Run("WordDocxWriter.OrderedItems: колонки -> side-by-side полоса (левая|правая), нижний одиночный", TestOrderedItemsColumns);
             Run("WordDocxWriter.OrderedItems: внутри листа — строки сверху вниз, бок о бок слева направо", TestOrderedItemsWithinLeaf);
             Run("WordDocxWriter.BandColumnWidths: границы ячеек по середине зазора колонок", TestBandColumnWidths);
-            Run("WordDocxWriter: центрированное изображение (логотип) -> по центру, врезка/печать -> нет", TestImageCentered);
+            Run("WordDocxWriter: центрированное изображение (логотип) -> по центру, врезка/штамп -> нет", TestImageCentered);
             Run("PageRasterizer: рамка PDF (Y-вверх) -> пиксельный кроп, кламп по краю", TestCropRect);
 
             // ---------- 1.17.4 ----------
@@ -1198,7 +1198,7 @@ namespace ExcelMerger.Tests
             AssertTrue(all.Contains("Пропущено файлов: 2"), "пропущено");
             AssertTrue(all.Contains(res.OutputPath) && all.Contains("(XLSX)"), "файл свода и формат");
             AssertTrue(all.Contains("лист «Содержание» — да"), "параметры");
-            AssertTrue(note.Signature.Contains("Составитель"), "подпись");
+            AssertTrue(note.Signature.Contains("Подпись"), "подпись");
         }
 
         private static void TestNoteSkippedTable()
@@ -2105,7 +2105,7 @@ namespace ExcelMerger.Tests
             AssertEqual(7.0, WordDocxWriter.TypicalItemGap(items), "типичный зазор — медиана {7,7,30}");
             AssertEqual(0.0, WordDocxWriter.ExtraGapPt(10, 7), "лишек 3 меньше порога — без интервала");
             AssertEqual(23.0, WordDocxWriter.ExtraGapPt(30, 7), "лишек 23 — интервал 23 pt");
-            // Кап 400: пропускает «составителя у нижнего края» почти пустой страницы,
+            // Кап 400: пропускает нижний блок у нижнего края почти пустой страницы,
             // а от переливов страхует демпфер FitSpacingToPages.
             AssertEqual(400.0, WordDocxWriter.ExtraGapPt(900, 7), "кап 400 pt");
         }
@@ -2165,7 +2165,7 @@ namespace ExcelMerger.Tests
         private static void TestOcrWideGapSplit()
         {
             // Куски одной строки, разделённые гигантским зазором (20 кеглей), — разные зоны
-            // (пункты слева, учётная метка справа): в потоке рвутся на абзацы, в ячейке — нет.
+            // (поля слева, боковая метка справа): в потоке рвутся на абзацы, в ячейке — нет.
             var words = new List<PdfWord>
             {
                 W("На", 0, 90, 20, 10),
@@ -2245,9 +2245,9 @@ namespace ExcelMerger.Tests
             var form = new PdfTextExtract.RectPt { Left = 66, Bottom = 570, Right = 260, Top = 577 };
             var stampImg = new List<PdfTextExtract.RectPt>
             {
-                new PdfTextExtract.RectPt { Left = 94, Bottom = 567, Right = 254, Top = 581 } // штамп H=14
+                new PdfTextExtract.RectPt { Left = 94, Bottom = 567, Right = 254, Top = 581 } // наложение H=14
             };
-            AssertTrue(PdfTextExtract.CoveredByLowImage(form, stampImg), "форма под штампом скрыта");
+            AssertTrue(PdfTextExtract.CoveredByLowImage(form, stampImg), "форма под наложением скрыта");
             var tallImg = new List<PdfTextExtract.RectPt>
             {
                 new PdfTextExtract.RectPt { Left = 60, Bottom = 400, Right = 300, Top = 590 } // схема H=190
@@ -2257,13 +2257,13 @@ namespace ExcelMerger.Tests
             {
                 new PdfTextExtract.RectPt { Left = 200, Bottom = 567, Right = 420, Top = 581 } // сбоку, перекрытие < 50%
             };
-            AssertTrue(!PdfTextExtract.CoveredByLowImage(form, aside), "слабое перекрытие — не штамп");
+            AssertTrue(!PdfTextExtract.CoveredByLowImage(form, aside), "слабое перекрытие — не наложение");
             AssertTrue(PdfTextExtract.CoveredByAnyRect(
                 new PdfTextExtract.RectPt { Left = 100, Bottom = 570, Right = 120, Top = 578 }, stampImg),
                 "слово на подложке — накрыто наполовину по обеим осям");
             AssertTrue(!PdfTextExtract.CoveredByAnyRect(
                 new PdfTextExtract.RectPt { Left = 94, Bottom = 581, Right = 104, Top = 585 }, stampImg),
-                "касание кромки картинки — не подложка (белая метка у штампа)");
+                "касание кромки картинки — не подложка (белая метка у наложения)");
         }
 
         private static void TestOcrEmpty()
@@ -2757,7 +2757,7 @@ namespace ExcelMerger.Tests
 
         private static void TestMarginsWithImages()
         {
-            // Логотип НАД первым словом и печать НИЖЕ последней строки должны входить в поля:
+            // Логотип НАД первым словом и штамп НИЖЕ последней строки должны входить в поля:
             // только по словам верхнее поле сдвигало весь вывод вниз на высоту логотипа, а нижнее
             // раздувалось до полустраницы (и выталкивало счёт на второй лист) — его ждёт кап.
             var pt = new PdfPageText();
@@ -2777,12 +2777,12 @@ namespace ExcelMerger.Tests
         private static void TestColumnConfine()
         {
             double li, ri;
-            // Правая колонка (блок) на странице textLeft=84..textRight=567: колонка 340..543.
+            // Правая колонка на странице textLeft=84..textRight=567: колонка 340..543.
             bool c1 = WordDocxWriter.ColumnConfineIndents(true, 340, 543, 84, 567, out li, out ri);
             AssertTrue(c1, "правая колонка конфайнится");
             AssertEqual(256.0, li, "левый отступ = 340-84");
             AssertEqual(24.0, ri, "правый отступ = 567-543");
-            // Левая колонка (блок) 104..285.
+            // Левая колонка 104..285.
             WordDocxWriter.ColumnConfineIndents(true, 104, 285, 84, 567, out li, out ri);
             AssertEqual(20.0, li, "левый отступ = 104-84");
             AssertEqual(282.0, ri, "правый отступ = 567-285");
@@ -2847,7 +2847,7 @@ namespace ExcelMerger.Tests
 
         private static void TestLoneCollinearRule()
         {
-            // Прочерк пунктов, нарисованный тремя кусками на ОДНОЙ оси (дырки под «№»/«от»):
+            // Прочерк поля, нарисованный тремя кусками на ОДНОЙ оси (дырки под «№»/«от»):
             // компонент коллинеарен -> куски идут в LoneLines (станут прочерком), а не таблицей.
             var lines = new List<PdfLine>
             {
@@ -2938,7 +2938,7 @@ namespace ExcelMerger.Tests
 
         private static void TestXyCutOneSubstantialColumn()
         {
-            // Блок слева (3 строки) + одинокая пометка «сбоку» справа одной строкой: колонка-
+            // Блок слева (3 строки) + одинокая пометка справа одной строкой: колонка-
             // крошка допустима рядом с существенной — иначе пометка вклинивается в строку блока.
             var boxes = new[]
             {
@@ -3096,7 +3096,7 @@ namespace ExcelMerger.Tests
 
         private static void TestXyCutGuardThinColumn()
         {
-            // Крошка (один бокс) рядом с СУЩЕСТВЕННОЙ колонкой — валидный разрез (пометка «сбоку»
+            // Крошка (один бокс) рядом с СУЩЕСТВЕННОЙ колонкой — валидный разрез (пометка
             // у блока); защиту от «(подпись) … (дата)» держит TestXyCutGuardSingleLine.
             var boxes = new[]
             {
