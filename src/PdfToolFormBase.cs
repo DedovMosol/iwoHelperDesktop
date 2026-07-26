@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -87,6 +87,7 @@ namespace ExcelMerger
             WindowChrome.Enable(this, chromeColor); // цветной заголовок на Windows 11
             AllowDrop = true;
             _tips = new ToolTip();
+            WindowPlacement.Attach(this); // размер и положение окна между запусками
         }
 
         /// <summary>
@@ -805,22 +806,15 @@ namespace ExcelMerger
             get { return Loc.T("common.busy"); }
         }
 
-        protected override void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            WindowPlacement.Restore(this); // вернуть размер/положение прошлой сессии (клампя в видимую область)
-        }
-
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (_busy)
             {
                 SetStatus(BusyMessage, Theme.WarnOrange);
-                e.Cancel = true; // фоновая операция занимает секунды; иначе остался бы зомби-процесс
-                return;
+                e.Cancel = true; // фоновая операция занимает секунды, иначе остался бы зомби-процесс
+                return;          // база не вызывается, поэтому границы окна тоже не сохранятся
             }
             SaveViewPrefs(); // запомнить масштаб и уровень сжатия между запусками
-            WindowPlacement.Save(this); // запомнить размер и положение окна между запусками
             // Фоновый рендер сетки останавливает её Dispose (stop + join): здесь звать
             // StopRendering нельзя — остановка необратима, а закрытие ещё может быть
             // ветировано (например, отмена завершения сеанса Windows после FormClosing).

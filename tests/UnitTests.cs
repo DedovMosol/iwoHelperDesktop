@@ -150,6 +150,7 @@ namespace ExcelMerger.Tests
             Run("PdfToolFormBase.ShouldOfferCancel: отмена от порога страниц", TestShouldOfferCancel);
             Run("UserSettings: общий Save не затирает масштаб/сжатие устаревшим экземпляром", TestSettingsViewNotClobbered);
             Run("UserSettings: границы окон сохраняются и не затираются устаревшим Save", TestWindowBoundsPersistence);
+            Run("WindowPlacement.Attach (живой): окно запоминает и восстанавливает место", TestWindowPlacementAttachLive);
             Run("Merge (живой): отмена бросает и не создаёт файл", TestCancelMergeLive);
             Run("SplitEveryN (живой): отмена бросает и удаляет частичные файлы", TestCancelSplitLive);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
@@ -4383,6 +4384,159 @@ namespace ExcelMerger.Tests
                 AppPaths.SetRootForTests(null);
                 try { Directory.Delete(root, true); } catch { }
             }
+        }
+
+        /// <summary>Пустое окно со своим именем типа: ключ хранения берётся от имени класса.</summary>
+        private sealed class PlacementProbeForm : System.Windows.Forms.Form
+        {
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проводка запоминания окон: чистые функции проверены отдельно, а здесь
+        /// настоящее окно показывается и закрывается, и границы обязаны записаться и
+        /// восстановиться. Без такого теста подключение можно случайно оторвать, и отказ
+        /// будет тихим — окно просто перестанет помнить место или откроется за краем экрана.
+        /// Заодно проверяется, что БЕЗ подключения не сохраняется ничего, иначе тест мог бы
+        /// зеленеть по чужой причине.
+        /// </summary>
+        private static void TestWindowPlacementAttachLive()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "iwo_attach_" + Guid.NewGuid().ToString("N"));
+            AppPaths.SetRootForTests(root);
+            string failure = null;
+            var th = new System.Threading.Thread(delegate()
+            {
+                try
+                {
+                    const string key = "PlacementProbeForm";
+                    var moved = new System.Drawing.Rectangle(40, 30, 500, 400);
+
+                    // Контроль: без Attach окно ничего о себе не пишет.
+                    using (var bare = new PlacementProbeForm())
+                    {
+                        bare.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                        bare.Bounds = moved;
+                        bare.Show();
+                        bare.Close();
+                    }
+                    string ignored;
+                    if (UserSettings.Load().WindowBounds.TryGetValue(key, out ignored))
+                    {
+                        failure = "без подключения границы всё равно сохранились";
+                        return;
+                    }
+
+                    using (var f = new PlacementProbeForm())
+                    {
+                        f.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                        WindowPlacement.Attach(f);
+                        f.Show();
+                        f.Bounds = moved; // пользователь подвинул и изменил размер
+                        f.Close();
+                    }
+                    string saved;
+                    if (!UserSettings.Load().WindowBounds.TryGetValue(key, out saved))
+                    {
+                        failure = "границы не сохранились при закрытии";
+                        return;
+                    }
+                    if (saved != WindowPlacement.Format(moved, false))
+                    {
+                        failure = "сохранено «" + saved + "», ожидалось «" + WindowPlacement.Format(moved, false) + "»";
+                        return;
+                    }
+
+                    // Новое окно того же типа обязано встать туда же (с поправкой на кламп,
+                    // потому что экран прогонщика может быть меньше сохранённого места).
+                    using (var again = new PlacementProbeForm())
+                    {
+                        WindowPlacement.Attach(again);
+                        again.Show();
+                        System.Drawing.Rectangle[] areas = ScreenWorkAreas();
+                        System.Drawing.Rectangle want =
+                            WindowPlacement.ClampToWorkingArea(moved, areas, again.MinimumSize);
+                        if (again.Bounds != want)
+                            failure = "восстановлено " + again.Bounds + ", ожидалось " + want;
+                        else if (again.StartPosition != System.Windows.Forms.FormStartPosition.Manual)
+                            failure = "восстановление не перевело окно в ручное позиционирование";
+                        again.Close();
+                    }
+                    if (failure != null)
+                        return;
+
+                    // Подключение живёт одной строкой в конструкторе, оторвать его легко и
+                    // незаметно, поэтому проверяем КАЖДОЕ настоящее окно, которое обязано
+                    // помнить своё место: главное, любой PDF-инструмент (за всю базу) и
+                    // полноэкранный просмотр.
+                    failure = RoundTripPlacement("MainForm", new MainForm(null));
+                    if (failure != null) return;
+                    failure = RoundTripPlacement("PdfMergeForm", new PdfMergeForm(null));
+                    if (failure != null) return;
+                    failure = RoundTripPlacement("PagePreviewForm", NewPreviewForm());
+                }
+                catch (Exception ex) { failure = ex.GetType().Name + ": " + ex.Message; }
+            });
+            th.SetApartmentState(System.Threading.ApartmentState.STA); // окна WinForms требуют STA
+            th.IsBackground = true;
+            th.Start();
+            th.Join();
+            AppPaths.SetRootForTests(null);
+            try { Directory.Delete(root, true); } catch { }
+            AssertTrue(failure == null, "WindowPlacement.Attach: " + failure);
+        }
+
+        /// <summary>
+        /// Показать окно, подвинуть, закрыть — и убедиться, что оно записало свои границы под
+        /// своим именем. Возвращает null при успехе или причину отказа. Окно освобождается.
+        /// </summary>
+        private static string RoundTripPlacement(string key, System.Windows.Forms.Form form)
+        {
+            var moved = new System.Drawing.Rectangle(60, 50, 620, 480);
+            try
+            {
+                using (form)
+                {
+                    form.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                    form.Show();
+                    form.Bounds = moved;
+                    form.Close();
+                }
+            }
+            catch (Exception ex) { return key + ": окно не отработало — " + ex.GetType().Name + " " + ex.Message; }
+            string saved;
+            if (!UserSettings.Load().WindowBounds.TryGetValue(key, out saved))
+                return key + ": окно не запомнило своё место (потеряно подключение WindowPlacement)";
+            // Размер мог не примениться целиком из-за MinimumSize окна, поэтому сверяем
+            // с тем, что окно реально имело: важно, что записано именно оно, а не пусто.
+            if (string.IsNullOrEmpty(saved))
+                return key + ": записана пустая строка границ";
+            return null;
+        }
+
+        /// <summary>
+        /// Полноэкранный просмотр для проверки запоминания места. Конструктор приватный, а путь
+        /// к PDF намеренно несуществующий: фоновый рендер тихо не найдёт файл и покажет
+        /// «недоступно», чего для проверки границ окна достаточно.
+        /// </summary>
+        private static System.Windows.Forms.Form NewPreviewForm()
+        {
+            object page = new PdfPageRef { SourcePath = "нет-такого.pdf", PageIndex = 0, Rotation = 0 };
+            return (System.Windows.Forms.Form)Activator.CreateInstance(
+                typeof(PagePreviewForm),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new object[] { page, "placement", new System.Drawing.Size(640, 520), null },
+                null);
+        }
+
+        /// <summary>Рабочие области всех экранов — тот же набор, что использует восстановление.</summary>
+        private static System.Drawing.Rectangle[] ScreenWorkAreas()
+        {
+            System.Windows.Forms.Screen[] screens = System.Windows.Forms.Screen.AllScreens;
+            var areas = new System.Drawing.Rectangle[screens.Length];
+            for (int i = 0; i < screens.Length; i++)
+                areas[i] = screens[i].WorkingArea;
+            return areas;
         }
 
         private static void TestShouldOfferCancel()

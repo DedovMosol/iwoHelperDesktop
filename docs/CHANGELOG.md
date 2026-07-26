@@ -3,6 +3,21 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.7] — 2026-07-26
+
+### Fixed
+- **The MIT licence text was damaged.** One line of the permission grant read “to permit
+  persons a side the Software is furnished to do so” instead of “to permit persons **to
+  whom** the Software is furnished to do so”, in both the repository licence and the copy
+  shown by the installer. GitHub could not recognise the file as MIT because of it. The
+  canonical wording is restored in both files, verbatim.
+
+### Changed
+- **Window position memory is wired in one place.** Windows used to restore and save their
+  bounds through a pair of overrides each, which is easy to half-remove without noticing.
+  They now attach it with a single call, and a test opens each of those windows for real to
+  prove the memory still works — a silent loss of it would otherwise go unnoticed.
+
 ## [1.17.6] — 2026-07-26
 
 ### Added

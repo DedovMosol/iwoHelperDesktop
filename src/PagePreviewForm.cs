@@ -74,6 +74,7 @@ namespace ExcelMerger
 
             if (_rotate != null)
                 BuildContextMenu();
+            WindowPlacement.Attach(this); // размер и положение окна между запусками
         }
 
         /// <summary>Показать предпросмотр страницы модально над owner. caption — подпись окна (номер
@@ -96,12 +97,6 @@ namespace ExcelMerger
             // Меню на форме: подсказка «Загрузка…» перекрывает картинку, а WM_CONTEXTMENU
             // с контрола без своего меню всплывает к родителю — правый клик работает всюду.
             ContextMenuStrip = _menu;
-        }
-
-        protected override void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            WindowPlacement.Restore(this); // вернуть размер/положение прошлой сессии (клампя в видимую область)
         }
 
         protected override void OnShown(EventArgs e)
@@ -237,12 +232,6 @@ namespace ExcelMerger
                 }
             }
             base.OnKeyDown(e);
-        }
-
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            base.OnFormClosing(e);
-            WindowPlacement.Save(this); // запомнить размер и положение окна между запусками
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
