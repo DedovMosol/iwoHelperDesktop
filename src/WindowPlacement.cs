@@ -11,8 +11,11 @@ namespace ExcelMerger
     /// <see cref="UserSettings"/> строками «wnd.&lt;Форма&gt;=x,y,w,h,m» (m=1 — развёрнуто).
     /// Восстановление КЛАМПИТ прямоугольник в видимую рабочую область экранов (окно не откроется
     /// за краем экрана или на отключённом мониторе) и не меньше <c>MinimumSize</c>; развёрнутое
-    /// окно восстанавливается развёрнутым. Чистые функции (Format/TryParse/ClampToWorkingArea/
-    /// BestWorkArea) покрыты тестами; работа с Form/Screen — тонкая обёртка. Только UI-поток.
+    /// окно восстанавливается развёрнутым. Единственный вход — <see cref="Attach"/>, одна строка
+    /// в конструкторе окна: восстановление и сохранение он подключает событиями сам, поэтому
+    /// окну не нужны перекрытия OnLoad и OnFormClosing и подключение нельзя развести по половинке.
+    /// Чистые функции (Format/TryParse/ClampToWorkingArea/BestWorkArea) покрыты тестами, а сама
+    /// проводка — живым тестом на настоящих окнах. Только UI-поток.
     /// </summary>
     internal static class WindowPlacement
     {
@@ -105,8 +108,32 @@ namespace ExcelMerger
             return areas;
         }
 
-        /// <summary>Восстановить размер/положение окна из настроек (клампя в видимую область). Вызывать в OnLoad.</summary>
-        internal static void Restore(Form form)
+        /// <summary>
+        /// Подключить запоминание размера и положения к окну: восстановление при показе и
+        /// сохранение при закрытии. Одна точка подключения вместо пары перекрытий в каждом
+        /// окне, поэтому новому окну достаточно одной строки в конструкторе.
+        ///
+        /// Восстановление идёт на событии Load, то есть ровно там, где раньше стоял вызов
+        /// сразу после base.OnLoad. Сохранение — на событии FormClosing, которое поднимает
+        /// base.OnFormClosing: окна с проверкой занятости выходят из своего перекрытия ДО
+        /// вызова базы, поэтому при отказе в закрытии событие не поднимается и сохранения
+        /// не будет. Проверка e.Cancel добавлена на случай, если закрытие отменит кто-то ещё.
+        ///
+        /// Только для окон с ИЗМЕНЯЕМЫМ размером: окну фиксированного размера габариты
+        /// прошлой сессии могут не подойти после смены масштаба экрана.
+        /// </summary>
+        internal static void Attach(Form form)
+        {
+            form.Load += delegate { Restore(form); };
+            form.FormClosing += delegate(object sender, FormClosingEventArgs e)
+            {
+                if (!e.Cancel)
+                    Save(form);
+            };
+        }
+
+        /// <summary>Восстановить размер/положение окна из настроек (клампя в видимую область). Только из Attach.</summary>
+        private static void Restore(Form form)
         {
             string value;
             if (!UserSettings.Load().WindowBounds.TryGetValue(form.GetType().Name, out value))
@@ -121,8 +148,8 @@ namespace ExcelMerger
                 form.WindowState = FormWindowState.Maximized;
         }
 
-        /// <summary>Сохранить размер/положение окна в настройки. Вызывать при закрытии НЕзанятого окна.</summary>
-        internal static void Save(Form form)
+        /// <summary>Сохранить размер/положение окна в настройки. Только из Attach.</summary>
+        private static void Save(Form form)
         {
             // Развёрнутое/свёрнутое окно: пишем НОРМАЛЬНЫЕ границы (RestoreBounds) — чтобы было
             // куда восстановиться, а флаг «развёрнуто» сохраняем отдельно.
