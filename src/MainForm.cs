@@ -130,16 +130,8 @@ namespace ExcelMerger
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(780, 785);
             // Ширина минимума не даёт нижним ссылкам («Записка Word») перекрыться с правой
-            // кнопкой «Повторить пропущенные».
-            //
-            // Высота минимума выведена из ТЕХ ЖЕ проектных констант, что и сама раскладка:
-            // под нижней кнопкой колонки списка обязан помещаться нижний ряд (ссылки и
-            // «Повторить пропущенные»). Иначе «Снять все» уходит за нижний край окна,
-            // «Отметить все» прячется под «Повторить», и WindowPlacement это ещё и запомнит.
-            //
-            // Саму высоту минимума ставит <see cref="ClampToLayout"/> по факту: любой перевод
-            // «клиент → внешний размер» здесь оказался неверен на машине с другим масштабом
-            // экрана (см. там же).
+            // кнопкой «Повторить пропущенные». Высоту здесь не задаём вовсе: её ставит по
+            // факту ClampToLayout — посчитать её заранее не получается (см. там же).
             MinimumSize = new Size(MinWidth, 0);
             WindowChrome.Enable(this, Theme.Accent); // зелёный заголовок на Windows 11
             AllowDrop = true;
@@ -281,7 +273,7 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnSortName, Loc.T("excel.tip.sortName"));
             _btnCheckAll = AddListButton(Loc.T("excel.btn.checkAll"), fcol, 646);
             _btnCheckAll.Click += delegate { SetAllChecked(true); };
-            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, UncheckAllTop);
+            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, 680);
             _btnUncheckAll.Click += delegate { SetAllChecked(false); };
 
             _dropLine = new Panel();
@@ -317,11 +309,9 @@ namespace ExcelMerger
             UpdateReadiness();
         }
 
-        private const int MinWidth = 760;         // ширина: нижние ссылки не лезут под «Повторить»
-        private const int UncheckAllTop = 680;    // верх нижней кнопки колонки списка
-        private const int ListButtonHeight = 30;  // высота кнопок этой колонки
-        private const int RowGap = 8;             // просвет между колонкой списка и нижним рядом
-        private const int BottomRowHeight = 40;   // нижний ряд отсчитывается от низа клиентской области
+        private const int MinWidth = 760;       // ширина: нижние ссылки не лезут под «Повторить»
+        private const int RowGap = 8;           // просвет между колонкой списка и нижним рядом
+        private const int BottomRowHeight = 40; // нижний ряд отсчитывается от низа клиентской области
 
         private void BuildMenu()
         {
@@ -432,7 +422,7 @@ namespace ExcelMerger
         {
             var b = new RoundedButton(false);
             b.Text = text;
-            b.SetBounds(x, y, 130, ListButtonHeight);
+            b.SetBounds(x, y, 130, 30);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             Controls.Add(b);
             return b;
@@ -595,7 +585,7 @@ namespace ExcelMerger
                 switch (ClassifyListKey(keyData))
                 {
                     case ListKeyAction.Copy: CopySelectedRows(); return true;
-                    case ListKeyAction.SelectAll: SelectAllRows(); return true;
+                    case ListKeyAction.SelectAll: Ui.SelectAllItems(_list); return true;
                     case ListKeyAction.Swallow: return true;
                     case ListKeyAction.MoveUp: MoveSelectedFile(false); return true;
                     case ListKeyAction.MoveDown: MoveSelectedFile(true); return true;
@@ -603,11 +593,6 @@ namespace ExcelMerger
                 }
             }
             return base.ProcessCmdKey(ref msg, keyData);
-        }
-
-        private void SelectAllRows()
-        {
-            Ui.SelectAllItems(_list);
         }
 
         /// <summary>Delete в списке — снять галочку (исключить) у выбранных файлов.</summary>
@@ -1172,6 +1157,9 @@ namespace ExcelMerger
         {
             if (_btnUncheckAll == null)
                 return; // раскладка ещё строится
+            if (WindowState != FormWindowState.Normal)
+                return; // свёрнутое окно имеет крошечный клиент, а развёрнутое размер не выбирает:
+                        // в обоих случаях правка размера боролась бы с самим Windows
             int needed = _btnUncheckAll.Bottom + RowGap + BottomRowHeight;
             if (ClientSize.Height >= needed)
                 return;

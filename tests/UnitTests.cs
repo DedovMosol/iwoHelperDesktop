@@ -4973,7 +4973,12 @@ namespace ExcelMerger.Tests
             var offenders = new List<string>();
             InIsolatedSettings("iwo_tab_", delegate
             {
-                foreach (System.Windows.Forms.Form f in NewAllToolWindows())
+                // Стартовый экран тоже: его шапка несёт глобус выбора языка, доступный с
+                // клавиатуры, и без переноса в конец фокус при открытии доставался бы ему,
+                // а не карточке инструмента.
+                var windows = new List<System.Windows.Forms.Form>(NewAllToolWindows());
+                windows.Add(new StartForm());
+                foreach (System.Windows.Forms.Form f in windows)
                     using (f)
                     {
                         string where = f.GetType().Name;

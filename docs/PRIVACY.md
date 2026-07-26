@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Application:** iwo Helper Desktop
-**Last updated:** 2026-07-25
+**Last updated:** 2026-07-26
 
 ## Summary
 
@@ -27,9 +27,16 @@ entirely on your machine using local components:
 
 **Your documents are never uploaded, copied off your device, or transmitted anywhere.**
 The app does not modify your source files except where you explicitly ask it to write
-output. PDF split and PDF → Word never change the source. When converting a PDF to Word,
-any images found in the PDF are written to a temporary folder under your system temp
-directory and deleted as soon as the `.docx` is saved.
+output. PDF split and PDF → Word never change the source.
+
+Two features write short‑lived working files, both next to or under folders you already
+chose, and both are removed as soon as the operation ends — successfully or not:
+
+- **PDF → Word** puts any images found in the PDF into a folder under your system temp
+  directory, and deletes that folder as soon as the `.docx` is saved.
+- **PDF compression** writes the compressed copy beside the output file
+  (`<name>.pdf.gstmp`) and keeps the original as `<name>.pdf.gsbak` while it swaps them,
+  so a failure part‑way through cannot lose the file. Both are deleted afterwards.
 
 ## Data the app stores on your computer
 

@@ -11,14 +11,19 @@ code — and most review feedback is about keeping those invariants intact.
 ## Build and test
 
 ```
-build.cmd                 # dotnet SDK → single dist\iwoHelperDesktop.exe
-tests\build_tests.cmd     # unit tests (no Office needed — what CI runs)
-tests\run_all.cmd         # full pyramid: build, units, GUI smoke, integration (needs Excel/Word)
+build.cmd                  # dotnet SDK → single dist\iwoHelperDesktop.exe
+build.cmd x86              # 32-bit build → dist\x86\iwoHelperDesktop.exe
+tests\build_tests.cmd      # unit tests (no Office needed — what CI runs)
+tests\build_tests.cmd x86  # the same tests as a 32-bit process (cache sizes branch on it)
+tests\run_all.cmd          # full pyramid: build, units, GUI smoke, integration (needs Excel/Word)
 ```
 
 Requirements: Windows 10/11 x64 and the `dotnet` SDK. Microsoft Office is needed only
 for the integration scripts (`tests\verify*.ps1`) and for using the Excel Digest and
 PDF → Word tools themselves.
+
+Some checks build real windows on an STA thread — they open, resize and close actual
+forms, so a windowless session cannot run them.
 
 ## Ground rules
 
