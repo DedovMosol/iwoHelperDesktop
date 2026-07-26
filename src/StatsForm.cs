@@ -20,20 +20,8 @@ namespace ExcelMerger
 
         public StatsForm()
         {
-            Text = Loc.T("menu.stats");
-            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
-            BackColor = Color.White;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterParent;
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
+            Ui.InitDialog(this, Loc.T("menu.stats"));
             ClientSize = new Size(440, 444);
-            Icon appIcon = Ui.AppIcon();
-            if (appIcon != null)
-                Icon = appIcon;
             WindowChrome.Enable(this, Theme.HubBlue);
 
             Ui.AccentBar(this, 0, Theme.HubBlue);

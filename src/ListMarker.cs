@@ -39,10 +39,10 @@ namespace ExcelMerger
             }
 
             // Нумерованный: 1–3 цифры, затем «.» или «)», затем пробел, затем содержимое.
-            if (char.IsDigit(text[0]))
+            if (IsAsciiDigit(text[0]))
             {
                 int i = 0;
-                while (i < text.Length && i < 3 && char.IsDigit(text[i]))
+                while (i < text.Length && i < 3 && IsAsciiDigit(text[i]))
                     i++;
                 if (i < text.Length && (text[i] == '.' || text[i] == ')') && i + 1 < text.Length && char.IsWhiteSpace(text[i + 1]))
                 {
@@ -58,6 +58,17 @@ namespace ExcelMerger
             }
 
             return none;
+        }
+
+        /// <summary>
+        /// Цифра номера списка — ТОЛЬКО ASCII 0–9. char.IsDigit пропускает и другие десятичные
+        /// цифры Юникода (полноширинные «１», арабско-индийские «١»), а «text[k] - '0'» превращал
+        /// бы их в мусор порядка 65 000: Word такой начальный номер списка отвергает, исключение
+        /// глушится, и пункт молча оставался бы вообще без номера.
+        /// </summary>
+        private static bool IsAsciiDigit(char c)
+        {
+            return c >= '0' && c <= '9';
         }
 
         private static int SkipSpaces(string text, int from)

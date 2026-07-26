@@ -65,7 +65,7 @@ namespace ExcelMerger
 
             float radius = Height >= 36 ? 9f : 6f;
             var rect = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
-            using (GraphicsPath path = RoundedPath(rect, radius))
+            using (GraphicsPath path = Ui.RoundedRect(rect, radius))
             {
                 using (var b = new SolidBrush(fill))
                     g.FillPath(b, path);
@@ -79,7 +79,7 @@ namespace ExcelMerger
             {
                 var inner = new RectangleF(2.5f, 2.5f, Width - 5f, Height - 5f);
                 Color ring = _primary ? Color.FromArgb(130, 255, 255, 255) : Color.FromArgb(120, Theme.Accent);
-                using (GraphicsPath ringPath = RoundedPath(inner, radius - 2f))
+                using (GraphicsPath ringPath = Ui.RoundedRect(inner, radius - 2f))
                 using (var p = new Pen(ring, 1.5f))
                     g.DrawPath(p, ringPath);
             }
@@ -89,16 +89,5 @@ namespace ExcelMerger
                 TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
         }
 
-        private static GraphicsPath RoundedPath(RectangleF r, float radius)
-        {
-            var p = new GraphicsPath();
-            float d = Math.Max(2f, radius * 2f);
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
-            return p;
-        }
     }
 }

@@ -2,9 +2,19 @@
 
   <!-- Юнит-тесты: компилируются вместе с src (доступ к internal), свой мини-раннер
        (StartupObject). PdfSharp кладётся рядом на случай резолва. -->
+  <!-- Разрядность — как у приложения (build_tests.cmd x86). Без этого обе ветки матрицы CI
+       гоняли один и тот же 64-битный exe, и ветки IntPtr.Size == 4 (половинные размеры кэшей
+       документов и страниц) не проверялись НИ РАЗУ. Своя пара obj/bin на разрядность: в общем
+       каталоге инкрементальная очистка MSBuild сносила бы выход другой. -->
+  <PropertyGroup>
+    <Arch Condition="'$(Arch)' == ''">x64</Arch>
+  </PropertyGroup>
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>$(Arch)</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
     <UseWindowsForms>true</UseWindowsForms>
     <LangVersion>7.3</LangVersion>
     <Nullable>disable</Nullable>
@@ -16,7 +26,9 @@
     <DebugSymbols>false</DebugSymbols>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
-    <OutputPath>bin\</OutputPath>
+    <OutputPath Condition="'$(Arch)' == 'x64'">bin\</OutputPath>
+    <OutputPath Condition="'$(Arch)' != 'x64'">bin\$(Arch)\</OutputPath>
+    <BaseIntermediateOutputPath Condition="'$(Arch)' != 'x64'">obj\$(Arch)\</BaseIntermediateOutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>

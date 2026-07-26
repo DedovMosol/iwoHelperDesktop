@@ -16,19 +16,11 @@ namespace ExcelMerger
 
         private NumberPromptDialog(string title, string prompt, string okText, int min, int max, int initial)
         {
-            Text = title;
-            Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MinimizeBox = MaximizeBox = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterParent;
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
+            Ui.InitDialog(this, title);
             const int margin = 16, btnW = 112, btnH = 30;
             // База 300 вмещает кнопки по краям; длинная подпись (например, 5-значное число
             // страниц в «до {0}») расширяет окно по замеру — статичная константа обрезала бы её.
             int w = DialogWidth(TextRenderer.MeasureText(prompt, Font).Width, margin, 300);
-            BackColor = Color.White;
 
             var label = new Label();
             label.AutoSize = true;

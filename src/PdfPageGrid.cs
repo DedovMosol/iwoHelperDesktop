@@ -841,12 +841,7 @@ namespace ExcelMerger
 
         public void SelectAll()
         {
-            if (_list.Items.Count == 0)
-                return;
-            _list.BeginUpdate();
-            foreach (ListViewItem item in _list.Items)
-                item.Selected = true;
-            _list.EndUpdate();
+            Ui.SelectAllItems(_list);
         }
 
         public void SelectIndex(int index)
@@ -1429,8 +1424,8 @@ namespace ExcelMerger
             _menu.Items.Add(new ToolStripSeparator());
             // Поворот — подменю: выбранные и «все страницы» (массовый поворот документа).
             _miRotate = new ToolStripMenuItem(Loc.T("grid.menu.rotate"));
-            _miRotateRight = AddSubItem(_miRotate, Loc.T("grid.menu.rotateRight"), "Ctrl+Shift+«+»", delegate { RotateSelected(90); });
-            _miRotateLeft = AddSubItem(_miRotate, Loc.T("grid.menu.rotateLeft"), "Ctrl+Shift+«−»", delegate { RotateSelected(-90); });
+            _miRotateRight = AddSubItem(_miRotate, Loc.T("grid.menu.rotateRight"), Loc.T("grid.key.rotateRight"), delegate { RotateSelected(90); });
+            _miRotateLeft = AddSubItem(_miRotate, Loc.T("grid.menu.rotateLeft"), Loc.T("grid.key.rotateLeft"), delegate { RotateSelected(-90); });
             _miRotate.DropDownItems.Add(new ToolStripSeparator());
             _miRotateAllRight = AddSubItem(_miRotate, Loc.T("grid.menu.rotateAllRight"), null, delegate { RotateAll(90); });
             _miRotateAllLeft = AddSubItem(_miRotate, Loc.T("grid.menu.rotateAllLeft"), null, delegate { RotateAll(-90); });
@@ -1576,6 +1571,13 @@ namespace ExcelMerger
                     }
                     if (req == null)
                     {
+                        // Флаг перечитываем ПОСЛЕ Reset и ДО ожидания. StopRendering ставит
+                        // _thumbStop и зовёт Set() НЕ под _qLock, поэтому его сигнал мог
+                        // прийти между проверкой цикла и нашим Reset — и быть им стёрт.
+                        // Без этой проверки поток уснул бы навсегда: Dispose провисел бы на
+                        // Join(2000) и не освободил рендерер с копиями PDF в памяти.
+                        if (_thumbStop)
+                            break;
                         _thumbSignal.Wait();
                         continue;
                     }
@@ -1642,6 +1644,12 @@ namespace ExcelMerger
             }
             _pageCache.Add(key, new CachedPage { Key = key, Bmp = page, Width = width });
             RedrawItemsOf(key); // плитка составится лениво при отрисовке
+            // Пока страница рендерилась, масштаб мог вырасти: заявку на больший размер
+            // дедуп подавил (ключ был занят ЭТОЙ заявкой), поэтому просим обновить видимые
+            // ещё раз. Иначе плитка осталась бы растянутой из мелкого рендера до тех пор,
+            // пока пользователь случайно не прокрутит сетку.
+            if (width < _renderTarget)
+                ScheduleVisibleUpdate();
         }
 
         private static Bitmap ComposeTile(Bitmap page, Size tile, int rotation)

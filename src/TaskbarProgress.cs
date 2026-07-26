@@ -16,10 +16,23 @@ namespace ExcelMerger
     /// Все сбои проглатываются: индикатор — украшение, не причина падать.
     /// Вызывать только из UI-потока (COM-объект панели задач — STA).
     /// </summary>
-    internal sealed class TaskbarProgress
+    internal sealed class TaskbarProgress : IDisposable
     {
         private ITaskbarList3 _taskbar;
         private bool _unavailable;
+
+        /// <summary>
+        /// Освободить обёртку COM детерминированно — как и всё остальное COM в приложении
+        /// (см. ComSafe). Без этого единственный в проекте COM-объект жил до финализатора, и
+        /// каждая пересборка окон сменой языка добавляла ещё один. Зовёт владелец окна.
+        /// </summary>
+        public void Dispose()
+        {
+            object com = _taskbar;
+            _taskbar = null;
+            _unavailable = true; // окно закрывается — заново создавать обёртку незачем
+            ComSafe.Release(com);
+        }
 
         public void SetState(IntPtr hwnd, TaskbarProgressState state)
         {

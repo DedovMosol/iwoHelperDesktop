@@ -225,14 +225,19 @@ namespace ExcelMerger
         /// роняется при выходе; (2) РЕГРЕССИЯ ERROR_USER_MAPPED_FILE — пока рендерер жив (документ в
         /// кэше), исходный файл НЕ отображён в память, поэтому его можно перезаписать под тем же
         /// именем (иначе объединение/разделение не сохранит итог поверх показанного файла). Само
-        /// наличие рендера не требуется (на Windows Server движка PDF может не быть — штатный фолбэк):
-        /// если рендер не случился, файл и не грузился. 0 = ок; 1 = отрендеренный файл остался замаплен.
+        /// наличие рендера не требуется приложению (на Windows Server движка PDF может не быть —
+        /// штатный фолбэк), но БЕЗ рендера проверять нечего, поэтому это отдельный код выхода, а
+        /// не «ок»: иначе шаг CI зеленел бы, ничего не проверив, и потеря защиты от
+        /// ERROR_USER_MAPPED_FILE прошла бы незаметно.
+        /// 0 = проверено и ок; 1 = отрендеренный файл остался замаплен (регрессия);
+        /// 2 = проверить не удалось (движок недоступен или проба упала).
         /// </summary>
         private static int RunThumbCheck()
         {
             AttachConsole(-1);
             bool rendered = false;
             bool overwritable = true; // по умолчанию — если рендер не случился, файл не мапился
+            string failure = null;    // причина, по которой проверить не вышло (иначе «тихий» ноль)
             var worker = new System.Threading.Thread(delegate()
             {
                 string pdf = Path.Combine(Path.GetTempPath(), "thumbchk_" + Guid.NewGuid().ToString("N") + ".pdf");
@@ -253,16 +258,18 @@ namespace ExcelMerger
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex) { failure = ex.GetType().Name + ": " + ex.Message; }
                 finally { try { File.Delete(pdf); } catch { } }
             });
             worker.IsBackground = false; // дать потоку завершиться штатно
             worker.Start();
-            worker.Join(); // синхронизация: rendered/overwritable читаем после завершения потока
-            int code = rendered && !overwritable ? 1 : 0;
-            WriteConsole(code == 0
-                ? "THUMBCHECK OK (rendered=" + rendered + ", overwritable=" + overwritable + ")"
-                : "THUMBCHECK FAIL: отрендеренный файл остался замаплен (нельзя сохранить итог под тем же именем)");
+            worker.Join(); // синхронизация: rendered/overwritable/failure читаем после завершения потока
+            int code = !rendered ? 2 : (overwritable ? 0 : 1);
+            WriteConsole(
+                code == 0 ? "THUMBCHECK OK (rendered=True, overwritable=True)" :
+                code == 1 ? "THUMBCHECK FAIL: отрендеренный файл остался замаплен (нельзя сохранить итог под тем же именем)" :
+                "THUMBCHECK SKIP: рендер не состоялся, проверить нечего" +
+                    (failure != null ? " — " + failure : " (движок PDF недоступен)"));
             FastExit.Now(code); // избегаем сбоя WinRT-финализации при выгрузке
             return code; // недостижимо
         }

@@ -110,6 +110,10 @@ namespace ExcelMerger
             A("shortcuts.delete", "Delete — удалить выбранные; Esc — отменить вырезание", "Delete — remove selected; Esc — cancel the cut");
             A("shortcuts.undo", "Ctrl+Z / Ctrl+Y — отменить / вернуть", "Ctrl+Z / Ctrl+Y — undo / redo");
             A("shortcuts.rotate", "Ctrl+Shift+«+» / «−» — повернуть выбранные", "Ctrl+Shift+“+” / “−” — rotate the selection");
+            // Те же сочетания в правой колонке контекстного меню сетки: кавычки у каждого
+            // языка свои, поэтому строки лежат в каталоге, а не литералами в коде.
+            A("grid.key.rotateRight", "Ctrl+Shift+«+»", "Ctrl+Shift+“+”");
+            A("grid.key.rotateLeft", "Ctrl+Shift+«−»", "Ctrl+Shift+“−”");
             A("menu.language", "Язык / Language", "Язык / Language");
             A("menu.lang.ru", "RU", "RU");
             A("menu.lang.en", "EN", "EN");
@@ -172,6 +176,10 @@ namespace ExcelMerger
             A("grid.dropHint", "Отпустите, чтобы добавить", "Drop to add");
             A("common.status.saving", "Сохранение…", "Saving…");
             A("common.status.loading", "Загрузка…", "Loading…");
+            // Сжатие идёт отдельным процессом (Ghostscript) и о ходе не сообщает, поэтому
+            // фаза называется в статусе, а полоса на это время становится бегущей.
+            A("common.status.compressing", "Сжатие…", "Compressing…");
+            A("common.ok", "ОК", "OK");
             A("common.busySaving", "Дождитесь завершения сохранения…", "Wait for saving to finish…");
             A("common.status.notDone", "Не выполнено.", "Failed.");
             A("common.close", "Закрыть", "Close");

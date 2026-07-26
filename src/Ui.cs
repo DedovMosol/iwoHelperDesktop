@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Reflection;
 using System.Threading;
@@ -71,6 +72,21 @@ namespace ExcelMerger
             return l;
         }
 
+        /// <summary>
+        /// Подпись переменной длины (путь, текст ошибки, строка статуса) — на фиксированную
+        /// ширину с многоточием вместо AutoSize. Иначе длинный текст уезжает за край окна,
+        /// обрезанный посреди слова и без всякого признака, что он обрезан; полный текст
+        /// показывает всплывающая подсказка, которую даёт AutoEllipsis. Единая обвязка (DRY).
+        /// </summary>
+        public static Label Ellipsize(Label label, int width, AnchorStyles anchor)
+        {
+            label.AutoSize = false;
+            label.AutoEllipsis = true;
+            label.SetBounds(label.Left, label.Top, width, 20);
+            label.Anchor = anchor;
+            return label;
+        }
+
         public static LinkLabel Link(Control parent, string text, int x, int y)
         {
             var l = new LinkLabel();
@@ -96,9 +112,9 @@ namespace ExcelMerger
             try
             {
                 if (asFolder)
-                    Process.Start("explorer.exe", "\"" + path + "\"");
+                    using (Process.Start("explorer.exe", "\"" + path + "\"")) { }
                 else
-                    Process.Start(path);
+                    using (Process.Start(path)) { }
             }
             catch { } // нет ассоциации/проводника — молча
         }
@@ -109,7 +125,7 @@ namespace ExcelMerger
             LinkLabel l = Link(parent, text, x, y);
             l.LinkClicked += delegate
             {
-                try { Process.Start(url); }
+                try { using (Process.Start(url)) { } }
                 catch { } // нет браузера/ассоциации — молча, ссылку видно текстом
             };
             return l;
@@ -122,6 +138,33 @@ namespace ExcelMerger
             b.Text = Loc.T("common.home");
             b.Click += delegate { showHub(); };
             return b;
+        }
+
+        /// <summary>
+        /// Отправить брендовую шапку в КОНЕЦ обхода Tab, чтобы при открытии окна фокус
+        /// достался рабочему контролу, а не кнопке «Главная» (иначе первый же Enter
+        /// возвращает пользователя в меню, ничего не сделав).
+        ///
+        /// Задать шапке большой TabIndex ПРИ ДОБАВЛЕНИИ нельзя: ControlCollection.Add
+        /// выдаёт каждому новому контролу следующий свободный индекс, поэтому всё
+        /// добавленное после шапки получает ещё больший — и «большой» индекс, наоборот,
+        /// ставит шапку ПЕРВОЙ. Поэтому пересчитываем, когда окно уже собрано (OnLoad).
+        /// </summary>
+        public static void HeaderLastInTabOrder(Form form)
+        {
+            if (form == null)
+                return;
+            Control header = null;
+            int max = 0;
+            foreach (Control c in form.Controls)
+            {
+                if (c is HeaderBand)
+                    header = c;
+                else if (c.TabIndex > max)
+                    max = c.TabIndex;
+            }
+            if (header != null)
+                header.TabIndex = max + 1;
         }
 
         private static Icon _appIcon;
@@ -177,6 +220,63 @@ namespace ExcelMerger
             thread.IsBackground = true;
             thread.Start();
             return thread;
+        }
+
+        /// <summary>
+        /// Общий каркас модального диалога приложения: заголовок, иконка, кэшированный шрифт,
+        /// белый фон, неизменяемая рамка, центр по родителю и DPI-масштабирование. Четыре
+        /// диалога («О программе», сообщения, статистика, ввод номера) держали эти девять
+        /// строк своей копией — и три из них по-разному: где-то забывалась иконка окна.
+        /// Звать ПЕРВЫМ делом в конструкторе: масштабирование должно быть задано до
+        /// добавления контролов, а размер окна каждый диалог ставит себе сам.
+        /// </summary>
+        public static void InitDialog(Form form, string title)
+        {
+            form.Text = title;
+            Icon icon = AppIcon();
+            if (icon != null)
+                form.Icon = icon;
+            form.Font = Font(9.75f); // общий кэшированный шрифт (не освобождать)
+            form.BackColor = Color.White;
+            form.FormBorderStyle = FormBorderStyle.FixedDialog;
+            form.MaximizeBox = false;
+            form.MinimizeBox = false;
+            form.ShowInTaskbar = false;
+            form.StartPosition = FormStartPosition.CenterParent;
+            form.AutoScaleDimensions = new SizeF(96f, 96f);
+            form.AutoScaleMode = AutoScaleMode.Dpi;
+        }
+
+        /// <summary>
+        /// Контур прямоугольника со скруглёнными углами — общая примитивная фигура всех
+        /// рисуемых вручную контролов (кнопка, карточка, флажок): раньше жила в трёх
+        /// одинаковых копиях, и защита от вырожденного радиуса была только в одной из них.
+        /// Освобождает вызывающий (все места рисования — под using).
+        /// </summary>
+        public static GraphicsPath RoundedRect(RectangleF r, float radius)
+        {
+            var p = new GraphicsPath();
+            float d = Math.Max(2f, radius * 2f); // нулевой диаметр AddArc не рисует
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+
+        /// <summary>
+        /// Выделить все строки списка (одним обновлением, без мерцания). Общая для списка
+        /// файлов свода и сетки страниц: обе делали это одинаково своей копией.
+        /// </summary>
+        public static void SelectAllItems(ListView list)
+        {
+            if (list == null || list.Items.Count == 0)
+                return;
+            list.BeginUpdate();
+            foreach (ListViewItem item in list.Items)
+                item.Selected = true;
+            list.EndUpdate();
         }
 
         /// <summary>Акцентная полоса заданного цвета в верхней части окна.</summary>

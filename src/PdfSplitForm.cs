@@ -152,6 +152,7 @@ namespace ExcelMerger
             _btnDo.Click += OnDoClick;
             Controls.Add(_btnDo);
             RegisterActionButton(_btnDo); // база подменит её кнопкой «Отмена» во время операции
+            AcceptButton = _btnDo; // Enter запускает действие — как в «Объединении» и «PDF → Word»
         }
 
         private void ShowHelp()
@@ -266,6 +267,9 @@ namespace ExcelMerger
             _cmbMode.Enabled = !Working && loaded;
             _txtRanges.Enabled = !Working && loaded;
             _numN.Enabled = !Working && loaded;
+            // Галку «Объединить в один файл» гасим наравне с остальным вводом: иначе во время
+            // разделения она оставалась живой и её переключение перестраивало режим на ходу.
+            _chkCombine.Enabled = !Working && loaded;
             bool canDo = !Working && loaded &&
                 (_cmbMode.SelectedIndex != ModeExtract || _grid.SelectedCount > 0);
             _btnDo.Enabled = canDo;
@@ -419,7 +423,15 @@ namespace ExcelMerger
                     count = files.Count;
                     // Файлы записаны — точка невозврата: сжатие (Ghostscript) не прерываем, поэтому
                     // снимаем предложение отмены, чтобы кнопка не «зависала» на «Отмена…».
-                    OnUi(delegate { StopOfferingCancel(); });
+                    // Статус называет фазу: полоса на второй половине шкалы двигается по файлам,
+                    // но по одной части она стоит, и без подписи это выглядело бы зависанием.
+                    bool willCompress = level != CompressionLevel.None;
+                    OnUi(delegate
+                    {
+                        StopOfferingCancel();
+                        if (willCompress)
+                            SetStatus(Loc.T("common.status.compressing"), Theme.TextMuted);
+                    });
                     for (int i = 0; i < files.Count; i++)
                     {
                         if (PdfCompression.Compress(files[i], level))
@@ -442,19 +454,9 @@ namespace ExcelMerger
         private void OnSplitFinished(Exception error, int count, int compressed, string openTarget, bool openAsFolder, Action record,
             CompressionLevel level, long sourceSize, long largestOutput, int pageCount)
         {
-            EndOperation();
-            if (error is OperationCanceledException)
-            {
-                SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // частичные файлы удалены
-                return;
-            }
-            if (error != null)
-            {
-                SetStatus(Loc.T("common.status.notDone"), Theme.ErrRed);
-                Dialogs.Error(this, Title, Loc.T(openAsFolder ? "split.err.splitFailed" : "split.err.extractFailed"),
-                    error.Message);
-                return;
-            }
+            if (!FinishOperation(error, Loc.T("common.status.notDone"),
+                    Loc.T(openAsFolder ? "split.err.splitFailed" : "split.err.extractFailed")))
+                return; // отмена (частичные файлы удалены) или ошибка — база уже всё показала
             if (record != null)
                 record(); // успех — учитываем в статистике
             if (compressed > 0)

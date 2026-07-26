@@ -110,6 +110,7 @@ namespace ExcelMerger
                     _tips.Dispose();
                 if (_listMenu != null)
                     _listMenu.Dispose();
+                _taskbar.Dispose(); // обёртка COM панели задач — детерминированно, как всё COM
             }
             base.Dispose(disposing);
         }
@@ -129,8 +130,8 @@ namespace ExcelMerger
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(780, 785);
             // Ширина минимума не даёт нижним ссылкам («Записка Word») перекрыться
-            // с правой кнопкой «Повторить пропущенные».
-            MinimumSize = new Size(760, 725);
+            // с правой кнопкой «Повторить пропущенные». Высота минимума считается от
+            // фактической раскладки в конце BuildUi — константой она разъезжалась с ней.
             WindowChrome.Enable(this, Theme.Accent); // зелёный заголовок на Windows 11
             AllowDrop = true;
             DragEnter += OnDragEnter;
@@ -146,7 +147,8 @@ namespace ExcelMerger
                 Theme.Accent, Theme.AccentPressed);
             header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            header.TabIndex = 100; // «Главная» — в конце обхода Tab, а не в начале
+            // «Главная» уходит в конец обхода Tab не здесь, а в OnLoad: индекс, заданный
+            // при добавлении, поставил бы шапку, наоборот, первой (см. Ui.HeaderLastInTabOrder).
             Controls.Add(header);
             Ui.HomeOnHeader(header, _showHub, _tips, 24);
 
@@ -161,7 +163,8 @@ namespace ExcelMerger
             _btnBrowseInput = AddButton(Loc.T("common.browse"), false, right - 100, 134, 100, 29);
             _btnBrowseInput.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseInput.Click += OnBrowseInput;
-            _lblFound = Ui.Label(this, "", 20, 167, Font, Theme.TextMuted);
+            // Сюда попадает и текст исключения чтения папки — растягиваем с многоточием.
+            _lblFound = Ui.Ellipsize(Ui.Label(this, "", 20, 167, Font, Theme.TextMuted), right - 20, stretch);
 
             // Шаг 2: итоговый файл
             AddSectionLabel(Loc.T("excel.sec.output"), 199);
@@ -214,7 +217,9 @@ namespace ExcelMerger
             _progress.Visible = false; // пустая полоса в простое только путает
             Controls.Add(_progress);
 
-            _lblStatus = Ui.Label(this, Loc.T("excel.status.chooseFolder"), 20, 483, Font, Theme.TextMuted);
+            // В статус попадают имя текущего файла и текст ошибки — тоже с многоточием.
+            _lblStatus = Ui.Ellipsize(
+                Ui.Label(this, Loc.T("excel.status.chooseFolder"), 20, 483, Font, Theme.TextMuted), right - 20, stretch);
 
             // Файлы: порядок и состав до слияния; после — результат в тех же строках
             AddSectionLabel(Loc.T("excel.sec.files"), 508);
@@ -301,7 +306,18 @@ namespace ExcelMerger
             Resize += delegate { AdjustNoteColumn(); };
             AdjustNoteColumn();
             UpdateReadiness();
+
+            // Минимальную ВЫСОТУ считаем от готовой раскладки, а не константой: под нижней
+            // кнопкой колонки списка обязан помещаться нижний ряд (ссылки и «Повторить
+            // пропущенные»). Константа разъезжалась с раскладкой — окно сжималось до размера,
+            // при котором «Снять все» уходила за нижний край, а «Отметить все» пряталась под
+            // «Повторить пропущенные» (и WindowPlacement этот размер ещё и запоминал).
+            MinimumSize = new Size(760,
+                _btnUncheckAll.Bottom + RowGap + BottomRowHeight + (Height - ClientSize.Height));
         }
+
+        private const int RowGap = 8;          // просвет между колонкой списка и нижним рядом
+        private const int BottomRowHeight = 40; // нижний ряд отсчитывается от низа клиентской области
 
         private void BuildMenu()
         {
@@ -323,7 +339,7 @@ namespace ExcelMerger
             try
             {
                 Directory.CreateDirectory(AppPaths.ReportsDir);
-                Process.Start("explorer.exe", "\"" + AppPaths.ReportsDir + "\"");
+                using (Process.Start("explorer.exe", "\"" + AppPaths.ReportsDir + "\"")) { }
             }
             catch (Exception ex)
             {
@@ -587,12 +603,7 @@ namespace ExcelMerger
 
         private void SelectAllRows()
         {
-            if (_list.Items.Count == 0)
-                return;
-            _list.BeginUpdate();
-            foreach (ListViewItem item in _list.Items)
-                item.Selected = true;
-            _list.EndUpdate();
+            Ui.SelectAllItems(_list);
         }
 
         /// <summary>Delete в списке — снять галочку (исключить) у выбранных файлов.</summary>
@@ -1126,6 +1137,16 @@ namespace ExcelMerger
             _taskbar.SetValue(Handle, _progress.Value, _progress.Maximum);
         }
 
+        /// <summary>
+        /// Окно собрано: шапку с кнопкой «Главная» — в конец обхода Tab, чтобы фокус при
+        /// открытии достался полю исходной папки, а не возврату в меню.
+        /// </summary>
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            Ui.HeaderLastInTabOrder(this);
+        }
+
         protected override void OnActivated(EventArgs e)
         {
             base.OnActivated(e);
@@ -1211,9 +1232,9 @@ namespace ExcelMerger
             try
             {
                 if (selectInFolder)
-                    Process.Start("explorer.exe", "/select,\"" + filePath + "\"");
+                    using (Process.Start("explorer.exe", "/select,\"" + filePath + "\"")) { }
                 else
-                    Process.Start(filePath);
+                    using (Process.Start(filePath)) { }
             }
             catch (Exception ex)
             {

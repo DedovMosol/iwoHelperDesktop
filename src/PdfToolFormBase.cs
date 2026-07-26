@@ -44,10 +44,15 @@ namespace ExcelMerger
         private bool _cancelOffered; // на эту операцию показана кнопка отмены (восстановить в EndProgress)
         private const int CancelPageThreshold = 5; // от скольких единиц предлагать отмену
 
-        /// <summary>Идёт операция: смена языка это окно не пересоздаёт (см. IBusyAware).</summary>
+        /// <summary>
+        /// Идёт операция ИЛИ фоновый разбор PDF: смена языка это окно не пересоздаёт
+        /// (см. IBusyAware). Разбор входит сюда наравне с операцией: пересоздание закрыло бы
+        /// окно на полпути, а результат разбора ушёл бы в никуда — новое окно осталось бы
+        /// пустым и без единого сообщения о том, что файл вообще-то загружался.
+        /// </summary>
         public bool IsBusy
         {
-            get { return _busy; }
+            get { return Working; }
         }
 
         // Прогресс операции: полоса + проценты в свободной зоне нижнего строя (видны только во
@@ -107,9 +112,21 @@ namespace ExcelMerger
             var header = new HeaderBand(title, subtitle, colorTop, colorBottom);
             header.SetBounds(0, HelpMenu.Height, ClientSize.Width, 76);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            header.TabIndex = 100; // «Главная» — в конце обхода Tab, а не в начале
             Controls.Add(header);
             Ui.HomeOnHeader(header, _showHub, _tips, 22);
+            // «Главная» уходит в конец обхода Tab не здесь, а в OnLoad: индекс, заданный
+            // при добавлении, поставил бы шапку, наоборот, первой (см. Ui.HeaderLastInTabOrder).
+        }
+
+        /// <summary>
+        /// Окно собрано: отправляем шапку с кнопкой «Главная» в конец обхода Tab, чтобы
+        /// фокус при открытии достался сетке/полю, а не возврату в меню. Единая точка на
+        /// все PDF-инструменты (наследники своих OnLoad не пишут).
+        /// </summary>
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            Ui.HeaderLastInTabOrder(this);
         }
 
         /// <summary>Троттлинг пересборки плиток при перетаскивании регулятора масштаба.</summary>
@@ -375,11 +392,8 @@ namespace ExcelMerger
 
             // Статус делит нижний ряд с кнопкой действия справа: фиксированная ширина до
             // кнопки + многоточие, длинный текст целиком покажет подсказка AutoEllipsis.
-            _lblStatus = Ui.Label(this, statusText, 20, h - 50, Font, Theme.TextMuted);
-            _lblStatus.AutoSize = false;
-            _lblStatus.AutoEllipsis = true;
-            _lblStatus.SetBounds(20, h - 50, right - actionWidth - 12 - 20, 20);
-            _lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            _lblStatus = Ui.Ellipsize(Ui.Label(this, statusText, 20, h - 50, Font, Theme.TextMuted),
+                right - actionWidth - 12 - 20, AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
 
             // Полоса прогресса — отдельный ряд между «Масштаб/Сжатие» (низ h-103: регулятор
             // h-148 + 45) и «статус/кнопка» (верх h-58): зазоры 11 и 18 px, перекрытий нет.
@@ -435,13 +449,36 @@ namespace ExcelMerger
             _progTotal = total;
             _progFmt = runningFormat;
             _cancelRequested = false;
+            SetDeterminate(true); // прошлая операция могла оставить полосу бегущей
             _progress.Value = 0;
             _progressPct.Text = "0 %";
             _progress.Visible = true;
-            _progressPct.Visible = true;
             _taskbar.SetState(Handle, TaskbarProgressState.Normal);
             _taskbar.SetValue(Handle, 0, 100);
             ShowCancelButton(ShouldOfferCancel(total));
+        }
+
+        /// <summary>
+        /// Перевести индикатор в режим «идёт работа неизвестной длительности»: бегущая полоса
+        /// без процентов и тот же режим на кнопке панели задач. Нужен фазе сжатия — Ghostscript
+        /// работает отдельным процессом и о ходе не сообщает, поэтому полоса, застывшая на 100%
+        /// со снятой кнопкой «Отмена», выглядела как зависшее окно, хотя работа шла ещё минуты.
+        /// Счётчик страниц гасим: на этой фазе он больше не осмыслен. Только UI-поток.
+        /// </summary>
+        protected void BeginIndeterminate(string statusText)
+        {
+            _progFmt = null;
+            SetDeterminate(false);
+            _taskbar.SetState(Handle, TaskbarProgressState.Indeterminate);
+            SetStatus(statusText, Theme.TextMuted);
+        }
+
+        /// <summary>Полоса измеримая (с процентами) или бегущая — одно место на оба перехода (DRY).</summary>
+        private void SetDeterminate(bool determinate)
+        {
+            _progress.Style = determinate ? ProgressBarStyle.Continuous : ProgressBarStyle.Marquee;
+            _progress.MarqueeAnimationSpeed = determinate ? 0 : 30;
+            _progressPct.Visible = determinate;
         }
 
         /// <summary>Стоит ли предлагать отмену для операции такого размера (в единицах). Чистая — под тест.</summary>
@@ -470,6 +507,29 @@ namespace ExcelMerger
             _busy = false;
             EndProgress();
             SyncControls();
+        }
+
+        /// <summary>
+        /// Завершить операцию и разобрать её исход. true — операция удалась и вызывающему есть
+        /// что показать; false — отмена или ошибка, они уже отражены в статусе (а ошибка ещё и
+        /// в диалоге). Все три инструмента повторяли этот разбор дословно, различаясь ровно
+        /// двумя строками, поэтому он живёт здесь. Только UI-поток.
+        /// </summary>
+        protected bool FinishOperation(Exception error, string failStatus, string failDialogTitle)
+        {
+            EndOperation();
+            if (error is OperationCanceledException)
+            {
+                SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // результат не создан
+                return false;
+            }
+            if (error != null)
+            {
+                SetStatus(failStatus, Theme.ErrRed);
+                Dialogs.Error(this, Text, failDialogTitle, error.Message);
+                return false;
+            }
+            return true;
         }
 
         /// <summary>Токен кооперативной отмены для сервисов: читает volatile-флаг «нажата Отмена».</summary>
@@ -830,6 +890,7 @@ namespace ExcelMerger
                 // ToolTip — не дочерний контрол: авто-освобождение не срабатывает.
                 if (_tips != null)
                     _tips.Dispose();
+                _taskbar.Dispose(); // обёртка COM панели задач — детерминированно, как всё COM
             }
             base.Dispose(disposing); // _grid освобождается как дочерний контрол
         }

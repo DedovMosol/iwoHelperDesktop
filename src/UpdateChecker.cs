@@ -63,23 +63,27 @@ namespace ExcelMerger
     {
         private const string Title = "iwo Helper Desktop";
 
-        public static void Check(Form owner)
+        /// <summary>
+        /// Проверить обновления: запрос в фоне, результат — в UI-потоке. done вызывается
+        /// перед показом результата и возвращает в строй кнопку, которую вызывающий погасил
+        /// на время запроса (сеть с таймаутом 10 с). Если окно успели закрыть, не выполнится
+        /// ни done, ни показ — возвращать в строй уже нечего.
+        /// </summary>
+        public static void Check(Form owner, Action done)
         {
-            var thread = new Thread(delegate()
+            Ui.RunWorker(delegate()
             {
                 string tag = null;
                 Exception error = null;
                 try { tag = UpdateChecker.FetchLatestTag(); }
                 catch (Exception ex) { error = ex; }
-                try
+                Ui.OnUi(owner, delegate // общий guard: своя копия уже дважды теряла catch
                 {
-                    if (owner != null && owner.IsHandleCreated && !owner.IsDisposed)
-                        owner.BeginInvoke((MethodInvoker)delegate { ShowResult(owner, tag, error); });
-                }
-                catch (InvalidOperationException) { } // окно уже закрыто
+                    if (done != null)
+                        done();
+                    ShowResult(owner, tag, error);
+                });
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         private static void ShowResult(Form owner, string tag, Exception error)
@@ -102,7 +106,7 @@ namespace ExcelMerger
                 if (Dialogs.ConfirmWarning(owner, Title, string.Format(Loc.T("update.available.title"), latest.ToString(3)),
                         string.Format(Loc.T("update.available.body"), current.ToString(3))))
                 {
-                    try { Process.Start(UpdateChecker.ReleasesPage); }
+                    try { using (Process.Start(UpdateChecker.ReleasesPage)) { } }
                     catch { } // нет браузера — ссылку видно в диалоге
                 }
             }

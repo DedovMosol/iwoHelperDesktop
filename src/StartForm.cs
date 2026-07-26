@@ -48,8 +48,9 @@ namespace ExcelMerger
 
             // Выбор языка — белый глиф-глобус в правом верхнем углу шапки (на синем, без рамки).
             _langMenu = HelpMenu.LanguageContextMenu(); // одно меню на жизнь окна (окно пересоздаётся при смене языка)
-            var globe = new GlyphButton("", 15f); // U+E774 — «глобус» (Segoe MDL2 Assets)
+            var globe = new GlyphButton("", 15f, "Segoe MDL2 Assets"); // U+E774 — «глобус» (Segoe MDL2 Assets)
             globe.ForeColor = Color.White;
+            globe.AccessibleName = Loc.T("lang.tooltip"); // с клавиатуры и для экранного диктора
             globe.SetBounds(header.Width - 42, 10, 30, 30);
             globe.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             globe.Click += delegate { _langMenu.Show(globe, new Point(globe.Width, globe.Height), ToolStripDropDownDirection.BelowLeft); };
@@ -98,7 +99,13 @@ namespace ExcelMerger
             var update = new RoundedButton(false);
             update.Text = Loc.T("hub.update");
             update.SetBounds(24, rowY, 224, rowH);
-            update.Click += delegate { UpdateUi.Check(this); };
+            // Запрос идёт в сеть с таймаутом 10 с. Без гашения кнопки она выглядела мёртвой,
+            // а нетерпеливые клики плодили по потоку и по диалогу с ошибкой на каждый.
+            update.Click += delegate
+            {
+                update.Enabled = false;
+                UpdateUi.Check(this, delegate { update.Enabled = true; });
+            };
             Controls.Add(update);
 
             var about = new RoundedButton(false);
@@ -124,26 +131,67 @@ namespace ExcelMerger
         /// <summary>
         /// Иконка-глиф без рамки на прозрачном фоне (для белого глобуса на синей шапке).
         /// SupportsTransparentBackColor + BackColor=Transparent показывает фон родителя
-        /// (градиент шапки); глиф рисуется по центру. Кликается как кнопка.
+        /// (градиент шапки); глиф рисуется по центру. Кликается как кнопка и доступна
+        /// с клавиатуры (TabStop + Enter/Пробел): это единственный переключатель языка
+        /// на стартовом экране, у которого нет меню «☰».
+        ///
+        /// Шрифта может не быть: «Segoe MDL2 Assets» появился только в Windows 10, а
+        /// минимум приложения — Windows 8.1. GDI молча подставит другой шрифт, и глиф из
+        /// области частного использования нарисовался бы пустотой — переключатель языка
+        /// стал бы невидимым пятном. Подстановку видно по Font.Name, и тогда рисуем флаг
+        /// текущего языка: он рисуется через GDI+ (Flags) и есть везде, а в самом меню
+        /// выбора языка флаги и так стоят.
         /// </summary>
         private sealed class GlyphButton : Control
         {
-            public GlyphButton(string glyph, float size)
+            private readonly bool _glyphFontPresent;
+
+            public GlyphButton(string glyph, float size, string family)
             {
                 SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint |
                          ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
                 BackColor = Color.Transparent;
-                Font = Ui.Font(size, FontStyle.Regular, "Segoe MDL2 Assets"); // кэш: глобус пересоздаётся с окном
+                Font = Ui.Font(size, FontStyle.Regular, family); // кэш: глобус пересоздаётся с окном
+                _glyphFontPresent = string.Equals(Font.Name, family, StringComparison.OrdinalIgnoreCase);
                 Text = glyph;
                 Cursor = Cursors.Hand;
-                TabStop = false;
+                TabStop = true;
             }
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, ForeColor,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                if (_glyphFontPresent)
+                {
+                    TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, ForeColor,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                }
+                else
+                {
+                    Image flag = Flags.For(Loc.Current); // общий кэш на процесс — не освобождать
+                    e.Graphics.DrawImage(flag, (Width - flag.Width) / 2, (Height - flag.Height) / 2);
+                }
+                if (Focused) // видимый фокус: иначе с клавиатуры непонятно, где ты находишься
+                    ControlPaint.DrawFocusRectangle(e.Graphics, ClientRectangle);
             }
+
+            /// <summary>Enter и Пробел работают как клик — иначе с клавиатуры кнопка бесполезна.</summary>
+            protected override bool IsInputKey(Keys keyData)
+            {
+                return keyData == Keys.Enter || keyData == Keys.Space || base.IsInputKey(keyData);
+            }
+
+            protected override void OnKeyDown(KeyEventArgs e)
+            {
+                base.OnKeyDown(e);
+                if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space)
+                {
+                    e.Handled = true;
+                    InvokeOnClick(this, EventArgs.Empty);
+                }
+            }
+
+            protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+            protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
         }
     }
 }

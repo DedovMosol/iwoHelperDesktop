@@ -114,14 +114,7 @@ namespace ExcelMerger
 
         private void OnAddClick(object sender, EventArgs e)
         {
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfFilter");
-                dialog.Multiselect = true;
-                dialog.Title = Loc.T("common.pickPdf");
-                if (dialog.ShowDialog(this) == DialogResult.OK)
-                    AddFiles(dialog.FileNames);
-            }
+            PickAndAddFiles();
         }
 
         // ---------- сохранение ----------
@@ -165,7 +158,16 @@ namespace ExcelMerger
                 {
                     // Файл записан — точка невозврата: сжатие (Ghostscript) не прерываем, поэтому
                     // снимаем предложение отмены, чтобы кнопка не «зависала» на «Отмена…».
-                    OnUi(delegate { StopOfferingCancel(); });
+                    // Ход сжатия неизмерим, поэтому на его время полоса становится бегущей, а
+                    // статус называет фазу: иначе окно с полной полосой и без «Отмены»
+                    // выглядело зависшим всё время работы Ghostscript (до пяти минут).
+                    bool willCompress = level != CompressionLevel.None;
+                    OnUi(delegate
+                    {
+                        StopOfferingCancel();
+                        if (willCompress)
+                            BeginIndeterminate(Loc.T("common.status.compressing"));
+                    });
                     compressed = PdfCompression.Compress(outputPath, level);
                 }
                 bool didCompress = compressed;
@@ -175,18 +177,8 @@ namespace ExcelMerger
 
         private void OnSaveFinished(Exception error, string outputPath, int pageCount, bool compressed, CompressionLevel level)
         {
-            EndOperation();
-            if (error is OperationCanceledException)
-            {
-                SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange); // файл не создан
-                return;
-            }
-            if (error != null)
-            {
-                SetStatus(Loc.T("pdf.status.saveFailed"), Theme.ErrRed);
-                Dialogs.Error(this, Title, Loc.T("pdf.err.saveFailed"), error.Message);
-                return;
-            }
+            if (!FinishOperation(error, Loc.T("pdf.status.saveFailed"), Loc.T("pdf.err.saveFailed")))
+                return; // отмена или ошибка — статус и диалог уже показаны базой
             UsageStats.RecordPdfMerge();
             if (compressed)
                 UsageStats.RecordPdfCompress();
