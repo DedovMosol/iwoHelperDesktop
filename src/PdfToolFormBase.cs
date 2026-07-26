@@ -188,6 +188,33 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Строка успешного завершения: «✓ » + непустые части через « · » + точка. Пунктуацию
+        /// собираем здесь одинаково для всех инструментов, поэтому в каталоге строк части
+        /// лежат без галочки, разделителей и точки, а null и пустые просто отбрасываются.
+        /// Пустой набор частей даёт пустую строку. Чистая — под тест.
+        /// </summary>
+        internal static string SuccessStatus(params string[] parts)
+        {
+            var kept = new System.Collections.Generic.List<string>();
+            if (parts != null)
+                foreach (string part in parts)
+                    if (!string.IsNullOrEmpty(part))
+                        kept.Add(part);
+            return kept.Count == 0 ? "" : "✓ " + string.Join(" · ", kept.ToArray()) + ".";
+        }
+
+        /// <summary>
+        /// Часть статуса про сжатие для инструмента с ОДНИМ результатом: «сжато, изображения
+        /// до 150 dpi». null, если сжатия не было — тогда часть просто не попадёт в статус.
+        /// Разрешение берётся из <see cref="PdfCompression.ImageDpi"/> (единственный источник).
+        /// Чистая — под тест.
+        /// </summary>
+        internal static string CompressedPart(bool compressed, CompressionLevel level)
+        {
+            return compressed ? string.Format(Loc.T("common.suffix.compressed"), PdfCompression.ImageDpi(level)) : null;
+        }
+
+        /// <summary>
         /// Текст «покоя» статуса: при выделении — «Выбрано N из M», иначе — idle. Чистая — под тест.
         /// </summary>
         internal static string RestingStatus(int selected, int total, string idle, string selectedFormat)

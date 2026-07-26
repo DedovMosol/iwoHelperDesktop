@@ -47,6 +47,14 @@ namespace ExcelMerger
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             CrashReport.Install(); // последний рубеж: фирменный диалог + crash.log вместо тихого краха
+            // Второй запуск ярлыка не плодит процесс (в диспетчере задач была бы вторая
+            // запись «приложение»): будим работающий экземпляр и уходим. Служебные режимы
+            // выше этой проверки — они обязаны запускаться всегда.
+            if (!SingleInstance.TryAcquire())
+            {
+                SingleInstance.SignalExisting();
+                return 0; // WinRT здесь не загружался, обычного возврата достаточно
+            }
             Application.Run(new ShellContext()); // хаб + инструменты как независимые окна
             // Все окна закрыты, настройки/COM уже освобождены детерминированно.
             // Форсируем выход, чтобы финализация WinRT (Windows.Data.Pdf, если

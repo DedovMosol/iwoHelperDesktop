@@ -1134,8 +1134,14 @@ namespace ExcelMerger
                     if (h != null) h(this, EventArgs.Empty);
                     return;
             }
-            // Иначе — предпросмотр страницы в полный размер.
-            PagePreviewForm.Show(FindForm(), page, string.Format(Loc.T("preview.title"), _list.Items[index].Text));
+            // Иначе — предпросмотр страницы в полный размер. Поворот из просмотра идёт тем же
+            // путём, что и из сетки (чекпойнт для Ctrl+Z, чистка лишних плиток, перерисовка).
+            // Пока просмотр модален, состав сетки не меняется, поэтому индекс остаётся верным.
+            int previewIndex = index;
+            Action<int> rotate = null;
+            if (AllowRotate && !Locked)
+                rotate = delegate(int delta) { RotateItems(new[] { previewIndex }, delta); };
+            PagePreviewForm.Show(FindForm(), page, string.Format(Loc.T("preview.title"), _list.Items[index].Text), rotate);
         }
 
         /// <summary>

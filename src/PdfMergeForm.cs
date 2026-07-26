@@ -169,11 +169,11 @@ namespace ExcelMerger
                     compressed = PdfCompression.Compress(outputPath, level);
                 }
                 bool didCompress = compressed;
-                OnUi(delegate { OnSaveFinished(error, outputPath, pages.Count, didCompress); });
+                OnUi(delegate { OnSaveFinished(error, outputPath, pages.Count, didCompress, level); });
             });
         }
 
-        private void OnSaveFinished(Exception error, string outputPath, int pageCount, bool compressed)
+        private void OnSaveFinished(Exception error, string outputPath, int pageCount, bool compressed, CompressionLevel level)
         {
             EndOperation();
             if (error is OperationCanceledException)
@@ -190,7 +190,9 @@ namespace ExcelMerger
             UsageStats.RecordPdfMerge();
             if (compressed)
                 UsageStats.RecordPdfCompress();
-            SetStatus(string.Format(Loc.T(compressed ? "pdf.status.savedCompressed" : "pdf.status.saved"), pageCount), Theme.OkGreen);
+            SetStatus(SuccessStatus(
+                string.Format(Loc.T("pdf.status.pagesSaved"), pageCount),
+                CompressedPart(compressed, level)), Theme.OkGreen);
             Ui.OpenPath(outputPath); // авто-открытие результата; молча, если нет ассоциации PDF
         }
 

@@ -7,29 +7,38 @@ namespace ExcelMerger
 {
     /// <summary>
     /// Модальный предпросмотр одной страницы PDF в полный размер (двойной клик по плитке).
-    /// Рендер — системным Windows.Data.Pdf в ФОНЕ (окно не подвисает), с учётом поворота
-    /// страницы; закрытие по Esc/клику/кнопке. Своя копия <see cref="PdfThumbnailRenderer"/>
-    /// на своём фоновом потоке (тот не потокобезопасен) — не мешает сетке. Bitmap
-    /// освобождается при закрытии; поздний результат после закрытия отбрасывается.
+    /// Рендер — системным Windows.Data.Pdf в ФОНЕ (окно не подвисает), своей копией
+    /// <see cref="PdfThumbnailRenderer"/> на своём потоке (тот не потокобезопасен), поэтому
+    /// сетке он не мешает. Фон отдаёт страницу БЕЗ поворота, а поворот накладывает уже
+    /// UI-поток — так рендер не зависит от того, крутил ли пользователь страницу, пока тот шёл.
+    ///
+    /// Правый клик открывает поворот вправо и влево (как в Acrobat, те же Ctrl+Shift+«+»/«−»).
+    /// Поворот применяется НЕ здесь: форма зовёт переданный колбэк сетки, чтобы поворот прошёл
+    /// штатным путём (чекпойнт для Ctrl+Z, чистка лишних плиток, перерисовка миниатюр), и лишь
+    /// затем догоняет картинку под новое значение <see cref="PdfPageRef.Rotation"/>. Размер и
+    /// положение окна запоминаются между запусками (<see cref="WindowPlacement"/>).
+    ///
+    /// Bitmap освобождается при закрытии, поздний результат после закрытия отбрасывается.
+    /// Только UI-поток, кроме тела фонового рендера.
     /// </summary>
     internal sealed class PagePreviewForm : Form
     {
         private const int RenderWidthCap = 1600; // верхняя граница ширины рендера (память/скорость)
 
-        private readonly string _path;
-        private readonly int _pageIndex;
-        private readonly int _rotation;
+        private readonly PdfPageRef _page;      // тот же объект, что и в сетке — Rotation общий
+        private readonly Action<int> _rotate;   // повернуть страницу в сетке на ±90, null — поворот запрещён
         private readonly PictureBox _picture;
         private readonly Label _loading;
-        private Bitmap _image;         // показанный рендер — освобождаем при закрытии
+        private ContextMenuStrip _menu; // не дочерний контрол, освобождаем сами
+        private Bitmap _image;          // показанный рендер — освобождаем при закрытии
+        private int _appliedRotation;   // поворот, УЖЕ впечённый в _image (в градусах по часовой)
         private Thread _worker;
-        private volatile bool _closed; // окно закрыто: поздний рендер не применяем
+        private volatile bool _closed;  // окно закрыто: поздний рендер не применяем
 
-        private PagePreviewForm(PdfPageRef page, string caption, Size target)
+        private PagePreviewForm(PdfPageRef page, string caption, Size target, Action<int> rotate)
         {
-            _path = page.SourcePath;
-            _pageIndex = page.PageIndex;
-            _rotation = page.Rotation;
+            _page = page;
+            _rotate = rotate;
 
             Text = caption;
             Icon = Ui.AppIcon();
@@ -48,7 +57,9 @@ namespace ExcelMerger
             _picture.Dock = DockStyle.Fill;
             _picture.SizeMode = PictureBoxSizeMode.Zoom; // вписать с сохранением пропорций (letterbox)
             _picture.BackColor = BackColor;
-            _picture.Click += delegate { Close(); }; // клик по превью закрывает
+            // Именно MouseClick с проверкой кнопки: событие Click у PictureBox приходит и по
+            // ПРАВОЙ кнопке, поэтому на нём окно закрывалось бы прямо под открывающимся меню.
+            _picture.MouseClick += OnSurfaceMouseClick;
             Controls.Add(_picture);
 
             _loading = new Label();
@@ -57,19 +68,40 @@ namespace ExcelMerger
             _loading.ForeColor = Color.White;
             _loading.BackColor = BackColor;
             _loading.Text = Loc.T("preview.loading");
+            _loading.MouseClick += OnSurfaceMouseClick;
             Controls.Add(_loading);
             _loading.BringToFront();
+
+            if (_rotate != null)
+                BuildContextMenu();
         }
 
-        /// <summary>Показать предпросмотр страницы модально над owner. caption — подпись окна (номер страницы).</summary>
-        public static void Show(IWin32Window owner, PdfPageRef page, string caption)
+        /// <summary>Показать предпросмотр страницы модально над owner. caption — подпись окна (номер
+        /// страницы). rotate — повернуть страницу на ±90 средствами сетки, null запрещает поворот.</summary>
+        public static void Show(IWin32Window owner, PdfPageRef page, string caption, Action<int> rotate)
         {
             if (page == null || string.IsNullOrEmpty(page.SourcePath))
                 return;
             Rectangle wa = Screen.FromPoint(Control.MousePosition).WorkingArea;
             var target = new Size((int)(wa.Width * 0.82), (int)(wa.Height * 0.88));
-            using (var f = new PagePreviewForm(page, caption, target))
+            using (var f = new PagePreviewForm(page, caption, target, rotate))
                 f.ShowDialog(owner);
+        }
+
+        private void BuildContextMenu()
+        {
+            _menu = new ContextMenuStrip();
+            _menu.Items.Add(Loc.T("preview.menu.rotateRight"), null, delegate { Rotate(90); });
+            _menu.Items.Add(Loc.T("preview.menu.rotateLeft"), null, delegate { Rotate(-90); });
+            // Меню на форме: подсказка «Загрузка…» перекрывает картинку, а WM_CONTEXTMENU
+            // с контрола без своего меню всплывает к родителю — правый клик работает всюду.
+            ContextMenuStrip = _menu;
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            WindowPlacement.Restore(this); // вернуть размер/положение прошлой сессии (клампя в видимую область)
         }
 
         protected override void OnShown(EventArgs e)
@@ -89,12 +121,7 @@ namespace ExcelMerger
             try
             {
                 renderer = new PdfThumbnailRenderer();
-                page = renderer.Render(_path, _pageIndex, width);
-                if (page != null && _rotation != 0)
-                {
-                    // RotateFlip мутирует — поворачиваем этот же (наш) bitmap, чужого кэша тут нет.
-                    page.RotateFlip(PageRotation.FlipFor(_rotation));
-                }
+                page = renderer.Render(_page.SourcePath, _page.PageIndex, width); // без поворота, его наложит UI
             }
             catch { page = null; } // предпросмотр не критичен — покажем сообщение
             finally { if (renderer != null) renderer.Dispose(); }
@@ -131,8 +158,50 @@ namespace ExcelMerger
                 return;
             }
             _image = page;
+            _appliedRotation = 0; // фон отдаёт страницу как есть
             _loading.Visible = false;
             _picture.Image = _image;
+            SyncRotation(); // пока шёл рендер, страницу могли повернуть — догоняем
+        }
+
+        /// <summary>
+        /// Повернуть страницу на delta градусов: сначала штатным путём сетки (чекпойнт отмены и
+        /// перерисовка миниатюр), затем догнать показанную картинку. Если сетка поворот не
+        /// приняла (например форма занята операцией), Rotation не изменится и картинка тоже.
+        /// </summary>
+        private void Rotate(int delta)
+        {
+            if (_rotate == null)
+                return;
+            _rotate(delta);
+            SyncRotation();
+        }
+
+        /// <summary>
+        /// Довернуть показанную картинку до текущего <see cref="PdfPageRef.Rotation"/>.
+        /// Поворот на кратный 90° угол точен, поэтому крутим ТОТ ЖЕ bitmap на разницу, без
+        /// копии и без повторного рендера. Ссылку из PictureBox снимаем на время поворота:
+        /// RotateFlip меняет размеры прямо в объекте, который иначе рисуется на экране.
+        /// </summary>
+        private void SyncRotation()
+        {
+            if (_image == null)
+                return;
+            int desired = _page.Rotation;
+            int delta = PdfPageRef.ComposeRotation(desired, -_appliedRotation);
+            if (delta == 0)
+                return;
+            _picture.Image = null;
+            _image.RotateFlip(PageRotation.FlipFor(delta));
+            _picture.Image = _image;
+            _appliedRotation = desired;
+        }
+
+        /// <summary>Левый клик по поверхности закрывает окно, правый оставляем контекстному меню.</summary>
+        private void OnSurfaceMouseClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+                Close();
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -142,7 +211,25 @@ namespace ExcelMerger
                 Close();
                 return;
             }
+            // Те же сочетания поворота, что и в сетке — разбор один на всё приложение.
+            switch (PdfToolFormBase.ClassifyPageKey(e.KeyData))
+            {
+                case PdfToolFormBase.PageKeyAction.RotateRight:
+                    Rotate(90);
+                    e.Handled = true;
+                    return;
+                case PdfToolFormBase.PageKeyAction.RotateLeft:
+                    Rotate(-90);
+                    e.Handled = true;
+                    return;
+            }
             base.OnKeyDown(e);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            WindowPlacement.Save(this); // запомнить размер и положение окна между запусками
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -155,6 +242,18 @@ namespace ExcelMerger
                 _image.Dispose();
                 _image = null;
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            // ContextMenuStrip назначен свойством, а не добавлен в Controls: сам он не освободится.
+            // Освобождаем здесь, а не в Closed — там меню ещё может обрабатывать свой клик.
+            if (disposing && _menu != null)
+            {
+                _menu.Dispose();
+                _menu = null;
+            }
+            base.Dispose(disposing);
         }
     }
 }

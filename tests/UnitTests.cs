@@ -98,8 +98,9 @@ namespace ExcelMerger.Tests
             Run("PdfCompression.ShouldReplace: только валидный и строго меньше", TestCompressionShouldReplace);
             Run("Ghostscript.PickFirstExisting: первый существующий из кандидатов", TestGhostscriptPick);
             Run("PdfCompression (живой): крупный PDF сжимается, страницы целы", TestCompressLive);
-            Run("JustifiedLabel.Wrap: перенос слов по ширине", TestJustifyWrap);
             Run("AboutForm: пункты доната валидны (20 цифр, банк не пуст)", TestDonationRequisites);
+            Run("AboutForm: описание выделяемое и говорит про цифровой PDF", TestAboutDescription);
+            Run("SingleInstance: имя занимается первым и освобождается после выхода", TestSingleInstanceName);
             Run("LruCache: вытеснение самого несвежего, Count, порядок", TestLruEviction);
             Run("LruCache: touch через TryGet переносит вытеснение", TestLruTouchOnGet);
             Run("LruCache: замена ключа не растит размер и не вытесняет", TestLruReplace);
@@ -135,6 +136,9 @@ namespace ExcelMerger.Tests
             Run("PdfPageGrid.DropInsertIndex: позиция дропа по метке/в конец", TestDropInsertIndex);
             Run("PdfPageGrid.HintFor: подсказка пусто/дроп, скрыта при непустом", TestHintFor);
             Run("PdfToolFormBase.RestingStatus: счётчик выделения или idle", TestRestingStatus);
+            Run("PdfToolFormBase.SuccessStatus: галочка, разделители, точка", TestSuccessStatus);
+            Run("PdfCompression.ImageDpi: 150/72 совпадают с пресетами Ghostscript", TestCompressionDpi);
+            Run("Предпросмотр: доворот картинки до поворота страницы", TestPreviewRotationDelta);
             Run("PdfToolFormBase.ProgressItem: страница из процента, границы", TestProgressItem);
             Run("PdfToolFormBase.BuildShortcuts: набор клавиш по возможностям", TestBuildShortcuts);
             Run("ChoiceCard.FilterByExtension: фильтр по расширению и существованию", TestCardFilter);
@@ -198,6 +202,7 @@ namespace ExcelMerger.Tests
             Run("StampDetector: опорные слова разбросаны по странице -> не штамп", TestStampScatteredRejected);
             Run("Loc: каталог полон — у каждого ключа непустые ru и en", TestLocCatalogComplete);
             Run("Loc: плейсхолдеры {N} у ru и en совпадают", TestLocPlaceholders);
+            Run("Loc: перетаскивание — повелительное и «окно программы»", TestLocDragHints);
             Run("Loc: Init/Current/Parse/Code", TestLocInit);
             Run("Loc: EN — в построенных формах нет кириллицы (кроме двуязычных меток)", TestNoCyrillicInEnglishForms);
 
@@ -1021,26 +1026,119 @@ namespace ExcelMerger.Tests
             return p;
         }
 
-        private static void TestJustifyWrap()
-        {
-            Func<string, int> m = delegate(string s) { return s.Length * 10; }; // 10px/символ
-            const int sp = 5;
-            var lines = JustifiedLabel.Wrap("aa bb cc dd", 60, m, sp);
-            AssertEqual(2, lines.Count, "две строки");
-            AssertEqual("aa bb", string.Join(" ", lines[0].ToArray()), "строка 1");
-            AssertEqual("cc dd", string.Join(" ", lines[1].ToArray()), "строка 2");
-            AssertEqual(0, JustifiedLabel.Wrap("", 100, m, sp).Count, "пустой текст — 0 строк");
-            AssertEqual(0, JustifiedLabel.Wrap("aa", 0, m, sp).Count, "нулевая ширина — 0 строк");
-            // Слово шире строки не роняет разбивку — становится отдельной строкой.
-            AssertEqual(1, JustifiedLabel.Wrap("aaaaaaaa", 30, m, sp).Count, "длинное слово — своя строка");
-        }
-
         private static void TestDonationRequisites()
         {
             AssertEqual(20, AboutForm.DonationAccount.Length, "счёт — 20 цифр");
             foreach (char c in AboutForm.DonationAccount)
                 AssertTrue(c >= '0' && c <= '9', "в счёте только цифры");
             AssertTrue(AboutForm.DonationBank.Length > 0, "банк не пуст");
+        }
+
+        /// <summary>
+        /// Окно «О программе»: описание должно предупреждать, что в Word переводится только
+        /// цифровой PDF (то же, что обещает карточка инструмента), быть выделяемым (значит
+        /// read-only поле, а не подпись) и целиком помещаться в окно. Копирайт с лицензией
+        /// стоят внизу слева, ниже всего прочего содержимого.
+        /// </summary>
+        private static void TestAboutDescription()
+        {
+            foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+            {
+                string[] desc = Loc.Pair("about.desc");
+                string text = desc[lang == Lang.En ? 1 : 0];
+                string marker = lang == Lang.En ? "digital" : "цифров";
+                AssertTrue(text.Contains(marker),
+                    "описание не уточняет про цифровой PDF (" + lang + "): " + text);
+                AssertTrue(text.Contains("scanned") || text.Contains("сканированны"),
+                    "описание не предупреждает про сканы (" + lang + ")");
+            }
+
+            Lang saved = Loc.Current;
+            string failure = null;
+            var th = new System.Threading.Thread(delegate()
+            {
+                try
+                {
+                    Loc.Init(Lang.Ru);
+                    using (var about = new AboutForm())
+                    {
+                        if (about.Handle == IntPtr.Zero) { failure = "окно не создалось"; return; }
+                        var box = FindSelectable(about, Loc.T("about.desc"));
+                        if (box == null) { failure = "описание не найдено выделяемым полем"; return; }
+                        if (box.Bottom > about.ClientSize.Height) { failure = "описание не влезает в окно"; return; }
+
+                        // Высота поля считается по замеру текста, поэтому проверяем НЕ формулу,
+                        // а факт: спрашиваем у самого поля, где легла последняя строка после
+                        // переноса. Если она вылезает за высоту — хвост описания обрезан.
+                        System.Drawing.Point last = box.GetPositionFromCharIndex(box.Text.Length - 1);
+                        int lineHeight = System.Windows.Forms.TextRenderer.MeasureText("Ag", box.Font).Height;
+                        if (last.Y + lineHeight > box.Height)
+                        {
+                            failure = "последняя строка описания обрезана: низ " + (last.Y + lineHeight) +
+                                " при высоте поля " + box.Height;
+                            return;
+                        }
+
+                        System.Windows.Forms.Label license = null;
+                        int lowestOther = 0;
+                        foreach (System.Windows.Forms.Control c in about.Controls)
+                        {
+                            var lbl = c as System.Windows.Forms.Label;
+                            if (lbl != null && lbl.Text == Loc.T("about.license")) { license = lbl; continue; }
+                            if (c is RoundedButton) continue; // кнопка стоит на той же нижней линии
+                            if (c.Bottom > lowestOther) lowestOther = c.Bottom;
+                        }
+                        if (license == null) { failure = "копирайт с лицензией не найден"; return; }
+                        if (license.Left != 24) { failure = "копирайт не прижат влево: " + license.Left; return; }
+                        if (license.Top < lowestOther) { failure = "копирайт не в самом низу окна"; return; }
+                    }
+                }
+                catch (Exception ex) { failure = ex.GetType().Name + ": " + ex.Message; }
+            });
+            th.SetApartmentState(System.Threading.ApartmentState.STA); // окна WinForms требуют STA
+            th.IsBackground = true;
+            th.Start();
+            th.Join();
+            Loc.Init(saved);
+            AssertTrue(failure == null, "AboutForm: " + failure);
+        }
+
+        /// <summary>
+        /// Единственный экземпляр: первый запуск занимает имя, второй видит его занятым и
+        /// потому уходит будить работающий. Хэндл второго закрывается сразу (держать нечего),
+        /// а после освобождения первого имя снова свободно — иначе следующий запуск после
+        /// нормального выхода считал бы, что приложение всё ещё работает.
+        /// </summary>
+        private static void TestSingleInstanceName()
+        {
+            string name = @"Local\iwoHelperDesktop.test." + Guid.NewGuid().ToString("N");
+            System.Threading.Mutex first, second, third;
+
+            AssertTrue(SingleInstance.TryAcquire(name, out first), "первый занимает свободное имя");
+            AssertTrue(first != null, "первому достался мьютекс");
+
+            AssertTrue(!SingleInstance.TryAcquire(name, out second), "второй видит имя занятым");
+            AssertTrue(second == null, "второму мьютекс не отдаётся — хэндл закрыт сразу");
+
+            first.Close(); // имя держалось только этим хэндлом
+            AssertTrue(SingleInstance.TryAcquire(name, out third), "после выхода имя снова свободно");
+            if (third != null)
+                third.Close();
+        }
+
+        /// <summary>Выделяемое поле (read-only TextBox) с данным текстом среди контролов окна.</summary>
+        private static System.Windows.Forms.TextBox FindSelectable(System.Windows.Forms.Control root, string text)
+        {
+            foreach (System.Windows.Forms.Control c in root.Controls)
+            {
+                var tb = c as System.Windows.Forms.TextBox;
+                if (tb != null && tb.ReadOnly && tb.Text == text)
+                    return tb;
+                var nested = FindSelectable(c, text);
+                if (nested != null)
+                    return nested;
+            }
+            return null;
         }
 
         private static void TestClampWindow()
@@ -2425,6 +2523,29 @@ namespace ExcelMerger.Tests
             }
         }
 
+        /// <summary>
+        /// Подсказки про перетаскивание: цель броска везде названа «окно программы»
+        /// (в английском — the program window), а деепричастие «перетащив» не используется.
+        /// По терминологии Microsoft в инструкциях стоит повелительное «перетащите».
+        /// Перетаскивание миниатюр ВНУТРИ сетки к окну не относится и под проверку не идёт.
+        /// </summary>
+        private static void TestLocDragHints()
+        {
+            int windowTargets = 0;
+            foreach (string key in Loc.Keys)
+            {
+                string[] p = Loc.Pair(key);
+                AssertTrue(p[0].IndexOf("перетащив", StringComparison.Ordinal) < 0,
+                    "деепричастие «перетащив» осталось у «" + key + "»");
+                if (p[0].IndexOf(" в окно", StringComparison.Ordinal) < 0)
+                    continue;
+                AssertTrue(p[0].Contains("в окно программы"), "цель броска не названа у «" + key + "» (ru)");
+                AssertTrue(p[1].Contains("program window"), "цель броска не названа у «" + key + "» (en)");
+                windowTargets++;
+            }
+            AssertTrue(windowTargets >= 12, "подсказок про перетаскивание в окно найдено: " + windowTargets);
+        }
+
         private static string Placeholders(string s)
         {
             var set = new SortedSet<int>();
@@ -2462,8 +2583,13 @@ namespace ExcelMerger.Tests
         {
             Lang saved = Loc.Current;
             var offenders = new List<string>();
-            // «Язык / Language» — намеренно двуязычный пункт меню; кириллица там ожидаема.
-            var whitelist = new HashSet<string> { Loc.Pair("menu.language")[1] };
+            // «Язык / Language» — намеренно двуязычный пункт меню, кириллица там ожидаема.
+            // Название банка в пунктах доната — тоже: это реквизит, а не переводимый текст.
+            var whitelist = new HashSet<string>
+            {
+                Loc.Pair("menu.language")[1],
+                AboutForm.DonationBank
+            };
             var th = new System.Threading.Thread(delegate()
             {
                 Loc.Init(Lang.En);
@@ -2502,8 +2628,12 @@ namespace ExcelMerger.Tests
         {
             foreach (System.Windows.Forms.Control child in c.Controls)
             {
-                // Пропускаем поля значений: TextBox (пути/имена/пункты), NumericUpDown.
-                bool isValue = child is System.Windows.Forms.TextBoxBase || child is System.Windows.Forms.NumericUpDown;
+                // Пропускаем поля значений: редактируемый ввод (пути, имена) и NumericUpDown.
+                // Read-only поля — это подписи, только выделяемые, поэтому они проверяются
+                // наравне с Label: иначе перевод описания в «О программе» выпал бы из проверки.
+                var editable = child as System.Windows.Forms.TextBoxBase;
+                bool isValue = (editable != null && !editable.ReadOnly) ||
+                               child is System.Windows.Forms.NumericUpDown;
                 if (!isValue)
                 {
                     CheckCyrillic(child.Text, child.GetType().Name + ".Text", offenders, whitelist);
@@ -3958,6 +4088,74 @@ namespace ExcelMerger.Tests
             AssertEqual("idle", PdfToolFormBase.RestingStatus(0, 10, "idle", "{0} / {1}"), "нет выделения — idle");
             AssertEqual("1 / 1", PdfToolFormBase.RestingStatus(1, 1, "idle", "{0} / {1}"), "выбрана одна из одной");
             AssertEqual("", PdfToolFormBase.RestingStatus(0, 0, "", "{0} / {1}"), "пусто — пустой idle");
+        }
+
+        /// <summary>
+        /// Пунктуацию статуса собирает одно место: галочка спереди, « · » между частями,
+        /// точка в конце. Пустые и null-части выпадают, поэтому «сжато» просто не
+        /// добавляется, когда сжатия не было, и лишних разделителей не остаётся.
+        /// </summary>
+        private static void TestSuccessStatus()
+        {
+            AssertEqual("✓ Сохранено страниц: 12.", PdfToolFormBase.SuccessStatus("Сохранено страниц: 12"),
+                "одна часть — галочка и точка");
+            AssertEqual("✓ Сохранено страниц: 12 · сжато.", PdfToolFormBase.SuccessStatus("Сохранено страниц: 12", "сжато"),
+                "две части через разделитель");
+            AssertEqual("✓ a · b.", PdfToolFormBase.SuccessStatus("a", null, "", "b"),
+                "null и пустые части выпадают без лишних разделителей");
+            AssertEqual("", PdfToolFormBase.SuccessStatus(), "нет частей — пустая строка");
+            AssertEqual("", PdfToolFormBase.SuccessStatus(null, ""), "все части пустые — пустая строка");
+            AssertEqual("", PdfToolFormBase.SuccessStatus(null), "null вместо массива — пустая строка");
+        }
+
+        /// <summary>
+        /// Разрешение сжатия берётся из одного места и совпадает с пресетами Ghostscript
+        /// (Resource\Init\gs_pdfwr.ps: /ebook — 150, /screen — 72). Уровень без сжатия
+        /// разрешения не имеет, и часть статуса про сжатие для него не строится.
+        /// </summary>
+        private static void TestCompressionDpi()
+        {
+            AssertEqual(150, PdfCompression.ImageDpi(CompressionLevel.Good), "/ebook — 150 dpi");
+            AssertEqual(72, PdfCompression.ImageDpi(CompressionLevel.Small), "/screen — 72 dpi");
+            AssertEqual(0, PdfCompression.ImageDpi(CompressionLevel.None), "без сжатия — разрешения нет");
+            // Уровни и пресеты не должны разъезжаться: у кого есть пресет, у того есть и dpi.
+            foreach (CompressionLevel level in Enum.GetValues(typeof(CompressionLevel)))
+                AssertEqual(PdfCompression.Preset(level) != null, PdfCompression.ImageDpi(level) > 0,
+                    "пресет и разрешение согласованы для " + level);
+            AssertEqual(null, PdfToolFormBase.CompressedPart(false, CompressionLevel.Good),
+                "сжатия не было — части нет");
+            AssertTrue(PdfToolFormBase.CompressedPart(true, CompressionLevel.Good).Contains("150"),
+                "часть про сжатие называет разрешение уровня");
+            AssertTrue(PdfToolFormBase.CompressedPart(true, CompressionLevel.Small).Contains("72"),
+                "минимальный размер — 72 dpi");
+        }
+
+        /// <summary>
+        /// Догон поворота в предпросмотре: картинка хранит уже впечённый угол, а нужный
+        /// берётся из страницы, поэтому доворачивать надо ровно на их разницу. Разница
+        /// нормализована в {0, 90, 180, 270}, совпадение углов даёт 0 (лишнего поворота нет),
+        /// и после доворота впечённый угол равен нужному при любой паре углов.
+        /// </summary>
+        private static void TestPreviewRotationDelta()
+        {
+            AssertEqual(90, PdfPageRef.ComposeRotation(90, -0), "с 0 на 90");
+            AssertEqual(180, PdfPageRef.ComposeRotation(270, -90), "с 90 на 270");
+            AssertEqual(270, PdfPageRef.ComposeRotation(0, -90), "с 90 на 0 — доворот на 270, а не -90");
+            AssertEqual(0, PdfPageRef.ComposeRotation(180, -180), "углы совпали — доворачивать нечего");
+
+            int[] angles = { 0, 90, 180, 270 };
+            foreach (int applied in angles)
+                foreach (int desired in angles)
+                {
+                    int delta = PdfPageRef.ComposeRotation(desired, -applied);
+                    AssertEqual(desired, PdfPageRef.ComposeRotation(applied, delta),
+                        "доворот " + applied + " на " + delta + " должен дать " + desired);
+                    AssertEqual(applied == desired, delta == 0,
+                        "доворот нужен тогда и только тогда, когда углы разошлись (" + applied + "→" + desired + ")");
+                    AssertEqual(applied == desired,
+                        PageRotation.FlipFor(delta) == System.Drawing.RotateFlipType.RotateNoneFlipNone,
+                        "ненулевой доворот обязан дать реальный RotateFlip (" + delta + ")");
+                }
         }
 
         private static void TestProgressItem()

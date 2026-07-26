@@ -3,6 +3,40 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.6] — 2026-07-26
+
+### Added
+- **Rotate a page while previewing it.** Right‑click the full‑size preview (double‑click a
+  tile to open it) for “rotate right / left 90°”, the same Ctrl+Shift+“+” / “−” as in the
+  grid. The thumbnail follows immediately and the rotation joins the undo history, so
+  Ctrl+Z takes it back like any other change.
+- **The preview remembers its size.** The full‑size preview reopens at the size and
+  position you left it, maximised included, restored safely onto a visible screen.
+
+### Fixed
+- **The installer stayed English after Russian was chosen.** Setup remembered the language
+  of the previous installation and let it override the system language, and the restart
+  that applies a newly chosen language never happened because Setup cannot launch its own
+  file while it is running. Setup now follows the system language, hands the restart to the
+  command processor, and says so instead of staying silent if that restart fails. The
+  choice on the flag screen becomes the app language even in that case.
+- **Right‑clicking the preview closed it.** The click that opened the context menu also
+  reached the close handler, because in Windows Forms a plain click event fires for the
+  right button too.
+- **Launching the app twice started a second process.** A second launch now wakes the
+  running one and brings its window back instead of adding another entry to Task Manager.
+  Tool windows stay independent of the hub exactly as before.
+
+### Changed
+- **Result messages name the compression resolution.** “Pages saved: 12 · compressed,
+  images to 150 dpi” instead of a bare “compressed”, so it is clear what changed. Extracted
+  pages are counted too, and the punctuation of these lines is assembled in one place.
+- **Clearer drag‑and‑drop wording.** Every hint uses the imperative “drag it onto the
+  program window” and names the drop target, following the Microsoft terminology.
+- **The About window is readable and copyable.** The description can be selected and
+  copied, it states that only born‑digital PDFs convert to Word (scans are not supported
+  yet), and the copyright with the licence moved to the bottom‑left corner.
+
 ## [1.17.5] — 2026-07-26
 
 ### Added
