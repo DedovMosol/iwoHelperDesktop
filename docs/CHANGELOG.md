@@ -3,7 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
-## [1.17.8] — 2026-07-26
+## [Unreleased]
 
 ### Fixed
 - **Closing a PDF window could hang for two seconds and leak memory.** The thumbnail
