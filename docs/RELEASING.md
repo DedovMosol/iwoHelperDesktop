@@ -31,18 +31,24 @@ README when you bump the version**, so the buttons point at the new files.
 
 ## Steps
 
-1. Bump the version in `src/AssemblyInfo.cs` (`AssemblyVersion` + `AssemblyFileVersion`).
+1. Bump the version in `src/AssemblyInfo.cs` — all three attributes: `AssemblyVersion`,
+   `AssemblyFileVersion` and `AssemblyInformationalVersion`.
 2. Add a `## [X.Y.Z] — <date>` section to `docs/CHANGELOG.md` (its text becomes the
-   release notes verbatim).
-3. Commit the changes (explicit paths only).
-4. Dry run — builds and signs all four artifacts, writes `dist\release-notes-<ver>.md`,
+   release notes verbatim). Work finished before the tag exists goes straight into that
+   section: the version in `AssemblyInfo.cs` is the *pending* one until then, so there is
+   no need for an “Unreleased” heading and no reason to bump again.
+3. Update the four download buttons and the version note in the README (see above).
+4. Run the full local pyramid (`tests\run_all.cmd`). CI cannot run the parts that need
+   Excel and Word, so this is the last chance to catch them.
+5. Commit the changes (explicit paths only).
+6. Dry run — builds and signs all four artifacts, writes `dist\release-notes-<ver>.md`,
    prints what would be published:
 
    ```
    powershell -NoProfile -File tools\make_release.ps1
    ```
 
-5. Publish — creates the tag `vX.Y.Z`, pushes it, and creates the GitHub release with
+7. Publish — creates the tag `vX.Y.Z`, pushes it, and creates the GitHub release with
    the four signed assets and the CHANGELOG-derived notes:
 
    ```

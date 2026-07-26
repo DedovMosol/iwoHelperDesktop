@@ -48,7 +48,7 @@ namespace ExcelMerger
 
             // Выбор языка — белый глиф-глобус в правом верхнем углу шапки (на синем, без рамки).
             _langMenu = HelpMenu.LanguageContextMenu(); // одно меню на жизнь окна (окно пересоздаётся при смене языка)
-            var globe = new GlyphButton("", 15f, "Segoe MDL2 Assets"); // U+E774 — «глобус» (Segoe MDL2 Assets)
+            var globe = new GlyphButton("", 15f, "Segoe MDL2 Assets"); // U+E774 — «глобус»
             globe.ForeColor = Color.White;
             globe.AccessibleName = Loc.T("lang.tooltip"); // с клавиатуры и для экранного диктора
             globe.SetBounds(header.Width - 42, 10, 30, 30);
@@ -115,6 +115,17 @@ namespace ExcelMerger
             Controls.Add(about);
 
             AcceptButton = null; // Enter активирует карточку в фокусе
+        }
+
+        /// <summary>
+        /// Окно собрано: шапку с глобусом — в конец обхода Tab. Глобус доступен с клавиатуры,
+        /// а шапка добавляется первой, поэтому иначе фокус при открытии доставался бы выбору
+        /// языка вместо карточки инструмента. См. <see cref="Ui.HeaderLastInTabOrder"/>.
+        /// </summary>
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            Ui.HeaderLastInTabOrder(this);
         }
 
         protected override void Dispose(bool disposing)

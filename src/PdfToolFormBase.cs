@@ -594,6 +594,7 @@ namespace ExcelMerger
         protected void EndProgress()
         {
             _progress.Visible = false;
+            SetDeterminate(true); // не оставляем скрытую полосу «бегущей» после фазы сжатия
             _progressPct.Visible = false;
             _progFmt = null;
             if (_cancelOffered)
