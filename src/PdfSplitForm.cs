@@ -462,25 +462,32 @@ namespace ExcelMerger
             // Разбиение на части считаем файлами (страницы по частям расходятся неравномерно,
             // а при разбиении по диапазонам часть страниц может вообще не попасть в результат).
             // Извлечение даёт ОДИН файл, и число его страниц известно точно — показываем его.
-            string status;
-            if (openAsFolder)
-            {
-                string manyFiles = compressed > 0
-                    ? string.Format(Loc.T("split.suffix.compressed"), compressed, PdfCompression.ImageDpi(level))
-                    : null;
-                status = SuccessStatus(string.Format(Loc.T("split.status.filesCreated"), count), manyFiles);
-            }
-            else
-            {
-                status = SuccessStatus(string.Format(Loc.T("split.status.pagesExtracted"), pageCount),
-                    CompressedPart(compressed > 0, level));
-            }
+            string status = DoneStatus(openAsFolder, count, pageCount, compressed, level);
             // Если без сжатия результат вышел почти как исходник (общие ресурсы страниц
             // едут вместе с ними) — ненавязчиво подсказать про «Сжатие».
             if (ShouldSuggestCompression(level, sourceSize, largestOutput))
                 status += Loc.T("split.status.largeHint");
             SetStatus(status, Theme.OkGreen);
             Ui.OpenPath(openTarget, openAsFolder); // авто-открытие; молча — файлы всё равно созданы
+        }
+
+        /// <summary>
+        /// Строка успешного завершения. Разбиение на части считаем ФАЙЛАМИ: страницы по частям
+        /// расходятся неравномерно, а при разбиении по диапазонам часть страниц может вообще не
+        /// попасть в результат, поэтому их число там было бы неправдой. Извлечение даёт ОДИН
+        /// файл, и число его страниц известно точно (Extract пишет по странице на индекс).
+        /// Отдельным методом, чтобы подстановка значений проверялась тестом, а не только глазами.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static string DoneStatus(bool openAsFolder, int count, int pageCount, int compressed, CompressionLevel level)
+        {
+            if (!openAsFolder)
+                return SuccessStatus(string.Format(Loc.T("split.status.pagesExtracted"), pageCount),
+                    CompressedPart(compressed > 0, level));
+            string manyFiles = compressed > 0
+                ? string.Format(Loc.T("split.suffix.compressed"), compressed, PdfCompression.ImageDpi(level))
+                : null;
+            return SuccessStatus(string.Format(Loc.T("split.status.filesCreated"), count), manyFiles);
         }
 
         /// <summary>Длина файла в байтах (0, если недоступен). Без исключений.</summary>

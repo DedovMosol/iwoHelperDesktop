@@ -190,10 +190,19 @@ namespace ExcelMerger
             UsageStats.RecordPdfMerge();
             if (compressed)
                 UsageStats.RecordPdfCompress();
-            SetStatus(SuccessStatus(
-                string.Format(Loc.T("pdf.status.pagesSaved"), pageCount),
-                CompressedPart(compressed, level)), Theme.OkGreen);
+            SetStatus(DoneStatus(pageCount, compressed, level), Theme.OkGreen);
             Ui.OpenPath(outputPath); // авто-открытие результата; молча, если нет ассоциации PDF
+        }
+
+        /// <summary>
+        /// Строка успешного сохранения: число записанных страниц и, если сжатие сработало,
+        /// разрешение, до которого уменьшены изображения. Отдельным методом, чтобы подстановка
+        /// значений проверялась тестом, а не только глазами. Чистая — под тест.
+        /// </summary>
+        internal static string DoneStatus(int pageCount, bool compressed, CompressionLevel level)
+        {
+            return SuccessStatus(string.Format(Loc.T("pdf.status.pagesSaved"), pageCount),
+                CompressedPart(compressed, level));
         }
 
         /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>
