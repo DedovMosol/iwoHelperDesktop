@@ -37,7 +37,8 @@ The app keeps a small amount of data **locally**, under
 `%APPDATA%\iwo Helper Desktop\`, and never sends it anywhere:
 
 - `settings.txt` — your last‑used folders and options (output format, zoom, compression,
-  interface language, and each tool window’s size and position),
+  interface language, and the size and position of each tool window and of the full‑size
+  page preview),
 - `stats.txt` — local counters of how many operations you have run (no file names,
   no content), these exist only for your own reference and can be cleared manually or
   automatically from the app’s **Statistics** window,

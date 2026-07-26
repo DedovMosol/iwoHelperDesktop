@@ -139,6 +139,7 @@ namespace ExcelMerger.Tests
             Run("PdfToolFormBase.SuccessStatus: галочка, разделители, точка", TestSuccessStatus);
             Run("PdfCompression.ImageDpi: 150/72 совпадают с пресетами Ghostscript", TestCompressionDpi);
             Run("Предпросмотр: доворот картинки до поворота страницы", TestPreviewRotationDelta);
+            Run("Предпросмотр: закрывает только левая кнопка (правая — меню)", TestPreviewClosesOnLeftClickOnly);
             Run("PdfToolFormBase.ProgressItem: страница из процента, границы", TestProgressItem);
             Run("PdfToolFormBase.BuildShortcuts: набор клавиш по возможностям", TestBuildShortcuts);
             Run("ChoiceCard.FilterByExtension: фильтр по расширению и существованию", TestCardFilter);
@@ -4156,6 +4157,26 @@ namespace ExcelMerger.Tests
                         PageRotation.FlipFor(delta) == System.Drawing.RotateFlipType.RotateNoneFlipNone,
                         "ненулевой доворот обязан дать реальный RotateFlip (" + delta + ")");
                 }
+        }
+
+        /// <summary>
+        /// Предпросмотр закрывается только левой кнопкой. Правая принадлежит контекстному
+        /// меню поворота, и раньше она закрывала окно прямо под открывающимся меню: событие
+        /// Click у PictureBox приходит по ЛЮБОЙ кнопке, PictureBox нет в списке исключений.
+        /// </summary>
+        private static void TestPreviewClosesOnLeftClickOnly()
+        {
+            AssertTrue(PagePreviewForm.ClosesOnClick(System.Windows.Forms.MouseButtons.Left),
+                "левая кнопка закрывает предпросмотр");
+            foreach (System.Windows.Forms.MouseButtons other in new[]
+            {
+                System.Windows.Forms.MouseButtons.Right,
+                System.Windows.Forms.MouseButtons.Middle,
+                System.Windows.Forms.MouseButtons.XButton1,
+                System.Windows.Forms.MouseButtons.XButton2,
+                System.Windows.Forms.MouseButtons.None
+            })
+                AssertTrue(!PagePreviewForm.ClosesOnClick(other), "кнопка " + other + " не должна закрывать окно");
         }
 
         private static void TestProgressItem()

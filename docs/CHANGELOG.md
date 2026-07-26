@@ -19,7 +19,11 @@ versions follow [SemVer](https://semver.org/).
   that applies a newly chosen language never happened because Setup cannot launch its own
   file while it is running. Setup now follows the system language, hands the restart to the
   command processor, and says so instead of staying silent if that restart fails. The
-  choice on the flag screen becomes the app language even in that case.
+  choice on the flag screen becomes the app language even in that case, and the picker's
+  buttons no longer share a value with “dialog closed”, which used to read as a choice.
+- **A language switch left a folder behind in `%TEMP%`.** The instance being replaced ends
+  abruptly, which skips Setup's own cleanup, so its temporary folder now gets removed
+  right after it exits.
 - **Right‑clicking the preview closed it.** The click that opened the context menu also
   reached the close handler, because in Windows Forms a plain click event fires for the
   right button too.

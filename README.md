@@ -38,9 +38,9 @@ Build one PDF from several on a thumbnail grid — reorder, rotate, cut/copy/pas
 <details><summary><b>All grid and merge features</b></summary>
 
 - Zoom up to 400 px shown as an editable **percentage** — the “%” box, the slider, Ctrl+wheel, or Ctrl+0 to reset to 100 %.
-- **Double‑click** a page for a full‑size preview (or double‑click its number to move it), reorder by dragging (the grid auto‑scrolls at the edges).
+- **Double‑click** a page for a full‑size preview — right‑click it there to rotate, and the window reopens at the size you left it (or double‑click a page number to move that page). Reorder by dragging, the grid auto‑scrolls at the edges.
 - **Cut/copy/paste** pages (Ctrl+X/C/V) with an insertion caret, **Move after page N…** for exact long jumps, Ctrl+Z / Ctrl+Y to undo and redo (rotations included).
-- **Rotate** the selection or the whole document 90° (right‑click, Ctrl+Shift+«+»/«−», or the ↺/↻ buttons on the hovered tile).
+- **Rotate** the selection or the whole document 90° (right‑click, Ctrl+Shift+«+»/«−», or the ↺/↻ buttons on the hovered tile) — the same keys and menu work inside the full‑size preview, and thumbnails follow at once.
 - **Drop more PDFs onto the grid** — their pages land at the drop position. Ctrl+G jumps to a page.
 - **Cancel** a long save (from five pages). The last zoom, compression level and each window's size and position come back next time (shared with Split and PDF → Word).
 </details>
@@ -61,9 +61,10 @@ Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print
 - **Limits** — scanned documents aren't supported yet (a clear message is shown instantly and the file is untouched).
 </details>
 ### More
-- 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size” via bundled **Ghostscript**: downsamples images while keeping text and vectors (not rasterization). The default level leaves the file untouched.
+- 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size” via bundled **Ghostscript**: downsamples images (to 150 or 72 dpi) while keeping text and vectors — nothing is rasterized. The result message names the resolution used, and the default level leaves the file untouched.
 - 🌐 **English & Russian** — the installer opens with a flag chooser and the app follows that choice. Switch anytime from a globe on the start screen or any tool’s **☰ Menu → Язык / Language** (each option shows a flag). Generated documents stay in Russian.
 - 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing), plus local operation counters you can clear.
+- 🪟 **One window set, one process** — tools open as independent windows that outlive the start screen, and launching the app again just brings the running one back instead of starting a second copy.
 - 🔒 **Safe by design** — no network, no admin, not packed or obfuscated, and writes only to folders you choose and `%APPDATA%`.
 
 ## 📸 Screenshots
@@ -94,8 +95,8 @@ Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print
 Launch the app and pick a tool from the start screen — or **drop PDF files onto a card** (Merge, Split, PDF → Word) to open it with the files already loaded. Tools open as independent windows, and a **⌂ Home** button returns to the chooser. Long tasks run in the background with progress shown in the window (down to “page N of M”) and on the taskbar button — a real, per‑page bar for the PDF tools and a file list for Excel Digest, a **PDF task of five pages or more can be cancelled** with a button that replaces the action while it runs, leaving no half‑written file. An empty page grid tells you how to fill it, the status line counts your selection, and **☰ Menu → Keyboard shortcuts** lists every grid key.
 
 - **Excel Digest** — pick the source folder, set the output name and format, arrange or exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
-- **PDF Merge / Split** — add PDFs (button or drag‑and‑drop, including straight onto the page grid), reorder or select pages on the thumbnail grid, choose a **Compression** level if desired, and save. **Double‑click a page for a full‑size preview** (or double‑click its number to move it), and set the zoom **percentage** exactly in the “%” box (or the slider, Ctrl+wheel, or Ctrl+0 to reset to 100%). The last zoom, compression level, and the window's size and position come back next time. The grid speaks keyboard: Ctrl+X/C/V move or duplicate pages (cut pages stay dimmed until pasted, Esc cancels, a click in a gap places the insertion caret — hovering a gap hints it), Ctrl+Z / Ctrl+Y undo and redo edits (rotations included), Ctrl+G jumps to a page, Ctrl+Shift+«+»/«−» rotates the selection — or hover a tile and click its ↺/↻ buttons (the right‑click menu also rotates **all** pages and moves the selection **after page N…**).
-- **PDF → Word** — add one or several born‑digital PDFs (button or drag‑and‑drop — dropping onto the grid inserts at that spot), reorder with the mouse or Ctrl+X/C/V, **double‑click a page to preview it** (or its number to move it), or drop pages across all of them if needed, then **Convert to Word…** and choose the `.docx` name — they merge into one document.
+- **PDF Merge / Split** — add PDFs (button or drag‑and‑drop, including straight onto the page grid), reorder or select pages on the thumbnail grid, choose a **Compression** level if desired, and save. **Double‑click a page for a full‑size preview** — a right‑click there rotates it, and the window remembers its size (or double‑click a page number to move that page). Set the zoom **percentage** exactly in the “%” box (or the slider, Ctrl+wheel, or Ctrl+0 to reset to 100%). The last zoom, compression level, and the window's size and position come back next time. The grid speaks keyboard: Ctrl+X/C/V move or duplicate pages (cut pages stay dimmed until pasted, Esc cancels, a click in a gap places the insertion caret — hovering a gap hints it), Ctrl+Z / Ctrl+Y undo and redo edits (rotations included), Ctrl+G jumps to a page, Ctrl+Shift+«+»/«−» rotates the selection — or hover a tile and click its ↺/↻ buttons (the right‑click menu also rotates **all** pages and moves the selection **after page N…**).
+- **PDF → Word** — add one or several born‑digital PDFs (button or drag‑and‑drop — dropping onto the grid inserts at that spot), reorder with the mouse or Ctrl+X/C/V, **double‑click a page to preview it** and right‑click the preview to rotate (or double‑click its number to move it), or drop pages across all of them if needed, then **Convert to Word…** and choose the `.docx` name — they merge into one document.
 
 <details>
 <summary><b>Full Excel Digest guide, options and edge cases</b></summary>

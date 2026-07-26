@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -195,7 +196,7 @@ namespace ExcelMerger
         /// </summary>
         internal static string SuccessStatus(params string[] parts)
         {
-            var kept = new System.Collections.Generic.List<string>();
+            var kept = new List<string>();
             if (parts != null)
                 foreach (string part in parts)
                     if (!string.IsNullOrEmpty(part))
