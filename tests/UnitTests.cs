@@ -138,6 +138,7 @@ namespace ExcelMerger.Tests
             Run("PdfToolFormBase.RestingStatus: счётчик выделения или idle", TestRestingStatus);
             Run("PdfToolFormBase.SuccessStatus: галочка, разделители, точка", TestSuccessStatus);
             Run("PdfCompression.ImageDpi: 150/72 совпадают с пресетами Ghostscript", TestCompressionDpi);
+            Run("Итоговые строки объединения и разделения на обоих языках", TestDoneStatusLines);
             Run("Предпросмотр: доворот картинки до поворота страницы", TestPreviewRotationDelta);
             Run("Предпросмотр: закрывает только левая кнопка (правая — меню)", TestPreviewClosesOnLeftClickOnly);
             Run("PdfToolFormBase.ProgressItem: страница из процента, границы", TestProgressItem);
@@ -1058,9 +1059,29 @@ namespace ExcelMerger.Tests
             string failure = null;
             var th = new System.Threading.Thread(delegate()
             {
+                // Оба языка: тексты разной длины ложатся в разное число строк, и высота поля
+                // считается замером, поэтому по-английски описание тоже может не влезть.
+                foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                {
+                    if (failure != null)
+                        return;
+                    CheckAboutLayout(lang, ref failure);
+                }
+            });
+            th.SetApartmentState(System.Threading.ApartmentState.STA); // окна WinForms требуют STA
+            th.IsBackground = true;
+            th.Start();
+            th.Join();
+            Loc.Init(saved);
+            AssertTrue(failure == null, "AboutForm: " + failure);
+        }
+
+        /// <summary>Собрать окно «О программе» на данном языке и проверить его раскладку.</summary>
+        private static void CheckAboutLayout(Lang lang, ref string failure)
+        {
                 try
                 {
-                    Loc.Init(Lang.Ru);
+                    Loc.Init(lang);
                     using (var about = new AboutForm())
                     {
                         if (about.Handle == IntPtr.Zero) { failure = "окно не создалось"; return; }
@@ -1095,13 +1116,8 @@ namespace ExcelMerger.Tests
                     }
                 }
                 catch (Exception ex) { failure = ex.GetType().Name + ": " + ex.Message; }
-            });
-            th.SetApartmentState(System.Threading.ApartmentState.STA); // окна WinForms требуют STA
-            th.IsBackground = true;
-            th.Start();
-            th.Join();
-            Loc.Init(saved);
-            AssertTrue(failure == null, "AboutForm: " + failure);
+                if (failure != null)
+                    failure = lang + ": " + failure;
         }
 
         /// <summary>
@@ -4177,6 +4193,46 @@ namespace ExcelMerger.Tests
                 System.Windows.Forms.MouseButtons.None
             })
                 AssertTrue(!PagePreviewForm.ClosesOnClick(other), "кнопка " + other + " не должна закрывать окно");
+        }
+
+        /// <summary>
+        /// Готовые строки результата на обоих языках: значения подставляются в нужные места
+        /// (иначе string.Format свалился бы уже в бою), разрешение называется только когда
+        /// сжатие сработало, разбиение считает файлы, а извлечение — страницы.
+        /// </summary>
+        private static void TestDoneStatusLines()
+        {
+            Lang saved = Loc.Current;
+            try
+            {
+                foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                {
+                    Loc.Init(lang);
+                    string merged = PdfMergeForm.DoneStatus(12, true, CompressionLevel.Good);
+                    AssertTrue(merged.StartsWith("✓ "), "строка начинается с галочки (" + lang + ")");
+                    AssertTrue(merged.EndsWith("."), "строка кончается точкой (" + lang + ")");
+                    AssertTrue(merged.Contains("12"), "названо число страниц (" + lang + ")");
+                    AssertTrue(merged.Contains("150"), "названо разрешение сжатия (" + lang + ")");
+
+                    string plain = PdfMergeForm.DoneStatus(3, false, CompressionLevel.None);
+                    AssertTrue(plain.Contains("3"), "число страниц без сжатия (" + lang + ")");
+                    AssertTrue(!plain.Contains("dpi"), "без сжатия разрешение не упоминается (" + lang + ")");
+
+                    string parts = PdfSplitForm.DoneStatus(true, 4, 99, 4, CompressionLevel.Small);
+                    AssertTrue(parts.Contains("4"), "названо число файлов (" + lang + ")");
+                    AssertTrue(parts.Contains("72"), "названо разрешение /screen (" + lang + ")");
+                    AssertTrue(!parts.Contains("99"), "страницы в разбиении на части не показываем (" + lang + ")");
+
+                    string extracted = PdfSplitForm.DoneStatus(false, 1, 7, 1, CompressionLevel.Good);
+                    AssertTrue(extracted.Contains("7"), "названо число извлечённых страниц (" + lang + ")");
+                    AssertTrue(extracted.Contains("150"), "названо разрешение при извлечении (" + lang + ")");
+
+                    string extractedPlain = PdfSplitForm.DoneStatus(false, 1, 7, 0, CompressionLevel.None);
+                    AssertTrue(!extractedPlain.Contains("dpi"), "без сжатия строка чистая (" + lang + ")");
+                    AssertTrue(!extractedPlain.Contains(" · "), "единственная часть — без разделителя (" + lang + ")");
+                }
+            }
+            finally { Loc.Init(saved); }
         }
 
         private static void TestProgressItem()
