@@ -27,13 +27,25 @@ namespace ExcelMerger
 
         private readonly PdfPageRef _page;      // тот же объект, что и в сетке — Rotation общий
         private readonly Action<int> _rotate;   // повернуть страницу в сетке на ±90, null — поворот запрещён
+        private readonly Panel _viewport;       // область с прокруткой — вмещает увеличенную страницу
         private readonly PictureBox _picture;
         private readonly Label _loading;
+        private Label _zoomLabel;               // текущий масштаб в процентах
         private ContextMenuStrip _menu; // не дочерний контрол, освобождаем сами
         private Bitmap _image;          // показанный рендер — освобождаем при закрытии
         private int _appliedRotation;   // поворот, УЖЕ впечённый в _image (в градусах по часовой)
         private Thread _worker;
         private volatile bool _closed;  // окно закрыто: поздний рендер не применяем
+
+        // Масштаб. Пока пользователь не трогал лупу, страница подгоняется под окно и следует
+        // за его размером; первое же ручное изменение эту привязку снимает — иначе окно
+        // «отбирало» бы у пользователя выбранный им масштаб при каждом изменении размера.
+        private double _scale = 1.0;
+        private bool _fitToWindow = true;
+        private Point _dragFrom;        // откуда начали тащить (экранные координаты)
+        private Point _dragScroll;      // прокрутка на момент начала перетаскивания
+        private bool _dragging;
+        private bool _dragged;          // движение вышло за порог — это перетаскивание, а не клик
 
         private PagePreviewForm(PdfPageRef page, string caption, Size target, Action<int> rotate)
         {
@@ -53,14 +65,23 @@ namespace ExcelMerger
             BackColor = Color.FromArgb(37, 37, 38); // тёмная подложка — страница читается контрастно
             KeyPreview = true;
 
+            // Область просмотра с прокруткой: при увеличении страница больше окна, и её
+            // нужно и таскать рукой, и прокручивать колесом/полосами как обычно.
+            _viewport = new Panel();
+            _viewport.Dock = DockStyle.Fill;
+            _viewport.AutoScroll = true;
+            _viewport.BackColor = BackColor;
+            Controls.Add(_viewport);
+
             _picture = new PictureBox();
-            _picture.Dock = DockStyle.Fill;
-            _picture.SizeMode = PictureBoxSizeMode.Zoom; // вписать с сохранением пропорций (letterbox)
+            _picture.SizeMode = PictureBoxSizeMode.Zoom; // размер задаём сами, пропорции сохраняются
             _picture.BackColor = BackColor;
-            // Именно MouseClick с проверкой кнопки: событие Click у PictureBox приходит и по
+            // Именно MouseDown/Up с проверкой кнопки: событие Click у PictureBox приходит и по
             // ПРАВОЙ кнопке, поэтому на нём окно закрывалось бы прямо под открывающимся меню.
-            _picture.MouseClick += OnSurfaceMouseClick;
-            Controls.Add(_picture);
+            _picture.MouseDown += OnSurfaceMouseDown;
+            _picture.MouseMove += OnSurfaceMouseMove;
+            _picture.MouseUp += OnSurfaceMouseUp;
+            _viewport.Controls.Add(_picture);
 
             _loading = new Label();
             _loading.Dock = DockStyle.Fill;
@@ -68,9 +89,11 @@ namespace ExcelMerger
             _loading.ForeColor = Color.White;
             _loading.BackColor = BackColor;
             _loading.Text = Loc.T("preview.loading");
-            _loading.MouseClick += OnSurfaceMouseClick;
+            _loading.MouseUp += OnSurfaceMouseUp;
             Controls.Add(_loading);
             _loading.BringToFront();
+
+            BuildZoomBar();
 
             if (_rotate != null)
                 BuildContextMenu();
@@ -156,7 +179,8 @@ namespace ExcelMerger
             _appliedRotation = 0; // фон отдаёт страницу как есть
             _loading.Visible = false;
             _picture.Image = _image;
-            SyncRotation(); // пока шёл рендер, страницу могли повернуть — догоняем
+            SyncRotation();  // пока шёл рендер, страницу могли повернуть — догоняем
+            LayoutImage();   // первый показ — вписываем страницу в окно
         }
 
         /// <summary>
@@ -190,21 +214,182 @@ namespace ExcelMerger
             _image.RotateFlip(PageRotation.FlipFor(delta));
             _picture.Image = _image;
             _appliedRotation = desired;
+            LayoutImage(); // поворот меняет пропорции — пересчитываем размер и прокрутку
+        }
+
+        // ---------- масштаб и панорама ----------
+
+        /// <summary>Полоса лупы внизу окна: «−», проценты, «+» и «по окну».</summary>
+        private void BuildZoomBar()
+        {
+            var bar = new Panel();
+            bar.Dock = DockStyle.Bottom;
+            bar.Height = 34;
+            bar.BackColor = Color.FromArgb(52, 52, 54);
+            Controls.Add(bar);
+
+            AddZoomButton(bar, "−", 8, Loc.T("preview.tip.zoomOut"), delegate { StepZoom(-1); });
+            _zoomLabel = new Label();
+            _zoomLabel.SetBounds(44, 8, 60, 20);
+            _zoomLabel.TextAlign = ContentAlignment.MiddleCenter;
+            _zoomLabel.ForeColor = Color.White;
+            bar.Controls.Add(_zoomLabel);
+            AddZoomButton(bar, "+", 108, Loc.T("preview.tip.zoomIn"), delegate { StepZoom(+1); });
+
+            var fit = new Button();
+            fit.Text = Loc.T("preview.fit");
+            fit.SetBounds(148, 5, 110, 24);
+            fit.FlatStyle = FlatStyle.Flat;
+            fit.ForeColor = Color.White;
+            fit.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 92);
+            fit.Click += delegate { FitToWindow(); };
+            bar.Controls.Add(fit);
+        }
+
+        private void AddZoomButton(Control parent, string text, int x, string tip, EventHandler onClick)
+        {
+            var b = new Button();
+            b.Text = text;
+            b.SetBounds(x, 5, 32, 24);
+            b.FlatStyle = FlatStyle.Flat;
+            b.ForeColor = Color.White;
+            b.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 92);
+            b.Font = Ui.Font(11f, FontStyle.Bold);
+            b.AccessibleName = tip;
+            b.Click += onClick;
+            parent.Controls.Add(b);
+        }
+
+        /// <summary>Шаг лупы кнопкой или клавишей — от центра области, там курсора нет.</summary>
+        private void StepZoom(int direction)
+        {
+            var center = new Point(_viewport.ClientSize.Width / 2, _viewport.ClientSize.Height / 2);
+            ApplyScale(PreviewZoom.Next(_scale, direction), center);
+        }
+
+        /// <summary>Вернуть подгонку по окну: страница снова видна целиком и следует за размером окна.</summary>
+        private void FitToWindow()
+        {
+            _fitToWindow = true;
+            LayoutImage();
         }
 
         /// <summary>
-        /// Закрывает ли клик окно предпросмотра. Окно закрывает только ЛЕВАЯ кнопка: правая
-        /// принадлежит контекстному меню, и раньше она закрывала окно прямо под открывающимся
-        /// меню, потому что событие Click у PictureBox приходит по любой кнопке. Чистая — под тест.
+        /// Задать масштаб, оставив точку под anchor на месте. anchor — в координатах области
+        /// просмотра. Ручной масштаб снимает привязку к размеру окна.
         /// </summary>
-        internal static bool ClosesOnClick(MouseButtons button)
+        private void ApplyScale(double scale, Point anchor)
         {
-            return button == MouseButtons.Left;
+            if (_image == null)
+                return;
+            double old = _scale;
+            _scale = scale;
+            _fitToWindow = false;
+            LayoutImage(old, anchor);
         }
 
-        private void OnSurfaceMouseClick(object sender, MouseEventArgs e)
+        /// <summary>
+        /// Пересчитать размер картинки и прокрутку под текущий масштаб. Когда oldScale задан,
+        /// прокрутка подбирается так, чтобы точка под anchor не сдвинулась (Ctrl+колесо).
+        /// </summary>
+        private void LayoutImage(double oldScale = 0, Point anchor = default(Point))
         {
-            if (ClosesOnClick(e.Button))
+            if (_image == null)
+                return;
+            Size viewport = _viewport.ClientSize;
+            if (_fitToWindow)
+                _scale = PreviewZoom.Fit(_image.Size, viewport);
+
+            Size scaled = PreviewZoom.Scaled(_image.Size, _scale);
+            _picture.Size = scaled;
+            // Меньше области — картинка стоит по центру, как в любом просмотрщике.
+            _picture.Location = new Point(
+                Math.Max(0, (viewport.Width - scaled.Width) / 2),
+                Math.Max(0, (viewport.Height - scaled.Height) / 2));
+
+            if (oldScale > 0)
+            {
+                // ВНИМАНИЕ: AutoScrollPosition ЧИТАЕТСЯ отрицательным, а ЗАДАЁТСЯ положительным —
+                // это давняя особенность WinForms и частый источник «прокрутка прыгает не туда».
+                Point current = new Point(-_viewport.AutoScrollPosition.X, -_viewport.AutoScrollPosition.Y);
+                _viewport.AutoScrollPosition = new Point(
+                    PreviewZoom.Anchor(current.X, anchor.X, oldScale, _scale),
+                    PreviewZoom.Anchor(current.Y, anchor.Y, oldScale, _scale));
+            }
+            UpdateZoomUi();
+        }
+
+        private void UpdateZoomUi()
+        {
+            if (_zoomLabel != null)
+                _zoomLabel.Text = PreviewZoom.Percent(_scale) + " %";
+            _picture.Cursor = CanPan ? Cursors.Hand : Cursors.Default;
+        }
+
+        /// <summary>Есть ли что таскать: картинка не помещается в область целиком.</summary>
+        private bool CanPan
+        {
+            get { return _image != null && !PreviewZoom.FitsEntirely(_picture.Size, _viewport.ClientSize); }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (_fitToWindow)
+                LayoutImage(); // подгонка следует за окном, ручной масштаб — нет
+            else
+                UpdateZoomUi();
+        }
+
+        /// <summary>
+        /// Ctrl+колесо — масштаб к точке под курсором (как в браузерах и просмотрщиках), без
+        /// Ctrl колесо прокручивает страницу штатно. Событие берём на уровне окна: колесо
+        /// приходит контролу под курсором, а он у нас не один.
+        /// </summary>
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            if ((ModifierKeys & Keys.Control) == 0 || _image == null)
+            {
+                base.OnMouseWheel(e);
+                return;
+            }
+            Point inViewport = _viewport.PointToClient(PointToScreen(e.Location));
+            ApplyScale(PreviewZoom.Next(_scale, e.Delta > 0 ? +1 : -1), inViewport);
+        }
+
+        private void OnSurfaceMouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left)
+                return;
+            _dragging = true;
+            _dragged = false;
+            _dragFrom = Control.MousePosition;
+            _dragScroll = new Point(-_viewport.AutoScrollPosition.X, -_viewport.AutoScrollPosition.Y);
+        }
+
+        private void OnSurfaceMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_dragging)
+                return;
+            Point now = Control.MousePosition;
+            if (!_dragged && !PreviewZoom.IsDrag(_dragFrom, now, SystemInformation.DragSize))
+                return; // ещё дрожание руки, а не перетаскивание
+            _dragged = true;
+            if (!CanPan)
+                return;
+            // Тащим содержимое за курсором: ушли мышью вправо — содержимое поехало вправо,
+            // значит смотрим левее, поэтому прокрутка уменьшается.
+            _viewport.AutoScrollPosition = new Point(
+                _dragScroll.X - (now.X - _dragFrom.X),
+                _dragScroll.Y - (now.Y - _dragFrom.Y));
+        }
+
+        private void OnSurfaceMouseUp(object sender, MouseEventArgs e)
+        {
+            bool dragged = _dragged;
+            _dragging = false;
+            _dragged = false;
+            if (PreviewZoom.ClosesOnClick(e.Button, dragged, CanPan))
                 Close();
         }
 
@@ -213,6 +398,12 @@ namespace ExcelMerger
             if (e.KeyCode == Keys.Escape)
             {
                 Close();
+                return;
+            }
+            if (PdfToolFormBase.IsResetZoomKey(e.KeyData)) // Ctrl+0 — натуральная величина, как в сетке
+            {
+                ApplyScale(1.0, new Point(_viewport.ClientSize.Width / 2, _viewport.ClientSize.Height / 2));
+                e.Handled = true;
                 return;
             }
             // Те же сочетания поворота, что и в сетке — разбор один на всё приложение.

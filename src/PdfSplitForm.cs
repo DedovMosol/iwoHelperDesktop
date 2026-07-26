@@ -52,7 +52,7 @@ namespace ExcelMerger
             WireFileDrop(delegate(string[] paths) { LoadSource(paths[0]); });
             BuildHeaderWithHome(Title,
                 Loc.T("split.header.subtitle"),
-                Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
+                Theme.PdfRed, Theme.PdfRedDark, ShowHelp, BuildToolsMenu());
 
             int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
@@ -153,6 +153,191 @@ namespace ExcelMerger
             Controls.Add(_btnDo);
             RegisterActionButton(_btnDo); // база подменит её кнопкой «Отмена» во время операции
             AcceptButton = _btnDo; // Enter запускает действие — как в «Объединении» и «PDF → Word»
+        }
+
+        // ---------- дополнительные преобразования одного документа ----------
+
+        /// <summary>
+        /// Пункт меню «Ещё»: сохранить страницы картинками, извлечь текст, перевести в серое,
+        /// восстановить повреждённый файл. Все они работают с ОДНИМ документом, поэтому живут
+        /// здесь, а не в объединении. Доступность пересчитывается при открытии меню: без
+        /// загруженного документа остаётся только восстановление — оно как раз и нужно тогда,
+        /// когда файл не открывается.
+        /// </summary>
+        private ToolStripMenuItem BuildToolsMenu()
+        {
+            var root = new ToolStripMenuItem(Loc.T("split.menu.more"));
+
+            var images = new ToolStripMenuItem(Loc.T("split.menu.toImages"));
+            foreach (int dpi in PdfExportService.DpiChoices)
+            {
+                int chosen = dpi; // копия для замыкания: иначе все пункты возьмут последнее значение
+                images.DropDownItems.Add(string.Format(Loc.T("split.menu.dpi"), chosen), null,
+                    delegate { ExportImages(chosen); });
+            }
+            root.DropDownItems.Add(images);
+            var text = new ToolStripMenuItem(Loc.T("split.menu.toText"), null, delegate { ExportText(); });
+            root.DropDownItems.Add(text);
+            root.DropDownItems.Add(new ToolStripSeparator());
+            var gray = new ToolStripMenuItem(Loc.T("split.menu.grayscale"), null,
+                delegate { ConvertCopy(PdfConvertMode.Grayscale, _sourcePath); });
+            root.DropDownItems.Add(gray);
+            root.DropDownItems.Add(Loc.T("split.menu.repair"), null, delegate { RepairChosenFile(); });
+
+            root.DropDownOpening += delegate
+            {
+                bool ready = !Working && _sourcePath != null;
+                images.Enabled = ready;
+                text.Enabled = ready;
+                gray.Enabled = ready && Ghostscript.Available;
+            };
+            return root;
+        }
+
+        /// <summary>Сохранить выбранные (или все) страницы картинками в выбранную папку.</summary>
+        private void ExportImages(int dpi)
+        {
+            if (Working || _sourcePath == null)
+                return;
+            List<int> pages = PagesForExport();
+            string dir = FolderPicker.Show(this, Loc.T("split.pick.imagesDir"), Path.GetDirectoryName(_sourcePath));
+            if (string.IsNullOrEmpty(dir))
+                return;
+            ImageExportFormat format = Dialogs.ConfirmWarning(this, Title, Loc.T("split.ask.jpeg.title"),
+                Loc.T("split.ask.jpeg.body")) ? ImageExportFormat.Jpeg : ImageExportFormat.Png;
+
+            string source = _sourcePath;
+            BeginOperation(Loc.T("split.status.exporting"), pages.Count, Loc.T("split.status.exportingPage"));
+            Action<int, int> onProgress = UiProgress();
+            Func<bool> cancel = CancelToken();
+            Ui.RunWorker(delegate()
+            {
+                Exception error = null;
+                List<string> files = null;
+                try
+                {
+                    files = PdfExportService.ToImages(source, pages, dir, NameTemplate.Default, format, dpi,
+                        onProgress, cancel);
+                }
+                catch (Exception ex) { error = ex; }
+                int count = files == null ? 0 : files.Count;
+                OnUi(delegate { OnExportFinished(error, count, dir, true); });
+            });
+        }
+
+        /// <summary>Извлечь текстовый слой документа в .txt.</summary>
+        private void ExportText()
+        {
+            if (Working || _sourcePath == null)
+                return;
+            string outPath;
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Filter = Loc.T("split.txtFilter");
+                dialog.FileName = Path.GetFileNameWithoutExtension(_sourcePath) + ".txt";
+                dialog.InitialDirectory = Path.GetDirectoryName(_sourcePath);
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                outPath = dialog.FileName;
+            }
+            string source = _sourcePath;
+            BeginOperation(Loc.T("split.status.extractingText"), _pageCount);
+            Action<int, int> onProgress = UiProgress();
+            Func<bool> cancel = CancelToken();
+            Ui.RunWorker(delegate()
+            {
+                Exception error = null;
+                try { PdfExportService.ToText(source, outPath, onProgress, cancel); }
+                catch (Exception ex) { error = ex; }
+                OnUi(delegate { OnExportFinished(error, 1, outPath, false); });
+            });
+        }
+
+        /// <summary>
+        /// Преобразовать документ, записав результат в НОВЫЙ файл: исходники приложение не
+        /// меняет никогда. Движок правит файл на месте, поэтому сначала делаем копию — она и
+        /// становится результатом. Не получилось — копию убираем, чтобы не оставлять огрызок.
+        /// </summary>
+        private void ConvertCopy(PdfConvertMode mode, string source)
+        {
+            if (Working || string.IsNullOrEmpty(source))
+                return;
+            string outPath;
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Filter = Loc.T("common.pdfSaveFilter");
+                dialog.FileName = Path.GetFileNameWithoutExtension(source) +
+                    Loc.T(mode == PdfConvertMode.Grayscale ? "split.suffix.gray" : "split.suffix.repaired") + ".pdf";
+                dialog.InitialDirectory = Path.GetDirectoryName(source);
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                outPath = dialog.FileName;
+            }
+            BeginOperation(Loc.T("split.status.converting"), 0);
+            Ui.RunWorker(delegate()
+            {
+                Exception error = null;
+                bool ok = false;
+                try
+                {
+                    File.Copy(source, outPath, true);
+                    ok = PdfConvert.Apply(outPath, mode);
+                    if (!ok)
+                        try { File.Delete(outPath); } catch { } // не вышло — огрызок не оставляем
+                }
+                catch (Exception ex) { error = ex; }
+                bool applied = ok;
+                OnUi(delegate
+                {
+                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("split.err.convertFailed")))
+                        return;
+                    if (!applied)
+                    {
+                        SetStatus(Loc.T("split.status.convertFailed"), Theme.ErrRed);
+                        return;
+                    }
+                    SetStatus(SuccessStatus(Loc.T("split.status.converted")), Theme.OkGreen);
+                    Ui.OpenPath(outPath);
+                });
+            });
+        }
+
+        /// <summary>
+        /// Восстановление выбирает файл своим диалогом: повреждённый документ в сетку не
+        /// открывается, а чинить нужно именно такой. Требовать сперва открыть его значило бы
+        /// сделать функцию недоступной ровно тогда, когда она нужна.
+        /// </summary>
+        private void RepairChosenFile()
+        {
+            if (Working)
+                return;
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Filter = Loc.T("common.pdfFilter");
+                dialog.Title = Loc.T("split.pick.repair");
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                ConvertCopy(PdfConvertMode.Repair, dialog.FileName);
+            }
+        }
+
+        /// <summary>Страницы для экспорта: выбранные в сетке, а если ничего не выбрано — все.</summary>
+        private List<int> PagesForExport()
+        {
+            var pages = new List<int>(_grid.GetSelectedIndices());
+            if (pages.Count == 0)
+                for (int i = 0; i < _pageCount; i++)
+                    pages.Add(i);
+            pages.Sort();
+            return pages;
+        }
+
+        private void OnExportFinished(Exception error, int count, string openTarget, bool asFolder)
+        {
+            if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("split.err.exportFailed")))
+                return;
+            SetStatus(SuccessStatus(string.Format(Loc.T("split.status.exported"), count)), Theme.OkGreen);
+            Ui.OpenPath(openTarget, asFolder);
         }
 
         private void ShowHelp()

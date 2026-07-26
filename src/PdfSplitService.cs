@@ -207,27 +207,18 @@ namespace ExcelMerger
         /// <summary>Путь в папке с уникальным именем (без перезаписи): name.pdf, name_2.pdf, …</summary>
         private static string UniquePath(string dir, string baseName)
         {
-            string safe = Sanitize(baseName);
-            string path = Path.Combine(dir, safe + ".pdf");
-            int n = 2;
-            while (File.Exists(path))
-            {
-                path = Path.Combine(dir, safe + "_" + n + ".pdf");
-                n++;
-            }
-            return path;
+            return OutputFile.Unique(dir, Sanitize(baseName), ".pdf");
         }
 
-        /// <summary>Замена недопустимых для имени файла символов на «_». Чистая — под тест.</summary>
+        /// <summary>
+        /// Имя части из названия закладки. Сама очистка — общая
+        /// (<see cref="NameTemplate.Sanitize"/>), здесь остаётся только политика этого
+        /// инструмента: чем заменить название, от которого ничего не осталось.
+        /// Чистая — под тест.
+        /// </summary>
         internal static string Sanitize(string name)
         {
-            if (string.IsNullOrEmpty(name))
-                return Loc.T("split.unnamed");
-            char[] invalid = Path.GetInvalidFileNameChars();
-            var sb = new StringBuilder(name.Length);
-            foreach (char c in name)
-                sb.Append(Array.IndexOf(invalid, c) >= 0 ? '_' : c);
-            string s = sb.ToString().Trim();
+            string s = NameTemplate.Sanitize(name);
             return s.Length == 0 ? Loc.T("split.unnamed") : s;
         }
     }

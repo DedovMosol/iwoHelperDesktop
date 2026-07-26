@@ -100,12 +100,17 @@ namespace ExcelMerger
         /// после <see cref="InitShell"/>. Содержимое наследник кладёт ниже
         /// HelpMenu.Height + высоты шапки (76).
         /// </summary>
-        protected void BuildHeaderWithHome(string title, string subtitle, Color colorTop, Color colorBottom, Action showHelp)
+        protected void BuildHeaderWithHome(string title, string subtitle, Color colorTop, Color colorBottom,
+            Action showHelp, params ToolStripMenuItem[] extras)
         {
             // Пункт «Горячие клавиши» — только у PDF-инструментов (у них сетка с клавишами).
             var shortcuts = new ToolStripMenuItem(Loc.T("menu.shortcuts"));
             shortcuts.Click += delegate { ShowShortcuts(); };
-            MenuStrip menu = HelpMenu.Create(this, showHelp, shortcuts);
+            var items = new List<ToolStripMenuItem>();
+            items.Add(shortcuts);
+            if (extras != null)
+                items.AddRange(extras);
+            MenuStrip menu = HelpMenu.Create(this, showHelp, items.ToArray());
             MainMenuStrip = menu;
             Controls.Add(menu);
 

@@ -109,60 +109,8 @@ namespace ExcelMerger
         {
             if (level == CompressionLevel.None || !Ghostscript.Available)
                 return false;
-            string tmp = path + ".gstmp";
-            string bak = path + ".gsbak";
-            try
-            {
-                long origSize = new FileInfo(path).Length;
-                string args = BuildArguments(path, tmp, level, Ghostscript.BundledRoot);
-                string stderr;
-                int exit = Ghostscript.Run(args, TimeoutMs, out stderr);
-                bool valid = exit == 0 && LooksLikePdf(tmp);
-                long newSize = valid ? new FileInfo(tmp).Length : 0L;
-                if (ShouldReplace(origSize, newSize, valid))
-                {
-                    ReplaceInPlace(path, tmp, bak);
-                    return true;
-                }
-                return false;
-            }
-            catch
-            {
-                return false;
-            }
-            finally
-            {
-                TryDelete(tmp);
-                TryDelete(bak);
-            }
-        }
-
-        /// <summary>
-        /// Безопасная замена: оригинал уводится в .gsbak, сжатый встаёт на его место,
-        /// бэкап затем удаляется (в finally). При сбое оригинал восстанавливается —
-        /// файл не теряется ни при каком исходе. Через File.Move (переименование в той
-        /// же папке): работает и на сетевых дисках, где File.Replace может отказать.
-        /// </summary>
-        private static void ReplaceInPlace(string path, string tmp, string bak)
-        {
-            TryDelete(bak);
-            File.Move(path, bak);       // оригинал — в сторону
-            try
-            {
-                File.Move(tmp, path);   // сжатый — на место
-            }
-            catch
-            {
-                if (!File.Exists(path)) // откат: вернуть оригинал
-                    File.Move(bak, path);
-                throw;
-            }
-        }
-
-        private static void TryDelete(string p)
-        {
-            try { if (File.Exists(p)) File.Delete(p); }
-            catch { }
+            string args = BuildArguments(path, GsRewrite.TempOutput(path), level, Ghostscript.BundledRoot);
+            return GsRewrite.Run(path, args, TimeoutMs, ShouldReplace);
         }
 
         /// <summary>Первые байты — заголовок «%PDF-». Дешёвая проверка валидности вывода GS.</summary>

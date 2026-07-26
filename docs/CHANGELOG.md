@@ -3,6 +3,49 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.8] — 2026-07-27
+
+### Added
+- **Zoom and pan in the full-size preview.** The page you open by double-clicking a tile now
+  has a magnifier: − / + buttons, `Ctrl`+wheel, a “fit to window” button and `Ctrl+0` for actual
+  size. Zooming with the wheel keeps the point under the cursor in place — you magnify what you
+  are looking at, not the middle of the page — and once the page is larger than the window you
+  drag it with the hand cursor. A left click still closes the window, but only when there is
+  nothing to drag, so panning can no longer close it by accident.
+- **Interleave the pages of several documents** (Merge → menu). This assembles the two stacks a
+  single-sided scanner produces: fronts in one file, backs in another and usually in reverse
+  order. With exactly two documents the app asks whether the second one is reversed. A single
+  `Ctrl+Z` puts the order back.
+- **Save pages as images** (Split → “More with this document”): PNG or JPEG at 96, 150, 300 or
+  600 dpi, either the selected pages or all of them. The resolution is applied to each page's
+  real paper size, so a landscape insert is not stretched. JPEG is written at quality 90 rather
+  than the default 75, which shows up as rings around letters on scans.
+- **Extract the text layer to a .txt** (Split → “More with this document”). Tables are kept: the
+  analysis moves table words out of the paragraph stream, so a naive dump would lose them
+  entirely — cells come out separated by tabs and paste into a spreadsheet as a table. Pages are
+  separated by a form feed, as `pdftotext` does, and the file is UTF-8 with a byte-order mark so
+  Notepad shows Cyrillic correctly.
+- **Convert to grayscale** and **repair a damaged PDF** (Split → “More with this document”).
+  Repair rewrites the file through the PDF engine, which is what fixes a broken cross-reference
+  table — the usual “this file is damaged”. It picks the file with its own dialog, because a
+  damaged document cannot be opened into the grid in the first place, and that is exactly when
+  it is needed. Both write a **new** file: the app never modifies a source.
+
+### Changed
+- The shared Ghostscript pipeline (run, validate, replace only on success, restore the original
+  on any failure) is now one piece of code used by compression and by both new conversions. They
+  differ only in arguments and in when a replacement is allowed: compression replaces the file
+  only if it got **smaller**, while grayscale and repair apply whenever the result is sound.
+- One file-name sanitiser instead of two that had drifted apart. The surviving one also trims
+  trailing dots and caps the length, which protects split-by-bookmark names from the path-length
+  limit.
+
+### Removed
+- **PDF/A conversion was dropped before it shipped.** A probe showed that the engine silently
+  produces an ordinary PDF 1.7 instead of PDF/A unless an external colour profile is supplied,
+  that our own tools cannot reopen 1.7, and that verifying real conformance needs another
+  dependency. Promising a standard we cannot verify is worse than not offering it.
+
 ## [1.17.7] — 2026-07-26
 
 ### Fixed
