@@ -34,7 +34,7 @@ namespace ExcelMerger
         private NumericUpDown _numN;
         private CheckBox _chkCombine;
         private TextBox _txtNameTemplate; // шаблон имени частей; пусто — прежние имена
-        private ToolStripMenuItem _toolsItem;  // «Ещё с документом» — одно меню на «☰» и на кнопку
+        private ContextMenuStrip _toolsMenu;   // «Доп. действия» — не дочерний контрол, освобождаем сами
         private Button _btnTools;
         private Label _lblHint;
         private Button _btnDo;
@@ -55,7 +55,7 @@ namespace ExcelMerger
             WireFileDrop(delegate(string[] paths) { LoadSource(paths[0]); });
             BuildHeaderWithHome(Title,
                 Loc.T("split.header.subtitle"),
-                Theme.PdfRed, Theme.PdfRedDark, ShowHelp, BuildToolsMenu());
+                Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
 
             int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
@@ -164,10 +164,12 @@ namespace ExcelMerger
             _btnTools.SetBounds(px, m + 336, pw, 32);
             _btnTools.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _tips.SetToolTip(_btnTools, Loc.T("split.tip.more"));
+            _toolsMenu = BuildToolsMenu();
             _btnTools.Click += delegate
             {
-                // Показываем ТО ЖЕ выпадающее меню, что и «☰»: вторая копия пунктов разошлась бы.
-                _toolsItem.DropDown.Show(_btnTools, 0, _btnTools.Height);
+                // Направление задаём явно: без него список раскрывался вверх и уезжал за
+                // верхний край окна. Под кнопкой места достаточно — она в середине панели.
+                _toolsMenu.Show(_btnTools, new Point(0, _btnTools.Height), ToolStripDropDownDirection.BelowRight);
             };
             Controls.Add(_btnTools);
 
@@ -220,10 +222,9 @@ namespace ExcelMerger
         /// загруженного документа остаётся только восстановление — оно как раз и нужно тогда,
         /// когда файл не открывается.
         /// </summary>
-        private ToolStripMenuItem BuildToolsMenu()
+        private ContextMenuStrip BuildToolsMenu()
         {
-            var root = new ToolStripMenuItem(Loc.T("split.menu.more"));
-            _toolsItem = root;
+            var root = new ContextMenuStrip();
 
             var images = new ToolStripMenuItem(Loc.T("split.menu.toImages"));
             foreach (int dpi in PdfExportService.DpiChoices)
@@ -232,25 +233,28 @@ namespace ExcelMerger
                 images.DropDownItems.Add(string.Format(Loc.T("split.menu.dpi"), chosen), null,
                     delegate { ExportImages(chosen); });
             }
-            root.DropDownItems.Add(images);
+            root.Items.Add(images);
             var text = new ToolStripMenuItem(Loc.T("split.menu.toText"), null, delegate { ExportText(); });
-            root.DropDownItems.Add(text);
-            root.DropDownItems.Add(new ToolStripSeparator());
+            root.Items.Add(text);
+            root.Items.Add(new ToolStripSeparator());
             var gray = new ToolStripMenuItem(Loc.T("split.menu.grayscale"), null,
                 delegate { ConvertCopy(PdfConvertMode.Grayscale, _sourcePath); });
-            root.DropDownItems.Add(gray);
-            root.DropDownItems.Add(Loc.T("split.menu.repair"), null, delegate { RepairChosenFile(); });
-            root.DropDownItems.Add(new ToolStripSeparator());
+            root.Items.Add(gray);
+            root.Items.Add(Loc.T("split.menu.repair"), null, delegate { RepairChosenFile(); });
+            root.Items.Add(new ToolStripSeparator());
+            var print = new ToolStripMenuItem(Loc.T("split.menu.print"), null, delegate { PrintPages(); });
+            root.Items.Add(print);
             var meta = new ToolStripMenuItem(Loc.T("split.menu.metadata"), null, delegate { EditMetadata(); });
-            root.DropDownItems.Add(meta);
+            root.Items.Add(meta);
 
-            root.DropDownOpening += delegate
+            root.Opening += delegate
             {
                 bool ready = !Working && _sourcePath != null;
                 images.Enabled = ready;
                 text.Enabled = ready;
                 gray.Enabled = ready && Ghostscript.Available;
                 meta.Enabled = ready;
+                print.Enabled = ready;
             };
             return root;
         }
@@ -430,6 +434,42 @@ namespace ExcelMerger
             });
         }
 
+        /// <summary>
+        /// Печать выбранных (или всех) страниц. Диалог принтера показываем на UI-потоке, а сама
+        /// печать идёт в фоне: рендер страниц не мгновенный, и окно не должно замирать.
+        /// </summary>
+        private void PrintPages()
+        {
+            if (Working || _sourcePath == null)
+                return;
+            List<int> pages = PagesForExport();
+            System.Drawing.Printing.PrinterSettings settings;
+            using (var dialog = new PrintDialog())
+            {
+                dialog.AllowSomePages = false; // выбор страниц делается в сетке, а не здесь
+                dialog.UseEXDialog = true;
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                settings = dialog.PrinterSettings;
+            }
+            string source = _sourcePath;
+            BeginOperation(Loc.T("split.status.printing"), pages.Count, Loc.T("split.status.printingPage"));
+            Action<int, int> onProgress = UiProgress();
+            Func<bool> cancel = CancelToken();
+            Ui.RunWorker(delegate()
+            {
+                Exception error = null;
+                try { PdfPrintService.Print(source, pages, settings, onProgress, cancel); }
+                catch (Exception ex) { error = ex; }
+                OnUi(delegate
+                {
+                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("split.err.printFailed")))
+                        return;
+                    SetStatus(SuccessStatus(string.Format(Loc.T("split.status.printed"), pages.Count)), Theme.OkGreen);
+                });
+            });
+        }
+
         /// <summary>Страницы для экспорта: выбранные в сетке, а если ничего не выбрано — все.</summary>
         private List<int> PagesForExport()
         {
@@ -452,12 +492,20 @@ namespace ExcelMerger
         protected override void Dispose(bool disposing)
         {
             // Меню подстановки назначено свойством, а не добавлено в Controls: само не освободится.
-            if (disposing && _templateMenu != null)
+            if (disposing)
             {
-                if (_txtNameTemplate != null)
-                    _txtNameTemplate.ContextMenuStrip = null;
-                _templateMenu.Dispose();
-                _templateMenu = null;
+                if (_templateMenu != null)
+                {
+                    if (_txtNameTemplate != null)
+                        _txtNameTemplate.ContextMenuStrip = null;
+                    _templateMenu.Dispose();
+                    _templateMenu = null;
+                }
+                if (_toolsMenu != null)
+                {
+                    _toolsMenu.Dispose();
+                    _toolsMenu = null;
+                }
             }
             base.Dispose(disposing);
         }

@@ -6,6 +6,10 @@ versions follow [SemVer](https://semver.org/).
 ## [1.17.8] — 2026-07-27
 
 ### Added
+- **Printing.** Right-click the full-size preview to print the page you are looking at, or use
+  “More actions… → Print” in Split for the selected pages or the whole document. Pages are
+  rendered at 200 dpi and fitted into the sheet whole, centred: stretching a page to the edges
+  would crop the margins, which is where signatures and page numbers live.
 - **Zoom and pan in the full-size preview.** The page you open by double-clicking a tile now
   has a magnifier: − / + buttons, `Ctrl`+wheel, a “fit to window” button and `Ctrl+0` for actual
   size. Zooming with the wheel keeps the point under the cursor in place — you magnify what you
@@ -47,12 +51,18 @@ versions follow [SemVer](https://semver.org/).
   it is needed. Both write a **new** file: the app never modifies a source.
 
 ### Changed
-- **The extra tools are reachable from a button**, not only from the window menu: “More with
-  this document…” sits with the other inputs in Split. Five capabilities behind a hamburger
-  submenu were, in practice, invisible.
+- **The extra tools are reachable from a button** called “More actions…”, sitting with the other
+  inputs in Split, and it opens downwards instead of over the top of the window. Five
+  capabilities behind a hamburger submenu were, in practice, invisible; that submenu is gone,
+  so there is one list and one way to reach it.
+- **The in-app instructions match the app again** — they now describe printing, the extra
+  actions, the part-name template, interleaving and double-sided padding.
 - Everything that writes a result beside a source now refuses to write **over** it. The app
   does not modify sources, and writing a file into itself would have damaged it as well — the
   source is open for reading at that moment.
+- **The compression levels name their resolution** — “Good — smaller size (150 dpi)” instead of
+  “Good — smaller size”. The number comes from the same place the engine arguments do, so the
+  label cannot promise one thing while the engine does another.
 - The shared Ghostscript pipeline (run, validate, replace only on success, restore the original
   on any failure) is now one piece of code used by compression and by both new conversions. They
   differ only in arguments and in when a replacement is allowed: compression replaces the file

@@ -69,7 +69,7 @@ namespace ExcelMerger
             _grid.ShowPositionNumbers = true;  // под плиткой — позиция в итоговом наборе
             _grid.EmptyHint = Loc.T("pdf.grid.empty");
             _grid.DropHint = Loc.T("grid.dropHint");
-            _grid.SetBounds(20, m + 80, right - 20 - 190, ClientSize.Height - (m + 80) - 152);
+            _grid.SetBounds(20, m + 80, right - 20 - 150, ClientSize.Height - (m + 80) - 152);
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             WireOrderGrid(); // события порядка + контекстное меню (общая обвязка базы)
             Controls.Add(_grid);
@@ -90,10 +90,9 @@ namespace ExcelMerger
 
             _chkPadEven = new AccentCheckBox();
             _chkPadEven.Text = Loc.T("pdf.chk.padEven");
-            // Шире колонки кнопок: подписи «Двусторонняя печать» нужно 137 px, а в 130 px
-            // колонки на текст остаётся лишь 102 (замерено). Сетка сдвинута ровно на эту
-            // разницу, поэтому пересечения с ней нет — это проверяет живой тест раскладки.
-            _chkPadEven.SetBounds(right - 190, m + 250, 190, 24);
+            // Под кнопками и по их ширине. Подпись длиннее колонки, поэтому переносится на
+            // две строки (см. AccentCheckBox) — обрезать её ради одной строки нельзя.
+            _chkPadEven.SetBounds(col, m + 248, 130, 40);
             _chkPadEven.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _chkPadEven.ForeColor = Theme.TextPrimary;
             _tips.SetToolTip(_chkPadEven, Loc.T("pdf.tip.padEven"));
