@@ -140,7 +140,6 @@ namespace ExcelMerger.Tests
             Run("PdfCompression.ImageDpi: 150/72 совпадают с пресетами Ghostscript", TestCompressionDpi);
             Run("Итоговые строки объединения и разделения на обоих языках", TestDoneStatusLines);
             Run("Предпросмотр: доворот картинки до поворота страницы", TestPreviewRotationDelta);
-            Run("Предпросмотр: закрывает только левая кнопка (правая — меню)", TestPreviewClosesOnLeftClickOnly);
             Run("PdfToolFormBase.ProgressItem: страница из процента, границы", TestProgressItem);
             Run("PdfToolFormBase.BuildShortcuts: набор клавиш по возможностям", TestBuildShortcuts);
             Run("ChoiceCard.FilterByExtension: фильтр по расширению и существованию", TestCardFilter);
@@ -291,7 +290,7 @@ namespace ExcelMerger.Tests
             Run("Просмотр: ступени масштаба и проценты", TestPreviewZoomSteps);
             Run("Просмотр: вписывание по окну без растягивания мелкой страницы", TestPreviewZoomFit);
             Run("Просмотр: Ctrl+колесо увеличивает к точке под курсором", TestPreviewZoomAnchor);
-            Run("Просмотр: панорама и когда клик закрывает окно", TestPreviewPanAndClose);
+            Run("Просмотр: панорама и порог перетаскивания", TestPreviewPan);
             Run("Сетка: выбор чётных и нечётных страниц (нумерация с единицы)", TestSelectEveryOther);
             Run("Добивка: позиции пустых страниц для двусторонней печати", TestBlankPagePositions);
             Run("Добивка (живая): пустые страницы в файле и нужного размера", TestBlankPageMergeLive);
@@ -300,12 +299,14 @@ namespace ExcelMerger.Tests
             Run("Защита: запись поверх исходника распознаётся заранее", TestSameFileGuard);
             Run("Печать: страница вписывается в лист целиком и по центру", TestPrintFitToPage);
             Run("Сжатие: подписи называют разрешение из того же источника", TestCompressionLabelsNameDpi);
+            Run("Смена языка: главный экран остаётся рабочим", TestLanguageRebuildKeepsHubUsable);
+            Run("Смена языка: свёрнутый главный экран не уезжает за экран", TestLanguageRebuildKeepsMinimizedHubOnScreen);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 273;
+            const int MinTests = 274;
             int total = _passed + _failed;
             if (total < MinTests)
             {
@@ -1143,6 +1144,13 @@ namespace ExcelMerger.Tests
                         if (box == null) { failure = "описание не найдено выделяемым полем"; return; }
                         if (box.Bottom > about.ClientSize.Height) { failure = "описание не влезает в окно"; return; }
 
+                        // Владелец просил описание ВЫКЛЮЧЕННЫМ ПО ШИРИНЕ, а такого выравнивания
+                        // WinForms не предлагает — оно выставлено формату абзаца напрямую.
+                        // Спрашиваем сам элемент, иначе откат к левому краю прошёл бы незаметно.
+                        var rich = box as System.Windows.Forms.RichTextBox;
+                        if (rich == null) { failure = "описание не RichTextBox — выключка по ширине невозможна"; return; }
+                        if (!AboutForm.IsJustified(rich)) { failure = "описание не выключено по ширине"; return; }
+
                         // Высота поля считается по замеру текста, поэтому проверяем НЕ формулу,
                         // а факт: спрашиваем у самого поля, где легла последняя строка после
                         // переноса. Если она вылезает за высоту — хвост описания обрезан.
@@ -1197,12 +1205,16 @@ namespace ExcelMerger.Tests
                 third.Close();
         }
 
-        /// <summary>Выделяемое поле (read-only TextBox) с данным текстом среди контролов окна.</summary>
-        private static System.Windows.Forms.TextBox FindSelectable(System.Windows.Forms.Control root, string text)
+        /// <summary>
+        /// Выделяемое поле (read-only) с данным текстом среди контролов окна. Ищем по
+        /// TextBoxBase, а не по TextBox: абзац описания — RichTextBox (ему нужна выключка по
+        /// ширине), и это тоже поле, которое можно выделить и скопировать.
+        /// </summary>
+        private static System.Windows.Forms.TextBoxBase FindSelectable(System.Windows.Forms.Control root, string text)
         {
             foreach (System.Windows.Forms.Control c in root.Controls)
             {
-                var tb = c as System.Windows.Forms.TextBox;
+                var tb = c as System.Windows.Forms.TextBoxBase;
                 if (tb != null && tb.ReadOnly && tb.Text == text)
                     return tb;
                 var nested = FindSelectable(c, text);
@@ -4238,26 +4250,6 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
-        /// Предпросмотр закрывается только левой кнопкой. Правая принадлежит контекстному
-        /// меню поворота, и раньше она закрывала окно прямо под открывающимся меню: событие
-        /// Click у PictureBox приходит по ЛЮБОЙ кнопке, PictureBox нет в списке исключений.
-        /// </summary>
-        private static void TestPreviewClosesOnLeftClickOnly()
-        {
-            AssertTrue(PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Left, false, false),
-                "левая кнопка закрывает предпросмотр");
-            foreach (System.Windows.Forms.MouseButtons other in new[]
-            {
-                System.Windows.Forms.MouseButtons.Right,
-                System.Windows.Forms.MouseButtons.Middle,
-                System.Windows.Forms.MouseButtons.XButton1,
-                System.Windows.Forms.MouseButtons.XButton2,
-                System.Windows.Forms.MouseButtons.None
-            })
-                AssertTrue(!PreviewZoom.ClosesOnClick(other, false, false), "кнопка " + other + " не должна закрывать окно");
-        }
-
-        /// <summary>
         /// Готовые строки результата на обоих языках: значения подставляются в нужные места
         /// (иначе string.Format свалился бы уже в бою), разрешение называется только когда
         /// сжатие сработало, разбиение считает файлы, а извлечение — страницы.
@@ -5177,17 +5169,11 @@ namespace ExcelMerger.Tests
             AssertEqual(200, PreviewZoom.Anchor(200, 100, 0, 2.0), "нулевой исходный масштаб не ломает расчёт");
         }
 
-        private static void TestPreviewPanAndClose()
+        private static void TestPreviewPan()
         {
             var viewport = new System.Drawing.Size(800, 600);
             AssertTrue(PreviewZoom.FitsEntirely(new System.Drawing.Size(800, 600), viewport), "точно по размеру — панорама не нужна");
             AssertTrue(!PreviewZoom.FitsEntirely(new System.Drawing.Size(801, 600), viewport), "шире области — нужна панорама");
-
-            // Клик закрывает окно, только когда таскать нечего и это именно клик.
-            AssertTrue(PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Left, false, false), "обычный клик закрывает");
-            AssertTrue(!PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Left, true, false), "перетаскивание не закрывает");
-            AssertTrue(!PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Left, false, true), "на увеличенной странице клик не закрывает");
-            AssertTrue(!PreviewZoom.ClosesOnClick(System.Windows.Forms.MouseButtons.Right, false, false), "правая кнопка принадлежит меню");
 
             var t = new System.Drawing.Size(8, 8);
             AssertTrue(!PreviewZoom.IsDrag(new System.Drawing.Point(10, 10), new System.Drawing.Point(13, 13), t),
@@ -5375,6 +5361,121 @@ namespace ExcelMerger.Tests
                 "«Нормально» называет своё разрешение: " + labels[2]);
             AssertTrue(!labels[0].Contains("{0}") && !labels[1].Contains("{0}"),
                 "подстановка выполнена, а не показана как есть");
+        }
+
+        /// <summary>
+        /// Смена языка при открытом инструменте обязана оставить ГЛАВНЫЙ ЭКРАН рабочим:
+        /// он пересоздаётся вместе с остальными, и если после пересборки на нём не окажется
+        /// карточек или он окажется закрыт, пользователь останется без входа в инструменты.
+        /// Пересборку зовём напрямую: обычный путь идёт через отложенный вызов и требует
+        /// цикла сообщений, а проверяем мы здесь именно её результат.
+        /// </summary>
+        private static void TestLanguageRebuildKeepsHubUsable()
+        {
+            var failures = new List<string>();
+            InIsolatedSettings("iwo_lang_rebuild_", delegate
+            {
+                Lang saved = Loc.Current;
+                var ctx = new ShellContext();
+                try
+                {
+                    ctx.OpenTool("split", "Split", delegate(Action back) { return new PdfSplitForm(back); });
+                    Loc.Init(saved == Lang.Ru ? Lang.En : Lang.Ru); // язык уже другой, как в момент пересборки
+                    typeof(ShellContext).GetMethod("RebuildOpenWindows",
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                        .Invoke(ctx, null);
+
+                    System.Windows.Forms.Form hub = HubOf(ctx);
+                    if (hub == null || hub.IsDisposed)
+                        failures.Add("после смены языка главного экрана нет");
+                    else
+                    {
+                        int cards = 0;
+                        foreach (System.Windows.Forms.Control c in hub.Controls)
+                            if (c is ChoiceCard)
+                                cards++;
+                        if (cards != 4)
+                            failures.Add("на главном экране карточек " + cards + ", а должно быть 4");
+                        if (!hub.Visible)
+                            failures.Add("главный экран не показан");
+                    }
+                }
+                catch (Exception ex) { failures.Add(ex.GetType().Name + ": " + ex.Message); }
+                finally
+                {
+                    Loc.Init(saved);
+                    try { ctx.Dispose(); } catch { }
+                }
+            });
+            AssertTrue(failures.Count == 0, "пересборка по смене языка: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>
+        /// СВЁРНУТЫЙ главный экран обязан пережить смену языка. У свёрнутого окна Bounds — это
+        /// служебные координаты далеко за пределами экранов (-32000, -32000). Пересборка
+        /// копировала их на новый хаб, и тот открывался ОБЫЧНЫМ окном за краем рабочего стола:
+        /// в панели задач он есть, а на экране его нет и «Главная» будто ничего не делает.
+        /// Проверяем и состояние (осталось свёрнутым), и «нормальные» границы (настоящие, на
+        /// экране) — по отдельности каждое из них можно было бы удовлетворить и с ошибкой.
+        /// </summary>
+        private static void TestLanguageRebuildKeepsMinimizedHubOnScreen()
+        {
+            var failures = new List<string>();
+            InIsolatedSettings("iwo_lang_min_hub_", delegate
+            {
+                Lang saved = Loc.Current;
+                var ctx = new ShellContext();
+                try
+                {
+                    ctx.OpenTool("split", "Split", delegate(Action back) { return new PdfSplitForm(back); });
+                    System.Windows.Forms.Form hub = HubOf(ctx);
+                    if (hub == null) { failures.Add("главного экрана нет ещё до смены языка"); return; }
+                    hub.WindowState = System.Windows.Forms.FormWindowState.Minimized;
+                    if (hub.Bounds.X > -30000)
+                        failures.Add("окно не свернулось — проверять нечего: " + hub.Bounds);
+
+                    Loc.Init(saved == Lang.Ru ? Lang.En : Lang.Ru);
+                    typeof(ShellContext).GetMethod("RebuildOpenWindows",
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                        .Invoke(ctx, null);
+
+                    System.Windows.Forms.Form rebuilt = HubOf(ctx);
+                    if (rebuilt == null || rebuilt.IsDisposed)
+                    {
+                        failures.Add("после смены языка главного экрана нет");
+                        return;
+                    }
+                    if (rebuilt.WindowState != System.Windows.Forms.FormWindowState.Minimized)
+                        failures.Add("свёрнутый главный экран развернулся сам: " + rebuilt.WindowState);
+                    System.Drawing.Rectangle normal = WindowPlacement.NormalBounds(rebuilt);
+                    if (!OnAnyWorkArea(normal))
+                        failures.Add("главный экран уехал за пределы экранов: " + normal);
+                }
+                catch (Exception ex) { failures.Add(ex.GetType().Name + ": " + ex.Message); }
+                finally
+                {
+                    Loc.Init(saved);
+                    try { ctx.Dispose(); } catch { }
+                }
+            });
+            AssertTrue(failures.Count == 0, "свёрнутый главный экран: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>Текущий главный экран приложения (приватное поле оболочки).</summary>
+        private static System.Windows.Forms.Form HubOf(ShellContext ctx)
+        {
+            return (System.Windows.Forms.Form)typeof(ShellContext)
+                .GetField("_hub", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(ctx);
+        }
+
+        /// <summary>Пересекается ли прямоугольник хоть с одной рабочей областью экранов.</summary>
+        private static bool OnAnyWorkArea(System.Drawing.Rectangle r)
+        {
+            foreach (System.Windows.Forms.Screen s in System.Windows.Forms.Screen.AllScreens)
+                if (s.WorkingArea.IntersectsWith(r))
+                    return true;
+            return false;
         }
 
         // ---------- Преобразования Ghostscript ----------

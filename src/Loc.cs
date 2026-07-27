@@ -190,7 +190,7 @@ namespace ExcelMerger
             // Полноэкранный просмотр: лупа и подгонка по окну.
             // Подпись называет НАЗНАЧЕНИЕ, а не механику: «добить до чётного» ничего не говорит
             // тому, кто просто хочет напечатать с двух сторон. Что именно произойдёт — в подсказке.
-            A("pdf.chk.padEven", "Добавлять пустую страницу", "Add a blank page");
+            A("pdf.chk.padEven", "Добавить пустую стр.", "Add a blank page");
             A("pdf.tip.padEven",
                 "Для двусторонней печати. После документа с нечётным числом страниц добавляется пустая, чтобы следующий документ начинался с новой стороны листа, а не с оборота предыдущего.",
                 "For double-sided printing. A blank page is added after a document with an odd page count, so the next document starts on a fresh side of the sheet instead of the back of the previous one.");
@@ -590,9 +590,9 @@ namespace ExcelMerger
                 "сканера: лицевые стороны в одном файле, оборотные в другом и обычно задом " +
                 "наперёд — приложение спросит про это и разложит их по очереди. Ctrl+Z вернёт " +
                 "прежний порядок.\n" +
-                "Флажок «Двусторонняя печать» добавляет пустую страницу после документа с " +
-                "нечётным числом страниц, чтобы следующий документ начинался с лицевой стороны " +
-                "листа, а не с оборота предыдущего.\n\n" +
+                "Флажок «Добавить пустую стр.» нужен для двусторонней печати: после документа " +
+                "с нечётным числом страниц добавляется пустая, чтобы следующий документ " +
+                "начинался с лицевой стороны листа, а не с оборота предыдущего.\n\n" +
                 "Горячие клавиши: Delete — удалить выбранные, Alt+←/→ — порядок, " +
                 "Ctrl+A — выделить всё, Ctrl+колесо или поле «%» — масштаб (Ctrl+0 — 100%).\n" +
                 "Окно запоминает свои размер и положение между запусками.\n" +
@@ -613,9 +613,9 @@ namespace ExcelMerger
                 "single‑sided scanner produces: fronts in one file, backs in another and usually " +
                 "in reverse order — the app asks about that and lays them out in turn. Ctrl+Z puts " +
                 "the previous order back.\n" +
-                "The “Double‑sided printing” checkbox adds a blank page after a document with an " +
-                "odd page count, so the next document starts on the front of a sheet rather than " +
-                "on the back of the previous one.\n\n" +
+                "The “Add a blank page” checkbox is for double-sided printing: a blank page is " +
+                "added after a document with an odd page count, so the next document starts on " +
+                "the front of a sheet rather than on the back of the previous one.\n\n" +
                 "Shortcuts: Delete — remove selected, Alt+←/→ — order, " +
                 "Ctrl+A — select all, Ctrl+wheel or the “%” box — zoom (Ctrl+0 — 100%).\n" +
                 "The window remembers its size and position between runs.\n" +
