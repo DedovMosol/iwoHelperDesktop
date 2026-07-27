@@ -59,12 +59,6 @@ versions follow [SemVer](https://semver.org/).
   trailing dots and caps the length, which protects split-by-bookmark names from the path-length
   limit.
 
-### Removed
-- **PDF/A conversion was dropped before it shipped.** A probe showed that the engine silently
-  produces an ordinary PDF 1.7 instead of PDF/A unless an external colour profile is supplied,
-  that our own tools cannot reopen 1.7, and that verifying real conformance needs another
-  dependency. Promising a standard we cannot verify is worse than not offering it.
-
 ## [1.17.7] — 2026-07-26
 
 ### Fixed
