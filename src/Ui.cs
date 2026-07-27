@@ -141,6 +141,19 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Ширина строки в пикселях без служебных полей — под расчёт размеров контролов.
+        /// Мерить надо ТЕМ ЖЕ шрифтом, каким контрол рисует: главная кнопка набрана крупнее
+        /// и полужирным, и замер шрифтом окна занижает её подпись примерно на пятую часть.
+        /// </summary>
+        public static int TextWidth(string text, Font font)
+        {
+            if (string.IsNullOrEmpty(text) || font == null)
+                return 0;
+            return TextRenderer.MeasureText(text, font, new Size(int.MaxValue, int.MaxValue),
+                TextFormatFlags.NoPadding).Width;
+        }
+
+        /// <summary>
         /// Открыть страницу в браузере по ЯВНОМУ действию пользователя: не открылась — показать
         /// сам адрес, чтобы его можно было набрать вручную. Промолчать здесь нельзя — нажатие
         /// «Да» не оставило бы ни единого следа и читалось бы как поломка.
