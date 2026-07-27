@@ -54,7 +54,12 @@ The app keeps a small amount of data **locally**, under
 - `crash.log` — a local, size‑rotated error log written only if the app hits an
   unexpected error (exception type, message and stack trace, which may include the path
   of the file being processed — never its contents). It is never transmitted anywhere,
-  it exists so **you** can attach it to a bug report if you choose to.
+  it exists so **you** can attach it to a bug report if you choose to,
+- `setup-language.txt` — one word, `ru` or `en`: the language you picked in the installer.
+  The app applies it at the first start and deletes the file,
+- `Инструкция пользователя.docx` — the user guide, unpacked from the program itself when you
+  open it from **About**. It is a copy of what already sits inside the `.exe`, nothing is
+  downloaded.
 
 You can delete this folder at any time, the app recreates only what it needs.
 

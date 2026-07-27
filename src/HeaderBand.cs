@@ -15,7 +15,7 @@ namespace ExcelMerger
     public class HeaderBand : Panel
     {
         private readonly string _title;
-        private readonly string _subtitle;
+        private string _subtitle;
         private readonly Color _top;
         private readonly Color _bottom;
         private static readonly Font TitleFont = new Font("Segoe UI", 15f, FontStyle.Bold);
@@ -23,6 +23,56 @@ namespace ExcelMerger
 
         /// <summary>Центрировать заголовок и подпись по ширине (для стартового экрана без кнопок).</summary>
         public bool Centered { get; set; }
+
+        /// <summary>
+        /// Подпись под заголовком. Меняется на ходу: стартовый экран называет ею текущий раздел
+        /// («Выберите раздел» → «Инструменты PDF»), и человек всегда видит, где находится.
+        /// </summary>
+        public string Subtitle
+        {
+            get { return _subtitle; }
+            set
+            {
+                string text = value ?? string.Empty;
+                if (_subtitle == text)
+                    return;
+                _subtitle = text;
+                Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// Выровнять свой элемент по центру ТЕКСТОВОГО БЛОКА (заголовок плюс подпись) — так
+        /// стоят глобус выбора языка и кнопка «Назад» на стартовом экране. Шапка расставляет их
+        /// сама на каждой раскладке, и это не прихоть: строки считаются от РЕАЛЬНЫХ высот
+        /// шрифтов, а те растут вместе с масштабом экрана. Координата, выставленная один раз в
+        /// конструкторе, разъехалась бы с текстом на 125% и выше — ровно та ошибка, из-за
+        /// которой высоты строк здесь уже считаются, а не задаются литералами.
+        /// </summary>
+        public void AlignToText(Control child)
+        {
+            if (child != null && !_aligned.Contains(child))
+                _aligned.Add(child);
+        }
+
+        private readonly System.Collections.Generic.List<Control> _aligned =
+            new System.Collections.Generic.List<Control>();
+
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            base.OnLayout(e);
+            if (_aligned.Count == 0)
+                return;
+            int center = TextBlockCenter(Height, TitleFont.Height, Font.Height);
+            foreach (Control child in _aligned)
+            {
+                int top = center - child.Height / 2;
+                // Сравнение обязательно: присваивание внутри раскладки запускает её заново, и
+                // без этой проверки получилась бы бесконечная рекурсия.
+                if (child.Top != top)
+                    child.Top = top;
+            }
+        }
 
         public HeaderBand(string title, string subtitle, Color top, Color bottom)
         {
@@ -115,6 +165,18 @@ namespace ExcelMerger
         {
             int bound = leftmostChildLeft < int.MaxValue ? leftmostChildLeft - 12 : bandWidth - 20;
             return Math.Min(bound, bandWidth - 20);
+        }
+
+        /// <summary>
+        /// Вертикальный центр текстового блока шапки: от верха заголовка до низа подписи.
+        /// По нему выравнивается <see cref="TextAlignedIcon"/> — иначе иконка висит выше
+        /// текста и выглядит забытой в углу. Чистая — под тест.
+        /// </summary>
+        internal static int TextBlockCenter(int bandHeight, int titleHeight, int subtitleHeight)
+        {
+            int titleY, subtitleY;
+            TextRows(bandHeight, titleHeight, subtitleHeight, out titleY, out subtitleY);
+            return (titleY + subtitleY + subtitleHeight) / 2;
         }
     }
 }

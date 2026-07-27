@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -14,18 +13,14 @@ namespace ExcelMerger
     /// диапазонам, каждые N страниц, по закладкам). Страницы копируются без
     /// переконвертации (PDFsharp); исходный файл не изменяется.
     /// </summary>
-    public class PdfSplitForm : PdfToolFormBase, IFileAcceptor
+    public class PdfSplitForm : PdfSingleDocFormBase
     {
         private static string Title { get { return Loc.T("hub.split.name"); } }
         private const int ModeExtract = 0, ModeRanges = 1, ModeEveryN = 2, ModeBookmarks = 3;
 
         // Сетка, зум, сжатие, статус, подсказки и флаг _busy — в базе PdfToolFormBase.
-        private string _sourcePath;
-        private int _pageCount;
-        // Страницы исходника, показанные сеткой: сетка мутирует их Rotation при повороте,
-        // отсюда форма собирает карту поворотов для записи (все режимы разделения).
-        private List<PdfPageRef> _pages = new List<PdfPageRef>();
-
+        // Открытый документ (_sourcePath, _pageCount, _pages), его загрузка и выбор страниц —
+        // в базе PdfSingleDocFormBase (общее с «Прочими операциями»).
         private Button _btnOpen;
         private ComboBox _cmbMode;
         private Label _lblRanges;
@@ -34,26 +29,34 @@ namespace ExcelMerger
         private NumericUpDown _numN;
         private CheckBox _chkCombine;
         private TextBox _txtNameTemplate; // шаблон имени частей; пусто — прежние имена
-        private ContextMenuStrip _toolsMenu;   // «Доп. действия» — не дочерний контрол, освобождаем сами
-        private Button _btnTools;
+        private Button _btnOps;
         private Button _btnPrint;
         private Label _lblHint;
         private Button _btnDo;
+        // Открыть «Прочие операции» с этим же документом. Задаёт стартовый экран (он знает все
+        // инструменты); в смоук-тестах и самопроверке его нет — кнопка тогда просто не работает.
+        private readonly Action<string> _openOps;
 
         public PdfSplitForm() : this(null) { }
 
-        public PdfSplitForm(Action showHub) : base(showHub)
+        public PdfSplitForm(Action showHub) : this(showHub, null) { }
+
+        public PdfSplitForm(Action showHub, Action<string> openOps) : base(showHub)
         {
+            _openOps = openOps;
             BuildUi();
             UpdateModeInputs();
             SyncControls();
         }
 
+        protected override string ToolTitle { get { return Title; } }
+
+        /// <summary>Заголовок окна выбора файла — своя формулировка у каждого инструмента.</summary>
+        protected override string PickFileTitle { get { return Loc.T("split.pickPdf"); } }
+
         private void BuildUi()
         {
             InitShell(Title, new Size(800, 660), new Size(700, 600), Theme.PdfRed);
-            // Дроп PDF на окно — открыть первый файл (разделение работает с одним документом).
-            WireFileDrop(delegate(string[] paths) { LoadSource(paths[0]); });
             BuildHeaderWithHome(Title,
                 Loc.T("split.header.subtitle"),
                 Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
@@ -67,27 +70,20 @@ namespace ExcelMerger
             _grid.AllowReorder = false; // разделение не меняет порядок исходника
             _grid.AllowRotate = true;   // но поворот страниц в ИТОГОВЫХ файлах — можно
             // ShowPositionNumbers = false: под плиткой — номер исходной страницы.
-            _grid.EmptyHint = Loc.T("split.grid.empty");
-            _grid.DropHint = Loc.T("split.grid.drop");
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            _grid.SelectionChanged += delegate { SyncControls(); RefreshRestingStatus(); };
-            _grid.FilesDropped += delegate(string[] paths, int insertAt)
-            {
-                if (paths.Length > 0)
-                    LoadSource(paths[0]); // разделение работает с одним документом (LoadSource гейтит Working)
-            };
+            WireSingleDocGrid(); // подсказки, выделение, дроп на сетку и на окно (общая обвязка базы)
             WireGridMenu();
             Controls.Add(_grid);
 
             int px = right - panelW + 10; // левый край панели режима
             int pw = panelW - 10;
             _btnOpen = new RoundedButton(false);
-            _btnOpen.Text = Loc.T("split.btn.open");
+            _btnOpen.Text = Loc.T("common.btn.openPdf");
             _btnOpen.SetBounds(px, m + 84, pw, 32);
             _btnOpen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _btnOpen.Click += OnOpenClick;
-            _tips.SetToolTip(_btnOpen, Loc.T("split.tip.open"));
+            _btnOpen.Click += delegate { PickAndOpenFile(); };
+            _tips.SetToolTip(_btnOpen, Loc.T("common.tip.openPdf"));
             Controls.Add(_btnOpen);
 
             Label lblMode = Ui.Label(this, Loc.T("split.lbl.mode"), px, m + 128, Font, Theme.TextPrimary);
@@ -168,22 +164,22 @@ namespace ExcelMerger
             _btnPrint.Click += delegate { PrintSelectedPages(); };
             Controls.Add(_btnPrint);
 
-            _btnTools = new RoundedButton(false);
-            _btnTools.Text = Loc.T("split.btn.more");
-            _btnTools.SetBounds(px + 80, m + 336, pw - 80, 32);
-            _btnTools.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _tips.SetToolTip(_btnTools, Loc.T("split.tip.more"));
-            _toolsMenu = BuildToolsMenu();
-            _btnTools.Click += delegate
+            // Шесть операций над одним документом переехали в своё окно (их не находили в меню).
+            // Здесь остался переход туда с УЖЕ ОТКРЫТЫМ файлом — открывать его заново не нужно.
+            _btnOps = new RoundedButton(false);
+            _btnOps.Text = Loc.T("split.btn.ops");
+            _btnOps.SetBounds(px + 80, m + 336, pw - 80, 32);
+            _btnOps.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(_btnOps, Loc.T("split.tip.ops"));
+            _btnOps.Click += delegate
             {
-                // Направление задаём явно: без него список раскрывался вверх и уезжал за
-                // верхний край окна. Под кнопкой места достаточно — она в середине панели.
-                _toolsMenu.Show(_btnTools, new Point(0, _btnTools.Height), ToolStripDropDownDirection.BelowRight);
+                if (_openOps != null && _sourcePath != null)
+                    _openOps(_sourcePath);
             };
-            Controls.Add(_btnTools);
+            Controls.Add(_btnOps);
 
             // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
-            BuildBottomStrip(right, Loc.T("split.status.openPdf"), 190);
+            BuildBottomStrip(right, Loc.T("common.status.openPdf"), 190);
 
             // Действие — в правом нижнем углу (как «Сохранить PDF» в «Объединении»).
             _btnDo = new RoundedButton(true);
@@ -222,271 +218,24 @@ namespace ExcelMerger
             _txtNameTemplate.Focus();
         }
 
-        // ---------- дополнительные преобразования одного документа ----------
-
-        /// <summary>
-        /// Пункт меню «Ещё»: сохранить страницы картинками, извлечь текст, перевести в серое,
-        /// восстановить повреждённый файл. Все они работают с ОДНИМ документом, поэтому живут
-        /// здесь, а не в объединении. Доступность пересчитывается при открытии меню: без
-        /// загруженного документа остаётся только восстановление — оно как раз и нужно тогда,
-        /// когда файл не открывается.
-        /// </summary>
-        private ContextMenuStrip BuildToolsMenu()
-        {
-            var root = new ContextMenuStrip();
-
-            var images = new ToolStripMenuItem(Loc.T("split.menu.toImages"));
-            foreach (int dpi in PdfExportService.DpiChoices)
-            {
-                int chosen = dpi; // копия для замыкания: иначе все пункты возьмут последнее значение
-                images.DropDownItems.Add(string.Format(Loc.T("split.menu.dpi"), chosen), null,
-                    delegate { ExportImages(chosen); });
-            }
-            root.Items.Add(images);
-            var text = new ToolStripMenuItem(Loc.T("split.menu.toText"), null, delegate { ExportText(); });
-            root.Items.Add(text);
-            root.Items.Add(new ToolStripSeparator());
-            var gray = new ToolStripMenuItem(Loc.T("split.menu.grayscale"), null,
-                delegate { ConvertCopy(PdfConvertMode.Grayscale, _sourcePath); });
-            root.Items.Add(gray);
-            root.Items.Add(Loc.T("split.menu.repair"), null, delegate { RepairChosenFile(); });
-            root.Items.Add(new ToolStripSeparator());
-            var meta = new ToolStripMenuItem(Loc.T("split.menu.metadata"), null, delegate { EditMetadata(); });
-            root.Items.Add(meta);
-
-            root.Opening += delegate
-            {
-                bool ready = !Working && _sourcePath != null;
-                images.Enabled = ready;
-                text.Enabled = ready;
-                gray.Enabled = ready && Ghostscript.Available;
-                meta.Enabled = ready;
-            };
-            return root;
-        }
-
-        /// <summary>Сохранить выбранные (или все) страницы картинками в выбранную папку.</summary>
-        private void ExportImages(int dpi)
-        {
-            if (Working || _sourcePath == null)
-                return;
-            List<int> pages = PagesForExport();
-            string dir = FolderPicker.Show(this, Loc.T("split.pick.imagesDir"), Path.GetDirectoryName(_sourcePath));
-            if (string.IsNullOrEmpty(dir))
-                return;
-            ImageExportFormat format = Dialogs.ConfirmWarning(this, Title, Loc.T("split.ask.jpeg.title"),
-                Loc.T("split.ask.jpeg.body")) ? ImageExportFormat.Jpeg : ImageExportFormat.Png;
-
-            string source = _sourcePath;
-            BeginOperation(Loc.T("split.status.exporting"), pages.Count, Loc.T("split.status.exportingPage"));
-            Action<int, int> onProgress = UiProgress();
-            Func<bool> cancel = CancelToken();
-            Ui.RunWorker(delegate()
-            {
-                Exception error = null;
-                List<string> files = null;
-                try
-                {
-                    files = PdfExportService.ToImages(source, pages, dir, NameTemplate.Default, format, dpi,
-                        onProgress, cancel);
-                }
-                catch (Exception ex) { error = ex; }
-                int count = files == null ? 0 : files.Count;
-                OnUi(delegate { OnExportFinished(error, count, dir, true); });
-            });
-        }
-
-        /// <summary>Извлечь текстовый слой документа в .txt.</summary>
-        private void ExportText()
-        {
-            if (Working || _sourcePath == null)
-                return;
-            string outPath;
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = Loc.T("split.txtFilter");
-                dialog.FileName = Path.GetFileNameWithoutExtension(_sourcePath) + ".txt";
-                dialog.InitialDirectory = Path.GetDirectoryName(_sourcePath);
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                outPath = dialog.FileName;
-            }
-            string source = _sourcePath;
-            BeginOperation(Loc.T("split.status.extractingText"), _pageCount);
-            Action<int, int> onProgress = UiProgress();
-            Func<bool> cancel = CancelToken();
-            Ui.RunWorker(delegate()
-            {
-                Exception error = null;
-                try { PdfExportService.ToText(source, outPath, onProgress, cancel); }
-                catch (Exception ex) { error = ex; }
-                OnUi(delegate { OnExportFinished(error, 1, outPath, false); });
-            });
-        }
-
-        /// <summary>
-        /// Преобразовать документ, записав результат в НОВЫЙ файл: исходники приложение не
-        /// меняет никогда. Движок правит файл на месте, поэтому сначала делаем копию — она и
-        /// становится результатом. Не получилось — копию убираем, чтобы не оставлять огрызок.
-        /// </summary>
-        private void ConvertCopy(PdfConvertMode mode, string source)
-        {
-            if (Working || string.IsNullOrEmpty(source))
-                return;
-            string outPath;
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfSaveFilter");
-                dialog.FileName = Path.GetFileNameWithoutExtension(source) +
-                    Loc.T(mode == PdfConvertMode.Grayscale ? "split.suffix.gray" : "split.suffix.repaired") + ".pdf";
-                dialog.InitialDirectory = Path.GetDirectoryName(source);
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                outPath = dialog.FileName;
-            }
-                if (OutputFile.IsSameFile(outPath, source))
-                {
-                    Dialogs.Error(this, Title, Loc.T("split.err.sameFile"), Loc.T("split.err.sameFile.body"));
-                    return;
-                }
-            BeginOperation(Loc.T("split.status.converting"), 0);
-            Ui.RunWorker(delegate()
-            {
-                Exception error = null;
-                bool ok = false;
-                try
-                {
-                    File.Copy(source, outPath, true);
-                    ok = PdfConvert.Apply(outPath, mode);
-                    if (!ok)
-                        try { File.Delete(outPath); } catch { } // не вышло — огрызок не оставляем
-                }
-                catch (Exception ex) { error = ex; }
-                bool applied = ok;
-                OnUi(delegate
-                {
-                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("split.err.convertFailed")))
-                        return;
-                    if (!applied)
-                    {
-                        SetStatus(Loc.T("split.status.convertFailed"), Theme.ErrRed);
-                        return;
-                    }
-                    SetStatus(SuccessStatus(Loc.T("split.status.converted")), Theme.OkGreen);
-                    Ui.OpenPath(outPath);
-                });
-            });
-        }
-
-        /// <summary>
-        /// Восстановление выбирает файл своим диалогом: повреждённый документ в сетку не
-        /// открывается, а чинить нужно именно такой. Требовать сперва открыть его значило бы
-        /// сделать функцию недоступной ровно тогда, когда она нужна.
-        /// </summary>
-        private void RepairChosenFile()
-        {
-            if (Working)
-                return;
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfFilter");
-                dialog.Title = Loc.T("split.pick.repair");
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                ConvertCopy(PdfConvertMode.Repair, dialog.FileName);
-            }
-        }
-
-        /// <summary>
-        /// Правка свойств документа. Результат пишется в НОВЫЙ файл: исходники приложение не
-        /// меняет. Пустое поле очищает свойство — так из файла убирают имя автора перед отправкой.
-        /// </summary>
-        private void EditMetadata()
-        {
-            if (Working || _sourcePath == null)
-                return;
-            PdfMetadata edited = MetadataForm.Edit(this, PdfMetadataService.Read(_sourcePath));
-            if (edited == null)
-                return; // пользователь отказался
-            string outPath;
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfSaveFilter");
-                dialog.FileName = Path.GetFileNameWithoutExtension(_sourcePath) + Loc.T("split.suffix.meta") + ".pdf";
-                dialog.InitialDirectory = Path.GetDirectoryName(_sourcePath);
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                outPath = dialog.FileName;
-            }
-                if (OutputFile.IsSameFile(outPath, _sourcePath))
-                {
-                    Dialogs.Error(this, Title, Loc.T("split.err.sameFile"), Loc.T("split.err.sameFile.body"));
-                    return;
-                }
-            string source = _sourcePath;
-            BeginOperation(Loc.T("split.status.savingMeta"), 0);
-            Ui.RunWorker(delegate()
-            {
-                Exception error = null;
-                try { PdfMetadataService.Write(source, outPath, edited); }
-                catch (Exception ex) { error = ex; }
-                OnUi(delegate
-                {
-                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("split.err.metaFailed")))
-                        return;
-                    SetStatus(SuccessStatus(Loc.T("split.status.metaSaved")), Theme.OkGreen);
-                    Ui.OpenPath(outPath);
-                });
-            });
-        }
 
         /// <summary>Печать выбранных (или всех) страниц — через общий механизм базы.</summary>
         private void PrintSelectedPages()
         {
             if (_sourcePath == null)
                 return;
-            var refs = new List<PdfPageRef>();
-            foreach (int i in PagesForExport())
-                refs.Add(i < _pages.Count ? _pages[i] : new PdfPageRef { SourcePath = _sourcePath, PageIndex = i });
-            PrintPages(refs);
-        }
-
-        /// <summary>Страницы для экспорта: выбранные в сетке, а если ничего не выбрано — все.</summary>
-        private List<int> PagesForExport()
-        {
-            var pages = new List<int>(_grid.GetSelectedIndices());
-            if (pages.Count == 0)
-                for (int i = 0; i < _pageCount; i++)
-                    pages.Add(i);
-            pages.Sort();
-            return pages;
-        }
-
-        private void OnExportFinished(Exception error, int count, string openTarget, bool asFolder)
-        {
-            if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("split.err.exportFailed")))
-                return;
-            SetStatus(SuccessStatus(string.Format(Loc.T("split.status.exported"), count)), Theme.OkGreen);
-            Ui.OpenPath(openTarget, asFolder);
+            PrintPages(SelectedPageRefs());
         }
 
         protected override void Dispose(bool disposing)
         {
             // Меню подстановки назначено свойством, а не добавлено в Controls: само не освободится.
-            if (disposing)
+            if (disposing && _templateMenu != null)
             {
-                if (_templateMenu != null)
-                {
-                    if (_txtNameTemplate != null)
-                        _txtNameTemplate.ContextMenuStrip = null;
-                    _templateMenu.Dispose();
-                    _templateMenu = null;
-                }
-                if (_toolsMenu != null)
-                {
-                    _toolsMenu.Dispose();
-                    _toolsMenu = null;
-                }
+                if (_txtNameTemplate != null)
+                    _txtNameTemplate.ContextMenuStrip = null;
+                _templateMenu.Dispose();
+                _templateMenu = null;
             }
             base.Dispose(disposing);
         }
@@ -494,77 +243,6 @@ namespace ExcelMerger
         private void ShowHelp()
         {
             Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("split.help.body"));
-        }
-
-        /// <summary>Idle-статус: не открыт — подсказка открытия, иначе — имя файла и число страниц.</summary>
-        protected override string IdleStatusText()
-        {
-            return _sourcePath == null
-                ? Loc.T("split.status.openPdf")
-                : string.Format(Loc.T("split.status.opened"), Path.GetFileName(_sourcePath), _pageCount);
-        }
-
-        /// <summary>Дроп PDF на карточку хаба: открыть первый файл (разделение — один документ).</summary>
-        public void AcceptFiles(string[] paths)
-        {
-            if (paths != null && paths.Length > 0)
-                LoadSource(paths[0]); // LoadSource гейтит Working
-        }
-
-        // ---------- открытие исходника ----------
-
-        private void OnOpenClick(object sender, EventArgs e)
-        {
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfFilter");
-                dialog.Title = Loc.T("split.pickPdf");
-                if (dialog.ShowDialog(this) == DialogResult.OK)
-                    LoadSource(dialog.FileName);
-            }
-        }
-
-        /// <summary>
-        /// Открыть исходный документ: разбор PDF идёт в фоне (большой/сетевой файл не морозит
-        /// окно), затем сетка страниц и статус. Битый/занятый файл — диалог, прежний документ цел.
-        /// </summary>
-        private void LoadSource(string path)
-        {
-            if (!BeginLoad(Loc.T("common.status.loading")))
-                return; // уже идёт операция или загрузка
-            Ui.RunWorker(delegate()
-            {
-                int count = 0;
-                string error = null;
-                // Ловим ШИРОКО: битый/занятый/аварийный файл (в т.ч. редкий OOM, который
-                // LoadPages НЕ оборачивает) не должен ронять фоновый поток — только диалог.
-                try { count = PdfMergeService.LoadPages(path).Count; }
-                catch (MergeException ex) { error = ex.Message; }
-                catch (Exception ex) { error = string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message); }
-                int pages = count;
-                string err = error;
-                OnUi(delegate { ApplyLoadedSource(path, pages, err); });
-            });
-        }
-
-        /// <summary>Применить результат фонового разбора исходника (UI-поток).</summary>
-        private void ApplyLoadedSource(string path, int pageCount, string error)
-        {
-            EndLoad();
-            if (error != null)
-            {
-                RefreshRestingStatus(); // вернуть статус прежнего документа вместо залипшей «Загрузка…»
-                Dialogs.Error(this, Title, Loc.T("split.err.fileNotOpened"), error); // прежний документ остаётся
-                return;
-            }
-            _sourcePath = path;
-            _pageCount = pageCount;
-            _pages = new List<PdfPageRef>();
-            for (int i = 0; i < _pageCount; i++)
-                _pages.Add(new PdfPageRef { SourcePath = path, PageIndex = i });
-            _grid.SetPages(_pages);
-            SetStatus(string.Format(Loc.T("split.status.opened"), Path.GetFileName(path), _pageCount), Theme.TextMuted);
-            SyncControls();
         }
 
         // ---------- режимы ----------
@@ -607,7 +285,7 @@ namespace ExcelMerger
             // разделения она оставалась живой и её переключение перестраивало режим на ходу.
             _chkCombine.Enabled = !Working && loaded;
             _txtNameTemplate.Enabled = !Working && loaded;
-            _btnTools.Enabled = !Working;
+            _btnOps.Enabled = !Working && loaded;
             _btnPrint.Enabled = !Working && loaded;
             bool canDo = !Working && loaded &&
                 (_cmbMode.SelectedIndex != ModeExtract || _grid.SelectedCount > 0);

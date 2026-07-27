@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -98,7 +97,7 @@ namespace ExcelMerger
             _chkPadEven.Text = Loc.T("pdf.chk.padEven");
             // Под кнопками и по их ширине. Подпись длиннее колонки, поэтому переносится на
             // две строки (см. AccentCheckBox) — обрезать её ради одной строки нельзя.
-            _chkPadEven.SetBounds(col, m + 280, 130, 40);
+            _chkPadEven.SetBounds(col, m + 284, 130, 40);
             _chkPadEven.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _chkPadEven.ForeColor = Theme.TextPrimary;
             _tips.SetToolTip(_chkPadEven, Loc.T("pdf.tip.padEven"));

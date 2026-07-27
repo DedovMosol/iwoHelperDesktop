@@ -1263,19 +1263,10 @@ namespace ExcelMerger
             _settings.Save();
         }
 
+        /// <summary>Открыть готовый файл или показать его в проводнике (общая обвязка — <see cref="Ui.OpenPathOrWarn"/>).</summary>
         private void OpenPath(string filePath, bool selectInFolder)
         {
-            try
-            {
-                if (selectInFolder)
-                    using (Process.Start("explorer.exe", "/select,\"" + filePath + "\"")) { }
-                else
-                    using (Process.Start(filePath)) { }
-            }
-            catch (Exception ex)
-            {
-                Dialogs.Error(this, AppTitle, Loc.T("common.err.openFailed"), ex.Message);
-            }
+            Ui.OpenPathOrWarn(this, AppTitle, filePath, selectInFolder);
         }
     }
 }

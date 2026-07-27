@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -84,7 +83,7 @@ namespace ExcelMerger
             _btnDown = AddPanelButton(Loc.T("common.later"), px, m + 164, pw, Loc.T("common.tip.later"));
             _btnDown.Click += delegate { MoveSelected(true); };
             _btnRemove = AddPanelButton(Loc.T("common.remove"), px, m + 208, pw, Loc.T("common.tip.remove"));
-            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), px, m + 248, pw, Loc.T("common.tip.print"));
+            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), px, m + 244, pw, Loc.T("common.tip.print"));
             _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
             _btnRemove.Click += delegate { RemoveSelected(); };
 

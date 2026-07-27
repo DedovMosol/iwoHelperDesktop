@@ -32,7 +32,7 @@ namespace ExcelMerger
                 long origSize = new FileInfo(path).Length;
                 string stderr;
                 int exit = Ghostscript.Run(args, timeoutMs, out stderr);
-                bool valid = exit == 0 && PdfCompression.LooksLikePdf(tmp);
+                bool valid = EngineSucceeded(exit, stderr) && PdfCompression.LooksLikePdf(tmp);
                 long newSize = valid ? new FileInfo(tmp).Length : 0L;
                 if (!replace(origSize, newSize, valid))
                     return false;
@@ -54,6 +54,25 @@ namespace ExcelMerger
         public static string TempOutput(string path)
         {
             return path + ".gstmp";
+        }
+
+        /// <summary>
+        /// Отработал ли движок на самом деле. Коду возврата верить НЕЛЬЗЯ: на файле, который
+        /// он не смог прочитать (например защищённом паролем на открытие), Ghostscript выходит
+        /// с нулём и всё равно оставляет годный по заголовку PDF — пустую заглушку в пару
+        /// килобайт. Замер: исходник 20810 байт, выход 2522 байта, ровно одна страница, exit=0.
+        /// Такая заглушка проходит и «валиден и непуст» (починка, серое), и «валиден и меньше»
+        /// (сжатие), поэтому пользователь получал зелёное «Готово» и пустой документ.
+        ///
+        /// Признак настоящего отказа — «****» в потоке ошибок: этой строкой движок помечает
+        /// свои сообщения об ошибке. Ложных срабатываний нет именно потому, что в аргументах
+        /// стоит -dQUIET — на файле, который движок штатно чинит (главный риск такой проверки),
+        /// поток ошибок пуст, проверено. Чистая — под тест.
+        /// </summary>
+        internal static bool EngineSucceeded(int exitCode, string stderr)
+        {
+            return exitCode == 0 &&
+                   (string.IsNullOrEmpty(stderr) || stderr.IndexOf("****", StringComparison.Ordinal) < 0);
         }
 
         /// <summary>

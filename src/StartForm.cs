@@ -5,22 +5,52 @@ using System.Windows.Forms;
 
 namespace ExcelMerger
 {
+    /// <summary>Экран стартового окна: выбор раздела и сами разделы.</summary>
+    public enum HubLevel
+    {
+        /// <summary>Главный: два раздела — PDF и всё остальное.</summary>
+        Main,
+        /// <summary>Инструменты PDF: объединение, разделение, PDF → Word, прочие операции.</summary>
+        Pdf,
+        /// <summary>Иной функционал: пока один инструмент — объединение Excel.</summary>
+        Other
+    }
+
     /// <summary>
-    /// Стартовый экран — хаб выбора инструмента (свод Excel и PDF-инструменты) 2×2.
-    /// Только представление: открытие инструментов, дедупликацию и жизненный цикл
-    /// окон ведёт <see cref="ShellContext"/>. Закрытие хаба не закрывает уже
-    /// открытые инструменты; кнопка «Главная» в инструменте снова покажет этот экран.
+    /// Стартовый экран — хаб выбора инструмента. С 1.17.9 он двухуровневый: сначала раздел
+    /// (PDF или иной функционал), внутри — сами инструменты. Уровни это ПАНЕЛИ одного окна, а
+    /// не разные окна: <see cref="ShellContext"/> держит единственный хаб, к нему привязаны
+    /// идемпотентный показ, ответ на повторный запуск ярлыка и пересборка при смене языка —
+    /// размножать окна значило бы переписывать всё это. Размер окна на всех уровнях один,
+    /// иначе оно прыгало бы при каждом переходе.
+    ///
+    /// Только представление: открытие инструментов, дедупликацию и жизненный цикл окон ведёт
+    /// <see cref="ShellContext"/>. Закрытие хаба не закрывает уже открытые инструменты, кнопка
+    /// «Главная» в инструменте снова показывает этот экран — и сразу нужным разделом.
     /// </summary>
     public class StartForm : Form
     {
         private const string AppTitle = "iwo Helper Desktop";
+        private const int CardW = 240, WideW = 498, CardH = 250, Row1 = 96, Row2 = 364, Col2 = 282, Pad = 24;
+        private const int HeaderH = 78, BottomRowY = 632, BottomRowH = 36;
+
         private readonly ShellContext _context;
-        private ToolTip _langTip;         // подсказка кнопки-глобуса (компонент — освобождаем вручную)
+        private ToolTip _langTip;           // подсказка кнопки-глобуса (компонент — освобождаем вручную)
         private ContextMenuStrip _langMenu; // меню выбора языка (одно на окно; окно пересоздаётся при смене языка)
+        private HeaderBand _header;
+        private Button _back;
+        private Panel _levelMain, _levelPdf, _levelOther;
+        private ChoiceCard _firstMain, _firstPdf, _firstOther;
+        private HubLevel _level = HubLevel.Main;
+        // Файлы, бро́шенные на карточку «PDF» главного уровня: инструмент ещё не выбран, поэтому
+        // держим их до первого клика по карточке раздела. Набор ОДНОРАЗОВЫЙ — см. ClearPending.
+        private string[] _pending;
 
         public StartForm() : this(null) { } // для смоук-теста; открытие инструментов недоступно
 
-        internal StartForm(ShellContext context)
+        internal StartForm(ShellContext context) : this(context, HubLevel.Main) { }
+
+        internal StartForm(ShellContext context, HubLevel level)
         {
             _context = context;
 
@@ -34,71 +64,234 @@ namespace ExcelMerger
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
+            KeyPreview = true; // Esc — назад из раздела
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(546, 692); // 2×2 карточки
+            ClientSize = new Size(546, 692);
             WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11
 
-            var header = new HeaderBand(AppTitle, Loc.T("hub.subtitle"),
-                Theme.HubBlue, Theme.HubBlueDark);
-            header.Centered = true; // на стартовом экране заголовок и подпись по центру
-            header.SetBounds(0, 0, ClientSize.Width, 78);
-            header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(header);
+            BuildHeader();
+            BuildLevels();
+            BuildBottomRow();
+
+            AcceptButton = null; // Enter активирует карточку в фокусе
+            GoTo(level, false);  // при пересборке (смена языка) возвращаемся в тот же раздел
+        }
+
+        /// <summary>Показанный раздел — его переносит на новое окно пересборка при смене языка.</summary>
+        internal HubLevel Level { get { return _level; } }
+
+        /// <summary>Показать раздел на уже открытом хабе («Главная» из инструмента).</summary>
+        internal void ShowLevel(HubLevel level)
+        {
+            GoTo(level, true);
+        }
+
+        private void BuildHeader()
+        {
+            _header = new HeaderBand(AppTitle, Loc.T("hub.subtitle"), Theme.HubBlue, Theme.HubBlueDark);
+            _header.Centered = true; // на стартовом экране заголовок и подпись по центру
+            _header.SetBounds(0, 0, ClientSize.Width, HeaderH);
+            _header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(_header);
+
+            // «Назад» — слева, зеркально глобусу справа. Показывается только внутри раздела.
+            _back = new RoundedButton(false);
+            _back.Text = Loc.T("hub.back");
+            _back.SetBounds(12, 0, 104, 30);
+            _back.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            _back.Visible = false;
+            _back.Click += delegate { GoTo(HubLevel.Main, true); };
+            _header.Controls.Add(_back);
+            _header.AlignToText(_back);
 
             // Выбор языка — белый глиф-глобус в правом верхнем углу шапки (на синем, без рамки).
-            _langMenu = HelpMenu.LanguageContextMenu(); // одно меню на жизнь окна (окно пересоздаётся при смене языка)
+            _langMenu = HelpMenu.LanguageContextMenu(); // одно меню на жизнь окна
             var globe = new GlyphButton("", 15f, "Segoe MDL2 Assets"); // U+E774 — «глобус»
             globe.ForeColor = Color.White;
             globe.AccessibleName = Loc.T("lang.tooltip"); // с клавиатуры и для экранного диктора
-            globe.SetBounds(header.Width - 42, 10, 30, 30);
+            // Y задаёт сама шапка (AlignToText): глобус встаёт по центру пары «заголовок +
+            // подпись» при любом масштабе экрана, здесь только колонка.
+            globe.SetBounds(_header.Width - 42, 0, 30, 30);
             globe.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             globe.Click += delegate { _langMenu.Show(globe, new Point(globe.Width, globe.Height), ToolStripDropDownDirection.BelowLeft); };
             _langTip = new ToolTip();
             _langTip.SetToolTip(globe, Loc.T("lang.tooltip"));
-            header.Controls.Add(globe);
+            _header.Controls.Add(globe);
+            _header.AlignToText(globe);
+        }
 
-            var excel = new ChoiceCard(CardGlyph.Excel, Loc.T("hub.excel.name"), Loc.T("hub.excel.desc"));
-            excel.SetBounds(24, 96, 240, 250);
-            excel.Click += delegate
+        // ---------- уровни ----------
+
+        private void BuildLevels()
+        {
+            _levelMain = AddLevelPanel();
+            _levelPdf = AddLevelPanel();
+            _levelOther = AddLevelPanel();
+
+            // Главный уровень: два раздела во всю ширину. Описание перечисляет содержимое —
+            // так видно, куда ведёт кнопка, ещё до нажатия.
+            _firstMain = AddCard(_levelMain, CardGlyph.Pdf, Loc.T("hub.section.pdf.name"),
+                Loc.T("hub.section.pdf.desc"), Pad, Row1, WideW);
+            _firstMain.Click += delegate { GoTo(HubLevel.Pdf, true); };
+            _firstMain.AcceptFiles(".pdf");
+            // Дроп на раздел: инструмент ещё не выбран, поэтому переходим внутрь и придерживаем
+            // файлы до первого клика по карточке инструмента.
+            _firstMain.FilesDropped += delegate(string[] files) { GoTo(HubLevel.Pdf, true); SetPending(files); };
+
+            ChoiceCard other = AddCard(_levelMain, CardGlyph.Other, Loc.T("hub.section.other.name"),
+                Loc.T("hub.section.other.desc"), Pad, Row2, WideW);
+            other.Click += delegate { GoTo(HubLevel.Other, true); };
+
+            // Раздел PDF: четыре инструмента сеткой 2×2.
+            Func<Action, Form> mergeFactory = delegate(Action back) { return new PdfMergeForm(back); };
+            Func<Action, Form> ocrFactory = delegate(Action back) { return new OcrForm(back); };
+            Func<Action, Form> opsFactory = delegate(Action back) { return new PdfOpsForm(back); };
+            // «Разделение» умеет передать открытый документ в «Прочие операции» — фабрику этого
+            // окна знает стартовый экран, он же и композиционный корень для инструментов.
+            Action<string> openOps = delegate(string path)
             {
                 if (_context != null)
-                    _context.OpenTool("excel", Loc.T("hub.excel.name"), delegate(Action back) { return new MainForm(back); });
+                    _context.OpenToolWithFiles("ops", Loc.T("hub.ops.name"), opsFactory,
+                        new[] { path }, HubLevel.Pdf);
             };
-            Controls.Add(excel);
+            Func<Action, Form> splitFactory = delegate(Action back) { return new PdfSplitForm(back, openOps); };
 
-            // PDF-карточки принимают дроп PDF: открывают инструмент и передают ему файлы
-            // (одна фабрика на клик и на дроп — DRY). Свод Excel работает с ПАПКОЙ, не с
-            // файлами, поэтому его карточка дроп не принимает.
-            var pdf = new ChoiceCard(CardGlyph.Pdf, Loc.T("hub.pdf.name"), Loc.T("hub.pdf.desc"));
-            pdf.SetBounds(282, 96, 240, 250);
-            Func<Action, Form> pdfFactory = delegate(Action back) { return new PdfMergeForm(back); };
-            pdf.Click += delegate { if (_context != null) _context.OpenTool("pdf", Loc.T("hub.pdf.name"), pdfFactory); };
-            pdf.AcceptFiles(".pdf");
-            pdf.FilesDropped += delegate(string[] files) { if (_context != null) _context.OpenToolWithFiles("pdf", Loc.T("hub.pdf.name"), pdfFactory, files); };
-            Controls.Add(pdf);
+            _firstPdf = AddTool(_levelPdf, CardGlyph.Pdf, "pdf", "hub.pdf.name", "hub.pdf.desc",
+                mergeFactory, Pad, Row1, CardW);
+            AddTool(_levelPdf, CardGlyph.PdfSplit, "split", "hub.split.name", "hub.split.desc",
+                splitFactory, Col2, Row1, CardW);
+            AddTool(_levelPdf, CardGlyph.Ocr, "ocr", "hub.ocr.name", "hub.ocr.desc",
+                ocrFactory, Pad, Row2, CardW);
+            AddTool(_levelPdf, CardGlyph.Tools, "ops", "hub.ops.name", "hub.ops.desc",
+                opsFactory, Col2, Row2, CardW);
 
-            var split = new ChoiceCard(CardGlyph.PdfSplit, Loc.T("hub.split.name"), Loc.T("hub.split.desc"));
-            split.SetBounds(24, 364, 240, 250);
-            Func<Action, Form> splitFactory = delegate(Action back) { return new PdfSplitForm(back); };
-            split.Click += delegate { if (_context != null) _context.OpenTool("split", Loc.T("hub.split.name"), splitFactory); };
-            split.AcceptFiles(".pdf");
-            split.FilesDropped += delegate(string[] files) { if (_context != null) _context.OpenToolWithFiles("split", Loc.T("hub.split.name"), splitFactory, files); };
-            Controls.Add(split);
+            // Иной функционал: пока один инструмент. Место под второй уже размечено, о чём
+            // прямо сказано подписью — пустая половина экрана иначе читается как недоделка.
+            _firstOther = AddTool(_levelOther, CardGlyph.Excel, "excel", "hub.excel.name", "hub.excel.desc",
+                delegate(Action back) { return new MainForm(back); }, Pad, Row1, WideW);
+            // Подпись — сразу под карточкой, а не посреди пустоты: координаты внутри панели
+            // отсчитываются от неё самой, поэтому берём низ карточки, а не строку сетки.
+            Label soon = Ui.Label(_levelOther, Loc.T("hub.other.soon"), Pad, _firstOther.Bottom + 20,
+                Font, Theme.TextMuted);
+            soon.MaximumSize = new Size(WideW, 0);
+            soon.AutoSize = true;
+        }
 
-            var ocr = new ChoiceCard(CardGlyph.Ocr, Loc.T("hub.ocr.name"), Loc.T("hub.ocr.desc"));
-            ocr.SetBounds(282, 364, 240, 250);
-            Func<Action, Form> ocrFactory = delegate(Action back) { return new OcrForm(back); };
-            ocr.Click += delegate { if (_context != null) _context.OpenTool("ocr", Loc.T("hub.ocr.name"), ocrFactory); };
-            ocr.AcceptFiles(".pdf");
-            ocr.FilesDropped += delegate(string[] files) { if (_context != null) _context.OpenToolWithFiles("ocr", Loc.T("hub.ocr.name"), ocrFactory, files); };
-            Controls.Add(ocr);
+        private Panel AddLevelPanel()
+        {
+            var panel = new Panel();
+            // От шапки до нижнего ряда, а НЕ до низа окна: панель непрозрачна и, растянутая на
+            // всё окно, закрыла бы собой «Проверить обновления» и «О программе» (они добавлены
+            // позже, а значит ниже по z-порядку).
+            panel.SetBounds(0, HeaderH, ClientSize.Width, BottomRowY - HeaderH);
+            panel.BackColor = Color.White;
+            panel.Visible = false;
+            Controls.Add(panel);
+            return panel;
+        }
 
-            // Нижний ряд: «Проверить обновления» слева (на месте версии), «О программе» справа.
-            const int rowY = 632, rowH = 36;
+        /// <summary>Карточка раздела или инструмента. Координаты — в клиентских координатах окна.</summary>
+        private ChoiceCard AddCard(Panel level, CardGlyph glyph, string title, string desc, int x, int y, int width)
+        {
+            var card = new ChoiceCard(glyph, title, desc);
+            card.SetBounds(x, y - level.Top, width, CardH); // панель начинается под шапкой
+            level.Controls.Add(card);
+            return card;
+        }
+
+        /// <summary>Карточка инструмента: клик открывает его, дроп PDF — открывает с файлами.</summary>
+        private ChoiceCard AddTool(Panel level, CardGlyph glyph, string key, string nameKey, string descKey,
+            Func<Action, Form> factory, int x, int y, int width)
+        {
+            ChoiceCard card = AddCard(level, glyph, Loc.T(nameKey), Loc.T(descKey), x, y, width);
+            HubLevel home = level == _levelOther ? HubLevel.Other : HubLevel.Pdf;
+            card.Click += delegate { OpenTool(key, nameKey, factory, home); };
+            if (key != "excel") // свод Excel работает с ПАПКОЙ, не с файлами — дроп ему не нужен
+            {
+                card.AcceptFiles(".pdf");
+                card.FilesDropped += delegate(string[] files)
+                {
+                    if (_context != null)
+                        _context.OpenToolWithFiles(key, Loc.T(nameKey), factory, files, home);
+                    ClearPending();
+                };
+            }
+            return card;
+        }
+
+        /// <summary>
+        /// Открыть инструмент. Если на раздел бросали файлы и их ещё не разобрали — отдаём их
+        /// выбранному инструменту: человек уже показал, с чем хочет работать.
+        /// </summary>
+        private void OpenTool(string key, string nameKey, Func<Action, Form> factory, HubLevel home)
+        {
+            if (_context == null)
+                return;
+            string[] files = _pending;
+            ClearPending();
+            if (files != null && files.Length > 0)
+                _context.OpenToolWithFiles(key, Loc.T(nameKey), factory, files, home);
+            else
+                _context.OpenTool(key, Loc.T(nameKey), factory, home);
+        }
+
+        /// <summary>Показать раздел. focus — переводить ли фокус на первую карточку (переход руками).</summary>
+        private void GoTo(HubLevel level, bool focus)
+        {
+            if (level != HubLevel.Pdf)
+                ClearPending(); // набор живёт только внутри раздела PDF
+            _level = level;
+            _levelMain.Visible = level == HubLevel.Main;
+            _levelPdf.Visible = level == HubLevel.Pdf;
+            _levelOther.Visible = level == HubLevel.Other;
+            _back.Visible = level != HubLevel.Main;
+            _header.Subtitle = SubtitleFor(level);
+            if (!focus)
+                return;
+            // Фокус обязателен: он остаётся на спрятанной карточке, и с клавиатуры экран
+            // становится неуправляемым — Tab начинает обход с непонятного места.
+            ChoiceCard first = level == HubLevel.Pdf ? _firstPdf
+                : level == HubLevel.Other ? _firstOther : _firstMain;
+            if (first != null && first.Visible)
+                first.Focus();
+        }
+
+        /// <summary>Подпись шапки под текущий раздел (и под ожидающие файлы, если их бросили).</summary>
+        private string SubtitleFor(HubLevel level)
+        {
+            if (level == HubLevel.Pdf)
+                return _pending != null
+                    ? string.Format(Loc.T("hub.pending"), _pending.Length)
+                    : Loc.T("hub.subtitle.pdf");
+            return level == HubLevel.Other ? Loc.T("hub.subtitle.other") : Loc.T("hub.subtitle");
+        }
+
+        private void SetPending(string[] files)
+        {
+            _pending = files != null && files.Length > 0 ? files : null;
+            _header.Subtitle = SubtitleFor(_level);
+        }
+
+        /// <summary>
+        /// Забыть придержанные файлы. Зовётся отовсюду, где набор перестаёт быть актуальным:
+        /// инструмент открыт, ушли из раздела, бросили новые файлы. Иначе набор «прилипнет» и
+        /// следующий клик откроет инструмент с чужими файлами.
+        /// </summary>
+        private void ClearPending()
+        {
+            if (_pending == null)
+                return;
+            _pending = null;
+            _header.Subtitle = SubtitleFor(_level);
+        }
+
+        private void BuildBottomRow()
+        {
+            // Нижний ряд виден на всех уровнях: «Проверить обновления» слева, «О программе» справа.
             var update = new RoundedButton(false);
             update.Text = Loc.T("hub.update");
-            update.SetBounds(24, rowY, 224, rowH);
+            update.SetBounds(Pad, BottomRowY, 224, BottomRowH);
             // Запрос идёт в сеть с таймаутом 10 с. Без гашения кнопки она выглядела мёртвой,
             // а нетерпеливые клики плодили по потоку и по диалогу с ошибкой на каждый.
             update.Click += delegate
@@ -110,11 +303,21 @@ namespace ExcelMerger
 
             var about = new RoundedButton(false);
             about.Text = Loc.T("hub.about");
-            about.SetBounds(ClientSize.Width - 24 - 168, rowY, 168, rowH);
+            about.SetBounds(ClientSize.Width - Pad - 168, BottomRowY, 168, BottomRowH);
             about.Click += delegate { using (var f = new AboutForm()) f.ShowDialog(this); };
             Controls.Add(about);
+        }
 
-            AcceptButton = null; // Enter активирует карточку в фокусе
+        /// <summary>Esc возвращает из раздела на главный экран (как «Назад»).</summary>
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape && _level != HubLevel.Main)
+            {
+                GoTo(HubLevel.Main, true);
+                e.Handled = true;
+                return;
+            }
+            base.OnKeyDown(e);
         }
 
         /// <summary>
