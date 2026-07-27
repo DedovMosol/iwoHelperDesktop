@@ -273,6 +273,15 @@ namespace ExcelMerger
             bar.Controls.Add(_zoomLabel);
             AddZoomButton(bar, "+", 108, Loc.T("preview.tip.zoomIn"), delegate { StepZoom(+1); });
 
+            var print = new Button();
+            print.Text = Loc.T("preview.print");
+            print.SetBounds(264, 5, 110, 24);
+            print.FlatStyle = FlatStyle.Flat;
+            print.ForeColor = Color.White;
+            print.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 92);
+            print.Click += delegate { PrintThisPage(); };
+            bar.Controls.Add(print);
+
             var fit = new Button();
             fit.Text = Loc.T("preview.fit");
             fit.SetBounds(148, 5, 110, 24);
