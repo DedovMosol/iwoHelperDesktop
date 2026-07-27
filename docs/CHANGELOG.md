@@ -3,9 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
-
-Ready for 1.17.9, not published yet — the version in the build is still 1.17.8.
+## [1.17.9] — 2026-07-27
 
 ### Added
 - **A start screen with two sections.** The hub now asks for a section first — **PDF** or
@@ -49,6 +47,15 @@ Ready for 1.17.9, not published yet — the version in the build is still 1.17.8
   WinForms sizes a single-line text box by its font and ignores the height you set. Everything is
   measured now, the window says which file it edits, and it states that an empty field clears the
   property.
+
+- **Buttons say when they cannot be pressed.** An unavailable ordinary button used to differ
+  from a working one by the colour of its caption alone, and in panels where half the buttons
+  wait for an open document that had to be found out by clicking. It is filled now, so the state
+  reads at a glance. The corner radius follows the height by one formula instead of a step at
+  36 px, the focus ring is solid rather than translucent so keyboard users can see where they
+  are, and a long caption is now cut with an ellipsis before it reaches the rounded corner. The
+  zoom bar of the full-size preview was the only place with square buttons and colours of its
+  own — it uses the same button as the rest of the app, in a variant for a dark background.
 
 ### Fixed
 - **The page in the full-size preview no longer hides in the grey.** Its position was computed in

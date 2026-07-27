@@ -167,16 +167,10 @@ namespace ExcelMerger
             AddTool(_levelPdf, CardGlyph.Tools, "ops", "hub.ops.name", "hub.ops.desc",
                 opsFactory, Col2, Row2, CardW);
 
-            // Иной функционал: пока один инструмент. Место под второй уже размечено, о чём
-            // прямо сказано подписью — пустая половина экрана иначе читается как недоделка.
+            // Иной функционал: пока один инструмент, место под следующие размечено той же
+            // сеткой, что и в разделе PDF.
             _firstOther = AddTool(_levelOther, CardGlyph.Excel, "excel", "hub.excel.name", "hub.excel.desc",
                 delegate(Action back) { return new MainForm(back); }, Pad, Row1, WideW);
-            // Подпись — сразу под карточкой, а не посреди пустоты: координаты внутри панели
-            // отсчитываются от неё самой, поэтому берём низ карточки, а не строку сетки.
-            Label soon = Ui.Label(_levelOther, Loc.T("hub.other.soon"), Pad, _firstOther.Bottom + 20,
-                Font, Theme.TextMuted);
-            soon.MaximumSize = new Size(WideW, 0);
-            soon.AutoSize = true;
         }
 
         private Panel AddLevelPanel()

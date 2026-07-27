@@ -329,12 +329,13 @@ namespace ExcelMerger
         private Button AddBarButton(Control parent, string text, int x, int y, int w, int h,
             EventHandler onClick)
         {
-            var b = new Button();
+            // Та же кнопка, что и во всём приложении, в варианте для тёмной подложки: цвета,
+            // скругление, наведение и кольцо фокуса приходят из одного места, а не задаются
+            // здесь вручную — раньше эта полоса была единственным местом с квадратными
+            // кнопками и своими цветами, и выглядела деталью из другой программы.
+            var b = new RoundedButton(ButtonLook.OnDark);
             b.Text = text;
             b.SetBounds(x, y, w, h);
-            b.FlatStyle = FlatStyle.Flat;
-            b.ForeColor = Color.White;
-            b.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 92);
             b.Click += onClick;
             parent.Controls.Add(b);
             return b;
