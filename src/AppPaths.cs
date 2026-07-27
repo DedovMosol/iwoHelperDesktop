@@ -41,5 +41,15 @@ namespace ExcelMerger
         {
             get { return Path.Combine(Root, "stats.txt"); }
         }
+
+        /// <summary>
+        /// Язык, выбранный в установщике (см. <see cref="SetupLanguage"/>). Отдельный файл, а не
+        /// строка в settings.txt: установщик пишет в системной кодировке, а приложение читает
+        /// UTF-8, и правка общего файла из установщика испортила бы кириллические пути в нём.
+        /// </summary>
+        public static string SetupLanguageFile
+        {
+            get { return Path.Combine(Root, "setup-language.txt"); }
+        }
     }
 }

@@ -89,6 +89,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Руководство пользователя вшивается ресурсом: открывается из «О программе» и должно
+         быть на месте и у portable-версии, и без интернета. Имя ресурса ASCII (см.
+         src\UserManual.cs), на диск распаковывается уже под человеческим именем. -->
+    <EmbeddedResource Include="docs\Инструкция пользователя.docx">
+      <LogicalName>manual.docx</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- WinRT-проекции для .NET Framework (только компиляция) -->
     <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.19041.1" />
     <!-- Референс-сборки net48, чтобы сборка не требовала установленного таргет-пака -->

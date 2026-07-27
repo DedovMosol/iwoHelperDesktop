@@ -28,6 +28,8 @@ namespace ExcelMerger
         {
             public string Name;
             public Func<Action, Form> Factory;
+            /// <summary>Раздел хаба, откуда инструмент открыт: туда и вернёт его «Главная».</summary>
+            public HubLevel Home;
         }
 
         public ShellContext()
@@ -43,22 +45,35 @@ namespace ExcelMerger
         /// <summary>Показать экран выбора инструмента; создать заново, если был закрыт.</summary>
         public void ShowHub()
         {
-            ShowHub(null);
+            ShowHub(null, null);
+        }
+
+        /// <summary>
+        /// Показать хаб сразу нужным разделом — так «Главная» из инструмента возвращает туда,
+        /// откуда его открыли, а не на верхний экран: между PDF-инструментами ходят чаще всего,
+        /// и лишний клик на каждый переход был бы платой за новую структуру.
+        /// </summary>
+        public void ShowHub(HubLevel level)
+        {
+            ShowHub(null, level);
         }
 
         /// <summary>
         /// Показать хаб. place задан только при ПЕРЕСБОРКЕ (смена языка): окно встаёт ровно
         /// туда, где стояло, и НЕ поднимается на передний план — иначе свёрнутый хаб развернул
         /// бы сам себя, а окно, из меню которого сменили язык, потеряло бы фокус.
+        /// level — раздел, который нужно показать (null — какой откроется, тот и откроется).
         /// </summary>
-        private void ShowHub(WindowSnapshot? place)
+        private void ShowHub(WindowSnapshot? place, HubLevel? level)
         {
             if (_hub != null && !_hub.IsDisposed)
             {
+                if (level.HasValue)
+                    _hub.ShowLevel(level.Value);
                 BringToFront(_hub);
                 return;
             }
-            _hub = new StartForm(this);
+            _hub = new StartForm(this, level ?? HubLevel.Main);
             Track(_hub);
             Show(_hub, place);
             if (!place.HasValue)
@@ -69,7 +84,7 @@ namespace ExcelMerger
         /// Открыть инструмент по ключу немодально. Повторное открытие того же —
         /// уведомление и фокус на уже открытое окно.
         /// </summary>
-        public void OpenTool(string key, string name, Func<Action, Form> factory)
+        public void OpenTool(string key, string name, Func<Action, Form> factory, HubLevel home)
         {
             Form existing;
             if (_tools.TryGetOpen(key, out existing))
@@ -79,7 +94,7 @@ namespace ExcelMerger
                 BringToFront(existing);
                 return;
             }
-            SpawnTool(key, name, factory, null);
+            SpawnTool(key, name, factory, home, null);
         }
 
         /// <summary>
@@ -87,11 +102,12 @@ namespace ExcelMerger
         /// уже открытое окно получает файлы без диалога «уже открыт», новое — сразу после
         /// показа. Инструмент грузит их сам (<see cref="IFileAcceptor"/>).
         /// </summary>
-        public void OpenToolWithFiles(string key, string name, Func<Action, Form> factory, string[] files)
+        public void OpenToolWithFiles(string key, string name, Func<Action, Form> factory, string[] files,
+            HubLevel home)
         {
             Form tool;
             if (!_tools.TryGetOpen(key, out tool))
-                tool = SpawnTool(key, name, factory, null);
+                tool = SpawnTool(key, name, factory, home, null);
             else
                 BringToFront(tool);
             var acceptor = tool as IFileAcceptor;
@@ -105,12 +121,14 @@ namespace ExcelMerger
         /// нельзя, потому что BringToFront разворачивает свёрнутое окно и забирает фокус, и все
         /// окна вылезали поверх работы. Наверх поднимается только бывшее активным и после цикла.
         /// </summary>
-        private Form SpawnTool(string key, string name, Func<Action, Form> factory,
+        private Form SpawnTool(string key, string name, Func<Action, Form> factory, HubLevel home,
             WindowSnapshot? snap, bool activate = true)
         {
-            Form tool = factory(ShowHub); // кнопка «Главная» в инструменте показывает хаб
+            HubLevel section = home;
+            // «Главная» в инструменте показывает хаб СРАЗУ его разделом.
+            Form tool = factory(delegate { ShowHub(section); });
             _tools.Add(key, tool);
-            _openTools[key] = new ToolEntry { Name = name, Factory = factory };
+            _openTools[key] = new ToolEntry { Name = name, Factory = factory, Home = home };
             Track(tool);
             tool.FormClosed += delegate { _tools.Remove(key); _openTools.Remove(key); };
             Show(tool, snap); // отдельное окно, без владельца — переживает закрытие хаба
@@ -189,6 +207,10 @@ namespace ExcelMerger
                 bool hubOpen = _hub != null && !_hub.IsDisposed;
                 bool hubWasActive = hubOpen && ReferenceEquals(_hub, active);
                 WindowSnapshot hubPlace = hubOpen ? WindowPlacement.Snapshot(_hub) : new WindowSnapshot();
+                // Раздел хаба переносим на новое окно: иначе смена языка выбрасывала бы
+                // человека из «Инструментов PDF» на верхний экран — та же по природе потеря
+                // состояния, что и уехавший за экран свёрнутый хаб в 1.17.8.
+                HubLevel hubLevel = hubOpen ? _hub.Level : HubLevel.Main;
 
                 // Хаб пересоздаётся ДО активного инструмента (и после неактивных); если активен
                 // был сам хаб — он в самом конце, как раньше.
@@ -198,7 +220,7 @@ namespace ExcelMerger
                 {
                     if (hubOpen && !hubRebuilt && !hubWasActive && t.WasActive)
                     {
-                        RebuildHub(hubPlace);
+                        RebuildHub(hubPlace, hubLevel);
                         hubRebuilt = true;
                     }
                     Form old;
@@ -221,13 +243,14 @@ namespace ExcelMerger
                             continue;
                         }
                     }
-                    Form rebuilt = SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Place, false);
+                    Form rebuilt = SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Entry.Home,
+                        t.Place, false);
                     if (t.WasActive)
                         busyActive = rebuilt; // поднимем в конце — только это окно и было активным
                 }
 
                 if (hubOpen && !hubRebuilt)
-                    RebuildHub(hubPlace);
+                    RebuildHub(hubPlace, hubLevel);
                 BringToFront(busyActive); // null-безопасно: активное непересозданное окно — наверх
             }
             finally
@@ -239,13 +262,13 @@ namespace ExcelMerger
         }
 
         /// <summary>Пересоздать хаб на прежнем месте и в прежнем состоянии (часть пересборки при смене языка).</summary>
-        private void RebuildHub(WindowSnapshot place)
+        private void RebuildHub(WindowSnapshot place, HubLevel level)
         {
             StartForm oldHub = _hub;
             _hub = null;
             if (oldHub != null && !oldHub.IsDisposed)
                 oldHub.Close();
-            ShowHub(place);
+            ShowHub(place, level);
         }
 
         /// <summary>

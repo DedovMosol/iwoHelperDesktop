@@ -30,18 +30,20 @@ read or change the code. For **what the app does** (features, downloads, usage) 
 
 ## Bird's-eye view
 
-iwo Helper Desktop is a single Windows Forms executable that hosts **four independent
-offline tools** behind one start screen:
+iwo Helper Desktop is a single Windows Forms executable that hosts **five independent
+offline tools** behind one start screen with two sections (PDF and everything else):
 
-1. **Excel Digest** — merges sheets of every workbook in a folder into one file (Excel COM).
+1. **Merge Excel** — merges sheets of every workbook in a folder into one digest (Excel COM).
 2. **PDF Merge** — combines pages of several PDFs, copied as-is (PdfSharp).
 3. **PDF Split** — extracts pages / splits by ranges, every N, or bookmarks (PdfSharp).
 4. **PDF → Word** — rebuilds a born-digital PDF into an editable `.docx`
    (PdfPig extraction → own layout analysis → Word COM writing).
+5. **More operations** — six actions over one document: compress, grayscale, repair, pages to
+   images, text to `.txt`, document properties. Each writes a **new** file.
 
 Cross-cutting services: optional **PDF compression** (Ghostscript as a child process),
 page **thumbnails** (WinRT `Windows.Data.Pdf`), a Word cover note, reports,
-usage counters, a manual update check, and a Russian/English UI.
+usage counters, a manual update check, an embedded user guide, and a Russian/English UI.
 
 The guiding principles, in priority order:
 
@@ -121,9 +123,9 @@ are conceptual.
 |---|---|
 | `Program.cs` | Entry point. Parses CLI flags, installs `CrashReport`, initializes `Loc`, then runs the GUI (`ShellContext`) — or a headless mode: `--cli` (scripted Excel Digest), `--selftest` (create every window unshown), `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded-dependency probes used by CI). Headless modes leave via `FastExit.Now`. The GUI path first claims the single-instance slot (`SingleInstance`); headless modes are checked earlier and always run, however many at a time. |
 | `SingleInstance.cs` | One GUI process per user session. A named `Local\` mutex taken **without ownership** (nothing to abandon on a crash, and the name lives only as long as a handle is held) marks the running instance; a second launch broadcasts a `RegisterWindowMessage` signal and exits, so Task Manager shows one app instead of two. The signal is received by a hidden top-level window (`WS_EX_TOOLWINDOW`, never shown) — a message-only window would not do, broadcasts never reach those. The newly started process calls `AllowSetForegroundWindow` before signalling, otherwise Windows lets the running instance restore its window but not raise it. Any failure degrades to “start normally”. |
-| `ShellContext.cs` | `ApplicationContext` that owns the hub and all tool windows (independent, non-modal). Reopens the hub, focuses an already-open tool, rebuilds windows on language change (active window last, busy windows deferred, each window put back through `WindowPlacement.Snapshot`/`ShowAt` so a minimized or maximized one returns exactly as it was), exits when the last window closes. Owns the `SingleInstance` listener (created before the first window, so a launch that follows immediately still finds it) and answers the signal with `ShowHub`, which is idempotent. |
+| `ShellContext.cs` | `ApplicationContext` that owns the hub and all tool windows (independent, non-modal). Reopens the hub, focuses an already-open tool, rebuilds windows on language change (active window last, busy windows deferred, each window put back through `WindowPlacement.Snapshot`/`ShowAt` so a minimized or maximized one returns exactly as it was), exits when the last window closes. Knows which **hub section** each tool was opened from (`HubLevel`) and hands it to the tool as its `Home` action, so “Home” returns to that section and not to the top screen — and carries the section over when the hub is rebuilt on a language change. Owns the `SingleInstance` listener (created before the first window, so a launch that follows immediately still finds it) and answers the signal with `ShowHub`, which is idempotent. |
 | `ToolRegistry.cs` | Live-window registry keyed by tool id, prevents duplicate windows. |
-| `StartForm.cs` | The hub: four `ChoiceCard`s (`excel`, `pdf`, `split`, `ocr`), language globe, menu. |
+| `StartForm.cs` | The hub, two levels deep (`HubLevel`): the main screen offers two sections, inside them live the tool cards (`pdf`, `split`, `ocr`, `ops` and `excel`). The levels are **panels of one window**, not separate windows — `ShellContext` keeps a single hub and everything is wired to it. The window size is the same on every level so it never jumps, “Back” and `Esc` return to the top, and the focus is moved to the first card explicitly (otherwise it stays on a hidden control and the keyboard loses its place). PDFs dropped on the section card are held until a tool is picked (`_pending`, cleared on every exit from the section — a stuck set would open the next tool with someone else's files). |
 | `IBusyAware.cs` | Marker for windows running a long operation (skipped by the language rebuild). |
 | `FastExit.cs` | Hard process exit for headless modes — avoids WinRT finalization crashes on CLR unload. |
 | `CrashReport.cs` | Global exception handlers: branded dialog on the UI thread, silent log otherwise, `%APPDATA%\…\crash.log` with size rotation. |
@@ -131,6 +133,8 @@ are conceptual.
 | `UsageStats.cs` | Local operation counters in `stats.txt`, guarded by a cross-process mutex, optional auto-clear. |
 | `UpdateChecker.cs` | Manual check: reads the latest release tag from the GitHub API, compares, offers to open the Releases page. Pure `ParseTag`/`IsNewer` for tests. |
 | `Loc.cs`, `Flags.cs` | Localization catalog and GDI-drawn menu flags — see [Localization](#localization). |
+| `SetupLanguage.cs` | The language picked in the installer. Setup writes a one-line ASCII file next to the settings, the app applies it at startup (it outranks the stored language), saves it the normal UTF-8 way and removes the marker. Setup never edits `settings.txt` itself: it writes text in the system code page while the app reads UTF-8, and a read-modify-write would corrupt non-ASCII paths inside. |
+| `UserManual.cs` | The user guide (`.docx`) embedded as a resource: unpacked next to the settings on demand and opened from “About”. Embedded rather than installed so the portable build has it too, and so it needs no internet. |
 | `Theme.cs`, `Ui.cs`, `HelpMenu.cs` | Palette, DPI/layout helpers, the shared ☰ menu. |
 
 ### UI toolkit (owner-drawn, shared by all tools)
@@ -178,6 +182,8 @@ on the header while building would put it *first* and land the focus on “Home�
 |---|---|
 | `EmbeddedAssemblies.cs` | Runtime resolver for the embedded PdfSharp/PdfPig assemblies. |
 | `PdfToolFormBase.cs` | Base class of all PDF tool windows: thumbnail grid, zoom slider with an editable “%” box (`ThumbZoom.Percent`/`WidthFromPercent`, two-way-synced with the slider without drift, `Ctrl+0` or a double-click on “%” resets to 100%) and Ctrl+wheel over the slider, compression picker, status/progress strip (with a per-page counter and a selection counter — pure `ProgressItem`/`RestingStatus`, plus the pure `SuccessStatus`/`CompressedPart` pair that assembles every “done” line, so the catalog stores bare fragments while the ✓, the « · » separators and the closing period live in one place), drag-and-drop, a keyboard-shortcuts cheat sheet built from the grid's capabilities (`BuildShortcuts`), the shared grid hotkeys (`ClassifyPageKey`: Ctrl+A/X/C/V/Z/Y/G, Alt+←/→, Delete, Esc, Ctrl+Shift+«+»/«−»), background-work lifecycle. The zoom slider and the percentage share the row with the compression picker on the right, both right-anchored so a constant gap keeps them apart at any width (the slider stretches). Remembers the last zoom width and compression level between runs (`SaveView`, restored in `BuildBottomStrip`). Cooperative cancellation of long operations (`ShouldOfferCancel` ≥ 5 pages): a Cancel button overlays the action button (`CancelToken` → a `volatile` flag the worker polls), withdrawn at the point of no return once the output is committed (`StopOfferingCancel`, wired through to the PDF → Word writer). Background work is marshalled through the shared `Ui.OnUi`/`Ui.RunWorker` (one guarded `BeginInvoke` helper, no per-form copies), `SyncControls` is the abstract per-form hook that reflects the current state (operation, background parse, selection) on the buttons and grid lock, and `FinishOperation` is the shared epilogue: it ends the operation and tells the form whether there is a result worth showing, so cancellation and failure are worded and dialogued in one place. `BeginIndeterminate` switches the bar to a marquee for a phase whose progress cannot be measured (Ghostscript compression runs in its own process and reports nothing) — a full bar with Cancel already withdrawn reads as a hung window. Adding/opening a PDF parses it on a worker (`BeginLoad`/`EndLoad`, `Working` = busy or loading) so a large or network file never freezes the window. Forms open with dropped files via `IFileAcceptor` (drop onto a start-screen `ChoiceCard`, `WireFileDrop` is the shared window drop handler). Each window's size and position persist per form via a single `WindowPlacement.Attach` in `InitShell` (clamped onto a visible screen), which is why closing a busy window — it returns before calling base — saves nothing. |
+| `PdfSingleDocFormBase.cs` | Base of the two tools that work with ONE open document — **PDF Split** and **More operations**. Owns the whole “open a file and show its pages” layer once: the file dialog, the background parse, filling the grid, the status, accepting a file dropped on the window, on the grid or from a start-screen card (`IFileAcceptor`), and the “selected pages, or all of them if none” rule that every operation needs. |
+| `PdfOpsForm.cs` | **More operations**: six actions over one document (compress, grayscale, repair, pages to images, text to `.txt`, document properties), grouped by what they do. Every action writes a **new** file — sources are never modified — and the three copy-then-transform ones share one method. The window has no single action button, so it tells the base where to draw “Cancel” (`RegisterCancelArea`) instead of handing it a button to replace. |
 | `PdfOrderedToolFormBase.cs` | Base of the two tools that assemble one result from pages of several files — **PDF Merge** and **PDF → Word**. Owns the `PdfPageOrder` model and the entire “order ↔ grid” layer once (add files, reorder, cut/copy/paste move, delete, undo/redo, grid + file-drop wiring), the concrete forms keep only their buttons, their action worker and a `SyncControls` override (`PickAndAddFiles` — the “choose PDFs” dialog — lives here too). |
 | `PdfPageGrid.cs`, `PdfPageOrder.cs` | The thumbnail grid subsystem, OWNER-DRAWN (tiles, number captions, selection, cut-dimming and the rotation badge are painted in `DrawItem`, `LVM_SETICONSPACING` sets the cell, so zoom goes to 400 px past the ImageList limit — an empty metrics ImageList keeps native hit-testing honest and clicks on the outer ring of big tiles are compensated). Lazy visible-only rendering with a larger re-render on deep zoom, an in-window page buffer (cut/copy/paste) with an insertion caret and a hover hint, drag reorder with edge auto-scroll, file drop with an insert position, per-page and whole-document rotation, «Move after page N…», a context menu, `Locked` gating during operations. Owner-draw paint allocates nothing per frame: fill brushes and border pens are process-wide statics, glyph fonts come from the shared `Ui.Font` cache, and the selection tint is cached and rebuilt only on a system-colour change. Ctrl+wheel zoom is coalesced through the slider's throttle (`WheelBasis`) so a fast spin keeps every step. Hovering a tile shows ↺/↻ rotate chips on it. Double-click routing is a pure decision (`ClassifyDoubleClick`, precedence rotate chip → number strip → tile): a hover rotate chip swallows the event so a quick double-click on ↺/↻ turns a full 180°, else the number strip under a tile (`IsOnLabel`) opens «Move after page…», else the tile opens a full-size page preview (`PagePreviewForm`). The page-order model (`PdfPageRef` = source file + page index + rotation) is shared by merge and PDF → Word and keeps undo/redo stacks (Ctrl+Z / Ctrl+Y) of order-plus-rotation snapshots (`BeforeRotate` lets the form checkpoint before the grid mutates angles), the grid mutates only `Rotation` of the shared refs and requests order changes via events. |
 | `PdfThumbnailRenderer.cs`, `LruCache.cs` | WinRT rendering **from memory** (see invariants) at a DPI-scaled width, LRU of open documents (6, halved on x86) and a byte-budgeted LRU of rendered pages (192 MB, 48 MB on x86) — an evicted page re-renders when shown again. |
@@ -361,7 +367,9 @@ Late-bound COM is powerful and unforgiving, these rules are load-bearing:
 Everything lives under `%APPDATA%\iwo Helper Desktop`: `settings.txt` (language,
 remembered options, PDF zoom width and compression level), `stats.txt` (local counters,
 optional auto-clear), `reports\`
-(three latest merge reports), `crash.log`. Nothing else is written outside user-chosen
+(three latest merge reports), `crash.log`, `setup-language.txt` (the language picked in the
+installer, applied and deleted on the first start) and the user guide unpacked from the exe
+when “About → open” is used. Nothing else is written outside user-chosen
 output folders. The only network code is `UpdateChecker` — a manual GET of the latest
 release tag, it opens the browser rather than downloading. Details: [PRIVACY](PRIVACY.md).
 
@@ -437,8 +445,14 @@ needs Office gets a `verify` script.
   (Russian/English) from `InitializeWizard` (`PromptLanguageByFlags`). Choosing a non‑system
   language relaunches Setup with `/LANG=` and the install mode (Inno fixes the wizard language
   before the wizard is built, so a relaunch is the only way to re‑localise it), and the choice
-  is seeded as the app's default language in `settings.txt` (`SeedLanguage`), so the installed
-  app opens in the language chosen at install time. Three details make that actually work:
+  is handed to the app in a one-line ASCII marker next to its settings (`WriteLanguageMarker`),
+  so the installed app opens in the language chosen at install time — including a **reinstall
+  over an existing installation**, which the previous “write `settings.txt` only if absent”
+  approach silently skipped. The marker exists because Setup writes text in the system code page
+  while the app reads UTF-8: editing the shared `settings.txt` would corrupt non-ASCII paths in
+  it. An explicit choice means the flag button was pressed **or** `/LANG=` was passed — the
+  instance that showed the flags exits before the post-install step, so without the second half
+  the relaunched instance would write nothing at all. Three details make that actually work:
   `UsePreviousLanguage=no`, or the language of the previous installation would silently
   override the system one; the relaunch goes through `cmd /c start`, because while Setup is
   running it cannot launch — or even read — its own file (`Exec`, `ShellExec`,

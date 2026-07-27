@@ -25,9 +25,6 @@ namespace ExcelMerger
 
         protected PdfOrderedToolFormBase(Action showHub) : base(showHub) { }
 
-        /// <summary>Имя инструмента для заголовков диалогов (реализуют формы).</summary>
-        protected abstract string ToolTitle { get; }
-
         /// <summary>Один разобранный файл, готовый к вставке в порядок (результат фонового разбора).</summary>
         private sealed class LoadedDoc { public string Path; public int PageCount; }
 
