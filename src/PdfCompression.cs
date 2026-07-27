@@ -27,11 +27,13 @@ namespace ExcelMerger
         /// читаются на текущем языке при каждом вызове (переключение языка пересоздаёт список).</summary>
         public static string[] LevelLabels()
         {
+            // Разрешение подставляется из ImageDpi — единственного места, где эти числа
+            // объявлены, поэтому подпись не может разойтись с тем, что делает движок.
             return new[]
             {
                 Loc.T("compress.level.none"),
-                Loc.T("compress.level.good"),
-                Loc.T("compress.level.small")
+                string.Format(Loc.T("compress.level.good"), ImageDpi(CompressionLevel.Good)),
+                string.Format(Loc.T("compress.level.small"), ImageDpi(CompressionLevel.Small))
             };
         }
 

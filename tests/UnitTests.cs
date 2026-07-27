@@ -298,12 +298,14 @@ namespace ExcelMerger.Tests
             Run("Шаблон имени частей: пустой сохраняет прежние имена", TestPartNameOptional);
             Run("Шаблон имени частей (живой): имена файлов по шаблону", TestSplitTemplateLive);
             Run("Защита: запись поверх исходника распознаётся заранее", TestSameFileGuard);
+            Run("Печать: страница вписывается в лист целиком и по центру", TestPrintFitToPage);
+            Run("Сжатие: подписи называют разрешение из того же источника", TestCompressionLabelsNameDpi);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 271;
+            const int MinTests = 273;
             int total = _passed + _failed;
             if (total < MinTests)
             {
@@ -5325,6 +5327,49 @@ namespace ExcelMerger.Tests
             AssertTrue(!OutputFile.IsSameFile(null, a), "null — не тот же файл");
             AssertTrue(!OutputFile.IsSameFile(a, ""), "пустой путь — не тот же файл");
             AssertTrue(!OutputFile.IsSameFile(a, "|негодный<путь>"), "негодный путь не роняет проверку");
+        }
+
+        /// <summary>
+        /// Страница обязана вписываться в лист ЦЕЛИКОМ и по центру: растянуть её по краям —
+        /// значит срезать поля, где у документов стоят подписи, номера и отметки.
+        /// </summary>
+        private static void TestPrintFitToPage()
+        {
+            var sheet = new System.Drawing.Rectangle(0, 0, 1000, 1000);
+            // Широкая страница ограничена шириной и центрируется по вертикали.
+            System.Drawing.Rectangle wide = PdfPrintService.FitToPage(new System.Drawing.Size(2000, 1000), sheet);
+            AssertEqual(1000, wide.Width, "по ширине листа");
+            AssertEqual(500, wide.Height, "пропорции сохранены");
+            AssertEqual(250, wide.Y, "по центру листа");
+            AssertEqual(0, wide.X, "прижата к краю по ширине");
+            // Высокая — ограничена высотой и центрируется по горизонтали.
+            System.Drawing.Rectangle tall = PdfPrintService.FitToPage(new System.Drawing.Size(1000, 2000), sheet);
+            AssertEqual(500, tall.Width, "по высоте листа");
+            AssertEqual(250, tall.X, "по центру листа");
+            // Мелкая страница увеличивается до листа — на бумаге пустые поля не нужны.
+            System.Drawing.Rectangle small = PdfPrintService.FitToPage(new System.Drawing.Size(100, 100), sheet);
+            AssertEqual(1000, small.Width, "мелкая страница занимает лист");
+            // Вырожденные размеры не роняют печать.
+            AssertEqual(sheet, PdfPrintService.FitToPage(new System.Drawing.Size(0, 0), sheet), "нулевая страница");
+            AssertEqual(new System.Drawing.Rectangle(0, 0, 0, 0),
+                PdfPrintService.FitToPage(new System.Drawing.Size(10, 10), new System.Drawing.Rectangle(0, 0, 0, 0)),
+                "нулевой лист");
+        }
+
+        /// <summary>
+        /// Подписи сжатия называют разрешение, до которого уменьшаются изображения, и число
+        /// берётся из того же места, что и аргументы движка, — иначе подпись обещала бы одно,
+        /// а получалось бы другое.
+        /// </summary>
+        private static void TestCompressionLabelsNameDpi()
+        {
+            string[] labels = PdfCompression.LevelLabels();
+            AssertTrue(labels[1].Contains(PdfCompression.ImageDpi(CompressionLevel.Good).ToString()),
+                "«Хорошо» называет своё разрешение: " + labels[1]);
+            AssertTrue(labels[2].Contains(PdfCompression.ImageDpi(CompressionLevel.Small).ToString()),
+                "«Нормально» называет своё разрешение: " + labels[2]);
+            AssertTrue(!labels[0].Contains("{0}") && !labels[1].Contains("{0}"),
+                "подстановка выполнена, а не показана как есть");
         }
 
         // ---------- Преобразования Ghostscript ----------

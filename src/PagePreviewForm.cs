@@ -117,6 +117,10 @@ namespace ExcelMerger
             _menu = new ContextMenuStrip();
             _menu.Items.Add(Loc.T("preview.menu.rotateRight"), null, delegate { Rotate(90); });
             _menu.Items.Add(Loc.T("preview.menu.rotateLeft"), null, delegate { Rotate(-90); });
+            _menu.Items.Add(new ToolStripSeparator());
+            // Печать той страницы, которую пользователь прямо сейчас рассматривает: смотреть
+            // на лист и не иметь возможности его напечатать — самое очевидное, чего не хватало.
+            _menu.Items.Add(Loc.T("preview.menu.print"), null, delegate { PrintThisPage(); });
             // Меню на форме: подсказка «Загрузка…» перекрывает картинку, а WM_CONTEXTMENU
             // с контрола без своего меню всплывает к родителю — правый клик работает всюду.
             ContextMenuStrip = _menu;
@@ -182,6 +186,38 @@ namespace ExcelMerger
             _picture.Image = _image;
             SyncRotation();  // пока шёл рендер, страницу могли повернуть — догоняем
             LayoutImage();   // первый показ — вписываем страницу в окно
+        }
+
+        /// <summary>
+        /// Напечатать показанную страницу. Диалог принтера — на UI-потоке, печать — в фоне,
+        /// как и везде: рендер под печать идёт при 200 dpi и мгновенным не бывает.
+        /// Ошибку показываем прямо здесь: окно модальное, идти ей больше некуда.
+        /// </summary>
+        private void PrintThisPage()
+        {
+            System.Drawing.Printing.PrinterSettings settings;
+            using (var dialog = new PrintDialog())
+            {
+                dialog.AllowSomePages = false;
+                dialog.UseEXDialog = true;
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                settings = dialog.PrinterSettings;
+            }
+            string path = _page.SourcePath;
+            var pages = new System.Collections.Generic.List<int> { _page.PageIndex };
+            Ui.RunWorker(delegate()
+            {
+                Exception error = null;
+                try { PdfPrintService.Print(path, pages, settings); }
+                catch (Exception ex) { error = ex; }
+                Exception shown = error;
+                if (shown != null)
+                    Ui.OnUi(this, delegate
+                    {
+                        Dialogs.Error(this, Text, Loc.T("preview.err.printFailed"), shown.Message);
+                    });
+            });
         }
 
         /// <summary>
