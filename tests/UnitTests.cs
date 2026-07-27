@@ -264,6 +264,7 @@ namespace ExcelMerger.Tests
             Run("Хаб: разделы, «Назад» и Esc показывают свой набор карточек", TestHubNavigation);
             Run("Хаб: придержанные файлы забываются при уходе из раздела", TestHubPendingFilesCleared);
             Run("Хаб: из карточек открывается каждый инструмент, и именно свой", TestHubOpensEveryTool);
+            Run("«Разделение» передаёт открытый документ в «Прочие операции»", TestSplitHandsDocumentToOps);
             Run("Просмотр: окно сворачивается и имеет кнопку на панели задач", TestPreviewCanMinimize);
             Run("Окна: «Главная» последняя в обходе Tab (фокус не на ней)", TestHomeHeaderLastInTabOrder);
             Run("HeaderBand.TextRows: заголовок и подпись помещаются на любом масштабе экрана", TestHeaderRowsFitAnyDpi);
@@ -5797,6 +5798,95 @@ namespace ExcelMerger.Tests
                 }
             });
             AssertTrue(failures.Count == 0, "открытие инструментов из хаба: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>
+        /// «Разделение» передаёт ОТКРЫТЫЙ документ в «Прочие операции» одной кнопкой. Путь
+        /// длинный и весь из проводки: фабрика окна живёт на стартовом экране, файл едет через
+        /// `IFileAcceptor`, а разбор идёт в фоне. Порвётся любое звено — человек будет открывать
+        /// один и тот же файл дважды, и заметит это не тест, а он.
+        /// </summary>
+        private static void TestSplitHandsDocumentToOps()
+        {
+            var failures = new List<string>();
+            InIsolatedSettings("iwo_ops_bridge_", delegate
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "iwo_bridge_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(dir);
+                string pdf = Path.Combine(dir, "документ.pdf");
+                var ctx = new ShellContext();
+                try
+                {
+                    PdfProbe.WriteOnePagePdf(pdf);
+                    var hub = HubOf(ctx) as StartForm;
+                    if (hub == null) { failures.Add("хаба нет"); return; }
+                    hub.ShowLevel(HubLevel.Pdf);
+                    var cards = new List<ChoiceCard>();
+                    CollectCards(hub, cards);
+                    ClickCard(cards[1]); // «Разделение PDF»
+
+                    var split = FindOpenTool(ctx, typeof(PdfSplitForm));
+                    if (split == null) { failures.Add("«Разделение» не открылось"); return; }
+                    ((IFileAcceptor)split).AcceptFiles(new[] { pdf });
+                    if (!WaitFor(delegate { return SourcePathOf(split) != null; }))
+                    { failures.Add("документ не загрузился в «Разделение»"); return; }
+
+                    System.Windows.Forms.Button toOps = ButtonWithText(split, Loc.T("split.btn.ops"));
+                    if (toOps == null) { failures.Add("кнопки перехода нет"); return; }
+                    if (!toOps.Enabled) failures.Add("кнопка перехода недоступна при открытом документе");
+                    toOps.PerformClick();
+
+                    var ops = FindOpenTool(ctx, typeof(PdfOpsForm));
+                    if (ops == null) { failures.Add("«Прочие операции» не открылись"); return; }
+                    if (!WaitFor(delegate { return SourcePathOf(ops) != null; }))
+                    { failures.Add("документ не доехал до «Прочих операций»"); return; }
+                    if (!string.Equals(SourcePathOf(ops), pdf, StringComparison.OrdinalIgnoreCase))
+                        failures.Add("доехал не тот документ: " + SourcePathOf(ops));
+                }
+                catch (Exception ex) { failures.Add(Root(ex).GetType().Name + ": " + Root(ex).Message); }
+                finally
+                {
+                    CloseOpenTools(ctx);
+                    try { ctx.Dispose(); } catch { }
+                    try { Directory.Delete(dir, true); } catch { }
+                }
+            });
+            AssertTrue(failures.Count == 0, "передача документа в «Прочие операции»: " +
+                string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>Подождать условия, прокручивая очередь сообщений (разбор PDF идёт в фоне).</summary>
+        private static bool WaitFor(Func<bool> ready)
+        {
+            for (int i = 0; i < 200; i++)
+            {
+                if (ready())
+                    return true;
+                System.Windows.Forms.Application.DoEvents();
+                System.Threading.Thread.Sleep(25);
+            }
+            return ready();
+        }
+
+        private static string SourcePathOf(System.Windows.Forms.Form form)
+        {
+            return (string)typeof(PdfSingleDocFormBase).GetField("_sourcePath",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(form);
+        }
+
+        private static System.Windows.Forms.Button ButtonWithText(System.Windows.Forms.Control parent, string text)
+        {
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+            {
+                var b = c as System.Windows.Forms.Button;
+                if (b != null && b.Text == text)
+                    return b;
+                System.Windows.Forms.Button inner = ButtonWithText(c, text);
+                if (inner != null)
+                    return inner;
+            }
+            return null;
         }
 
         private static void Check(bool ok, string what, List<string> failures)

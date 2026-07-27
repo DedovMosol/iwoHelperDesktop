@@ -335,6 +335,7 @@ namespace ExcelMerger
             A("ops.suffix.compressed", "_сжатый", "_compressed");
             A("ops.err.exportFailed", "Не удалось сохранить", "Could not save");
             A("ops.err.convertFailed", "Не удалось преобразовать", "Could not convert");
+            A("ops.err.compressFailed", "Не удалось сжать", "Could not compress");
             A("ops.err.metaFailed", "Не удалось записать свойства", "Could not save the properties");
             A("ops.err.sameFile", "Нельзя записать поверх исходника", "Cannot write over the source");
             A("ops.err.sameFile.body",
