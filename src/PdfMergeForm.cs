@@ -25,11 +25,17 @@ namespace ExcelMerger
         private Button _btnSave;
         private Button _btnPrint;
         private CheckBox _chkPadEven; // добить документы до чётного числа страниц (двусторонняя печать)
+        // Файл, который это окно собрало последним. Именно его — а не источники, которых много —
+        // «Объединение» может назвать своим документом и отдать в «Прочие операции».
+        private string _lastResult;
 
         public PdfMergeForm() : this(null) { }
 
-        public PdfMergeForm(Action showHub) : base(showHub)
+        public PdfMergeForm(Action showHub) : this(showHub, null) { }
+
+        public PdfMergeForm(Action showHub, Action<string> openOps) : base(showHub)
         {
+            OpsBridge = openOps; // мост в «Прочие операции» с собранным файлом (см. базу)
             BuildUi();
             SyncControls();
         }
@@ -56,9 +62,14 @@ namespace ExcelMerger
             WireFileDropAppend(); // дроп PDF на окно — добавить в конец (общая обвязка базы)
             var interleave = new ToolStripMenuItem(Loc.T("pdf.menu.interleave"), null,
                 delegate { InterleavePages(); });
+            // Продолжение работы над СОБРАННЫМ файлом: сжать, убрать цвет, поправить свойства.
+            // Пункт живёт в меню, а не кнопкой в панели: до первого сохранения отдавать нечего,
+            // и кнопка стояла бы погашенной всё время работы.
+            var ops = new ToolStripMenuItem(Loc.T("pdf.menu.ops"), null, delegate { OpenResultInOps(); });
+            ops.ToolTipText = Loc.T("pdf.tip.ops");
             BuildHeaderWithHome(Title,
                 Loc.T("pdf.header.subtitle"),
-                Theme.PdfRed, Theme.PdfRedDark, ShowHelp, interleave);
+                Theme.PdfRed, Theme.PdfRedDark, ShowHelp, interleave, ops);
 
             int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
@@ -234,6 +245,7 @@ namespace ExcelMerger
             if (!FinishOperation(error, Loc.T("pdf.status.saveFailed"), Loc.T("pdf.err.saveFailed")))
                 return; // отмена или ошибка — статус и диалог уже показаны базой
             UsageStats.RecordPdfMerge();
+            _lastResult = outputPath; // теперь есть что отдать в «Прочие операции»
             if (compressed)
                 UsageStats.RecordPdfCompress();
             SetStatus(DoneStatus(pageCount, compressed, level), Theme.OkGreen);
@@ -249,6 +261,23 @@ namespace ExcelMerger
         {
             return SuccessStatus(string.Format(Loc.T("pdf.status.pagesSaved"), pageCount),
                 CompressedPart(compressed, level));
+        }
+
+        /// <summary>
+        /// Открыть «Прочие операции» с собранным файлом. Пока ничего не собрано, отдавать
+        /// нечего — говорим об этом прямо, а не гасим пункт молча: погашенный пункт меню не
+        /// объясняет ни почему он погашен, ни что сделать (подсказки у него не показываются).
+        /// </summary>
+        private void OpenResultInOps()
+        {
+            if (Working || OpsBridge == null)
+                return;
+            if (_lastResult == null || !File.Exists(_lastResult))
+            {
+                Dialogs.Info(this, Title, Loc.T("pdf.ops.noResult.title"), Loc.T("pdf.ops.noResult.body"));
+                return;
+            }
+            OpsBridge(_lastResult);
         }
 
         /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>

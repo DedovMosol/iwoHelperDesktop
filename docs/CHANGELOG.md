@@ -19,6 +19,11 @@ Ready for 1.17.9, not published yet — the version in the build is still 1.17.8
   convert to grayscale, repair a damaged file, save pages as images, extract the text to a
   `.txt`, edit the document properties. Split keeps a one-click bridge that hands the open
   document over, so nothing has to be opened twice.
+- **Merge hands its result on.** “☰ Menu → More operations on the merged file” continues the
+  work on what you have just saved — compress it, drop the colour, fix its properties — without
+  hunting for the file on disk. Split has the same bridge for the document it has open. PDF →
+  Word deliberately has none: it cannot name a single PDF, its sources are many and its result
+  is a `.docx`.
 - **Compressing a single file** is a real operation at last. Until now compression only existed
   as an afterthought of merging and splitting. It writes a copy — sources are never modified —
   and if the file is already optimized it says so instead of silently returning the same bytes.
