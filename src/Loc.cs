@@ -196,7 +196,6 @@ namespace ExcelMerger
             A("split.tip.template",
                 "Папку и базовое имя вы зададите дальше, в окне сохранения. Здесь — только как из базового имени собираются имена ЧАСТЕЙ. Пусто — как раньше: базовое имя плюс номер или диапазон. Правый клик подставляет обозначения: [BASENAME] — базовое имя из окна сохранения, [FILENUMBER] — номер части, [CURRENTPAGE] — первая страница части, [BOOKMARK] — название закладки, [TIMESTAMP] — дата и время. Решётки дополняют нулями ([FILENUMBER###] = 001), число сдвигает нумерацию ([FILENUMBER10] = 11).",
                 "You choose the folder and the base name next, in the save dialog. This is only how the names of the PARTS are built from that base name. Empty — as before: the base name plus a number or a range. Right-click inserts the keywords: [BASENAME] — the base name from the save dialog, [FILENUMBER] — part number, [CURRENTPAGE] — first page of the part, [BOOKMARK] — bookmark title, [TIMESTAMP] — date and time. Hashes pad with zeros ([FILENUMBER###] = 001), a number offsets the count ([FILENUMBER10] = 11).");
-            A("split.menu.print", "Печать…", "Print…");
             A("split.status.printing", "Печать…", "Printing…");
             A("split.status.printingPage", "Печать: страница {0} из {1}…", "Printing: page {0} of {1}…");
             A("split.status.printed", "Отправлено на печать страниц: {0}", "Pages sent to the printer: {0}");
@@ -230,6 +229,11 @@ namespace ExcelMerger
             // Дополнительные преобразования одного документа («Разделение PDF» → меню «Ещё»).
             A("split.menu.more", "Доп. действия", "More actions");
             A("split.btn.more", "Доп. действия…", "More actions…");
+            A("split.btn.print", "Печать…", "Print…");
+            A("split.tip.print",
+                "Напечатать выделенные страницы, а если ничего не выделено — весь документ.",
+                "Print the selected pages, or the whole document if nothing is selected.");
+            A("preview.print", "Печать…", "Print…");
             A("split.tip.more",
                 "Сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
                 "Save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties.");
@@ -420,7 +424,9 @@ namespace ExcelMerger
             A("about.license", "© 2026 · Лицензия MIT", "© 2026 · MIT License");
             A("about.privacy", "Политика конфиденциальности", "Privacy Policy");
             A("about.privacyNote", "(данные не покидают ваш ПК)", "(your data never leaves your PC)");
-            A("about.donate", "Поддержать проект (донаты):", "Support the project (donations):");
+            // Подпись над реквизитами — авторская, одинаковая на обоих языках (это не перевод,
+            // а обращение автора), поэтому в проверке «нет кириллицы в английском» её нет нужды.
+            A("about.donate", "Are you metal \\m/ ? +++", "Are you metal \\m/ ? +++");
             A("about.account", "Счёт:", "Account:");
             A("about.bank", "Банк:", "Bank:");
 

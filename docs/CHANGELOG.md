@@ -6,10 +6,11 @@ versions follow [SemVer](https://semver.org/).
 ## [1.17.8] — 2026-07-27
 
 ### Added
-- **Printing.** Right-click the full-size preview to print the page you are looking at, or use
-  “More actions… → Print” in Split for the selected pages or the whole document. Pages are
-  rendered at 200 dpi and fitted into the sheet whole, centred: stretching a page to the edges
-  would crop the margins, which is where signatures and page numbers live.
+- **Printing.** A “Print…” button sits on the Split screen — select the pages you want, or none
+  for the whole document — and another one in the full-size preview, where the right-click menu
+  also offers it. Pages are rendered at 200 dpi and fitted into the sheet whole and centred:
+  stretching a page to the edges would crop the margins, which is where signatures and page
+  numbers live.
 - **Zoom and pan in the full-size preview.** The page you open by double-clicking a tile now
   has a magnifier: − / + buttons, `Ctrl`+wheel, a “fit to window” button and `Ctrl+0` for actual
   size. Zooming with the wheel keeps the point under the cursor in place — you magnify what you
