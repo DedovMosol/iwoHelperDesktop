@@ -10,8 +10,7 @@ versions follow [SemVer](https://semver.org/).
   has a magnifier: − / + buttons, `Ctrl`+wheel, a “fit to window” button and `Ctrl+0` for actual
   size. Zooming with the wheel keeps the point under the cursor in place — you magnify what you
   are looking at, not the middle of the page — and once the page is larger than the window you
-  drag it with the hand cursor. A left click still closes the window, but only when there is
-  nothing to drag, so panning can no longer close it by accident.
+  drag it with the hand cursor. `Esc` and the close button close it.
 - **Interleave the pages of several documents** (Merge → menu). This assembles the two stacks a
   single-sided scanner produces: fronts in one file, backs in another and usually in reverse
   order. With exactly two documents the app asks whether the second one is reversed. A single
@@ -25,12 +24,12 @@ versions follow [SemVer](https://semver.org/).
   entirely — cells come out separated by tabs and paste into a spreadsheet as a table. Pages are
   separated by a form feed, as `pdftotext` does, and the file is UTF-8 with a byte-order mark so
   Notepad shows Cyrillic correctly.
-- **Name the split parts yourself** (Split → “Name template”). Right-clicking the field
+- **Name the split parts yourself** (Split → “How to name the parts”). Right-clicking the field
   inserts the available keywords: `[BASENAME]`, `[FILENUMBER]`, `[CURRENTPAGE]`, `[BOOKMARK]`,
   `[TIMESTAMP]`. Hashes pad with zeros (`[FILENUMBER###]` → `001`) and a number offsets the
   count (`[FILENUMBER10]` → `11`). The field is optional on purpose: left empty, the parts get
   exactly the names they got before, so a new capability does not rename anyone's files.
-- **Pad documents to an even page count** (Merge → checkbox). For double-sided printing: a
+- **Print on both sides without a document starting on a back** (Merge → “Double-sided printing”): a
   blank page is added after a document with an odd page count so the next one starts on the
   front of a sheet. The last document is deliberately not padded — nothing is printed after
   it. The blanks are added when the file is written, not kept in the page grid: putting them
@@ -48,9 +47,6 @@ versions follow [SemVer](https://semver.org/).
   it is needed. Both write a **new** file: the app never modifies a source.
 
 ### Changed
-- **The full-size preview no longer closes when you click the page.** That was fine while the
-  preview was just a picture, but the page is now something you zoom into and drag around, and
-  closing on a touch of the working area got in the way. `Esc` and the close button still do it.
 - **The extra tools are reachable from a button**, not only from the window menu: “More with
   this document…” sits with the other inputs in Split. Five capabilities behind a hamburger
   submenu were, in practice, invisible.
