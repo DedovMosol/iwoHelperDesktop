@@ -25,6 +25,10 @@ namespace ExcelMerger
         private Button _btnSave;
         private Button _btnPrint;
         private CheckBox _chkPadEven; // добить документы до чётного числа страниц (двусторонняя печать)
+        // Пункты ☰ живут в поле ради SyncControls: во время сборки они гаснут, как и кнопки.
+        // Молчащий на нажатие пункт неотличим от сломанного, а меню открывается и в работе.
+        private ToolStripMenuItem _miInterleave;
+        private ToolStripMenuItem _miOps;
         // Файл, который это окно собрало последним. Именно его — а не источники, которых много —
         // «Объединение» может назвать своим документом и отдать в «Прочие операции».
         private string _lastResult;
@@ -60,16 +64,16 @@ namespace ExcelMerger
         {
             InitShell(Title, new Size(780, 660), new Size(660, 540), Theme.PdfRed);
             WireFileDropAppend(); // дроп PDF на окно — добавить в конец (общая обвязка базы)
-            var interleave = new ToolStripMenuItem(Loc.T("pdf.menu.interleave"), null,
+            _miInterleave = new ToolStripMenuItem(Loc.T("pdf.menu.interleave"), null,
                 delegate { InterleavePages(); });
             // Продолжение работы над СОБРАННЫМ файлом: сжать, убрать цвет, поправить свойства.
-            // Пункт живёт в меню, а не кнопкой в панели: до первого сохранения отдавать нечего,
-            // и кнопка стояла бы погашенной всё время работы.
-            var ops = new ToolStripMenuItem(Loc.T("pdf.menu.ops"), null, delegate { OpenResultInOps(); });
-            ops.ToolTipText = Loc.T("pdf.tip.ops");
+            // Пункт живёт в меню, а не кнопкой в панели: панель занята сборкой, а это шаг
+            // ПОСЛЕ неё.
+            _miOps = new ToolStripMenuItem(Loc.T("pdf.menu.ops"), null, delegate { OpenResultInOps(); });
+            _miOps.ToolTipText = Loc.T("pdf.tip.ops");
             BuildHeaderWithHome(Title,
                 Loc.T("pdf.header.subtitle"),
-                Theme.PdfRed, Theme.PdfRedDark, ShowHelp, interleave, ops);
+                Theme.PdfRed, Theme.PdfRedDark, ShowHelp, _miInterleave, _miOps);
 
             int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
@@ -264,20 +268,16 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Открыть «Прочие операции» с собранным файлом. Пока ничего не собрано, отдавать
-        /// нечего — говорим об этом прямо, а не гасим пункт молча: погашенный пункт меню не
-        /// объясняет ни почему он погашен, ни что сделать (подсказки у него не показываются).
+        /// Открыть «Прочие операции». Собранный файл уезжает туда сам, а пока его нет — окно
+        /// просто открывается, и человек выбирает файл там. Объяснять вместо действия нельзя:
+        /// на нажатие обязано что-то происходить, иначе пункт считают неработающим.
         /// </summary>
         private void OpenResultInOps()
         {
             if (Working || OpsBridge == null)
                 return;
-            if (_lastResult == null || !File.Exists(_lastResult))
-            {
-                Dialogs.Info(this, Title, Loc.T("pdf.ops.noResult.title"), Loc.T("pdf.ops.noResult.body"));
-                return;
-            }
-            OpsBridge(_lastResult);
+            bool haveResult = _lastResult != null && File.Exists(_lastResult);
+            OpsBridge(haveResult ? _lastResult : null);
         }
 
         /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>
@@ -292,6 +292,8 @@ namespace ExcelMerger
             _btnRemove.Enabled = !Working && _grid.SelectedCount > 0;
             _btnPrint.Enabled = !Working && _order.Count > 0;
             _btnSave.Enabled = !Working && _order.Count > 0;
+            _miInterleave.Enabled = !Working && _order.Count > 0;
+            _miOps.Enabled = !Working; // и без собранного файла — просто откроет окно
         }
     }
 }

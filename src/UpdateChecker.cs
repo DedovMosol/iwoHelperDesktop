@@ -1,10 +1,8 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -105,10 +103,7 @@ namespace ExcelMerger
             {
                 if (Dialogs.ConfirmWarning(owner, Title, string.Format(Loc.T("update.available.title"), latest.ToString(3)),
                         string.Format(Loc.T("update.available.body"), current.ToString(3))))
-                {
-                    try { using (Process.Start(UpdateChecker.ReleasesPage)) { } }
-                    catch { } // нет браузера — ссылку видно в диалоге
-                }
+                    Ui.OpenUrlOrShow(owner, Title, UpdateChecker.ReleasesPage);
             }
             else
             {

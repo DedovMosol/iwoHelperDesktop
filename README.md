@@ -38,7 +38,7 @@ Build one PDF from several on a thumbnail grid — reorder, rotate, cut/copy/pas
 <details><summary><b>All grid and merge features</b></summary>
 
 - Zoom up to 400 px shown as an editable **percentage** — the “%” box, the slider, Ctrl+wheel, or Ctrl+0 to reset to 100 %.
-- **Double‑click** a page for a full‑size preview — right‑click it there to rotate, and the window reopens at the size you left it (or double‑click a page number to move that page). Reorder by dragging, the grid auto‑scrolls at the edges.
+- **Double‑click** a page for a full‑size preview — right‑click it there to rotate, zoom with − / + or Ctrl+wheel, print it, and minimize it to the taskbar like any other window. It reopens at the size you left it (or double‑click a page number to move that page). Reorder by dragging, the grid auto‑scrolls at the edges.
 - **Cut/copy/paste** pages (Ctrl+X/C/V) with an insertion caret, **Move after page N…** for exact long jumps, Ctrl+Z / Ctrl+Y to undo and redo (rotations included).
 - **Rotate** the selection or the whole document 90° (right‑click, Ctrl+Shift+«+»/«−», or the ↺/↻ buttons on the hovered tile) — the same keys and menu work inside the full‑size preview, and thumbnails follow at once.
 - **Drop more PDFs onto the grid** — their pages land at the drop position. Ctrl+G jumps to a page.
@@ -61,13 +61,13 @@ Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print
 - **Limits** — scanned documents aren't supported yet (a clear message is shown instantly and the file is untouched).
 </details>
 ### 🛠️ More operations
-Six actions over one document, each writing a **new** file — the source is never modified: **compress**, convert **to grayscale**, **repair** a damaged file (it picks the file itself — a broken document cannot be opened into a grid), save **pages as images** (PNG or JPEG at 96–600 dpi, the selection or all of them), extract the **text to a `.txt`** (tables kept as tab‑separated cells), and edit the **document properties** (title, author, subject, keywords — an empty field clears the property, which is how the author's name is removed before sending). Split has a one‑click bridge that hands its open document over.
+Six actions over one document, each writing a **new** file — the source is never modified: **compress**, convert **to grayscale**, **repair** a damaged file (it picks the file itself — a broken document cannot be opened into a grid), save **pages as images** (PNG or JPEG at 96–600 dpi, the selection or all of them), extract the **text to a `.txt`** (tables kept as tab‑separated cells), and edit the **document properties** (title, author, subject, keywords — an empty field clears the property, which is how the author's name is removed before sending). **Merge and Split hand a document straight over** — Split the one it has open, Merge the file it has just built.
 
 ### More
 - 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size” via bundled **Ghostscript**: downsamples images (to 150 or 72 dpi) while keeping text and vectors — nothing is rasterized. The result message names the resolution used, and the default level leaves the file untouched.
 - 🌐 **English & Russian** — the installer opens with a flag chooser and the app follows that choice. Switch anytime from a globe on the start screen or any tool’s **☰ Menu → Язык / Language** (each option shows a flag). Generated documents stay in Russian.
 - 📘 **User guide inside the program** — **About → “User guide: open”** unpacks the document from the `.exe` and opens it. No internet needed, the portable build has it too.
-- 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing), plus local operation counters you can clear.
+- 🔄 **Update check & statistics** — compares with GitHub Releases and, if a newer version exists, offers to open the release page in your browser (it downloads and installs nothing), plus local operation counters you can clear.
 - 🪟 **One window set, one process** — tools open as independent windows that outlive the start screen, and launching the app again just brings the running one back instead of starting a second copy.
 - 🔒 **Safe by design** — no network, no admin, not packed or obfuscated, and writes only to folders you choose and `%APPDATA%`.
 
@@ -100,6 +100,7 @@ Launch the app, pick a section on the start screen (**PDF** or **Other tools**) 
 
 - **Merge Excel** — pick the source folder, set the output name and format, arrange or exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
 - **PDF Merge / Split** — add PDFs (button or drag‑and‑drop, including straight onto the page grid), reorder or select pages on the thumbnail grid, choose a **Compression** level if desired, and save. **Double‑click a page for a full‑size preview** — a right‑click there rotates it, and the window remembers its size (or double‑click a page number to move that page). Set the zoom **percentage** exactly in the “%” box (or the slider, Ctrl+wheel, or Ctrl+0 to reset to 100%). The last zoom, compression level, and the window's size and position come back next time. The grid speaks keyboard: Ctrl+X/C/V move or duplicate pages (cut pages stay dimmed until pasted, Esc cancels, a click in a gap places the insertion caret — hovering a gap hints it), Ctrl+Z / Ctrl+Y undo and redo edits (rotations included), Ctrl+G jumps to a page, Ctrl+Shift+«+»/«−» rotates the selection — or hover a tile and click its ↺/↻ buttons (the right‑click menu also rotates **all** pages and moves the selection **after page N…**).
+- **More operations** — open the tool (or send a document to it from Split's **More operations** button, or the merged file from Merge's **☰ Menu**), then pick an action: each writes a new file and leaves the source alone. “Repair” asks for the file itself, since a damaged document cannot be shown as a grid.
 - **PDF → Word** — add one or several born‑digital PDFs (button or drag‑and‑drop — dropping onto the grid inserts at that spot), reorder with the mouse or Ctrl+X/C/V, **double‑click a page to preview it** and right‑click the preview to rotate (or double‑click its number to move it), or drop pages across all of them if needed, then **Convert to Word…** and choose the `.docx` name — they merge into one document.
 
 <details>
@@ -153,7 +154,7 @@ Format is derived from the path extension. `--toc` adds a table of contents, `--
 ```
 build.cmd
 ```
-Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`, `build.cmd x86` produces the 32‑bit exe in `dist\x86\`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction in PDF → Word. PDF thumbnails use the system `Windows.Data.Pdf` (WinRT), and PDF → Word writes the `.docx` through Word COM.
+Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`, `build.cmd x86` produces the 32‑bit exe in `dist\x86\`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split and document properties, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction (PDF → Word and the `.txt` export). PDF thumbnails, the full‑size preview and the image export use the system `Windows.Data.Pdf` (WinRT), PDF → Word writes the `.docx` through Word COM, and Ghostscript runs as a separate process for compression, grayscale and repair.
 
 <details>
 <summary><b>Signing, installer, release, CI and tests</b></summary>
@@ -176,7 +177,7 @@ Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open pro
 
 ## 🔒 Privacy
 
-**Your files never leave your computer.** No telemetry, no analytics, no accounts, no background network calls. All processing (Excel, PDF merge/split/compress) runs locally, the only network request is the **manual** update check, which reads the latest version tag from GitHub and sends no file contents or personal data. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
+**Your files never leave your computer.** No telemetry, no analytics, no accounts, no background network calls. Everything — Excel, PDF merge/split, compression, images, text, document properties, PDF → Word — runs locally, the only network request is the **manual** update check, which reads the latest version tag from GitHub and sends no file contents or personal data. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
 
 ## ⚖️ License
 

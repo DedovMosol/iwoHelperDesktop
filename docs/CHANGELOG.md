@@ -17,11 +17,12 @@ versions follow [SemVer](https://semver.org/).
   convert to grayscale, repair a damaged file, save pages as images, extract the text to a
   `.txt`, edit the document properties. Split keeps a one-click bridge that hands the open
   document over, so nothing has to be opened twice.
-- **Merge hands its result on.** “☰ Menu → More operations on the merged file” continues the
-  work on what you have just saved — compress it, drop the colour, fix its properties — without
-  hunting for the file on disk. Split has the same bridge for the document it has open. PDF →
-  Word deliberately has none: it cannot name a single PDF, its sources are many and its result
-  is a `.docx`.
+- **Merge hands its result on.** “☰ Menu → More operations” continues the work on the file you
+  have just saved — compress it, drop the colour, fix its properties — without hunting for it on
+  disk. Split has the same bridge for the document it has open, and both open the window even
+  when there is nothing to hand over yet: an entry that answers a click with an explanation of
+  why it does nothing reads as broken. PDF → Word deliberately has no bridge: it cannot name a
+  single PDF, its sources are many and its result is a `.docx`.
 - **Compressing a single file** is a real operation at last. Until now compression only existed
   as an afterthought of merging and splitting. It writes a copy — sources are never modified —
   and if the file is already optimized it says so instead of silently returning the same bytes.
@@ -47,6 +48,11 @@ versions follow [SemVer](https://semver.org/).
   WinForms sizes a single-line text box by its font and ignores the height you set. Everything is
   measured now, the window says which file it edits, and it states that an empty field clears the
   property.
+
+- **A card's contents stand in the middle of it.** The icon, the title and the description were
+  pinned to the top of the card, so a short description left an empty strip at the bottom and the
+  card looked unfinished. The block is measured and centred now, with both texts laid out by the
+  same rules they are drawn with.
 
 - **Buttons say when they cannot be pressed.** An unavailable ordinary button used to differ
   from a working one by the colour of its caption alone, and in panels where half the buttons
@@ -79,6 +85,10 @@ versions follow [SemVer](https://semver.org/).
   the font grew with the screen: at 150 % every caption on it was clipped. The bar is measured
   from the current scale now, and the window's minimum size comes from the bar's real width — the
   “Print” button used to sit outside a window squeezed to its minimum.
+- **“Check for updates” no longer swallows a browser that will not start.** Answering “Yes” to
+  the new-version question opened the release page and, if the system had no browser to open it
+  with, did nothing at all — the failure was caught and dropped. The address is shown now, so the
+  page can be reached by hand.
 - Gaps between the buttons of the right-hand panels differed between Merge and PDF → Word. They
   follow one rhythm now.
 

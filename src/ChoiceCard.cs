@@ -32,6 +32,14 @@ namespace ExcelMerger
         // Единый шрифт заголовка карточек: создание в каждом OnPaint — лишний GDI-чурн.
         private static readonly Font TitleFont = new Font("Segoe UI", 12.5f, FontStyle.Bold);
 
+        // Ритм содержимого: значок, отступ, заголовок в одну строку, отступ, описание с переносами.
+        private const int GlyphSize = 60, GlyphGap = 12, TitleGap = 6, MinTop = 18;
+        private const int TitlePad = 10, DescPad = 18;
+        private const TextFormatFlags TitleFlags =
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.EndEllipsis;
+        private const TextFormatFlags DescFlags =
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak;
+
         private readonly CardGlyph _glyph;
         private readonly string _title;
         private readonly string _description;
@@ -188,17 +196,31 @@ namespace ExcelMerger
                     g.DrawPath(pen, card);
             }
 
-            int glyphSize = 60;
-            var glyphRect = new Rectangle((Width - glyphSize) / 2, 26, glyphSize, glyphSize);
+            // Блок «значок + заголовок + описание» ставим по центру карточки: описания
+            // разной длины, и при верхней привязке карточки с короткой подписью выглядели
+            // пустыми снизу. Высоту меряем теми же флагами, какими рисуем.
+            int titleW = Width - 2 * TitlePad, descW = Width - 2 * DescPad;
+            int titleH = TextRenderer.MeasureText(g, _title, TitleFont,
+                new Size(titleW, int.MaxValue), TitleFlags).Height;
+            int descH = TextRenderer.MeasureText(g, _description, Font,
+                new Size(descW, int.MaxValue), DescFlags).Height;
+            int top = ContentTop(Height, GlyphSize + GlyphGap + titleH + TitleGap + descH);
+
+            var glyphRect = new Rectangle((Width - GlyphSize) / 2, top, GlyphSize, GlyphSize);
             DrawGlyph(g, glyphRect);
 
-            var titleRect = new Rectangle(10, glyphRect.Bottom + 12, Width - 20, 28);
-            TextRenderer.DrawText(g, _title, TitleFont, titleRect, Theme.TextPrimary,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.EndEllipsis);
+            var titleRect = new Rectangle(TitlePad, glyphRect.Bottom + GlyphGap, titleW, titleH);
+            TextRenderer.DrawText(g, _title, TitleFont, titleRect, Theme.TextPrimary, TitleFlags);
 
-            var descRect = new Rectangle(18, glyphRect.Bottom + 46, Width - 36, Height - glyphRect.Bottom - 56);
-            TextRenderer.DrawText(g, _description, Font, descRect, Theme.TextMuted,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak);
+            var descRect = new Rectangle(DescPad, titleRect.Bottom + TitleGap, descW, descH);
+            TextRenderer.DrawText(g, _description, Font, descRect, Theme.TextMuted, DescFlags);
+        }
+
+        /// <summary>Верх блока содержимого, центрированного по высоте карточки. Чистая — под тест.</summary>
+        internal static int ContentTop(int cardHeight, int blockHeight)
+        {
+            int top = (cardHeight - blockHeight) / 2;
+            return top < MinTop ? MinTop : top; // очень длинное описание прижимаем к верху, а не режем сверху
         }
 
         // Значок-документ с загнутым уголком (стиль file-excel): единое семейство
