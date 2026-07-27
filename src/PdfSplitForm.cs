@@ -33,6 +33,7 @@ namespace ExcelMerger
         private Label _lblN;
         private NumericUpDown _numN;
         private CheckBox _chkCombine;
+        private TextBox _txtNameTemplate; // шаблон имени частей; пусто — прежние имена
         private Label _lblHint;
         private Button _btnDo;
 
@@ -142,6 +143,17 @@ namespace ExcelMerger
             _chkCombine.CheckedChanged += delegate { UpdateModeInputs(); };
             Controls.Add(_chkCombine);
 
+            Label lblTemplate = Ui.Label(this, Loc.T("split.lbl.template"), px, m + 276, Font, Theme.TextMuted);
+            lblTemplate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _txtNameTemplate = new TextBox();
+            _txtNameTemplate.SetBounds(px, m + 298, pw, 27);
+            _txtNameTemplate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(_txtNameTemplate, Loc.T("split.tip.template"));
+            // Подстановка по правому клику: набирать «[FILENUMBER###]» по памяти никто не станет,
+            // а список доступных обозначений иначе негде увидеть.
+            _txtNameTemplate.ContextMenuStrip = BuildTemplateMenu();
+            Controls.Add(_txtNameTemplate);
+
             // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
             BuildBottomStrip(right, Loc.T("split.status.openPdf"), 190);
 
@@ -153,6 +165,33 @@ namespace ExcelMerger
             Controls.Add(_btnDo);
             RegisterActionButton(_btnDo); // база подменит её кнопкой «Отмена» во время операции
             AcceptButton = _btnDo; // Enter запускает действие — как в «Объединении» и «PDF → Word»
+        }
+
+        /// <summary>
+        /// Меню подстановки обозначений в шаблон имени: вставляет выбранное в место каретки.
+        /// Список берётся из <see cref="NameTemplate.Tokens"/> — единственного места, где он
+        /// объявлен, поэтому новое обозначение появляется в меню само.
+        /// </summary>
+        private ContextMenuStrip BuildTemplateMenu()
+        {
+            var menu = new ContextMenuStrip();
+            foreach (string token in NameTemplate.Tokens)
+            {
+                string t = token; // копия для замыкания
+                menu.Items.Add("[" + t + "]", null, delegate { InsertToken("[" + t + "]"); });
+            }
+            _templateMenu = menu; // не дочерний контрол — освобождаем сами
+            return menu;
+        }
+
+        private ContextMenuStrip _templateMenu;
+
+        private void InsertToken(string token)
+        {
+            int at = _txtNameTemplate.SelectionStart;
+            _txtNameTemplate.Text = _txtNameTemplate.Text.Remove(at, _txtNameTemplate.SelectionLength).Insert(at, token);
+            _txtNameTemplate.SelectionStart = at + token.Length;
+            _txtNameTemplate.Focus();
         }
 
         // ---------- дополнительные преобразования одного документа ----------
@@ -382,6 +421,19 @@ namespace ExcelMerger
             Ui.OpenPath(openTarget, asFolder);
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            // Меню подстановки назначено свойством, а не добавлено в Controls: само не освободится.
+            if (disposing && _templateMenu != null)
+            {
+                if (_txtNameTemplate != null)
+                    _txtNameTemplate.ContextMenuStrip = null;
+                _templateMenu.Dispose();
+                _templateMenu = null;
+            }
+            base.Dispose(disposing);
+        }
+
         private void ShowHelp()
         {
             Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("split.help.body"));
@@ -582,20 +634,21 @@ namespace ExcelMerger
                     baseName = Path.GetFileNameWithoutExtension(src);
             }
 
+            string template = _txtNameTemplate.Text.Trim(); // с UI-потока до старта воркера
             Func<Action<int, int>, List<string>> work;
             Action record;
             switch (mode)
             {
                 case ModeRanges:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName, pr, rotations, cancel); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName, pr, rotations, cancel, template); };
                     record = UsageStats.RecordPdfSplitRanges;
                     break;
                 case ModeEveryN:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName, pr, rotations, cancel); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName, pr, rotations, cancel, template); };
                     record = UsageStats.RecordPdfSplitEveryN;
                     break;
                 case ModeBookmarks:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByBookmarks(src, dir, baseName, pr, rotations, cancel); };
+                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByBookmarks(src, dir, baseName, pr, rotations, cancel, template); };
                     record = UsageStats.RecordPdfSplitBookmarks;
                     break;
                 default:

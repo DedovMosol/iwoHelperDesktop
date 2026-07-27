@@ -295,12 +295,14 @@ namespace ExcelMerger.Tests
             Run("Сетка: выбор чётных и нечётных страниц (нумерация с единицы)", TestSelectEveryOther);
             Run("Добивка: позиции пустых страниц для двусторонней печати", TestBlankPagePositions);
             Run("Добивка (живая): пустые страницы в файле и нужного размера", TestBlankPageMergeLive);
+            Run("Шаблон имени частей: пустой сохраняет прежние имена", TestPartNameOptional);
+            Run("Шаблон имени частей (живой): имена файлов по шаблону", TestSplitTemplateLive);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 268;
+            const int MinTests = 270;
             int total = _passed + _failed;
             if (total < MinTests)
             {
@@ -5232,6 +5234,41 @@ namespace ExcelMerger.Tests
                     AssertEqual(doc.Pages[2].Width.Point, doc.Pages[3].Width.Point, "ширина добивочной как у соседней");
                     AssertEqual(doc.Pages[2].Height.Point, doc.Pages[3].Height.Point, "высота добивочной как у соседней");
                 }
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>
+        /// Шаблон имени НЕОБЯЗАТЕЛЕН: пустой обязан давать ровно прежние имена, иначе
+        /// появление новой возможности переименовало бы файлы у всех, кто ей не пользуется.
+        /// </summary>
+        private static void TestPartNameOptional()
+        {
+            var v = new NameValues { BaseName = "свод", FileNumber = 3, TotalFiles = 9, CurrentPage = 5 };
+            AssertEqual("свод_1-3", PdfSplitService.PartName(null, "свод_1-3", v), "без шаблона — прежнее имя");
+            AssertEqual("свод_1-3", PdfSplitService.PartName("", "свод_1-3", v), "пустой шаблон — прежнее имя");
+            AssertEqual("свод-003", PdfSplitService.PartName("[BASENAME]-[FILENUMBER###]", "свод_1-3", v),
+                "шаблон заменяет имя целиком");
+        }
+
+        /// <summary>ЖИВАЯ проверка: с шаблоном части получают заданные имена, без него — прежние.</summary>
+        private static void TestSplitTemplateLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerTpl_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = Path.Combine(dir, "исходник.pdf");
+                MakeEmptyPagesPdf(src, 6);
+
+                List<string> legacy = PdfSplitService.SplitEveryN(src, 3, dir, "часть");
+                AssertEqual("часть", Path.GetFileNameWithoutExtension(legacy[0]).Substring(0, 5),
+                    "без шаблона имя начинается как раньше");
+
+                List<string> shaped = PdfSplitService.SplitEveryN(src, 3, dir, "часть", null, null, null,
+                    "лист[FILENUMBER##]из[TOTAL_FILES]");
+                AssertEqual("лист01из2", Path.GetFileNameWithoutExtension(shaped[0]), "первая часть по шаблону");
+                AssertEqual("лист02из2", Path.GetFileNameWithoutExtension(shaped[1]), "вторая часть по шаблону");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }

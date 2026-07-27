@@ -25,6 +25,11 @@ versions follow [SemVer](https://semver.org/).
   entirely — cells come out separated by tabs and paste into a spreadsheet as a table. Pages are
   separated by a form feed, as `pdftotext` does, and the file is UTF-8 with a byte-order mark so
   Notepad shows Cyrillic correctly.
+- **Name the split parts yourself** (Split → “Name template”). Right-clicking the field
+  inserts the available keywords: `[BASENAME]`, `[FILENUMBER]`, `[CURRENTPAGE]`, `[BOOKMARK]`,
+  `[TIMESTAMP]`. Hashes pad with zeros (`[FILENUMBER###]` → `001`) and a number offsets the
+  count (`[FILENUMBER10]` → `11`). The field is optional on purpose: left empty, the parts get
+  exactly the names they got before, so a new capability does not rename anyone's files.
 - **Pad documents to an even page count** (Merge → checkbox). For double-sided printing: a
   blank page is added after a document with an odd page count so the next one starts on the
   front of a sheet. The last document is deliberately not padded — nothing is printed after

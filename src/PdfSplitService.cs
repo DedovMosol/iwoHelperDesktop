@@ -37,28 +37,28 @@ namespace ExcelMerger
         }
 
         /// <summary>Разбить по диапазонам («1-3, 5, 8-») — каждый диапазон в свой файл. progress — «сделано/всего» частей. cancelled — кооперативная отмена (частичные файлы удаляются).</summary>
-        public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null)
+        public static List<string> SplitByRanges(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null, string template = null)
         {
             if (ranges == null || ranges.Count == 0)
                 throw new MergeException(Loc.T("err.split.noRanges"));
             EmbeddedAssemblies.Ensure();
-            return SplitRangesCore(sourcePath, ranges, outDir, baseName, progress, rotations, cancelled);
+            return SplitRangesCore(sourcePath, ranges, outDir, baseName, progress, rotations, cancelled, template);
         }
 
         /// <summary>Разбить на части по n страниц (n=1 — каждая страница отдельным файлом). progress — «сделано/всего» частей. cancelled — кооперативная отмена (частичные файлы удаляются).</summary>
-        public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null)
+        public static List<string> SplitEveryN(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null, string template = null)
         {
             if (n < 1)
                 throw new MergeException(Loc.T("err.split.badN"));
             EmbeddedAssemblies.Ensure();
-            return SplitEveryNCore(sourcePath, n, outDir, baseName, progress, rotations, cancelled);
+            return SplitEveryNCore(sourcePath, n, outDir, baseName, progress, rotations, cancelled, template);
         }
 
         /// <summary>Разбить по закладкам верхнего уровня — файлы именуются заголовками. progress — «сделано/всего» частей. cancelled — кооперативная отмена (частичные файлы удаляются).</summary>
-        public static List<string> SplitByBookmarks(string sourcePath, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null)
+        public static List<string> SplitByBookmarks(string sourcePath, string outDir, string baseName, Action<int, int> progress = null, IList<int> rotations = null, Func<bool> cancelled = null, string template = null)
         {
             EmbeddedAssemblies.Ensure();
-            return SplitBookmarksCore(sourcePath, outDir, baseName, progress, rotations, cancelled);
+            return SplitBookmarksCore(sourcePath, outDir, baseName, progress, rotations, cancelled, template);
         }
 
         /// <summary>Удалить файлы, созданные до отмены (best-effort — сбой удаления не важен).</summary>
@@ -75,8 +75,9 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled)
+        private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled, string template)
         {
+            DateTime startedAt = DateTime.Now; // одно время на весь прогон: [TIMESTAMP] у частей совпадает
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
             {
@@ -87,7 +88,9 @@ namespace ExcelMerger
                         Cancellation.ThrowIf(cancelled);
                         if (r.Start < 0 || r.End >= source.PageCount)
                             throw new MergeException(string.Format(Loc.T("err.split.rangeOutside"), r.Label, source.PageCount));
-                        string path = UniquePath(outDir, baseName + "_" + r.Label);
+                        string path = UniquePath(outDir, PartName(template, baseName + "_" + r.Label,
+                            new NameValues { BaseName = baseName, FileNumber = created.Count + 1,
+                                TotalFiles = ranges.Count, CurrentPage = r.Start + 1, Timestamp = startedAt }));
                         WriteRange(source, r, path, rotations);
                         created.Add(path);
                         if (progress != null)
@@ -100,8 +103,9 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled)
+        private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled, string template)
         {
+            DateTime startedAt = DateTime.Now; // одно время на весь прогон: [TIMESTAMP] у частей совпадает
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
             {
@@ -112,7 +116,9 @@ namespace ExcelMerger
                     foreach (PageRange r in chunks)
                     {
                         Cancellation.ThrowIf(cancelled);
-                        string path = UniquePath(outDir, baseName + Loc.T("split.partInfix") + part);
+                        string path = UniquePath(outDir, PartName(template, baseName + Loc.T("split.partInfix") + part,
+                            new NameValues { BaseName = baseName, FileNumber = part, TotalFiles = chunks.Count,
+                                CurrentPage = r.Start + 1, Timestamp = startedAt }));
                         WriteRange(source, r, path, rotations);
                         created.Add(path);
                         part++;
@@ -126,8 +132,9 @@ namespace ExcelMerger
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled)
+        private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled, string template)
         {
+            DateTime startedAt = DateTime.Now; // одно время на весь прогон: [TIMESTAMP] у частей совпадает
             var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
             {
@@ -158,7 +165,10 @@ namespace ExcelMerger
                         int end = (m + 1 < marks.Count ? marks[m + 1].Key : source.PageCount) - 1;
                         if (start > end)
                             continue; // две закладки на одной странице — пустой раздел пропускаем
-                        string path = UniquePath(outDir, baseName + "_" + Sanitize(marks[m].Value));
+                        string path = UniquePath(outDir, PartName(template, baseName + "_" + Sanitize(marks[m].Value),
+                            new NameValues { BaseName = baseName, FileNumber = created.Count + 1,
+                                TotalFiles = marks.Count, CurrentPage = start + 1,
+                                BookmarkName = marks[m].Value, Timestamp = startedAt }));
                         WriteRange(source, new PageRange(start, end), path, rotations);
                         created.Add(path);
                         if (progress != null)
@@ -202,6 +212,16 @@ namespace ExcelMerger
             {
                 throw new MergeException(string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message));
             }
+        }
+
+        /// <summary>
+        /// Имя части: без шаблона — прежнее (побайтово то же, что и раньше), с шаблоном —
+        /// собранное из токенов. Шаблон необязателен намеренно: имена уже созданных сводов
+        /// не должны меняться от того, что появилась новая возможность. Чистая — под тест.
+        /// </summary>
+        internal static string PartName(string template, string legacyName, NameValues values)
+        {
+            return string.IsNullOrEmpty(template) ? legacyName : NameTemplate.Apply(template, values);
         }
 
         /// <summary>Путь в папке с уникальным именем (без перезаписи): name.pdf, name_2.pdf, …</summary>
