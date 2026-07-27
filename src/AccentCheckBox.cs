@@ -93,7 +93,10 @@ namespace ExcelMerger
             Color textColor = Enabled ? Theme.TextPrimary : Theme.DisabledText;
             var textRect = new Rectangle(BoxSize + TextGap, 0, Width - BoxSize - TextGap, Height);
             TextRenderer.DrawText(g, Text, Font, textRect, textColor,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                // WordBreak вместо SingleLine: подпись, не влезающая в узкую колонку, переносится
+                // на вторую строку вместо того, чтобы обрезаться. Коротким подписям это ничего
+                // не меняет — они как были в одну строку, так и остаются.
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
         }
 
     }

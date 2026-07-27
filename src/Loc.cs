@@ -196,6 +196,13 @@ namespace ExcelMerger
             A("split.tip.template",
                 "Папку и базовое имя вы зададите дальше, в окне сохранения. Здесь — только как из базового имени собираются имена ЧАСТЕЙ. Пусто — как раньше: базовое имя плюс номер или диапазон. Правый клик подставляет обозначения: [BASENAME] — базовое имя из окна сохранения, [FILENUMBER] — номер части, [CURRENTPAGE] — первая страница части, [BOOKMARK] — название закладки, [TIMESTAMP] — дата и время. Решётки дополняют нулями ([FILENUMBER###] = 001), число сдвигает нумерацию ([FILENUMBER10] = 11).",
                 "You choose the folder and the base name next, in the save dialog. This is only how the names of the PARTS are built from that base name. Empty — as before: the base name plus a number or a range. Right-click inserts the keywords: [BASENAME] — the base name from the save dialog, [FILENUMBER] — part number, [CURRENTPAGE] — first page of the part, [BOOKMARK] — bookmark title, [TIMESTAMP] — date and time. Hashes pad with zeros ([FILENUMBER###] = 001), a number offsets the count ([FILENUMBER10] = 11).");
+            A("split.menu.print", "Печать…", "Print…");
+            A("split.status.printing", "Печать…", "Printing…");
+            A("split.status.printingPage", "Печать: страница {0} из {1}…", "Printing: page {0} of {1}…");
+            A("split.status.printed", "Отправлено на печать страниц: {0}", "Pages sent to the printer: {0}");
+            A("split.err.printFailed", "Не удалось напечатать", "Could not print");
+            A("preview.menu.print", "Печать…", "Print…");
+            A("preview.err.printFailed", "Не удалось напечатать", "Could not print");
             A("split.menu.metadata", "Свойства документа", "Document properties");
             A("split.suffix.meta", "_свойства", "_properties");
             A("split.status.savingMeta", "Запись свойств…", "Saving properties…");
@@ -221,8 +228,8 @@ namespace ExcelMerger
                 "A single-sided scanner usually produces the back sides in reverse order.\n\n“Yes” — take the second document from the end, “No” — in order.");
             A("pdf.interleave.done", "Страницы чередуются, документов: {0}", "Pages interleaved, documents: {0}");
             // Дополнительные преобразования одного документа («Разделение PDF» → меню «Ещё»).
-            A("split.menu.more", "Ещё с документом", "More with this document");
-            A("split.btn.more", "Ещё с документом…", "More with this document…");
+            A("split.menu.more", "Доп. действия", "More actions");
+            A("split.btn.more", "Доп. действия…", "More actions…");
             A("split.tip.more",
                 "Сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
                 "Save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties.");
@@ -374,8 +381,8 @@ namespace ExcelMerger
                 "which already bundles Ghostscript.");
             A("gs.download", "Скачать Ghostscript", "Download Ghostscript");
             A("compress.level.none", "Отлично — без сжатия", "Excellent — no compression");
-            A("compress.level.good", "Хорошо — меньше размер", "Good — smaller size");
-            A("compress.level.small", "Нормально — минимальный размер", "Normal — minimal size");
+            A("compress.level.good", "Хорошо — меньше размер ({0} dpi)", "Good — smaller size ({0} dpi)");
+            A("compress.level.small", "Нормально — минимальный размер ({0} dpi)", "Normal — minimal size ({0} dpi)");
 
             // err.merge.* — сообщения сервиса «Свод Excel», показываемые в диалогах/статусе
             A("err.merge.folderMissing", "Папка сохранения не существует: {0}", "The save folder does not exist: {0}");
@@ -502,8 +509,15 @@ namespace ExcelMerger
                 "3. При необходимости выберите «Сжатие» (по умолчанию «Отлично» — без сжатия): " +
                 "«Хорошо»/«Нормально» уменьшают размер за счёт понижения разрешения изображений " +
                 "(как в Acrobat), текст сохраняется. Требуется Ghostscript.\n" +
-                "4. Нажмите «Извлечь…»/«Разделить…» и укажите имя и папку для результата " +
+                "4. При желании задайте «Как назвать части»: правый клик по полю подставляет " +
+                "обозначения ([BASENAME] — базовое имя, [FILENUMBER] — номер части, [BOOKMARK] — " +
+                "название закладки). Пусто — имена как обычно.\n" +
+                "5. Нажмите «Извлечь…»/«Разделить…» и укажите папку и базовое имя результата " +
                 "(при разбиении к имени добавятся номера или метки).\n\n" +
+                "Кнопка «Доп. действия…» — всё остальное с этим документом: печать, сохранение " +
+                "страниц картинками (PNG или JPEG, 96–600 dpi), извлечение текста в .txt, перевод " +
+                "в оттенки серого, восстановление повреждённого файла и правка свойств документа " +
+                "(заголовок, автор, ключевые слова). Результат всегда пишется в НОВЫЙ файл.\n\n" +
                 "Страницы копируются как есть, без переконвертации. Исходный файл не изменяется; " +
                 "имена не перезаписываются (при совпадении добавляется номер).\n" +
                 "Масштаб сетки — регулятором, полем «%» (Ctrl+0 — 100%) или Ctrl+колесо. " +
@@ -519,8 +533,15 @@ namespace ExcelMerger
                 "3. Optionally choose “Compression” (default “Excellent” — no compression): " +
                 "“Good”/“Normal” shrink the size by downsampling images " +
                 "(as in Acrobat), text is preserved. Ghostscript required.\n" +
-                "4. Click “Extract…”/“Split…” and choose a name and folder for the result " +
+                "4. Optionally fill in “How to name the parts”: right‑clicking the field inserts the " +
+                "keywords ([BASENAME] — the base name, [FILENUMBER] — part number, [BOOKMARK] — " +
+                "bookmark title). Empty — the usual names.\n" +
+                "5. Click “Extract…”/“Split…” and choose the folder and base name for the result " +
                 "(when splitting, numbers or labels are appended to the name).\n\n" +
+                "The “More actions…” button covers everything else you can do with this document: " +
+                "print it, save pages as images (PNG or JPEG, 96–600 dpi), extract the text to a " +
+                ".txt, convert to grayscale, repair a damaged file and edit the document properties " +
+                "(title, author, keywords). The result is always written to a NEW file.\n\n" +
                 "Pages are copied as‑is, without re‑conversion. The source file is not changed; " +
                 "names are not overwritten (a number is added on a clash).\n" +
                 "Grid zoom — the slider, the “%” box (Ctrl+0 — 100%) or Ctrl+wheel. " +
@@ -552,6 +573,13 @@ namespace ExcelMerger
                 "«Хорошо»/«Нормально» уменьшают размер за счёт понижения разрешения изображений " +
                 "(как в Acrobat); текст сохраняется. Требуется Ghostscript.\n" +
                 "5. «Сохранить PDF…» соберёт один документ в выбранном порядке.\n\n" +
+                "Меню «☰» → «Чередовать страницы документов» собирает пачки одностороннего " +
+                "сканера: лицевые стороны в одном файле, оборотные в другом и обычно задом " +
+                "наперёд — приложение спросит про это и разложит их по очереди. Ctrl+Z вернёт " +
+                "прежний порядок.\n" +
+                "Флажок «Двусторонняя печать» добавляет пустую страницу после документа с " +
+                "нечётным числом страниц, чтобы следующий документ начинался с лицевой стороны " +
+                "листа, а не с оборота предыдущего.\n\n" +
                 "Горячие клавиши: Delete — удалить выбранные, Alt+←/→ — порядок, " +
                 "Ctrl+A — выделить всё, Ctrl+колесо или поле «%» — масштаб (Ctrl+0 — 100%).\n" +
                 "Окно запоминает свои размер и положение между запусками.\n" +
@@ -568,6 +596,13 @@ namespace ExcelMerger
                 "“Good”/“Normal” shrink the size by downsampling images " +
                 "(as in Acrobat); text is preserved. Ghostscript required.\n" +
                 "5. “Save PDF…” assembles one document in the chosen order.\n\n" +
+                "Menu “☰” → “Interleave pages of the documents” assembles the two stacks a " +
+                "single‑sided scanner produces: fronts in one file, backs in another and usually " +
+                "in reverse order — the app asks about that and lays them out in turn. Ctrl+Z puts " +
+                "the previous order back.\n" +
+                "The “Double‑sided printing” checkbox adds a blank page after a document with an " +
+                "odd page count, so the next document starts on the front of a sheet rather than " +
+                "on the back of the previous one.\n\n" +
                 "Shortcuts: Delete — remove selected, Alt+←/→ — order, " +
                 "Ctrl+A — select all, Ctrl+wheel or the “%” box — zoom (Ctrl+0 — 100%).\n" +
                 "The window remembers its size and position between runs.\n" +
