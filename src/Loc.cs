@@ -133,13 +133,11 @@ namespace ExcelMerger
             A("hub.pending", "Выберите инструмент для файлов: {0}", "Choose a tool for {0} file(s)");
             A("hub.section.pdf.name", "PDF", "PDF");
             A("hub.section.pdf.desc",
-                "Объединение, разделение, PDF → Word и прочие операции: сжатие, картинки, текст, оттенки серого, восстановление, свойства документа.",
-                "Merge, split, PDF → Word and more operations: compression, images, text, grayscale, repair, document properties.");
+                "Объединение, разделение, PDF → Word и прочие операции: сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа.",
+                "Merge, split, PDF → Word and more operations: compression, images, text, grayscale, repair, editing the document properties.");
             A("hub.section.other.name", "Иной функционал", "Other tools");
-            A("hub.section.other.desc", "Инструменты, не связанные с PDF. Пока здесь объединение книг Excel.",
-                "Tools unrelated to PDF. For now, merging Excel workbooks lives here.");
-            A("hub.other.soon", "Сюда будут добавляться инструменты, не связанные с PDF.",
-                "Tools unrelated to PDF will be added here.");
+            A("hub.section.other.desc", "Инструменты, не связанные с обработкой файлов расширения *.pdf.",
+                "Tools unrelated to processing *.pdf files.");
             // Название действия — «Объединение Excel» (в пару к «Объединение PDF»), а его
             // РЕЗУЛЬТАТ по-прежнему называется сводом: свод собирают, объединяя книги.
             A("hub.excel.name", "Объединение Excel", "Merge Excel");
