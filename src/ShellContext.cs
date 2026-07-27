@@ -43,6 +43,16 @@ namespace ExcelMerger
         /// <summary>Показать экран выбора инструмента; создать заново, если был закрыт.</summary>
         public void ShowHub()
         {
+            ShowHub(null);
+        }
+
+        /// <summary>
+        /// Показать хаб. place задан только при ПЕРЕСБОРКЕ (смена языка): окно встаёт ровно
+        /// туда, где стояло, и НЕ поднимается на передний план — иначе свёрнутый хаб развернул
+        /// бы сам себя, а окно, из меню которого сменили язык, потеряло бы фокус.
+        /// </summary>
+        private void ShowHub(WindowSnapshot? place)
+        {
             if (_hub != null && !_hub.IsDisposed)
             {
                 BringToFront(_hub);
@@ -50,8 +60,9 @@ namespace ExcelMerger
             }
             _hub = new StartForm(this);
             Track(_hub);
-            _hub.Show();
-            BringToFront(_hub);
+            Show(_hub, place);
+            if (!place.HasValue)
+                BringToFront(_hub);
         }
 
         /// <summary>
@@ -68,7 +79,7 @@ namespace ExcelMerger
                 BringToFront(existing);
                 return;
             }
-            SpawnTool(key, name, factory, null, FormWindowState.Normal);
+            SpawnTool(key, name, factory, null);
         }
 
         /// <summary>
@@ -80,7 +91,7 @@ namespace ExcelMerger
         {
             Form tool;
             if (!_tools.TryGetOpen(key, out tool))
-                tool = SpawnTool(key, name, factory, null, FormWindowState.Normal);
+                tool = SpawnTool(key, name, factory, null);
             else
                 BringToFront(tool);
             var acceptor = tool as IFileAcceptor;
@@ -88,36 +99,33 @@ namespace ExcelMerger
                 acceptor.AcceptFiles(files);
         }
 
-        /// <summary>Создать окно инструмента через фабрику, отследить и (опционально) поставить на место. Возвращает окно.</summary>
         /// <summary>
-        /// Создать и показать окно инструмента. activate — поднимать ли его на передний план.
-        /// При ПЕРЕСБОРКЕ (смена языка) поднимать нельзя: BringToFront разворачивает свёрнутое
-        /// окно и забирает фокус, поэтому все окна вылезали поверх работы, а свёрнутые ещё и
-        /// разворачивались. Наверх поднимается только то, что было активным, и уже после цикла.
+        /// Создать и показать окно инструмента. snap — размещение при ПЕРЕСБОРКЕ (смена языка),
+        /// иначе окно встаёт само. activate — поднимать ли его на передний план: при пересборке
+        /// нельзя, потому что BringToFront разворачивает свёрнутое окно и забирает фокус, и все
+        /// окна вылезали поверх работы. Наверх поднимается только бывшее активным и после цикла.
         /// </summary>
-        private Form SpawnTool(string key, string name, Func<Action, Form> factory, Rectangle? bounds,
-            FormWindowState state, bool activate = true)
+        private Form SpawnTool(string key, string name, Func<Action, Form> factory,
+            WindowSnapshot? snap, bool activate = true)
         {
             Form tool = factory(ShowHub); // кнопка «Главная» в инструменте показывает хаб
             _tools.Add(key, tool);
             _openTools[key] = new ToolEntry { Name = name, Factory = factory };
             Track(tool);
             tool.FormClosed += delegate { _tools.Remove(key); _openTools.Remove(key); };
-            // Состояние задаём ДО показа: иначе свёрнутое окно сначала мелькнёт на экране и
-            // только потом свернётся — при смене языка это выглядит как «всё повылезало».
-            if (state != FormWindowState.Normal)
-                tool.WindowState = state;
-            tool.Show(); // отдельное окно, без владельца — переживает закрытие хаба
-            if (state == FormWindowState.Normal && bounds.HasValue)
-            {
-                // Перебить возможный Maximized от OnLoad-восстановления настроек: при пересборке
-                // (смена языка) авторитетно состояние СНИМКА живого окна, а не сохранённое на диске.
-                tool.WindowState = FormWindowState.Normal;
-                tool.Bounds = bounds.Value; // вернуть прежние размер И положение
-            }
+            Show(tool, snap); // отдельное окно, без владельца — переживает закрытие хаба
             if (activate)
                 BringToFront(tool);
             return tool;
+        }
+
+        /// <summary>Показать окно: на прежнем месте при пересборке, иначе как оно умеет само.</summary>
+        private static void Show(Form form, WindowSnapshot? snap)
+        {
+            if (snap.HasValue)
+                WindowPlacement.ShowAt(form, snap.Value);
+            else
+                form.Show();
         }
 
         /// <summary>
@@ -173,15 +181,14 @@ namespace ExcelMerger
                         {
                             Key = kv.Key,
                             Entry = kv.Value,
-                            Bounds = f.Bounds,
-                            State = f.WindowState,
+                            Place = WindowPlacement.Snapshot(f),
                             WasActive = ReferenceEquals(f, active)
                         });
                 }
                 MoveActiveLast(snap);
                 bool hubOpen = _hub != null && !_hub.IsDisposed;
                 bool hubWasActive = hubOpen && ReferenceEquals(_hub, active);
-                Point hubLoc = hubOpen ? _hub.Location : Point.Empty;
+                WindowSnapshot hubPlace = hubOpen ? WindowPlacement.Snapshot(_hub) : new WindowSnapshot();
 
                 // Хаб пересоздаётся ДО активного инструмента (и после неактивных); если активен
                 // был сам хаб — он в самом конце, как раньше.
@@ -191,7 +198,7 @@ namespace ExcelMerger
                 {
                     if (hubOpen && !hubRebuilt && !hubWasActive && t.WasActive)
                     {
-                        RebuildHub(hubLoc);
+                        RebuildHub(hubPlace);
                         hubRebuilt = true;
                     }
                     Form old;
@@ -214,13 +221,13 @@ namespace ExcelMerger
                             continue;
                         }
                     }
-                    Form rebuilt = SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Bounds, t.State, false);
+                    Form rebuilt = SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Place, false);
                     if (t.WasActive)
                         busyActive = rebuilt; // поднимем в конце — только это окно и было активным
                 }
 
                 if (hubOpen && !hubRebuilt)
-                    RebuildHub(hubLoc);
+                    RebuildHub(hubPlace);
                 BringToFront(busyActive); // null-безопасно: активное непересозданное окно — наверх
             }
             finally
@@ -231,16 +238,14 @@ namespace ExcelMerger
                 ExitThread(); // страховка: если пересобирать было нечего
         }
 
-        /// <summary>Пересоздать хаб на прежнем месте (часть пересборки при смене языка).</summary>
-        private void RebuildHub(Point hubLoc)
+        /// <summary>Пересоздать хаб на прежнем месте и в прежнем состоянии (часть пересборки при смене языка).</summary>
+        private void RebuildHub(WindowSnapshot place)
         {
             StartForm oldHub = _hub;
             _hub = null;
             if (oldHub != null && !oldHub.IsDisposed)
                 oldHub.Close();
-            ShowHub();
-            if (_hub != null && !hubLoc.IsEmpty)
-                _hub.Location = hubLoc;
+            ShowHub(place);
         }
 
         /// <summary>
@@ -264,8 +269,7 @@ namespace ExcelMerger
         {
             public string Key;
             public ToolEntry Entry;
-            public Rectangle Bounds;
-            public FormWindowState State;
+            public WindowSnapshot Place;
             public bool WasActive;
         }
 
