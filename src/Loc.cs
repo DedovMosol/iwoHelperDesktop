@@ -180,18 +180,22 @@ namespace ExcelMerger
             // фаза называется в статусе, а полоса на это время становится бегущей.
             A("common.status.compressing", "Сжатие…", "Compressing…");
             // Полноэкранный просмотр: лупа и подгонка по окну.
-            A("pdf.chk.padEven", "Добить документы до чётного", "Pad documents to even");
+            // Подпись называет НАЗНАЧЕНИЕ, а не механику: «добить до чётного» ничего не говорит
+            // тому, кто просто хочет напечатать с двух сторон. Что именно произойдёт — в подсказке.
+            A("pdf.chk.padEven", "Двусторонняя печать", "Double-sided printing");
             A("pdf.tip.padEven",
-                "Для двусторонней печати: после документа с нечётным числом страниц добавляется пустая, чтобы следующий документ начинался с лицевой стороны листа.",
-                "For double-sided printing: a blank page is added after a document with an odd page count, so the next document starts on the front of a sheet.");
+                "Включите, если будете печатать с двух сторон листа. После документа с нечётным числом страниц добавится пустая — иначе следующий документ начнётся на обороте предыдущего.",
+                "Turn this on if you will print on both sides of the sheet. A blank page is added after a document with an odd page count — otherwise the next document starts on the back of the previous one.");
             A("split.err.sameFile", "Нельзя записать поверх исходника", "Cannot write over the source");
             A("split.err.sameFile.body",
                 "Приложение не изменяет исходные файлы. Укажите другое имя — результат появится рядом.",
                 "The app does not modify source files. Choose another name and the result will appear alongside.");
-            A("split.lbl.template", "Шаблон имени (необязательно)", "Name template (optional)");
+            // Подпись прямо говорит, что это про ЧАСТИ, а папку и базовое имя спросят отдельно:
+            // иначе поле и окно сохранения выглядят как два способа задать одно и то же.
+            A("split.lbl.template", "Как назвать части (необязательно)", "How to name the parts (optional)");
             A("split.tip.template",
-                "Пусто — прежние имена. Правый клик подставляет обозначения: [BASENAME] — имя исходника, [FILENUMBER] — номер части, [CURRENTPAGE] — номер страницы, [BOOKMARK] — название закладки, [TIMESTAMP] — дата и время. Решётки дополняют нулями ([FILENUMBER###] = 001), число сдвигает нумерацию ([FILENUMBER10] = 11).",
-                "Empty — the usual names. Right-click inserts the keywords: [BASENAME] — the source name, [FILENUMBER] — part number, [CURRENTPAGE] — page number, [BOOKMARK] — bookmark title, [TIMESTAMP] — date and time. Hashes pad with zeros ([FILENUMBER###] = 001), a number offsets the count ([FILENUMBER10] = 11).");
+                "Папку и базовое имя вы зададите дальше, в окне сохранения. Здесь — только как из базового имени собираются имена ЧАСТЕЙ. Пусто — как раньше: базовое имя плюс номер или диапазон. Правый клик подставляет обозначения: [BASENAME] — базовое имя из окна сохранения, [FILENUMBER] — номер части, [CURRENTPAGE] — первая страница части, [BOOKMARK] — название закладки, [TIMESTAMP] — дата и время. Решётки дополняют нулями ([FILENUMBER###] = 001), число сдвигает нумерацию ([FILENUMBER10] = 11).",
+                "You choose the folder and the base name next, in the save dialog. This is only how the names of the PARTS are built from that base name. Empty — as before: the base name plus a number or a range. Right-click inserts the keywords: [BASENAME] — the base name from the save dialog, [FILENUMBER] — part number, [CURRENTPAGE] — first page of the part, [BOOKMARK] — bookmark title, [TIMESTAMP] — date and time. Hashes pad with zeros ([FILENUMBER###] = 001), a number offsets the count ([FILENUMBER10] = 11).");
             A("split.menu.metadata", "Свойства документа", "Document properties");
             A("split.suffix.meta", "_свойства", "_properties");
             A("split.status.savingMeta", "Запись свойств…", "Saving properties…");
@@ -218,6 +222,10 @@ namespace ExcelMerger
             A("pdf.interleave.done", "Страницы чередуются, документов: {0}", "Pages interleaved, documents: {0}");
             // Дополнительные преобразования одного документа («Разделение PDF» → меню «Ещё»).
             A("split.menu.more", "Ещё с документом", "More with this document");
+            A("split.btn.more", "Ещё с документом…", "More with this document…");
+            A("split.tip.more",
+                "Сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
+                "Save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties.");
             A("split.menu.toImages", "Сохранить страницы картинками", "Save pages as images");
             A("split.menu.dpi", "{0} dpi", "{0} dpi");
             A("split.menu.toText", "Извлечь текст в .txt", "Extract text to .txt");
