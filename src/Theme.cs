@@ -32,6 +32,21 @@ namespace ExcelMerger
         public static readonly Color SecondaryPressed = Color.FromArgb(233, 234, 236);
         public static readonly Color DisabledFill = Color.FromArgb(228, 228, 228);
         public static readonly Color DisabledText = Color.FromArgb(155, 155, 155);
+        // Недоступная ОБЫЧНАЯ кнопка: заливка, а не белизна. Без неё она отличалась от рабочей
+        // только цветом надписи, и в панелях, где половина кнопок ждёт открытого документа,
+        // «нельзя нажать» приходилось выяснять нажатием.
+        public static readonly Color DisabledSecondaryFill = Color.FromArgb(245, 245, 245);
+        public static readonly Color DisabledBorder = Color.FromArgb(226, 226, 226);
+
+        // Кнопки на тёмной подложке (полоса лупы в полноэкранном просмотре).
+        public static readonly Color DarkBarFill = Color.FromArgb(62, 62, 65);
+        public static readonly Color DarkBarHover = Color.FromArgb(76, 76, 80);
+        public static readonly Color DarkBarPressed = Color.FromArgb(92, 92, 96);
+        public static readonly Color DarkBarBorder = Color.FromArgb(96, 96, 100);
+        public static readonly Color DarkBarDisabledFill = Color.FromArgb(56, 56, 58);
+        // Светлее, чем просится «серым по тёмному»: недоступную подпись читать не обязательно,
+        // но понять, ЧТО это за кнопка, нужно — иначе полоса превращается в ряд пустых плашек.
+        public static readonly Color DarkBarDisabledText = Color.FromArgb(154, 154, 158);
 
         /// <summary>
         /// Цвет в формате OLE/COLORREF (0x00BBGGRR) — как ждут Excel Range/Shape

@@ -261,6 +261,7 @@ namespace ExcelMerger.Tests
             // ---------- 1.17.8 ----------
             Run("Окна: при минимальном размере ничего не обрезано и кнопки не наложены", TestWindowsSurviveMinimumSize);
             Run("Диалоги: ничего не свисает из окна и контролы не наложены", TestDialogsLayoutIsSound);
+            Run("Кнопка: радиус и поле подписи считаются от размера", TestRoundedButtonMetrics);
             Run("Хаб: разделы, «Назад» и Esc показывают свой набор карточек", TestHubNavigation);
             Run("Хаб: придержанные файлы забываются при уходе из раздела", TestHubPendingFilesCleared);
             Run("Хаб: из карточек открывается каждый инструмент, и именно свой", TestHubOpensEveryTool);
@@ -6092,6 +6093,30 @@ namespace ExcelMerger.Tests
         {
             foreach (System.Windows.Forms.Form f in OpenTools(ctx))
                 try { f.Close(); } catch { }
+        }
+
+        /// <summary>
+        /// Кнопка рисуется вручную, и обе её геометрические величины — радиус скругления и
+        /// боковое поле подписи — считаются от размера. Постоянные значения здесь не работают:
+        /// кнопки в приложении бывают от 24 до 38 пикселей высотой и от 32 до 230 шириной.
+        /// Поле проверяется отдельно, потому что его первая версия (постоянные 10 px) съела
+        /// глифы «+» и «−» на квадратных кнопках лупы — они обрезались многоточием.
+        /// </summary>
+        private static void TestRoundedButtonMetrics()
+        {
+            // Радиус: пропорция от высоты, но в разумных пределах.
+            AssertEqual(6f, RoundedButton.RadiusFor(24), "низкая кнопка");
+            AssertEqual(7.5f, RoundedButton.RadiusFor(30), "кнопка панели");
+            AssertEqual(9.5f, RoundedButton.RadiusFor(38), "кнопка действия");
+            AssertEqual(5f, RoundedButton.RadiusFor(8), "вырожденная высота — нижний предел");
+            AssertEqual(10f, RoundedButton.RadiusFor(200), "огромная высота — верхний предел");
+
+            // Поле подписи: на широкой кнопке постоянное, на узкой — доля ширины.
+            AssertEqual(10, RoundedButton.TextPadFor(150), "широкая кнопка");
+            AssertEqual(10, RoundedButton.TextPadFor(80), "кнопка средней ширины");
+            AssertEqual(4, RoundedButton.TextPadFor(32), "квадратная кнопка лупы");
+            AssertTrue(RoundedButton.TextPadFor(32) * 2 < 32, "под подпись остаётся место");
+            AssertTrue(RoundedButton.TextPadFor(1) >= 0, "вырожденная ширина не даёт отрицательного поля");
         }
 
         /// <summary>Сколько карточек ВИДНО на текущем уровне хаба (уровни — панели одного окна).</summary>
