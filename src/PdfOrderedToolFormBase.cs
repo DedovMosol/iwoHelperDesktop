@@ -211,6 +211,24 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>
+        /// Что печатать: выделенные в сетке страницы, а если ничего не выделено — весь
+        /// собранный порядок. Одно правило на оба инструмента, чтобы кнопка «Печать» вела
+        /// себя одинаково и там, и там.
+        /// </summary>
+        protected List<PdfPageRef> SelectedOrAllPages()
+        {
+            var all = _order.ToList();
+            int[] selected = _grid.GetSelectedIndices();
+            if (selected.Length == 0)
+                return all;
+            var picked = new List<PdfPageRef>(selected.Length);
+            foreach (int i in selected)
+                if (i >= 0 && i < all.Count)
+                    picked.Add(all[i]);
+            return picked;
+        }
+
         // Горячие клавиши сетки (Delete, Alt+←/→) — в базе PdfToolFormBase.
         protected override void RemoveSelectedPages() { RemoveSelected(); }
         protected override void MoveSelectedPage(bool later) { MoveSelected(later); }

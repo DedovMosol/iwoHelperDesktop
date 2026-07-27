@@ -24,6 +24,7 @@ namespace ExcelMerger
         private Button _btnUp;
         private Button _btnDown;
         private Button _btnRemove;
+        private Button _btnPrint;
         private Button _btnConvert;
 
         public OcrForm() : this(null) { }
@@ -83,6 +84,8 @@ namespace ExcelMerger
             _btnDown = AddPanelButton(Loc.T("common.later"), px, m + 164, pw, Loc.T("common.tip.later"));
             _btnDown.Click += delegate { MoveSelected(true); };
             _btnRemove = AddPanelButton(Loc.T("common.remove"), px, m + 208, pw, Loc.T("common.tip.remove"));
+            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), px, m + 248, pw, Loc.T("common.tip.print"));
+            _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
             _btnRemove.Click += delegate { RemoveSelected(); };
 
             BuildBottomStrip(right, Loc.T("ocr.status.addPdf"), 230, false);
@@ -169,6 +172,7 @@ namespace ExcelMerger
             _btnUp.Enabled = one;
             _btnDown.Enabled = one;
             _btnRemove.Enabled = !Working && _grid.SelectedCount > 0;
+            _btnPrint.Enabled = !Working && _order.Count > 0;
             _btnConvert.Enabled = !Working && _order.Count > 0;
         }
 

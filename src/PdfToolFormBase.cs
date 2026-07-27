@@ -777,6 +777,41 @@ namespace ExcelMerger
             _grid.MoveAfterRequested += delegate { ShowMoveAfterPages(); };
         }
 
+        /// <summary>
+        /// Печать набора страниц — общая для всех PDF-инструментов (DRY): диалог принтера на
+        /// UI-потоке, сама печать в фоне через общий воркер, прогресс и отмена как у остальных
+        /// операций. Наследник лишь отдаёт страницы, которые надо напечатать.
+        /// </summary>
+        protected void PrintPages(System.Collections.Generic.IList<PdfPageRef> pages)
+        {
+            if (Working || pages == null || pages.Count == 0)
+                return;
+            System.Drawing.Printing.PrinterSettings settings;
+            using (var dialog = new PrintDialog())
+            {
+                dialog.AllowSomePages = false; // какие страницы печатать, выбирают в сетке
+                dialog.UseEXDialog = true;
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                settings = dialog.PrinterSettings;
+            }
+            BeginOperation(Loc.T("common.status.printing"), pages.Count, Loc.T("common.status.printingPage"));
+            Action<int, int> onProgress = UiProgress();
+            Func<bool> cancel = CancelToken();
+            Ui.RunWorker(delegate()
+            {
+                Exception error = null;
+                try { PdfPrintService.Print(pages, settings, onProgress, cancel); }
+                catch (Exception ex) { error = ex; }
+                OnUi(delegate
+                {
+                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("common.err.printFailed")))
+                        return;
+                    SetStatus(SuccessStatus(string.Format(Loc.T("common.status.printed"), pages.Count)), Theme.OkGreen);
+                });
+            });
+        }
+
         /// <summary>Диалог «Перейти к странице» (Ctrl+G и контекстное меню): выделяет и показывает её.</summary>
         protected void ShowGoToPage()
         {

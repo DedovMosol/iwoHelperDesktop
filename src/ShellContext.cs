@@ -89,13 +89,24 @@ namespace ExcelMerger
         }
 
         /// <summary>Создать окно инструмента через фабрику, отследить и (опционально) поставить на место. Возвращает окно.</summary>
-        private Form SpawnTool(string key, string name, Func<Action, Form> factory, Rectangle? bounds, FormWindowState state)
+        /// <summary>
+        /// Создать и показать окно инструмента. activate — поднимать ли его на передний план.
+        /// При ПЕРЕСБОРКЕ (смена языка) поднимать нельзя: BringToFront разворачивает свёрнутое
+        /// окно и забирает фокус, поэтому все окна вылезали поверх работы, а свёрнутые ещё и
+        /// разворачивались. Наверх поднимается только то, что было активным, и уже после цикла.
+        /// </summary>
+        private Form SpawnTool(string key, string name, Func<Action, Form> factory, Rectangle? bounds,
+            FormWindowState state, bool activate = true)
         {
             Form tool = factory(ShowHub); // кнопка «Главная» в инструменте показывает хаб
             _tools.Add(key, tool);
             _openTools[key] = new ToolEntry { Name = name, Factory = factory };
             Track(tool);
             tool.FormClosed += delegate { _tools.Remove(key); _openTools.Remove(key); };
+            // Состояние задаём ДО показа: иначе свёрнутое окно сначала мелькнёт на экране и
+            // только потом свернётся — при смене языка это выглядит как «всё повылезало».
+            if (state != FormWindowState.Normal)
+                tool.WindowState = state;
             tool.Show(); // отдельное окно, без владельца — переживает закрытие хаба
             if (state == FormWindowState.Normal && bounds.HasValue)
             {
@@ -104,9 +115,8 @@ namespace ExcelMerger
                 tool.WindowState = FormWindowState.Normal;
                 tool.Bounds = bounds.Value; // вернуть прежние размер И положение
             }
-            else if (state != FormWindowState.Normal)
-                tool.WindowState = state;
-            BringToFront(tool);
+            if (activate)
+                BringToFront(tool);
             return tool;
         }
 
@@ -204,7 +214,9 @@ namespace ExcelMerger
                             continue;
                         }
                     }
-                    SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Bounds, t.State);
+                    Form rebuilt = SpawnTool(t.Key, t.Entry.Name, t.Entry.Factory, t.Bounds, t.State, false);
+                    if (t.WasActive)
+                        busyActive = rebuilt; // поднимем в конце — только это окно и было активным
                 }
 
                 if (hubOpen && !hubRebuilt)
