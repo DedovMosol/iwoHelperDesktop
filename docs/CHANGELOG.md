@@ -48,6 +48,12 @@ versions follow [SemVer](https://semver.org/).
   it is needed. Both write a **new** file: the app never modifies a source.
 
 ### Changed
+- **The full-size preview no longer closes when you click the page.** That was fine while the
+  preview was just a picture, but the page is now something you zoom into and drag around, and
+  closing on a touch of the working area got in the way. `Esc` and the close button still do it.
+- **The extra tools are reachable from a button**, not only from the window menu: “More with
+  this document…” sits with the other inputs in Split. Five capabilities behind a hamburger
+  submenu were, in practice, invisible.
 - Everything that writes a result beside a source now refuses to write **over** it. The app
   does not modify sources, and writing a file into itself would have damaged it as well — the
   source is open for reading at that moment.

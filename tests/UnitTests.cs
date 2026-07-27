@@ -4949,6 +4949,9 @@ namespace ExcelMerger.Tests
                             where += " (Min=" + f.MinimumSize.Height + ", рамка=" +
                                 (f.Height - f.ClientSize.Height) + ")";
                             CheckFits(f, where, offenders);
+                            CheckControlsDoNotOverlap(f, where, offenders);
+                            // Кнопки — ещё и невидимые: скрытая сейчас («Повторить пропущенные»)
+                            // появится позже и обязана иметь своё место уже теперь.
                             CheckButtonsDoNotOverlap(f, where, offenders);
                             f.Close();
                         }
@@ -4970,7 +4973,28 @@ namespace ExcelMerger.Tests
             }
         }
 
-        /// <summary>Кнопки одного контейнера не должны перекрывать друг друга.</summary>
+        /// <summary>
+        /// Соседние элементы управления одного окна не должны перекрывать друг друга.
+        /// Раньше проверялись только кнопки — и мимо прошёл флажок, наехавший на сетку
+        /// страниц на 20 px. Берём всё, что пользователь видит и с чем работает: кнопки,
+        /// флажки, поля ввода, списки, сетку. Подписи и полосы пропускаем — они лежат
+        /// фоном и накладываться друг на друга им не запрещено.
+        /// </summary>
+        private static void CheckControlsDoNotOverlap(System.Windows.Forms.Control parent, string where, List<string> offenders)
+        {
+            // Только ВИДИМЫЕ: поля разных режимов («по диапазонам» и «каждые N») намеренно
+            // делят одно место и показываются по очереди — это не наложение, а один слот.
+            var items = new List<System.Windows.Forms.Control>();
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+                if (c.Visible && IsInteractive(c))
+                    items.Add(c);
+            for (int i = 0; i < items.Count; i++)
+                for (int j = i + 1; j < items.Count; j++)
+                    if (items[i].Bounds.IntersectsWith(items[j].Bounds))
+                        offenders.Add(where + " → " + Describe(items[i]) + " накрывает " + Describe(items[j]));
+        }
+
+        /// <summary>Кнопки одного контейнера не перекрываются — включая пока скрытые.</summary>
         private static void CheckButtonsDoNotOverlap(System.Windows.Forms.Control parent, string where, List<string> offenders)
         {
             var buttons = new List<System.Windows.Forms.Control>();
@@ -4981,6 +5005,17 @@ namespace ExcelMerger.Tests
                 for (int j = i + 1; j < buttons.Count; j++)
                     if (buttons[i].Bounds.IntersectsWith(buttons[j].Bounds))
                         offenders.Add(where + " → " + Describe(buttons[i]) + " накрывает " + Describe(buttons[j]));
+        }
+
+        /// <summary>Элемент, с которым работает пользователь (а не фоновая подпись).</summary>
+        private static bool IsInteractive(System.Windows.Forms.Control c)
+        {
+            return c is System.Windows.Forms.ButtonBase ||
+                   c is System.Windows.Forms.TextBoxBase ||
+                   c is System.Windows.Forms.ComboBox ||
+                   c is System.Windows.Forms.NumericUpDown ||
+                   c is System.Windows.Forms.ListView ||
+                   c is PdfPageGrid;
         }
 
         private static string Describe(System.Windows.Forms.Control c)

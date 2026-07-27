@@ -34,6 +34,8 @@ namespace ExcelMerger
         private NumericUpDown _numN;
         private CheckBox _chkCombine;
         private TextBox _txtNameTemplate; // шаблон имени частей; пусто — прежние имена
+        private ToolStripMenuItem _toolsItem;  // «Ещё с документом» — одно меню на «☰» и на кнопку
+        private Button _btnTools;
         private Label _lblHint;
         private Button _btnDo;
 
@@ -154,6 +156,21 @@ namespace ExcelMerger
             _txtNameTemplate.ContextMenuStrip = BuildTemplateMenu();
             Controls.Add(_txtNameTemplate);
 
+            // Кнопка «Ещё с документом» рядом с остальным вводом: те же пункты, что в «☰».
+            // Без неё картинки, текст, серое, восстановление и свойства оставались невидимыми —
+            // искать их в меню окна никто не догадывался.
+            _btnTools = new RoundedButton(false);
+            _btnTools.Text = Loc.T("split.btn.more");
+            _btnTools.SetBounds(px, m + 336, pw, 32);
+            _btnTools.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(_btnTools, Loc.T("split.tip.more"));
+            _btnTools.Click += delegate
+            {
+                // Показываем ТО ЖЕ выпадающее меню, что и «☰»: вторая копия пунктов разошлась бы.
+                _toolsItem.DropDown.Show(_btnTools, 0, _btnTools.Height);
+            };
+            Controls.Add(_btnTools);
+
             // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
             BuildBottomStrip(right, Loc.T("split.status.openPdf"), 190);
 
@@ -206,6 +223,7 @@ namespace ExcelMerger
         private ToolStripMenuItem BuildToolsMenu()
         {
             var root = new ToolStripMenuItem(Loc.T("split.menu.more"));
+            _toolsItem = root;
 
             var images = new ToolStripMenuItem(Loc.T("split.menu.toImages"));
             foreach (int dpi in PdfExportService.DpiChoices)
@@ -559,6 +577,8 @@ namespace ExcelMerger
             // Галку «Объединить в один файл» гасим наравне с остальным вводом: иначе во время
             // разделения она оставалась живой и её переключение перестраивало режим на ходу.
             _chkCombine.Enabled = !Working && loaded;
+            _txtNameTemplate.Enabled = !Working && loaded;
+            _btnTools.Enabled = !Working;
             bool canDo = !Working && loaded &&
                 (_cmbMode.SelectedIndex != ModeExtract || _grid.SelectedCount > 0);
             _btnDo.Enabled = canDo;

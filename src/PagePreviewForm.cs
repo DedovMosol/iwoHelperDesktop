@@ -410,11 +410,12 @@ namespace ExcelMerger
 
         private void OnSurfaceMouseUp(object sender, MouseEventArgs e)
         {
-            bool dragged = _dragged;
             _dragging = false;
             _dragged = false;
-            if (PreviewZoom.ClosesOnClick(e.Button, dragged, CanPan))
-                Close();
+            // Клик по странице окно НЕ закрывает. Пока просмотр был просто картинкой, это было
+            // удобно, но теперь по странице возят лупой и таскают её рукой — закрываться от
+            // касания рабочей области стало мешать. Закрывают Esc и крестик, как в любом
+            // просмотрщике, и об этом написано прямо в окне.
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
