@@ -60,7 +60,10 @@ namespace ExcelMerger
 
             int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
-            int panelW = 210;
+            // 240, а не 210: в паре с «Печатью» подпись «Прочие операции» (116 px + поля)
+            // не помещалась и выходила многоточием, а вниз панель не растянуть — на минимальной
+            // высоте окна вторая строка кнопок наехала бы на нижний строй.
+            int panelW = 240;
             int gridBottom = ClientSize.Height - 152;
 
             _grid = new PdfPageGrid();

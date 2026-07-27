@@ -89,8 +89,27 @@ versions follow [SemVer](https://semver.org/).
   the new-version question opened the release page and, if the system had no browser to open it
   with, did nothing at all — the failure was caught and dropped. The address is shown now, so the
   page can be reached by hand.
+- **Two button captions were being cut with an ellipsis.** Split's “More operations” read “More
+  opera…” — the right-hand panel was 16 px too narrow, and it cannot grow downwards, since at the
+  window's minimum height a second row of buttons lands on the bottom strip. The panel is wider
+  now. The other one had shipped: the “Move after page N…” dialog sized its buttons by a constant
+  that was measured in the window's font, while the primary button is set larger and bold, so
+  “Переместить” needed 120 px in a 112 px button. Both buttons of that dialog are measured in
+  their own font now and grow with the caption. A test opens every window and every dialog and
+  fails on any caption that does not fit — clipping is silent, and the eye does not audit fifty
+  buttons.
 - Gaps between the buttons of the right-hand panels differed between Merge and PDF → Word. They
   follow one rhythm now.
+
+### Documentation
+- **The user guide matches the program again** (`docs/Инструкция пользователя.docx`, also shipped
+  inside the exe). All 26 figures are fresh captures of the real 1.17.9 windows: the two-level
+  start screen, the “More operations” window and its resolution menu are new, and the “More
+  actions” menu that no longer exists is gone. The text follows: five tools instead of four, the
+  chapter order of the start screen (PDF first, Excel behind it), a chapter of its own for “More
+  operations”, the renamed buttons, and the new lines in About and in the troubleshooting table.
+  The build now also checks that every caption the guide quotes actually exists in the program's
+  catalog — it is what caught “Раньше”, “Позже”, “Доп. действия” and “Свод Excel”.
 
 ## [1.17.8] — 2026-07-27
 

@@ -394,13 +394,17 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` (287 tests, custom exe runner, zero
+1. **Unit tests** — `tests/UnitTests.cs` (288 tests, custom exe runner, zero
    dependencies, no Office) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
    zoom percentage and wheel-step chaining, the number-strip hit-test and double-click
    classification, the preview's centring and zoom maths, the card's content centring, the
    button metrics, the cancel threshold, live merge/split cancellation (throws and leaves
    no file), and settings that survive a stale writer (in an isolated `AppPaths` root).
+   The runner leaves through `FastExit.Now` for the same reason the app's headless modes do:
+   the live-window tests touch WinRT, and a normal process unload dies in
+   `DLL_PROCESS_DETACH` *after* every check has passed — a green run with a non-zero exit
+   code, which stops the release pyramid on a step that actually succeeded.
    Also the invariants that guard shipped bugs: the compression resolutions match the
    Ghostscript presets, the rotation delta lands on the wanted angle from any starting
    angle, Ghostscript's zero exit code is not trusted when its error stream carries the
@@ -424,7 +428,9 @@ The pyramid, bottom-up:
    Two more squeeze every tool window to its **minimum size** and require that no control
    leaves the window and no two buttons overlap, and that the header (which carries “Home”)
    is **last** in the tab order — both defects those checks describe were live when they
-   were written. Run by `tests\build_tests.cmd [x86]`, and CI runs both
+   were written. One more measures every button caption in the button's **own font** and
+   fails if it would be cut with an ellipsis: clipping is silent, and it had already shipped
+   in a dialog whose primary button is set larger and bold than the window it lives in. Run by `tests\build_tests.cmd [x86]`, and CI runs both
    architectures because cache sizing branches on `IntPtr.Size`. The runner also fails if
    the number of checks drops below a floor, so a deleted `Run(...)` line cannot slip by.
 2. **Self-checks in the exe** — `--selftest` (every window created headless),
