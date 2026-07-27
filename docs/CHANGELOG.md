@@ -25,6 +25,15 @@ versions follow [SemVer](https://semver.org/).
   entirely — cells come out separated by tabs and paste into a spreadsheet as a table. Pages are
   separated by a form feed, as `pdftotext` does, and the file is UTF-8 with a byte-order mark so
   Notepad shows Cyrillic correctly.
+- **Pad documents to an even page count** (Merge → checkbox). For double-sided printing: a
+  blank page is added after a document with an odd page count so the next one starts on the
+  front of a sheet. The last document is deliberately not padded — nothing is printed after
+  it. The blanks are added when the file is written, not kept in the page grid: putting them
+  in the model would mean drawing them as tiles, carrying them through the clipboard and undo
+  and forbidding them in PDF → Word, which is a lot of risk for a print-time detail.
+- **Edit document properties** — title, author, subject, keywords (Split → “More with this
+  document”). Clearing a field removes the property, which is how an author's name is taken
+  out of a file before sending it. The result is written to a new file.
 - **Select odd or even pages** from the page grid's context menu — the two sides of a
   double-sided stack, so rotating or deleting one side no longer means ticking fifty tiles.
 - **Convert to grayscale** and **repair a damaged PDF** (Split → “More with this document”).

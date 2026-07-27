@@ -24,6 +24,7 @@ namespace ExcelMerger
         private Button _btnDown;
         private Button _btnRemove;
         private Button _btnSave;
+        private CheckBox _chkPadEven; // добить документы до чётного числа страниц (двусторонняя печать)
 
         public PdfMergeForm() : this(null) { }
 
@@ -86,6 +87,14 @@ namespace ExcelMerger
             _btnRemove = AddButton(Loc.T("common.remove"), col, m + 204, 130, 30);
             _btnRemove.Click += delegate { RemoveSelected(); };
             _tips.SetToolTip(_btnRemove, Loc.T("common.tip.removePages"));
+
+            _chkPadEven = new AccentCheckBox();
+            _chkPadEven.Text = Loc.T("pdf.chk.padEven");
+            _chkPadEven.SetBounds(col, m + 248, 150, 40);
+            _chkPadEven.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _chkPadEven.ForeColor = Theme.TextPrimary;
+            _tips.SetToolTip(_chkPadEven, Loc.T("pdf.tip.padEven"));
+            Controls.Add(_chkPadEven);
 
             BuildBottomStrip(right, Loc.T("pdf.status.addPdf"), 190);
 
@@ -173,6 +182,7 @@ namespace ExcelMerger
 
             var pages = _order.ToList();
             CompressionLevel level = _compress.Level; // читаем с UI-потока до старта воркера
+            bool padEven = _chkPadEven.Checked;
             BeginOperation(Loc.T("common.status.saving"), pages.Count, Loc.T("pdf.status.savingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
@@ -183,7 +193,7 @@ namespace ExcelMerger
                 bool compressed = false;
                 try
                 {
-                    PdfMergeService.Merge(pages, outputPath, onProgress, cancel);
+                    PdfMergeService.Merge(pages, outputPath, onProgress, cancel, padEven);
                 }
                 catch (Exception ex)
                 {
