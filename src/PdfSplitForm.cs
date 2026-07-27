@@ -36,6 +36,7 @@ namespace ExcelMerger
         private TextBox _txtNameTemplate; // шаблон имени частей; пусто — прежние имена
         private ContextMenuStrip _toolsMenu;   // «Доп. действия» — не дочерний контрол, освобождаем сами
         private Button _btnTools;
+        private Button _btnPrint;
         private Label _lblHint;
         private Button _btnDo;
 
@@ -159,9 +160,17 @@ namespace ExcelMerger
             // Кнопка «Ещё с документом» рядом с остальным вводом: те же пункты, что в «☰».
             // Без неё картинки, текст, серое, восстановление и свойства оставались невидимыми —
             // искать их в меню окна никто не догадывался.
+            _btnPrint = new RoundedButton(false);
+            _btnPrint.Text = Loc.T("split.btn.print");
+            _btnPrint.SetBounds(px, m + 336, 74, 32);
+            _btnPrint.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(_btnPrint, Loc.T("split.tip.print"));
+            _btnPrint.Click += delegate { PrintPages(); };
+            Controls.Add(_btnPrint);
+
             _btnTools = new RoundedButton(false);
             _btnTools.Text = Loc.T("split.btn.more");
-            _btnTools.SetBounds(px, m + 336, pw, 32);
+            _btnTools.SetBounds(px + 80, m + 336, pw - 80, 32);
             _btnTools.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _tips.SetToolTip(_btnTools, Loc.T("split.tip.more"));
             _toolsMenu = BuildToolsMenu();
@@ -242,8 +251,6 @@ namespace ExcelMerger
             root.Items.Add(gray);
             root.Items.Add(Loc.T("split.menu.repair"), null, delegate { RepairChosenFile(); });
             root.Items.Add(new ToolStripSeparator());
-            var print = new ToolStripMenuItem(Loc.T("split.menu.print"), null, delegate { PrintPages(); });
-            root.Items.Add(print);
             var meta = new ToolStripMenuItem(Loc.T("split.menu.metadata"), null, delegate { EditMetadata(); });
             root.Items.Add(meta);
 
@@ -254,7 +261,6 @@ namespace ExcelMerger
                 text.Enabled = ready;
                 gray.Enabled = ready && Ghostscript.Available;
                 meta.Enabled = ready;
-                print.Enabled = ready;
             };
             return root;
         }
@@ -627,6 +633,7 @@ namespace ExcelMerger
             _chkCombine.Enabled = !Working && loaded;
             _txtNameTemplate.Enabled = !Working && loaded;
             _btnTools.Enabled = !Working;
+            _btnPrint.Enabled = !Working && loaded;
             bool canDo = !Working && loaded &&
                 (_cmbMode.SelectedIndex != ModeExtract || _grid.SelectedCount > 0);
             _btnDo.Enabled = canDo;
