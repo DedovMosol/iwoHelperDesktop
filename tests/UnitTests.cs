@@ -262,6 +262,7 @@ namespace ExcelMerger.Tests
             Run("Окна: при минимальном размере ничего не обрезано и кнопки не наложены", TestWindowsSurviveMinimumSize);
             Run("Диалоги: ничего не свисает из окна и контролы не наложены", TestDialogsLayoutIsSound);
             Run("Кнопка: радиус и поле подписи считаются от размера", TestRoundedButtonMetrics);
+            Run("Карточка: значок, заголовок и описание стоят по центру высоты", TestCardContentCentered);
             Run("Хаб: разделы, «Назад» и Esc показывают свой набор карточек", TestHubNavigation);
             Run("Хаб: придержанные файлы забываются при уходе из раздела", TestHubPendingFilesCleared);
             Run("Хаб: из карточек открывается каждый инструмент, и именно свой", TestHubOpensEveryTool);
@@ -318,7 +319,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 274;
+            const int MinTests = 287;
             int total = _passed + _failed;
             if (total < MinTests)
             {
@@ -5883,14 +5884,23 @@ namespace ExcelMerger.Tests
                             MenuItemWithText(merge, Loc.T("pdf.menu.ops"));
                         if (item == null) { failures.Add("пункта меню нет"); return; }
 
-                        // Пока ничего не собрано, мост молчать обязан — но нажать пункт здесь
-                        // нельзя: он показывает модальное объяснение, и тест встал бы на нём
-                        // навсегда. Проверяем то, что проверить можно: без результата ничего не
-                        // отдано (поле пустое, обработчик до моста не доходит).
-                        if (handed != null)
-                            failures.Add("мост сработал до сборки файла");
+                        // Пока ничего не собрано, пункт обязан ОТКРЫТЬ окно, а не объяснять,
+                        // почему он ничего не делает: нажатие без последствий читается как
+                        // сломанная кнопка. Мост зовётся с пустым путём — «просто открой».
+                        bool called = false;
+                        SetProtected(merge, "OpsBridge", (Action<string>)delegate(string p)
+                        {
+                            called = true;
+                            handed = p;
+                        });
+                        item.PerformClick();
+                        if (!called)
+                            failures.Add("без собранного файла пункт не сделал ничего");
+                        if (!string.IsNullOrEmpty(handed))
+                            failures.Add("без собранного файла отдан путь: " + handed);
 
                         // С готовым файлом пункт обязан отдать именно его.
+                        SetProtected(merge, "OpsBridge", (Action<string>)delegate(string p) { handed = p; });
                         SetField(merge, "_lastResult", result);
                         item.PerformClick();
                         if (!string.Equals(handed, result, StringComparison.OrdinalIgnoreCase))
@@ -6117,6 +6127,23 @@ namespace ExcelMerger.Tests
             AssertEqual(4, RoundedButton.TextPadFor(32), "квадратная кнопка лупы");
             AssertTrue(RoundedButton.TextPadFor(32) * 2 < 32, "под подпись остаётся место");
             AssertTrue(RoundedButton.TextPadFor(1) >= 0, "вырожденная ширина не даёт отрицательного поля");
+        }
+
+        private static void TestCardContentCentered()
+        {
+            // Блок «значок + заголовок + описание» стоит по центру: поля сверху и снизу
+            // равны (расхождение в 1 px — нечётный остаток, делить пиксель не на что).
+            foreach (int block in new[] { 60, 113, 160, 197 })
+            {
+                int top = ChoiceCard.ContentTop(250, block);
+                int bottom = 250 - block - top;
+                AssertTrue(Math.Abs(top - bottom) <= 1,
+                    "блок " + block + " px: сверху " + top + ", снизу " + bottom);
+            }
+
+            // Описание во всю карточку не должно уезжать под верхний край.
+            AssertTrue(ChoiceCard.ContentTop(250, 240) >= 18, "переполненная карточка прижата к верху");
+            AssertTrue(ChoiceCard.ContentTop(250, 400) >= 18, "блок выше карточки не уходит в минус");
         }
 
         /// <summary>Сколько карточек ВИДНО на текущем уровне хаба (уровни — панели одного окна).</summary>

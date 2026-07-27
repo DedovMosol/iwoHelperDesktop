@@ -168,9 +168,11 @@ namespace ExcelMerger
             _btnOps.SetBounds(px + 80, m + 336, pw - 80, 32);
             _btnOps.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _tips.SetToolTip(_btnOps, Loc.T("split.tip.ops"));
+            // Открытый документ уезжает туда сам, а если ничего не открыто — окно просто
+            // откроется: нажатие обязано что-то делать, иначе кнопку считают сломанной.
             _btnOps.Click += delegate
             {
-                if (OpsBridge != null && _sourcePath != null)
+                if (OpsBridge != null)
                     OpsBridge(_sourcePath);
             };
             Controls.Add(_btnOps);
@@ -282,7 +284,7 @@ namespace ExcelMerger
             // разделения она оставалась живой и её переключение перестраивало режим на ходу.
             _chkCombine.Enabled = !Working && loaded;
             _txtNameTemplate.Enabled = !Working && loaded;
-            _btnOps.Enabled = !Working && loaded;
+            _btnOps.Enabled = !Working; // работает и без открытого документа — просто откроет окно
             _btnPrint.Enabled = !Working && loaded;
             bool canDo = !Working && loaded &&
                 (_cmbMode.SelectedIndex != ModeExtract || _grid.SelectedCount > 0);

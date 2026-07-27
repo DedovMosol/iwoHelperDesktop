@@ -67,8 +67,8 @@ flowchart LR
     U(["User"]) --> APP["iwoHelperDesktop.exe<br>(WinForms, net48, x64)"]
     APP -->|"late-bound COM"| XL["Microsoft Excel<br>(Excel Digest)"]
     APP -->|"late-bound COM"| WD["Microsoft Word<br>(cover note, PDF→Word)"]
-    APP -->|"WinRT, in-memory"| RT["Windows.Data.Pdf<br>(page thumbnails)"]
-    APP -->|"child process"| GS["Ghostscript<br>(compression, raster fallbacks)"]
+    APP -->|"WinRT, in-memory"| RT["Windows.Data.Pdf<br>(thumbnails, preview, image export)"]
+    APP -->|"child process"| GS["Ghostscript<br>(compression, grayscale,<br>repair, raster fallbacks)"]
     APP -->|"read/write"| FS[("User files<br>.xlsx / .pdf / .docx")]
     APP -->|"settings, stats,<br>reports, crash log"| AD[("APPDATA / iwo Helper Desktop")]
     APP -.->|"manual update check<br>(version tag only)"| GH["GitHub Releases API"]
@@ -79,12 +79,12 @@ flowchart LR
 | Microsoft Excel | COM, late-bound | copying sheets with full formatting | Excel Digest only |
 | Microsoft Word | COM, late-bound | writing `.docx` (cover note, PDF → Word) | Excel Digest note, PDF → Word |
 | PdfSharp (MIT) | embedded assembly | PDF page copy for merge/split | PDF Merge/Split |
-| PdfPig (Apache 2.0) | embedded assemblies | glyph-level text extraction | PDF → Word |
-| `Windows.Data.Pdf` (WinRT) | OS component (Windows 8.1+) | rendering page thumbnails | all PDF tools |
-| Ghostscript (AGPL) | separate process | image downsampling, raster fallbacks | compression (optional), PDF → Word raster fallbacks |
+| PdfPig (Apache 2.0) | embedded assemblies | glyph-level text extraction | PDF → Word, text export |
+| `Windows.Data.Pdf` (WinRT) | OS component (Windows 8.1+) | rendering pages | thumbnails, full-size preview, image export |
+| Ghostscript (AGPL) | separate process | image downsampling, colour conversion, rewrite, raster fallbacks | compression (optional), grayscale, repair, PDF → Word raster fallbacks |
 | GitHub Releases API | HTTPS, manual | latest version tag | update check only |
 
-Excel and Word are **optional**: PDF Merge, Split and Compression run without any Office.
+Excel and Word are **optional**: PDF Merge, Split and More operations run without any Office.
 
 ## Tech stack and constraints
 
@@ -131,7 +131,7 @@ are conceptual.
 | `CrashReport.cs` | Global exception handlers: branded dialog on the UI thread, silent log otherwise, `%APPDATA%\…\crash.log` with size rotation. |
 | `UserSettings.cs`, `AppPaths.cs` | `settings.txt` (language, remembered options, PDF zoom width and compression level) and all `%APPDATA%` paths. Fields owned by another window are never clobbered by a stale instance: `Save` re-reads zoom/compression from disk (the PDF tools write them explicitly via `SaveView`), the same way language is taken from the live `Loc`. |
 | `UsageStats.cs` | Local operation counters in `stats.txt`, guarded by a cross-process mutex, optional auto-clear. |
-| `UpdateChecker.cs` | Manual check: reads the latest release tag from the GitHub API, compares, offers to open the Releases page. Pure `ParseTag`/`IsNewer` for tests. |
+| `UpdateChecker.cs` | Manual check: reads the latest release tag from the GitHub API, compares, and on a newer version asks before opening the Releases page (`Ui.OpenUrlOrShow`, which shows the address when no browser can be started — a swallowed failure would answer “Yes” with nothing at all). Downloads and installs nothing. Pure `ParseTag`/`IsNewer` for tests. |
 | `Loc.cs`, `Flags.cs` | Localization catalog and GDI-drawn menu flags — see [Localization](#localization). |
 | `SetupLanguage.cs` | The language picked in the installer. Setup writes a one-line ASCII file next to the settings, the app applies it at startup (it outranks the stored language), saves it the normal UTF-8 way and removes the marker. Setup never edits `settings.txt` itself: it writes text in the system code page while the app reads UTF-8, and a read-modify-write would corrupt non-ASCII paths inside. |
 | `UserManual.cs` | The user guide (`.docx`) embedded as a resource: unpacked next to the settings on demand and opened from “About”. Embedded rather than installed so the portable build has it too, and so it needs no internet. |
@@ -147,11 +147,18 @@ boxes), `NumberPromptDialog` (Ctrl+G / “move after page…”, sized to its pr
 DPI render width, page-cache capacity). Shared fonts and the app icon are cached per
 process by `Ui` (WinForms never disposes `Control.Font`/`Form.Icon`).
 
+`ChoiceCard` measures its own contents and centres the icon-title-description block in the
+card, so cards with descriptions of different lengths still look alike, and `RoundedButton`
+has three looks (`Primary`, `Secondary`, `OnDark`) with a **filled** disabled state — a panel
+where half the buttons wait for an open document must show that without being clicked.
+
 `Ui` also owns the pieces every window would otherwise copy: `InitDialog` (the modal-dialog
 frame — title, icon, fixed border, centring, DPI scaling), `RoundedRect` (the one
 rounded-rectangle outline behind every owner-drawn control), `Ellipsize` (a variable-length
-label that shortens with “…” instead of running off the edge), `SelectAllItems`, and
-`HeaderLastInTabOrder`. That last one is called from `OnLoad`, not at construction:
+label that shortens with “…” instead of running off the edge), `OpenPath`/`OpenPathOrWarn`/
+`OpenUrlOrShow` (the three ways to hand something to the shell: silently for a result the
+user already has, with a dialog for an explicit action, and with the address shown for a
+browser that will not start), `SelectAllItems`, and `HeaderLastInTabOrder`. That last one is called from `OnLoad`, not at construction:
 `ControlCollection.Add` hands each new control the next free `TabIndex`, so a high index set
 on the header while building would put it *first* and land the focus on “Home”.
 
@@ -183,7 +190,7 @@ on the header while building would put it *first* and land the focus on “Home�
 | `EmbeddedAssemblies.cs` | Runtime resolver for the embedded PdfSharp/PdfPig assemblies. |
 | `PdfToolFormBase.cs` | Base class of all PDF tool windows: thumbnail grid, zoom slider with an editable “%” box (`ThumbZoom.Percent`/`WidthFromPercent`, two-way-synced with the slider without drift, `Ctrl+0` or a double-click on “%” resets to 100%) and Ctrl+wheel over the slider, compression picker, status/progress strip (with a per-page counter and a selection counter — pure `ProgressItem`/`RestingStatus`, plus the pure `SuccessStatus`/`CompressedPart` pair that assembles every “done” line, so the catalog stores bare fragments while the ✓, the « · » separators and the closing period live in one place), drag-and-drop, a keyboard-shortcuts cheat sheet built from the grid's capabilities (`BuildShortcuts`), the shared grid hotkeys (`ClassifyPageKey`: Ctrl+A/X/C/V/Z/Y/G, Alt+←/→, Delete, Esc, Ctrl+Shift+«+»/«−»), background-work lifecycle. The zoom slider and the percentage share the row with the compression picker on the right, both right-anchored so a constant gap keeps them apart at any width (the slider stretches). Remembers the last zoom width and compression level between runs (`SaveView`, restored in `BuildBottomStrip`). Cooperative cancellation of long operations (`ShouldOfferCancel` ≥ 5 pages): a Cancel button overlays the action button (`CancelToken` → a `volatile` flag the worker polls), withdrawn at the point of no return once the output is committed (`StopOfferingCancel`, wired through to the PDF → Word writer). Background work is marshalled through the shared `Ui.OnUi`/`Ui.RunWorker` (one guarded `BeginInvoke` helper, no per-form copies), `SyncControls` is the abstract per-form hook that reflects the current state (operation, background parse, selection) on the buttons and grid lock, and `FinishOperation` is the shared epilogue: it ends the operation and tells the form whether there is a result worth showing, so cancellation and failure are worded and dialogued in one place. `BeginIndeterminate` switches the bar to a marquee for a phase whose progress cannot be measured (Ghostscript compression runs in its own process and reports nothing) — a full bar with Cancel already withdrawn reads as a hung window. Adding/opening a PDF parses it on a worker (`BeginLoad`/`EndLoad`, `Working` = busy or loading) so a large or network file never freezes the window. Forms open with dropped files via `IFileAcceptor` (drop onto a start-screen `ChoiceCard`, `WireFileDrop` is the shared window drop handler). Each window's size and position persist per form via a single `WindowPlacement.Attach` in `InitShell` (clamped onto a visible screen), which is why closing a busy window — it returns before calling base — saves nothing. |
 | `PdfSingleDocFormBase.cs` | Base of the two tools that work with ONE open document — **PDF Split** and **More operations**. Owns the whole “open a file and show its pages” layer once: the file dialog, the background parse, filling the grid, the status, accepting a file dropped on the window, on the grid or from a start-screen card (`IFileAcceptor`), and the “selected pages, or all of them if none” rule that every operation needs. |
-| `PdfOpsForm.cs` | **More operations**: six actions over one document (compress, grayscale, repair, pages to images, text to `.txt`, document properties), grouped by what they do. Every action writes a **new** file — sources are never modified — and the three copy-then-transform ones share one method. The window has no single action button, so it tells the base where to draw “Cancel” (`RegisterCancelArea`) instead of handing it a button to replace. |
+| `PdfOpsForm.cs` | **More operations**: six actions over one document (compress, grayscale, repair, pages to images, text to `.txt`, document properties), grouped by what they do. Every action writes a **new** file — sources are never modified — and the three copy-then-transform ones share one method. The window has no single action button, so it tells the base where to draw “Cancel” (`RegisterCancelArea`) instead of handing it a button to replace. Merge and Split reach it through one bridge (`PdfToolFormBase.OpsBridge`, an `Action<string>` the hub supplies): the path is the document to hand over, an empty one just opens or raises the window. The hub is the composition root — the tools do not reference each other. |
 | `PdfOrderedToolFormBase.cs` | Base of the two tools that assemble one result from pages of several files — **PDF Merge** and **PDF → Word**. Owns the `PdfPageOrder` model and the entire “order ↔ grid” layer once (add files, reorder, cut/copy/paste move, delete, undo/redo, grid + file-drop wiring), the concrete forms keep only their buttons, their action worker and a `SyncControls` override (`PickAndAddFiles` — the “choose PDFs” dialog — lives here too). |
 | `PdfPageGrid.cs`, `PdfPageOrder.cs` | The thumbnail grid subsystem, OWNER-DRAWN (tiles, number captions, selection, cut-dimming and the rotation badge are painted in `DrawItem`, `LVM_SETICONSPACING` sets the cell, so zoom goes to 400 px past the ImageList limit — an empty metrics ImageList keeps native hit-testing honest and clicks on the outer ring of big tiles are compensated). Lazy visible-only rendering with a larger re-render on deep zoom, an in-window page buffer (cut/copy/paste) with an insertion caret and a hover hint, drag reorder with edge auto-scroll, file drop with an insert position, per-page and whole-document rotation, «Move after page N…», a context menu, `Locked` gating during operations. Owner-draw paint allocates nothing per frame: fill brushes and border pens are process-wide statics, glyph fonts come from the shared `Ui.Font` cache, and the selection tint is cached and rebuilt only on a system-colour change. Ctrl+wheel zoom is coalesced through the slider's throttle (`WheelBasis`) so a fast spin keeps every step. Hovering a tile shows ↺/↻ rotate chips on it. Double-click routing is a pure decision (`ClassifyDoubleClick`, precedence rotate chip → number strip → tile): a hover rotate chip swallows the event so a quick double-click on ↺/↻ turns a full 180°, else the number strip under a tile (`IsOnLabel`) opens «Move after page…», else the tile opens a full-size page preview (`PagePreviewForm`). The page-order model (`PdfPageRef` = source file + page index + rotation) is shared by merge and PDF → Word and keeps undo/redo stacks (Ctrl+Z / Ctrl+Y) of order-plus-rotation snapshots (`BeforeRotate` lets the form checkpoint before the grid mutates angles), the grid mutates only `Rotation` of the shared refs and requests order changes via events. |
 | `PdfThumbnailRenderer.cs`, `LruCache.cs` | WinRT rendering **from memory** (see invariants) at a DPI-scaled width, LRU of open documents (6, halved on x86) and a byte-budgeted LRU of rendered pages (192 MB, 48 MB on x86) — an evicted page re-renders when shown again. |
@@ -387,29 +394,37 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` (~275 tests, custom exe runner, zero
+1. **Unit tests** — `tests/UnitTests.cs` (287 tests, custom exe runner, zero
    dependencies, no Office) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
    zoom percentage and wheel-step chaining, the number-strip hit-test and double-click
-   classification, the cancel threshold, live merge/split cancellation (throws and leaves
+   classification, the preview's centring and zoom maths, the card's content centring, the
+   button metrics, the cancel threshold, live merge/split cancellation (throws and leaves
    no file), and settings that survive a stale writer (in an isolated `AppPaths` root).
    Also the invariants that guard shipped bugs: the compression resolutions match the
    Ghostscript presets, the rotation delta lands on the wanted angle from any starting
-   angle, drag hints stay imperative and name the drop target, and the single-instance
-   name is taken once and freed on exit. Four
-   tests build real windows on an STA thread — the About window (its description must be
-   selectable, justified, mention born-digital PDFs and not be clipped, the copyright must
-   sit at the bottom-left, checked in both languages because the texts wrap differently),
-   the start screen surviving a language change while **minimized** (its placement must come
-   back on-screen rather than at the off-screen coordinates a minimized window reports), every window
-   in English (no stray Cyrillic, read-only text boxes included, since those are labels the
-   user can copy), and window-position memory (each window that should remember its place is
-   opened, moved and closed for real, with a control case proving an unattached window saves
-   nothing — the wiring is one line and its loss would otherwise be silent).
-   Two more open every tool window for real, squeeze it to its **minimum size** and require
-   that no control leaves the window and no two buttons overlap, and that the header (which
-   carries “Home”) is **last** in the tab order — both defects those checks describe were
-   live when they were written. Run by `tests\build_tests.cmd [x86]`, and CI runs both
+   angle, Ghostscript's zero exit code is not trusted when its error stream carries the
+   engine's own marker, drag hints stay imperative and name the drop target, every `Loc`
+   key used in code exists in the catalog (and no catalog key is orphaned), and the
+   single-instance name is taken once and freed on exit.
+
+   A dozen tests build **real windows** on an STA thread with the settings redirected to a
+   temporary folder (`InIsolatedSettings` — live windows save their bounds on close, and
+   without the redirection a test would overwrite the user's own settings). They cover the
+   About window (description selectable, justified, not clipped, copyright bottom-left,
+   both languages, because the texts wrap differently), every window in English (no stray
+   Cyrillic, read-only text boxes included, since those are labels the user can copy),
+   window-position memory (each window is opened, moved and closed for real, with a control
+   case proving an unattached window saves nothing — the wiring is one line and its loss
+   would be silent), the hub (navigating between its levels, every card really opening its
+   tool, held files cleared on the way out, and a language change survived while
+   **minimized**, whose placement must come back on-screen rather than at the off-screen
+   coordinates a minimized window reports), both bridges into “More operations”, the
+   preview's minimize box coming with a taskbar button, and the shared dialogs' layout.
+   Two more squeeze every tool window to its **minimum size** and require that no control
+   leaves the window and no two buttons overlap, and that the header (which carries “Home”)
+   is **last** in the tab order — both defects those checks describe were live when they
+   were written. Run by `tests\build_tests.cmd [x86]`, and CI runs both
    architectures because cache sizing branches on `IntPtr.Size`. The runner also fails if
    the number of checks drops below a floor, so a deleted `Run(...)` line cannot slip by.
 2. **Self-checks in the exe** — `--selftest` (every window created headless),
@@ -487,9 +502,11 @@ needs Office gets a `verify` script.
 
 ## Extension points
 
-- **A new tool**: a `ChoiceCard` on `StartForm` calling
-  `ShellContext.OpenTool(key, name, factory)`, PDF-shaped tools inherit
-  `PdfToolFormBase` and get the grid/zoom/compression/progress shell for free.
+- **A new tool**: one `StartForm.AddTool(level, glyph, key, nameKey, descKey, factory, x, y,
+  width)` line on the section it belongs to — that wires the card, the click
+  (`ShellContext.OpenTool`), the file drop (`OpenToolWithFiles`) and the “Home” target in
+  one place. PDF-shaped tools inherit `PdfToolFormBase` (grid, zoom, compression, progress,
+  cancellation) or `PdfSingleDocFormBase` if they work with one open document.
 - **Scanned-PDF OCR**: the branch point is `PdfToWordService.Convert` (documented in
   code). The layout and writing stages are input-agnostic — they consume words with
   geometry, wherever those come from.

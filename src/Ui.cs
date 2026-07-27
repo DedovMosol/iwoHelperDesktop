@@ -140,6 +140,21 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>
+        /// Открыть страницу в браузере по ЯВНОМУ действию пользователя: не открылась — показать
+        /// сам адрес, чтобы его можно было набрать вручную. Промолчать здесь нельзя — нажатие
+        /// «Да» не оставило бы ни единого следа и читалось бы как поломка.
+        /// </summary>
+        public static void OpenUrlOrShow(IWin32Window owner, string title, string url)
+        {
+            try { using (Process.Start(url)) { } }
+            catch
+            {
+                Dialogs.Error(owner, title, Loc.T("common.err.browser"),
+                    string.Format(Loc.T("common.err.browserBody"), url));
+            }
+        }
+
         /// <summary>Ссылка, открывающая URL в браузере по умолчанию.</summary>
         public static LinkLabel UrlLink(Control parent, string text, int x, int y, string url)
         {

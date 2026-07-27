@@ -174,6 +174,8 @@ namespace ExcelMerger
                 "Zoom percentage (Ctrl+0 or double-click “%” for 100%)");
             A("common.busy", "Дождитесь завершения…", "Wait for it to finish…");
             A("common.err.openFailed", "Не удалось открыть", "Could not open");
+            A("common.err.browser", "Не удалось открыть браузер", "Could not open the browser");
+            A("common.err.browserBody", "Откройте страницу вручную:\n{0}", "Open the page manually:\n{0}");
             // Общие для PDF-инструментов: перестановка/удаление страниц, диалоги выбора файлов
             // Подпись — по оси сетки (она горизонтальная, стрелки стоят на самих кнопках, и
             // клавиши те же Alt+←/→), а подсказка — по порядку страниц: на переносе строки
@@ -259,14 +261,10 @@ namespace ExcelMerger
             A("pdf.interleave.done", "Страницы чередуются, документов: {0}", "Pages interleaved, documents: {0}");
             // Продолжение работы над собранным файлом. Именно над РЕЗУЛЬТАТОМ: источников в
             // объединении много, и «текущего документа» у окна нет, а собранный файл — есть.
-            A("pdf.menu.ops", "Прочие операции с собранным файлом", "More operations on the merged file");
+            A("pdf.menu.ops", "Прочие операции", "More operations");
             A("pdf.tip.ops",
-                "Сжать собранный файл, перевести в оттенки серого, сохранить страницы картинками, извлечь текст, изменить свойства документа. Доступно после сохранения.",
-                "Compress the merged file, convert it to grayscale, save pages as images, extract the text, edit the document properties. Available after saving.");
-            A("pdf.ops.noResult.title", "Сначала соберите файл", "Assemble the file first");
-            A("pdf.ops.noResult.body",
-                "«Прочие операции» работают с одним готовым документом, а здесь их пока нет — источников несколько, а результат ещё не сохранён.\n\nНажмите «Сохранить PDF…», и этот пункт откроет собранный файл. Открыть чужой файл можно с главного экрана: раздел PDF, карточка «Прочие операции».",
-                "“More operations” work on one finished document, and there is none yet — there are several sources and the result is not saved.\n\nClick “Save PDF…” and this item will open the merged file. To work on some other file, use the start screen: the PDF section, the “More operations” card.");
+                "Сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа. Собранный файл откроется там сам, если уже сохранён.",
+                "Compression, images, text, grayscale, repair, editing the document properties. The merged file opens there by itself once it has been saved.");
             A("split.btn.print", "Печать", "Print");
             A("split.tip.print",
                 "Напечатать выделенные страницы, а если ничего не выделено — весь документ.",
@@ -276,8 +274,8 @@ namespace ExcelMerger
             // с уже открытым документом — чтобы не открывать файл заново.
             A("split.btn.ops", "Прочие операции", "More operations");
             A("split.tip.ops",
-                "Сжать, сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа. Откроется отдельное окно с этим же документом.",
-                "Compress, save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties. Opens a separate window with the same document.");
+                "Сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа. Откроется отдельное окно, и открытый здесь документ уедет туда сам.",
+                "Compression, images, text, grayscale, repair, editing the document properties. A separate window opens, and the document you have open here goes there with it.");
 
             // ops.* — окно «Прочие операции» (PdfOpsForm): шесть действий над одним документом.
             // До 1.17.9 они были спрятаны в меню «Доп. действия» внутри «Разделения PDF», где их
