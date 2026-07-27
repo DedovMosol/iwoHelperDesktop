@@ -265,6 +265,7 @@ namespace ExcelMerger.Tests
             Run("Хаб: придержанные файлы забываются при уходе из раздела", TestHubPendingFilesCleared);
             Run("Хаб: из карточек открывается каждый инструмент, и именно свой", TestHubOpensEveryTool);
             Run("«Разделение» передаёт открытый документ в «Прочие операции»", TestSplitHandsDocumentToOps);
+            Run("«Объединение» передаёт собранный файл в «Прочие операции»", TestMergeHandsResultToOps);
             Run("Просмотр: окно сворачивается и имеет кнопку на панели задач", TestPreviewCanMinimize);
             Run("Окна: «Главная» последняя в обходе Tab (фокус не на ней)", TestHomeHeaderLastInTabOrder);
             Run("HeaderBand.TextRows: заголовок и подпись помещаются на любом масштабе экрана", TestHeaderRowsFitAnyDpi);
@@ -5853,6 +5854,109 @@ namespace ExcelMerger.Tests
             });
             AssertTrue(failures.Count == 0, "передача документа в «Прочие операции»: " +
                 string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>
+        /// «Объединение» отдаёт в «Прочие операции» СОБРАННЫЙ файл — единственный документ,
+        /// который оно может назвать своим (источников там много, текущего документа нет).
+        /// Проверяем настоящим нажатием пункта меню: обработчик, поле результата и мост — три
+        /// звена, и молчаливо порваться может любое.
+        /// </summary>
+        private static void TestMergeHandsResultToOps()
+        {
+            var failures = new List<string>();
+            InIsolatedSettings("iwo_merge_ops_", delegate
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "iwo_merge_ops_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(dir);
+                string result = Path.Combine(dir, "собранный.pdf");
+                try
+                {
+                    PdfProbe.WriteOnePagePdf(result);
+                    Action back = delegate { };
+                    string handed = null;
+                    using (var merge = new PdfMergeForm(back))
+                    {
+                        SetProtected(merge, "OpsBridge", (Action<string>)delegate(string p) { handed = p; });
+                        System.Windows.Forms.ToolStripMenuItem item =
+                            MenuItemWithText(merge, Loc.T("pdf.menu.ops"));
+                        if (item == null) { failures.Add("пункта меню нет"); return; }
+
+                        // Пока ничего не собрано, мост молчать обязан — но нажать пункт здесь
+                        // нельзя: он показывает модальное объяснение, и тест встал бы на нём
+                        // навсегда. Проверяем то, что проверить можно: без результата ничего не
+                        // отдано (поле пустое, обработчик до моста не доходит).
+                        if (handed != null)
+                            failures.Add("мост сработал до сборки файла");
+
+                        // С готовым файлом пункт обязан отдать именно его.
+                        SetField(merge, "_lastResult", result);
+                        item.PerformClick();
+                        if (!string.Equals(handed, result, StringComparison.OrdinalIgnoreCase))
+                            failures.Add("отдан не тот файл: " + (handed ?? "ничего"));
+                    }
+                }
+                catch (Exception ex) { failures.Add(Root(ex).GetType().Name + ": " + Root(ex).Message); }
+                finally { try { Directory.Delete(dir, true); } catch { } }
+            });
+            AssertTrue(failures.Count == 0, "передача собранного файла: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        private static void SetProtected(object target, string property, object value)
+        {
+            Type t = target.GetType();
+            while (t != null)
+            {
+                System.Reflection.PropertyInfo pi = t.GetProperty(property,
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                if (pi != null) { pi.SetValue(target, value, null); return; }
+                t = t.BaseType;
+            }
+            throw new Exception("нет свойства " + property);
+        }
+
+        private static void SetField(object target, string field, object value)
+        {
+            Type t = target.GetType();
+            while (t != null)
+            {
+                System.Reflection.FieldInfo fi = t.GetField(field,
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                if (fi != null) { fi.SetValue(target, value); return; }
+                t = t.BaseType;
+            }
+            throw new Exception("нет поля " + field);
+        }
+
+        private static System.Windows.Forms.ToolStripMenuItem MenuItemWithText(
+            System.Windows.Forms.Form form, string text)
+        {
+            if (form.MainMenuStrip == null)
+                return null;
+            foreach (System.Windows.Forms.ToolStripItem root in form.MainMenuStrip.Items)
+            {
+                System.Windows.Forms.ToolStripMenuItem found = FindMenuItem(root, text);
+                if (found != null)
+                    return found;
+            }
+            return null;
+        }
+
+        private static System.Windows.Forms.ToolStripMenuItem FindMenuItem(
+            System.Windows.Forms.ToolStripItem item, string text)
+        {
+            var mi = item as System.Windows.Forms.ToolStripMenuItem;
+            if (mi == null)
+                return null;
+            if (mi.Text == text)
+                return mi;
+            foreach (System.Windows.Forms.ToolStripItem sub in mi.DropDownItems)
+            {
+                System.Windows.Forms.ToolStripMenuItem found = FindMenuItem(sub, text);
+                if (found != null)
+                    return found;
+            }
+            return null;
         }
 
         /// <summary>Подождать условия, прокручивая очередь сообщений (разбор PDF идёт в фоне).</summary>
