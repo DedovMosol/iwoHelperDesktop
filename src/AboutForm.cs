@@ -40,7 +40,7 @@ namespace ExcelMerger
 
             // Описание — выделяемое и копируемое, поэтому read-only поле, а не подпись.
             // Ширина ограничена окном (текст не вылезает за край), высота считается под перенос.
-            TextBox desc = SelectableText(Loc.T("about.desc"), 24, 96, ClientSize.Width - 48, true);
+            TextBoxBase desc = SelectableText(Loc.T("about.desc"), 24, 96, ClientSize.Width - 48, true);
 
             int y = desc.Bottom + 14;
             Ui.Label(this, Loc.T("about.author"), 24, y, Font, Theme.TextPrimary); y += 24;
@@ -96,11 +96,16 @@ namespace ExcelMerger
         /// внешне подпись, на деле поле. paragraph=true включает перенос по словам и считает
         /// высоту под весь текст, иначе это одна строка фиксированной высоты.
         /// </summary>
-        private TextBox SelectableText(string text, int x, int y, int width, bool paragraph)
+        private TextBoxBase SelectableText(string text, int x, int y, int width, bool paragraph)
         {
+            // Абзац описания — RichTextBox: обычный TextBox умеет выключку только влево,
+            // вправо и по центру, а описание читается заметно ровнее выключенным по ширине.
+            // Выделять и копировать текст по-прежнему можно — это тот же TextBoxBase.
+            if (paragraph)
+                return JustifiedParagraph(text, x, y, width);
             var tb = new TextBox();
-            tb.Multiline = paragraph;
-            tb.WordWrap = paragraph;
+            tb.Multiline = false;
+            tb.WordWrap = false;
             tb.ScrollBars = ScrollBars.None; // высота подобрана под текст, полосы не нужны
             tb.Text = text;
             tb.ReadOnly = true;
@@ -109,9 +114,91 @@ namespace ExcelMerger
             tb.ForeColor = Theme.TextPrimary;
             tb.Font = Font;
             tb.TabStop = false;
-            tb.SetBounds(x, y, width, paragraph ? ParagraphHeight(text, width) : 20);
+            tb.SetBounds(x, y, width, 20);
             Controls.Add(tb);
             return tb;
+        }
+
+        /// <summary>
+        /// Абзац, выключенный ПО ШИРИНЕ. WinForms такого выравнивания не предлагает ни у
+        /// TextBox, ни у RichTextBox (в перечислении только лево/право/центр), поэтому
+        /// выставляем его формату абзаца напрямую сообщением EM_SETPARAFORMAT — это штатный
+        /// способ, которым пользуется и сам элемент для остальных выравниваний.
+        /// </summary>
+        private RichTextBox JustifiedParagraph(string text, int x, int y, int width)
+        {
+            var rtb = new RichTextBox();
+            rtb.Multiline = true;
+            rtb.WordWrap = true;
+            rtb.ScrollBars = RichTextBoxScrollBars.None;
+            rtb.BorderStyle = BorderStyle.None;
+            rtb.BackColor = Color.White;
+            rtb.ForeColor = Theme.TextPrimary;
+            rtb.Font = Font;
+            rtb.TabStop = false;
+            rtb.ReadOnly = true;
+            rtb.Text = text;
+            rtb.SetBounds(x, y, width, ParagraphHeight(text, width));
+            // Формат абзаца хранится в самом окне элемента, а WinForms окно пересоздаёт (смена
+            // родителя, пересборка интерфейса) — поэтому ставим выключку на КАЖДОЕ создание
+            // хэндла, иначе разовая установка в конструкторе однажды потерялась бы.
+            rtb.HandleCreated += delegate { Justify(rtb); };
+            Controls.Add(rtb);
+            return rtb;
+        }
+
+        private const int WmUser = 0x0400;
+        private const int EmGetParaFormat = WmUser + 61;
+        private const int EmSetParaFormat = WmUser + 71;
+        private const int PfmAlignment = 0x00000008;
+        private const short PfaJustify = 4;  // выключка по ширине
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct ParaFormat2
+        {
+            public int cbSize, dwMask;
+            public short wNumbering, wReserved;
+            public int dxStartIndent, dxRightIndent, dxOffset;
+            public short wAlignment, cTabCount;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 32)]
+            public int[] rgxTabs;
+            public int dySpaceBefore, dySpaceAfter, dyLineSpacing;
+            public short sStyle;
+            public byte bLineSpacingRule, bOutlineLevel;
+            public short wShadingWeight, wShadingStyle;
+            public short wNumberingStart, wNumberingStyle, wNumberingTab, wBorderSpace, wBorderWidth, wBorders;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref ParaFormat2 lParam);
+
+        /// <summary>Выключить весь текст по ширине. Сбой не критичен — останется обычная выключка влево.</summary>
+        private static void Justify(RichTextBox rtb)
+        {
+            try
+            {
+                var fmt = new ParaFormat2();
+                fmt.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(ParaFormat2));
+                fmt.dwMask = PfmAlignment;
+                fmt.wAlignment = PfaJustify;
+                fmt.rgxTabs = new int[32];
+                // Сообщение действует на абзацы ВЫДЕЛЕНИЯ (wParam обязан быть нулём), поэтому
+                // выделяем всё, применяем и снимаем выделение — на экране это не мелькает.
+                rtb.SelectAll();
+                SendMessage(rtb.Handle, EmSetParaFormat, IntPtr.Zero, ref fmt);
+                rtb.Select(0, 0);
+            }
+            catch { } // выключка — оформление, а не работа: не получилось, текст всё равно читается
+        }
+
+        /// <summary>Выключен ли абзац по ширине (спрашиваем сам элемент). Нужно тесту раскладки.</summary>
+        internal static bool IsJustified(RichTextBox rtb)
+        {
+            var fmt = new ParaFormat2();
+            fmt.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(ParaFormat2));
+            fmt.rgxTabs = new int[32];
+            SendMessage(rtb.Handle, EmGetParaFormat, IntPtr.Zero, ref fmt);
+            return (fmt.dwMask & PfmAlignment) != 0 && fmt.wAlignment == PfaJustify;
         }
 
         /// <summary>

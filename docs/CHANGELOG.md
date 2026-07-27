@@ -74,6 +74,19 @@ versions follow [SemVer](https://semver.org/).
 - One file-name sanitiser instead of two that had drifted apart. The surviving one also trims
   trailing dots and caps the length, which protects split-by-bookmark names from the path-length
   limit.
+- **The description in “About” is justified**, the way a paragraph of body text is set, and it is
+  still selectable so the text can be copied.
+
+### Fixed
+- **A minimized start screen was lost when the language changed.** Windows are rebuilt in the new
+  language on the spot they occupied, but a minimized window reports a position far outside every
+  screen (-32000, -32000) and that position was copied onto the new start screen. It came back as
+  an ordinary window parked past the edge of the desktop: listed in the taskbar, absent from the
+  screen, and “Home” appeared to do nothing at all. This happened from any of the four tools, not
+  just one. Placement is now read and applied exactly the way the app already stored it between
+  runs — restored size and position together with the window state — so a minimized window stays
+  minimized and comes back where it was. That rule lives in one place instead of two that had
+  drifted apart, and a test drives a real rebuild with the start screen minimized.
 
 ## [1.17.7] — 2026-07-26
 

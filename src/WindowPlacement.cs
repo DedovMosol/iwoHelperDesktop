@@ -17,6 +17,17 @@ namespace ExcelMerger
     /// Чистые функции (Format/TryParse/ClampToWorkingArea/BestWorkArea) покрыты тестами, а сама
     /// проводка — живым тестом на настоящих окнах. Только UI-поток.
     /// </summary>
+    /// <summary>
+    /// Размещение окна: «нормальные» границы плюс состояние. Пара всегда ходит вместе — по
+    /// одним границам не понять, свёрнуто окно или развёрнуто, а по одному состоянию не
+    /// вернуть размер.
+    /// </summary>
+    internal struct WindowSnapshot
+    {
+        public Rectangle Bounds;
+        public FormWindowState State;
+    }
+
     internal static class WindowPlacement
     {
         /// <summary>Сериализация «x,y,w,h,m» (m=1 — развёрнуто). Чистая — под тест.</summary>
@@ -148,13 +159,56 @@ namespace ExcelMerger
                 form.WindowState = FormWindowState.Maximized;
         }
 
+        /// <summary>
+        /// «Нормальные» границы окна: там, где оно стоит обычным. У развёрнутого окна Bounds —
+        /// это весь экран, а у СВЁРНУТОГО — служебные координаты далеко за его пределами
+        /// (-32000, -32000): запомнив их, окно потом «восстанавливается» в невидимое место.
+        /// Одно правило на всех, кто переносит размещение окна (память между запусками и
+        /// пересборка окон при смене языка), — раньше каждый считал его по-своему.
+        /// </summary>
+        internal static Rectangle NormalBounds(Form form)
+        {
+            return form.WindowState == FormWindowState.Normal ? form.Bounds : form.RestoreBounds;
+        }
+
+        /// <summary>Снять размещение живого окна: границы и состояние всегда ходят парой.</summary>
+        internal static WindowSnapshot Snapshot(Form form)
+        {
+            var snap = new WindowSnapshot();
+            snap.Bounds = NormalBounds(form);
+            snap.State = form.WindowState;
+            return snap;
+        }
+
+        /// <summary>
+        /// Показать окно сразу в заданном размещении. Порядок здесь неочевиден и потому собран
+        /// в одном месте: состояние выставляем ДО показа (иначе свёрнутое окно сначала мелькнёт
+        /// на экране и только потом свернётся), а границы — ПОСЛЕ, потому что окно на своём
+        /// Load восстанавливает размещение из настроек и затёрло бы их. Нужно пересборке окон
+        /// при смене языка: там снимок ЖИВОГО окна авторитетнее сохранённого на диске.
+        /// </summary>
+        internal static void ShowAt(Form form, WindowSnapshot snap)
+        {
+            if (snap.State != FormWindowState.Normal)
+                form.WindowState = snap.State;
+            form.StartPosition = FormStartPosition.Manual;
+            form.Show();
+            if (snap.Bounds.Width <= 0 || snap.Bounds.Height <= 0)
+                return; // окно ещё не показывалось — пусть встаёт туда, куда умеет само
+            // У свёрнутого и развёрнутого окна это правит именно «нормальный» прямоугольник:
+            // на экране ничего не дёргается, зато после восстановления окно вернётся на место.
+            form.Bounds = ClampToWorkingArea(snap.Bounds, WorkAreas(), form.MinimumSize);
+            if (form.WindowState != snap.State)
+                form.WindowState = snap.State; // восстановление из настроек могло сменить состояние
+        }
+
         /// <summary>Сохранить размер/положение окна в настройки. Только из Attach.</summary>
         private static void Save(Form form)
         {
-            // Развёрнутое/свёрнутое окно: пишем НОРМАЛЬНЫЕ границы (RestoreBounds) — чтобы было
-            // куда восстановиться, а флаг «развёрнуто» сохраняем отдельно.
+            // Флаг «развёрнуто» сохраняем отдельно, а границы пишем НОРМАЛЬНЫЕ — чтобы было
+            // куда восстановиться.
             bool maximized = form.WindowState == FormWindowState.Maximized;
-            Rectangle bounds = form.WindowState == FormWindowState.Normal ? form.Bounds : form.RestoreBounds;
+            Rectangle bounds = NormalBounds(form);
             if (bounds.Width <= 0 || bounds.Height <= 0)
                 return; // границ ещё нет (окно не показывалось) — не сохраняем
             UserSettings.SaveWindowBounds(form.GetType().Name, Format(bounds, maximized));
