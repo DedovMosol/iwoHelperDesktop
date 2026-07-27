@@ -184,6 +184,10 @@ namespace ExcelMerger
             A("pdf.tip.padEven",
                 "Для двусторонней печати: после документа с нечётным числом страниц добавляется пустая, чтобы следующий документ начинался с лицевой стороны листа.",
                 "For double-sided printing: a blank page is added after a document with an odd page count, so the next document starts on the front of a sheet.");
+            A("split.err.sameFile", "Нельзя записать поверх исходника", "Cannot write over the source");
+            A("split.err.sameFile.body",
+                "Приложение не изменяет исходные файлы. Укажите другое имя — результат появится рядом.",
+                "The app does not modify source files. Choose another name and the result will appear alongside.");
             A("split.lbl.template", "Шаблон имени (необязательно)", "Name template (optional)");
             A("split.tip.template",
                 "Пусто — прежние имена. Правый клик подставляет обозначения: [BASENAME] — имя исходника, [FILENUMBER] — номер части, [CURRENTPAGE] — номер страницы, [BOOKMARK] — название закладки, [TIMESTAMP] — дата и время. Решётки дополняют нулями ([FILENUMBER###] = 001), число сдвигает нумерацию ([FILENUMBER10] = 11).",

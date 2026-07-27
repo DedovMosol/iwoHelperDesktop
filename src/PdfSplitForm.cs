@@ -316,6 +316,11 @@ namespace ExcelMerger
                     return;
                 outPath = dialog.FileName;
             }
+                if (OutputFile.IsSameFile(outPath, source))
+                {
+                    Dialogs.Error(this, Title, Loc.T("split.err.sameFile"), Loc.T("split.err.sameFile.body"));
+                    return;
+                }
             BeginOperation(Loc.T("split.status.converting"), 0);
             Ui.RunWorker(delegate()
             {
@@ -385,6 +390,11 @@ namespace ExcelMerger
                     return;
                 outPath = dialog.FileName;
             }
+                if (OutputFile.IsSameFile(outPath, _sourcePath))
+                {
+                    Dialogs.Error(this, Title, Loc.T("split.err.sameFile"), Loc.T("split.err.sameFile.body"));
+                    return;
+                }
             string source = _sourcePath;
             BeginOperation(Loc.T("split.status.savingMeta"), 0);
             Ui.RunWorker(delegate()

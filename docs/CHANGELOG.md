@@ -48,6 +48,9 @@ versions follow [SemVer](https://semver.org/).
   it is needed. Both write a **new** file: the app never modifies a source.
 
 ### Changed
+- Everything that writes a result beside a source now refuses to write **over** it. The app
+  does not modify sources, and writing a file into itself would have damaged it as well — the
+  source is open for reading at that moment.
 - The shared Ghostscript pipeline (run, validate, replace only on success, restore the original
   on any failure) is now one piece of code used by compression and by both new conversions. They
   differ only in arguments and in when a replacement is allowed: compression replaces the file
