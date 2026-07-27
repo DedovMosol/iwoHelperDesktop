@@ -151,9 +151,13 @@ namespace ExcelMerger
             // композиционный корень инструментов, поэтому они не ссылаются друг на друга.
             Action<string> openOps = delegate(string path)
             {
-                if (_context != null)
-                    _context.OpenToolWithFiles("ops", Loc.T("hub.ops.name"), opsFactory,
-                        new[] { path }, HubLevel.Pdf);
+                if (_context == null)
+                    return;
+                // Пустой путь — «просто открой окно»: инструмент есть инструмент, и нажатие
+                // никогда не должно упираться в объяснение вместо действия. Тот же вызов и
+                // открывает окно, и поднимает уже открытое, и отдаёт ему документ.
+                string[] files = string.IsNullOrEmpty(path) ? new string[0] : new[] { path };
+                _context.OpenToolWithFiles("ops", Loc.T("hub.ops.name"), opsFactory, files, HubLevel.Pdf);
             };
             Func<Action, Form> mergeFactory = delegate(Action back) { return new PdfMergeForm(back, openOps); };
             Func<Action, Form> splitFactory = delegate(Action back) { return new PdfSplitForm(back, openOps); };
