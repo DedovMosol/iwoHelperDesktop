@@ -144,17 +144,18 @@ namespace ExcelMerger
             other.Click += delegate { GoTo(HubLevel.Other, true); };
 
             // Раздел PDF: четыре инструмента сеткой 2×2.
-            Func<Action, Form> mergeFactory = delegate(Action back) { return new PdfMergeForm(back); };
             Func<Action, Form> ocrFactory = delegate(Action back) { return new OcrForm(back); };
             Func<Action, Form> opsFactory = delegate(Action back) { return new PdfOpsForm(back); };
-            // «Разделение» умеет передать открытый документ в «Прочие операции» — фабрику этого
-            // окна знает стартовый экран, он же и композиционный корень для инструментов.
+            // Мост в «Прочие операции»: им пользуются и «Разделение» (открытый документ), и
+            // «Объединение» (собранный файл). Фабрику окна знает стартовый экран — он же и
+            // композиционный корень инструментов, поэтому они не ссылаются друг на друга.
             Action<string> openOps = delegate(string path)
             {
                 if (_context != null)
                     _context.OpenToolWithFiles("ops", Loc.T("hub.ops.name"), opsFactory,
                         new[] { path }, HubLevel.Pdf);
             };
+            Func<Action, Form> mergeFactory = delegate(Action back) { return new PdfMergeForm(back, openOps); };
             Func<Action, Form> splitFactory = delegate(Action back) { return new PdfSplitForm(back, openOps); };
 
             _firstPdf = AddTool(_levelPdf, CardGlyph.Pdf, "pdf", "hub.pdf.name", "hub.pdf.desc",

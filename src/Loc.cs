@@ -259,6 +259,16 @@ namespace ExcelMerger
                 "Односторонний сканер обычно выдаёт оборотные стороны в обратном порядке.\n\n«Да» — брать второй документ с конца, «Нет» — по порядку.",
                 "A single-sided scanner usually produces the back sides in reverse order.\n\n“Yes” — take the second document from the end, “No” — in order.");
             A("pdf.interleave.done", "Страницы чередуются, документов: {0}", "Pages interleaved, documents: {0}");
+            // Продолжение работы над собранным файлом. Именно над РЕЗУЛЬТАТОМ: источников в
+            // объединении много, и «текущего документа» у окна нет, а собранный файл — есть.
+            A("pdf.menu.ops", "Прочие операции с собранным файлом", "More operations on the merged file");
+            A("pdf.tip.ops",
+                "Сжать собранный файл, перевести в оттенки серого, сохранить страницы картинками, извлечь текст, изменить свойства документа. Доступно после сохранения.",
+                "Compress the merged file, convert it to grayscale, save pages as images, extract the text, edit the document properties. Available after saving.");
+            A("pdf.ops.noResult.title", "Сначала соберите файл", "Assemble the file first");
+            A("pdf.ops.noResult.body",
+                "«Прочие операции» работают с одним готовым документом, а здесь их пока нет — источников несколько, а результат ещё не сохранён.\n\nНажмите «Сохранить PDF…», и этот пункт откроет собранный файл. Открыть чужой файл можно с главного экрана: раздел PDF, карточка «Прочие операции».",
+                "“More operations” work on one finished document, and there is none yet — there are several sources and the result is not saved.\n\nClick “Save PDF…” and this item will open the merged file. To work on some other file, use the start screen: the PDF section, the “More operations” card.");
             A("split.btn.print", "Печать", "Print");
             A("split.tip.print",
                 "Напечатать выделенные страницы, а если ничего не выделено — весь документ.",
@@ -679,6 +689,10 @@ namespace ExcelMerger
                 "сканера: лицевые стороны в одном файле, оборотные в другом и обычно задом " +
                 "наперёд — приложение спросит про это и разложит их по очереди. Ctrl+Z вернёт " +
                 "прежний порядок.\n" +
+                "Меню «☰» → «Прочие операции с собранным файлом» продолжает работу над тем, что " +
+                "вы только что сохранили: сжать, перевести в оттенки серого, сохранить страницы " +
+                "картинками, извлечь текст, изменить свойства. Пункт открывает соседнее окно с " +
+                "готовым файлом, поэтому искать его на диске не нужно.\n" +
                 "Флажок «Добавить пустую стр.» нужен для двусторонней печати: после документа " +
                 "с нечётным числом страниц добавляется пустая, чтобы следующий документ " +
                 "начинался с лицевой стороны листа, а не с оборота предыдущего.\n\n" +
@@ -702,6 +716,10 @@ namespace ExcelMerger
                 "single‑sided scanner produces: fronts in one file, backs in another and usually " +
                 "in reverse order — the app asks about that and lays them out in turn. Ctrl+Z puts " +
                 "the previous order back.\n" +
+                "Menu “☰” → “More operations on the merged file” continues the work on what you " +
+                "have just saved: compress it, convert it to grayscale, save pages as images, " +
+                "extract the text, edit the properties. The item opens the neighbouring window " +
+                "with the finished file, so there is nothing to look for on disk.\n" +
                 "The “Add a blank page” checkbox is for double-sided printing: a blank page is " +
                 "added after a document with an odd page count, so the next document starts on " +
                 "the front of a sheet rather than on the back of the previous one.\n\n" +

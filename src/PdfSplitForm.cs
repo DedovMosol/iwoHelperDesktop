@@ -33,9 +33,6 @@ namespace ExcelMerger
         private Button _btnPrint;
         private Label _lblHint;
         private Button _btnDo;
-        // Открыть «Прочие операции» с этим же документом. Задаёт стартовый экран (он знает все
-        // инструменты); в смоук-тестах и самопроверке его нет — кнопка тогда просто не работает.
-        private readonly Action<string> _openOps;
 
         public PdfSplitForm() : this(null) { }
 
@@ -43,7 +40,7 @@ namespace ExcelMerger
 
         public PdfSplitForm(Action showHub, Action<string> openOps) : base(showHub)
         {
-            _openOps = openOps;
+            OpsBridge = openOps; // мост в «Прочие операции» с открытым документом (см. базу)
             BuildUi();
             UpdateModeInputs();
             SyncControls();
@@ -173,8 +170,8 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnOps, Loc.T("split.tip.ops"));
             _btnOps.Click += delegate
             {
-                if (_openOps != null && _sourcePath != null)
-                    _openOps(_sourcePath);
+                if (OpsBridge != null && _sourcePath != null)
+                    OpsBridge(_sourcePath);
             };
             Controls.Add(_btnOps);
 
