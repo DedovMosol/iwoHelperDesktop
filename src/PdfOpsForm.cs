@@ -174,8 +174,7 @@ namespace ExcelMerger
             if (outPath == null)
                 return;
             string source = _sourcePath;
-            BeginOperation(Loc.T("ops.status.compressing"), 0);
-            BeginIndeterminate(Loc.T("ops.status.compressing")); // ход сжатия движок не сообщает
+            BeginUnmeasuredOperation(Loc.T("ops.status.compressing")); // ход сжатия движок не сообщает
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
@@ -189,7 +188,7 @@ namespace ExcelMerger
                 bool smaller = shrank;
                 OnUi(delegate
                 {
-                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("ops.err.convertFailed")))
+                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("ops.err.compressFailed")))
                         return;
                     // Копия создана в любом случае — она и есть то, о чём просили. Но если файл
                     // уже оптимизирован и меньше не стал, молчать нельзя: человек ждал сжатия.
@@ -215,7 +214,7 @@ namespace ExcelMerger
                 Loc.T(mode == PdfConvertMode.Grayscale ? "ops.suffix.gray" : "ops.suffix.repaired"));
             if (outPath == null)
                 return;
-            BeginOperation(Loc.T("ops.status.converting"), 0);
+            BeginUnmeasuredOperation(Loc.T("ops.status.converting")); // движок о ходе не сообщает
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
@@ -393,7 +392,7 @@ namespace ExcelMerger
             if (outPath == null)
                 return;
             string source = _sourcePath;
-            BeginOperation(Loc.T("ops.status.savingMeta"), 0);
+            BeginUnmeasuredOperation(Loc.T("ops.status.savingMeta")); // одна запись, шагов нет
             Ui.RunWorker(delegate()
             {
                 Exception error = null;

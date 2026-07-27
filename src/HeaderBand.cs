@@ -66,6 +66,8 @@ namespace ExcelMerger
             int center = TextBlockCenter(Height, TitleFont.Height, Font.Height);
             foreach (Control child in _aligned)
             {
+                if (child.IsDisposed)
+                    continue; // элемент могли убрать из шапки, а список о нём ещё помнит
                 int top = center - child.Height / 2;
                 // Сравнение обязательно: присваивание внутри раскладки запускает её заново, и
                 // без этой проверки получилась бы бесконечная рекурсия.

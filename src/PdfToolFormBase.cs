@@ -514,6 +514,18 @@ namespace ExcelMerger
             BeginProgress(total, runningFormat);
         }
 
+        /// <summary>
+        /// Начать операцию, ход которой измерить НЕЛЬЗЯ: внешний движок о прогрессе не
+        /// сообщает, а разовая запись файла не делится на шаги. Полоса сразу становится
+        /// бегущей — застывшая на нуле она читается как зависшее окно, и это не догадка:
+        /// Ghostscript на большом скане работает минутами. Только UI-поток.
+        /// </summary>
+        protected void BeginUnmeasuredOperation(string statusText)
+        {
+            BeginOperation(statusText, 0);
+            BeginIndeterminate(statusText);
+        }
+
         /// <summary>Завершить фоновую операцию — единый эпилог (DRY): снять занятость, спрятать полосу, синхронизировать кнопки. Только UI-поток.</summary>
         protected void EndOperation()
         {
