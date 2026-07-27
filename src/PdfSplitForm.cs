@@ -183,6 +183,9 @@ namespace ExcelMerger
                 delegate { ConvertCopy(PdfConvertMode.Grayscale, _sourcePath); });
             root.DropDownItems.Add(gray);
             root.DropDownItems.Add(Loc.T("split.menu.repair"), null, delegate { RepairChosenFile(); });
+            root.DropDownItems.Add(new ToolStripSeparator());
+            var meta = new ToolStripMenuItem(Loc.T("split.menu.metadata"), null, delegate { EditMetadata(); });
+            root.DropDownItems.Add(meta);
 
             root.DropDownOpening += delegate
             {
@@ -190,6 +193,7 @@ namespace ExcelMerger
                 images.Enabled = ready;
                 text.Enabled = ready;
                 gray.Enabled = ready && Ghostscript.Available;
+                meta.Enabled = ready;
             };
             return root;
         }
@@ -319,6 +323,44 @@ namespace ExcelMerger
                     return;
                 ConvertCopy(PdfConvertMode.Repair, dialog.FileName);
             }
+        }
+
+        /// <summary>
+        /// Правка свойств документа. Результат пишется в НОВЫЙ файл: исходники приложение не
+        /// меняет. Пустое поле очищает свойство — так из файла убирают имя автора перед отправкой.
+        /// </summary>
+        private void EditMetadata()
+        {
+            if (Working || _sourcePath == null)
+                return;
+            PdfMetadata edited = MetadataForm.Edit(this, PdfMetadataService.Read(_sourcePath));
+            if (edited == null)
+                return; // пользователь отказался
+            string outPath;
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Filter = Loc.T("common.pdfSaveFilter");
+                dialog.FileName = Path.GetFileNameWithoutExtension(_sourcePath) + Loc.T("split.suffix.meta") + ".pdf";
+                dialog.InitialDirectory = Path.GetDirectoryName(_sourcePath);
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                outPath = dialog.FileName;
+            }
+            string source = _sourcePath;
+            BeginOperation(Loc.T("split.status.savingMeta"), 0);
+            Ui.RunWorker(delegate()
+            {
+                Exception error = null;
+                try { PdfMetadataService.Write(source, outPath, edited); }
+                catch (Exception ex) { error = ex; }
+                OnUi(delegate
+                {
+                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("split.err.metaFailed")))
+                        return;
+                    SetStatus(SuccessStatus(Loc.T("split.status.metaSaved")), Theme.OkGreen);
+                    Ui.OpenPath(outPath);
+                });
+            });
         }
 
         /// <summary>Страницы для экспорта: выбранные в сетке, а если ничего не выбрано — все.</summary>

@@ -68,7 +68,7 @@ namespace ExcelMerger
         /// не создаётся — сохранение идёт лишь в самом конце): OperationCanceledException.
         /// </summary>
         public static void Merge(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null,
-            Func<bool> cancelled = null)
+            Func<bool> cancelled = null, bool padToEven = false)
         {
             if (order == null || order.Count == 0)
                 throw new MergeException(Loc.T("err.pdf.noPages"));
@@ -76,7 +76,7 @@ namespace ExcelMerger
             if (lockError != null)
                 throw new MergeException(Loc.T("err.pdf.fileBusy"));
             EmbeddedAssemblies.Ensure();
-            MergeCore(order, outputPath, progress, cancelled);
+            MergeCore(order, outputPath, progress, cancelled, padToEven);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -113,8 +113,14 @@ namespace ExcelMerger
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void MergeCore(IList<PdfPageRef> order, string outputPath, Action<int, int> progress,
-            Func<bool> cancelled)
+            Func<bool> cancelled, bool padToEven)
         {
+            // Позиции добивочных пустых страниц считаем ЗАРАНЕЕ и по исходной нумерации:
+            // вставка по ходу сдвигала бы все последующие позиции.
+            var padAfter = new HashSet<int>();
+            if (padToEven)
+                foreach (int at in BlankPages.InsertPositions(order))
+                    padAfter.Add(at);
             // Каждый источник открывается один раз, сколько бы страниц из него ни брали.
             var sources = new Dictionary<string, PdfDocument>(StringComparer.OrdinalIgnoreCase);
             PdfDocument output = null;
@@ -122,8 +128,9 @@ namespace ExcelMerger
             {
                 output = new PdfDocument();
                 int added = 0;
-                foreach (PdfPageRef page in order)
+                for (int index = 0; index < order.Count; index++)
                 {
+                    PdfPageRef page = order[index];
                     Cancellation.ThrowIf(cancelled); // между страницами; файл ещё не создан
                     PdfDocument source;
                     string key = Path.GetFullPath(page.SourcePath);
@@ -144,6 +151,14 @@ namespace ExcelMerger
                     PdfPage copied = output.AddPage(source.Pages[page.PageIndex]);
                     if (page.Rotation != 0) // поворот пользователя поверх собственного /Rotate страницы
                         copied.Rotate = PdfPageRef.ComposeRotation(copied.Rotate, page.Rotation);
+                    // Пустая страница ПОСЛЕ документа с нечётным числом страниц: размер берём
+                    // у только что добавленной, иначе добивка выпала бы из формата пачки.
+                    if (padAfter.Contains(index + 1))
+                    {
+                        PdfPage blank = output.AddPage();
+                        blank.Width = copied.Width;
+                        blank.Height = copied.Height;
+                    }
                     added++;
                     if (progress != null)
                         progress(added, order.Count);

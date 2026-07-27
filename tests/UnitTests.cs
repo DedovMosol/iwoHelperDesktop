@@ -293,12 +293,14 @@ namespace ExcelMerger.Tests
             Run("Просмотр: Ctrl+колесо увеличивает к точке под курсором", TestPreviewZoomAnchor);
             Run("Просмотр: панорама и когда клик закрывает окно", TestPreviewPanAndClose);
             Run("Сетка: выбор чётных и нечётных страниц (нумерация с единицы)", TestSelectEveryOther);
+            Run("Добивка: позиции пустых страниц для двусторонней печати", TestBlankPagePositions);
+            Run("Добивка (живая): пустые страницы в файле и нужного размера", TestBlankPageMergeLive);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 266;
+            const int MinTests = 268;
             int total = _passed + _failed;
             if (total < MinTests)
             {
@@ -5169,6 +5171,71 @@ namespace ExcelMerger.Tests
             AssertEqual(0, PdfPageGrid.EveryOtherIndices(1, true).Length, "одна страница — чётных нет");
         }
 
+        /// <summary>
+        /// Добивка до чётного для двусторонней печати: пустая страница ставится после
+        /// документа с нечётным числом страниц, но НЕ после последнего — за ним ничего не
+        /// печатается, и лишний пустой лист был бы мусором.
+        /// </summary>
+        private static void TestBlankPagePositions()
+        {
+            // a: 3 страницы (нечёт) -> пустая после позиции 3; b: 2 (чёт) -> ничего.
+            var pages = new List<PdfPageRef>
+            {
+                PR("a", 0), PR("a", 1), PR("a", 2), PR("b", 0), PR("b", 1)
+            };
+            AssertEqual("3", string.Join(",", BlankPages.InsertPositions(pages).ConvertAll(Convert.ToString).ToArray()),
+                "пустая после нечётного документа");
+            AssertTrue(BlankPages.Needed(pages), "добивка нужна");
+
+            // Последний документ не добиваем, даже если он нечётный.
+            var tail = new List<PdfPageRef> { PR("a", 0), PR("a", 1), PR("b", 0) };
+            AssertEqual(0, BlankPages.InsertPositions(tail).Count, "последний документ не добиваем");
+            AssertTrue(!BlankPages.Needed(tail), "добивка не нужна");
+
+            // Три нечётных документа подряд: две вставки, обе по ИСХОДНОЙ нумерации.
+            var three = new List<PdfPageRef> { PR("a", 0), PR("b", 0), PR("c", 0) };
+            AssertEqual("1,2", string.Join(",", BlankPages.InsertPositions(three).ConvertAll(Convert.ToString).ToArray()),
+                "позиции считаются по исходной нумерации");
+            AssertEqual(0, BlankPages.InsertPositions(new List<PdfPageRef>()).Count, "пустой набор");
+            AssertEqual(0, BlankPages.InsertPositions(null).Count, "null не роняет");
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проверка добивки: считать позиции мало — надо убедиться, что пустые страницы
+        /// действительно попали в файл и того же размера, что соседние, иначе добивочный лист
+        /// выпал бы из формата пачки при печати.
+        /// </summary>
+        private static void TestBlankPageMergeLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerPad_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string a = Path.Combine(dir, "три.pdf"), b = Path.Combine(dir, "две.pdf");
+                MakeEmptyPagesPdf(a, 3);
+                MakeEmptyPagesPdf(b, 2);
+                var order = new List<PdfPageRef>();
+                for (int i = 0; i < 3; i++) order.Add(PR(a, i));
+                for (int i = 0; i < 2; i++) order.Add(PR(b, i));
+
+                string plain = Path.Combine(dir, "без.pdf");
+                PdfMergeService.Merge(order, plain);
+                AssertEqual(5, PdfPageCount(plain), "без добивки — пять страниц");
+
+                string padded = Path.Combine(dir, "с.pdf");
+                PdfMergeService.Merge(order, padded, null, null, true);
+                AssertEqual(6, PdfPageCount(padded), "с добивкой — шесть страниц");
+
+                using (PdfDocument doc = PdfReader.Open(padded, PdfDocumentOpenMode.InformationOnly))
+                {
+                    // Пустая встала ЧЕТВЁРТОЙ (после трёх страниц первого документа).
+                    AssertEqual(doc.Pages[2].Width.Point, doc.Pages[3].Width.Point, "ширина добивочной как у соседней");
+                    AssertEqual(doc.Pages[2].Height.Point, doc.Pages[3].Height.Point, "высота добивочной как у соседней");
+                }
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
         // ---------- Преобразования Ghostscript ----------
 
         /// <summary>
@@ -5227,6 +5294,17 @@ namespace ExcelMerger.Tests
             finally
             {
                 try { Directory.Delete(dir, true); } catch { }
+            }
+        }
+
+        /// <summary>PDF из заданного числа пустых страниц ПО ТОЧНОМУ пути.</summary>
+        private static void MakeEmptyPagesPdf(string path, int pages)
+        {
+            using (var doc = new PdfDocument())
+            {
+                for (int i = 0; i < pages; i++)
+                    doc.AddPage();
+                doc.Save(path);
             }
         }
 

@@ -180,6 +180,20 @@ namespace ExcelMerger
             // фаза называется в статусе, а полоса на это время становится бегущей.
             A("common.status.compressing", "Сжатие…", "Compressing…");
             // Полноэкранный просмотр: лупа и подгонка по окну.
+            A("pdf.chk.padEven", "Добить документы до чётного", "Pad documents to even");
+            A("pdf.tip.padEven",
+                "Для двусторонней печати: после документа с нечётным числом страниц добавляется пустая, чтобы следующий документ начинался с лицевой стороны листа.",
+                "For double-sided printing: a blank page is added after a document with an odd page count, so the next document starts on the front of a sheet.");
+            A("split.menu.metadata", "Свойства документа", "Document properties");
+            A("split.suffix.meta", "_свойства", "_properties");
+            A("split.status.savingMeta", "Запись свойств…", "Saving properties…");
+            A("split.status.metaSaved", "Свойства записаны", "Properties saved");
+            A("split.err.metaFailed", "Не удалось записать свойства", "Could not save the properties");
+            A("meta.title", "Свойства документа", "Document properties");
+            A("meta.field.title", "Заголовок", "Title");
+            A("meta.field.author", "Автор", "Author");
+            A("meta.field.subject", "Тема", "Subject");
+            A("meta.field.keywords", "Ключевые слова", "Keywords");
             A("grid.menu.selectOdd", "Выделить нечётные страницы", "Select odd pages");
             A("grid.menu.selectEven", "Выделить чётные страницы", "Select even pages");
             // Чередование страниц («Объединение PDF» → меню).
