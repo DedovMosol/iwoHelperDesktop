@@ -17,10 +17,23 @@ namespace ExcelMerger
         private NumberPromptDialog(string title, string prompt, string okText, int min, int max, int initial)
         {
             Ui.InitDialog(this, title);
-            const int margin = 16, btnW = 112, btnH = 30;
+            const int margin = 16, btnH = 30;
+
+            // Кнопки создаём ДО раскладки: ширину задаёт самая длинная подпись, а мерить её
+            // надо шрифтом самой кнопки — главная кнопка набрана крупнее и полужирным, и от
+            // прибитой константы 112 подпись «Переместить» (120 px) уходила в многоточие.
+            var cancel = new RoundedButton(false);
+            cancel.Text = Loc.T("common.cancel");
+            cancel.DialogResult = DialogResult.Cancel;
+            var ok = new RoundedButton(true);
+            ok.Text = okText;
+            ok.DialogResult = DialogResult.OK;
+            int btnW = ButtonWidth(Ui.TextWidth(cancel.Text, cancel.Font), Ui.TextWidth(ok.Text, ok.Font));
+
             // База 300 вмещает кнопки по краям; длинная подпись (например, 5-значное число
             // страниц в «до {0}») расширяет окно по замеру — статичная константа обрезала бы её.
-            int w = DialogWidth(TextRenderer.MeasureText(prompt, Font).Width, margin, 300);
+            int w = Math.Max(DialogWidth(TextRenderer.MeasureText(prompt, Font).Width, margin, 300),
+                2 * btnW + 3 * margin); // разнесённым по краям кнопкам нужно не сойтись вплотную
 
             var label = new Label();
             label.AutoSize = true;
@@ -37,17 +50,9 @@ namespace ExcelMerger
 
             int btnY = 76;
             // Кнопки разнесены по краям (как в MessageForm): «Отмена» слева, действие справа.
-            // Ширина 112 вмещает самую длинную подпись («Переместить» ≈ 85 px) без обрезки.
-            var cancel = new RoundedButton(false);
-            cancel.Text = Loc.T("common.cancel");
             cancel.SetBounds(MessageForm.ButtonX(0, 2, w, btnW, margin), btnY, btnW, btnH);
-            cancel.DialogResult = DialogResult.Cancel;
             Controls.Add(cancel);
-
-            var ok = new RoundedButton(true);
-            ok.Text = okText;
             ok.SetBounds(MessageForm.ButtonX(1, 2, w, btnW, margin), btnY, btnW, btnH);
-            ok.DialogResult = DialogResult.OK;
             Controls.Add(ok);
 
             ClientSize = new Size(w, btnY + btnH + margin);
@@ -66,6 +71,19 @@ namespace ExcelMerger
         internal static int DialogWidth(int promptWidth, int margin, int minWidth)
         {
             return Math.Max(minWidth, promptWidth + 2 * margin);
+        }
+
+        /// <summary>
+        /// Ширина обеих кнопок: обе одинаковы (они стоят по краям одной строки) и вмещают
+        /// самую длинную подпись с полями, которые рисует <see cref="RoundedButton"/>.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static int ButtonWidth(int cancelWidth, int okWidth)
+        {
+            const int minWidth = 112;
+            int text = Math.Max(cancelWidth, okWidth);
+            int need = text + 2 * RoundedButton.TextPadFor(minWidth);
+            return need < minWidth ? minWidth : need;
         }
 
         /// <summary>Показать диалог; вернуть число в [min..max] или -1 при отмене.</summary>

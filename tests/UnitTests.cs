@@ -263,6 +263,7 @@ namespace ExcelMerger.Tests
             Run("Диалоги: ничего не свисает из окна и контролы не наложены", TestDialogsLayoutIsSound);
             Run("Кнопка: радиус и поле подписи считаются от размера", TestRoundedButtonMetrics);
             Run("Карточка: значок, заголовок и описание стоят по центру высоты", TestCardContentCentered);
+            Run("Кнопки: ни одна подпись не обрезана многоточием", TestButtonCaptionsFit);
             Run("Хаб: разделы, «Назад» и Esc показывают свой набор карточек", TestHubNavigation);
             Run("Хаб: придержанные файлы забываются при уходе из раздела", TestHubPendingFilesCleared);
             Run("Хаб: из карточек открывается каждый инструмент, и именно свой", TestHubOpensEveryTool);
@@ -319,15 +320,22 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 287;
+            const int MinTests = 288;
             int total = _passed + _failed;
+            int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
             {
                 Console.WriteLine("ОШИБКА: тестов " + total + ", а должно быть не меньше " + MinTests +
                     " — из прогона пропала проверка.");
-                return 1;
+                code = 1;
             }
-            return _failed == 0 ? 0 : 1;
+            // Выходим ЖЁСТКО, как и само приложение (см. FastExit): живые тесты открывают
+            // настоящие окна, а те трогают WinRT, и штатная выгрузка процесса роняет access
+            // violation уже ПОСЛЕ того, как все проверки прошли. Прогон при этом выглядит
+            // зелёным, а код возврата — ненулевым, и полная пирамида встаёт на шаге, который
+            // на самом деле прошёл.
+            FastExit.Now(code);
+            return code; // недостижимо, но компилятору нужен возврат
         }
 
         // ---------- SheetNamer ----------
@@ -5060,6 +5068,36 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
+        /// Ни одна подпись кнопки не должна обрезаться на СОБСТВЕННОМ размере окна — том, каким
+        /// пользователь видит его при первом открытии. Проверяются и окна-инструменты, и
+        /// диалоги: обрезка выглядит как опечатка в программе, а найти её можно только глазами
+        /// на каждой кнопке каждого окна.
+        /// </summary>
+        private static void TestButtonCaptionsFit()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_captions_", delegate
+            {
+                var windows = new List<System.Windows.Forms.Form>(NewAllToolWindows());
+                windows.AddRange(NewAllDialogs(offenders));
+                foreach (System.Windows.Forms.Form f in windows)
+                    using (f)
+                    {
+                        string where = f.GetType().Name;
+                        try
+                        {
+                            f.Show();
+                            f.PerformLayout();
+                            CheckButtonCaptionsFit(f, where, offenders);
+                            f.Close();
+                        }
+                        catch (Exception ex) { offenders.Add(where + " — подписи: " + ex.Message); }
+                    }
+            });
+            AssertTrue(offenders.Count == 0, "подписи кнопок: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
         /// Модальные диалоги обязаны быть целыми на СВОЁМ размере: ничего не свисает из окна и
         /// никакие два элемента не наложены. Сжимать их до MinimumSize, как окна-инструменты,
         /// нельзя — он у них не задан и равен нулю: «О программе» схлопывается в 136×39, и все
@@ -5225,6 +5263,32 @@ namespace ExcelMerger.Tests
                 for (int j = i + 1; j < buttons.Count; j++)
                     if (buttons[i].Bounds.IntersectsWith(buttons[j].Bounds))
                         offenders.Add(where + " → " + Describe(buttons[i]) + " накрывает " + Describe(buttons[j]));
+        }
+
+        /// <summary>
+        /// Подпись кнопки обязана помещаться в кнопку. <see cref="RoundedButton"/> режет длинную
+        /// подпись многоточием, и обрезка молчалива: «Прочие операции» показывались как «Прочие
+        /// опер…» ровно до тех пор, пока окно не попало на снимок для инструкции. Меряем тем же
+        /// шрифтом и с тем же полем, каким кнопка рисует.
+        /// </summary>
+        private static void CheckButtonCaptionsFit(System.Windows.Forms.Control parent, string where,
+            List<string> offenders)
+        {
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+            {
+                CheckButtonCaptionsFit(c, where, offenders); // кнопки бывают и внутри панелей
+                var b = c as System.Windows.Forms.ButtonBase;
+                if (b == null || string.IsNullOrEmpty(b.Text) || b.Width <= 0)
+                    continue;
+                // Флажок рисует квадрат слева от подписи, а не заливку под ней — своя ширина.
+                if (b is System.Windows.Forms.CheckBox || b is System.Windows.Forms.RadioButton)
+                    continue;
+                int pad = b is RoundedButton ? RoundedButton.TextPadFor(b.Width) : 4;
+                int need = Ui.TextWidth(b.Text, b.Font) + 2 * pad; // тем же замером, что и окна
+                if (need > b.Width)
+                    offenders.Add(where + " → «" + b.Text + "» не помещается: нужно " + need +
+                        " px, а кнопка " + b.Width);
+            }
         }
 
         /// <summary>Элемент, с которым работает пользователь (а не фоновая подпись).</summary>
