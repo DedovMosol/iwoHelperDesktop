@@ -46,6 +46,8 @@ namespace ExcelMerger
         private Point _dragScroll;      // прокрутка на момент начала перетаскивания
         private bool _dragging;
         private bool _dragged;          // движение вышло за порог — это перетаскивание, а не клик
+        private bool _layingOut;        // идёт пересчёт раскладки — вложенный вход обслуживает цикл
+        private bool _layoutAgain;      // во время пересчёта пришёл запрос на ещё один виток
 
         private PagePreviewForm(PdfPageRef page, string caption, Size target, Action<int> rotate)
         {
@@ -56,12 +58,14 @@ namespace ExcelMerger
             Icon = Ui.AppIcon();
             Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             FormBorderStyle = FormBorderStyle.Sizable;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
+            // Свёртка и кнопка на панели задач — ПАРА, порознь нельзя. Окно модальное, и пока
+            // оно открыто, владелец отключён (EnableWindow(false)): свёрнутое окно без своей
+            // кнопки на панели задач вернуть было бы нечем — приложение выглядело бы зависшим.
+            MinimizeBox = true;
+            ShowInTaskbar = true;
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.None; // размер задаём в пикселях под рабочую область
             ClientSize = target;
-            MinimumSize = new Size(320, 240);
             BackColor = Color.FromArgb(37, 37, 38); // тёмная подложка — страница читается контрастно
             KeyPreview = true;
 
@@ -71,6 +75,12 @@ namespace ExcelMerger
             _viewport.Dock = DockStyle.Fill;
             _viewport.AutoScroll = true;
             _viewport.BackColor = BackColor;
+            // Область, в которой живёт страница, меняет размер не только вместе с окном: когда
+            // полосы прокрутки появляются или исчезают, она сужается и расширяется сама. Это и
+            // есть точный сигнал «пересчитать положение» — по одному лишь размеру окна центр
+            // промахивался на ширину полосы прокрутки (замер: 8 px после возврата из
+            // развёрнутого окна, потому что положение считалось, пока полоса ещё была видна).
+            _viewport.ClientSizeChanged += delegate { RelayoutImage(); };
             Controls.Add(_viewport);
 
             _picture = new PictureBox();
@@ -93,7 +103,11 @@ namespace ExcelMerger
             Controls.Add(_loading);
             _loading.BringToFront();
 
-            BuildZoomBar();
+            int barWidth = BuildZoomBar();
+            // Минимум окна — не литерал: полоса лупы шире 320 px уже при 100%, и кнопка «Печать»
+            // оставалась за краем окна, сжатого до упора. Считаем от РЕАЛЬНОЙ ширины полосы и
+            // переводим клиентский размер в оконный (рамка и заголовок у каждой темы свои).
+            MinimumSize = SizeFromClientSize(new Size(Math.Max(barWidth, S(304)), S(224)));
 
             if (_rotate != null)
                 BuildContextMenu();
@@ -255,54 +269,75 @@ namespace ExcelMerger
 
         // ---------- масштаб и панорама ----------
 
-        /// <summary>Полоса лупы внизу окна: «−», проценты, «+» и «по окну».</summary>
-        private void BuildZoomBar()
+        /// <summary>
+        /// Размер в пикселях под текущий масштаб экрана. Это окно объявлено
+        /// <see cref="AutoScaleMode.None"/> намеренно: его размер считается от рабочей области
+        /// в ФИЗИЧЕСКИХ пикселях, и авто-масштабирование домножило бы его второй раз. Но тогда
+        /// и полосу лупы приходится масштабировать самим — иначе шрифт (он задан в пунктах и
+        /// растёт вместе с экраном) перестаёт помещаться в кнопки: при 150% строка занимает
+        /// 25,9 px в кнопке высотой 24.
+        /// </summary>
+        private int S(int px)
         {
+            return px * DeviceDpi / 96;
+        }
+
+        /// <summary>
+        /// Полоса лупы внизу окна: «−», проценты, «+», «по окну» и «Печать». Возвращает
+        /// СВОЮ ширину — от неё считается минимальный размер окна, чтобы ни одна кнопка не
+        /// оказалась за краем.
+        /// </summary>
+        private int BuildZoomBar()
+        {
+            int pad = S(8), gap = S(4), h = S(24), y = S(5);
+            int stepW = S(32), pctW = S(60), wideW = S(110);
+
             var bar = new Panel();
             bar.Dock = DockStyle.Bottom;
-            bar.Height = 34;
+            bar.Height = h + 2 * y;
             bar.BackColor = Color.FromArgb(52, 52, 54);
             Controls.Add(bar);
 
-            AddZoomButton(bar, "−", 8, Loc.T("preview.tip.zoomOut"), delegate { StepZoom(-1); });
+            int x = pad;
+            AddZoomButton(bar, "−", x, y, stepW, h, Loc.T("preview.tip.zoomOut"), delegate { StepZoom(-1); });
+            x += stepW + gap;
+
             _zoomLabel = new Label();
-            _zoomLabel.SetBounds(44, 8, 60, 20);
+            _zoomLabel.SetBounds(x, y, pctW, h);
             _zoomLabel.TextAlign = ContentAlignment.MiddleCenter;
             _zoomLabel.ForeColor = Color.White;
             bar.Controls.Add(_zoomLabel);
-            AddZoomButton(bar, "+", 108, Loc.T("preview.tip.zoomIn"), delegate { StepZoom(+1); });
+            x += pctW + gap;
 
-            var print = new Button();
-            print.Text = Loc.T("preview.print");
-            print.SetBounds(264, 5, 110, 24);
-            print.FlatStyle = FlatStyle.Flat;
-            print.ForeColor = Color.White;
-            print.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 92);
-            print.Click += delegate { PrintThisPage(); };
-            bar.Controls.Add(print);
+            AddZoomButton(bar, "+", x, y, stepW, h, Loc.T("preview.tip.zoomIn"), delegate { StepZoom(+1); });
+            x += stepW + S(12); // отбивка между лупой и остальными действиями
 
-            var fit = new Button();
-            fit.Text = Loc.T("preview.fit");
-            fit.SetBounds(148, 5, 110, 24);
-            fit.FlatStyle = FlatStyle.Flat;
-            fit.ForeColor = Color.White;
-            fit.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 92);
-            fit.Click += delegate { FitToWindow(); };
-            bar.Controls.Add(fit);
+            AddBarButton(bar, Loc.T("preview.fit"), x, y, wideW, h, delegate { FitToWindow(); });
+            x += wideW + gap;
+            AddBarButton(bar, Loc.T("preview.print"), x, y, wideW, h, delegate { PrintThisPage(); });
+            return x + wideW + pad;
         }
 
-        private void AddZoomButton(Control parent, string text, int x, string tip, EventHandler onClick)
+        private void AddZoomButton(Control parent, string text, int x, int y, int w, int h,
+            string tip, EventHandler onClick)
+        {
+            Button b = AddBarButton(parent, text, x, y, w, h, onClick);
+            b.Font = Ui.Font(11f, FontStyle.Bold);
+            b.AccessibleName = tip; // «+»/«−» экранному диктору ничего не говорят
+        }
+
+        private Button AddBarButton(Control parent, string text, int x, int y, int w, int h,
+            EventHandler onClick)
         {
             var b = new Button();
             b.Text = text;
-            b.SetBounds(x, 5, 32, 24);
+            b.SetBounds(x, y, w, h);
             b.FlatStyle = FlatStyle.Flat;
             b.ForeColor = Color.White;
             b.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 92);
-            b.Font = Ui.Font(11f, FontStyle.Bold);
-            b.AccessibleName = tip;
             b.Click += onClick;
             parent.Controls.Add(b);
+            return b;
         }
 
         /// <summary>Шаг лупы кнопкой или клавишей — от центра области, там курсора нет.</summary>
@@ -339,18 +374,26 @@ namespace ExcelMerger
         /// </summary>
         private void LayoutImage(double oldScale = 0, Point anchor = default(Point))
         {
-            if (_image == null)
+            // У свёрнутого окна клиентская область нулевая: пересчёт «по окну» схлопнул бы
+            // масштаб в 100%, и после разворачивания страница вернулась бы не такой, какой её
+            // оставили. Развернётся — OnResize позовёт этот же метод заново.
+            if (_image == null || WindowState == FormWindowState.Minimized)
                 return;
-            Size viewport = _viewport.ClientSize;
             if (_fitToWindow)
-                _scale = PreviewZoom.Fit(_image.Size, viewport);
+                _scale = PreviewZoom.Fit(_image.Size, _viewport.ClientSize);
 
             Size scaled = PreviewZoom.Scaled(_image.Size, _scale);
             _picture.Size = scaled;
-            // Меньше области — картинка стоит по центру, как в любом просмотрщике.
-            _picture.Location = new Point(
-                Math.Max(0, (viewport.Width - scaled.Width) / 2),
-                Math.Max(0, (viewport.Height - scaled.Height) / 2));
+            // Область меряем ПОСЛЕ смены размера картинки: полосы прокрутки могли появиться
+            // или исчезнуть. Положение — в координатах содержимого (см. PreviewZoom.Centered).
+            _picture.Location = PreviewZoom.Centered(scaled, _viewport.ClientSize,
+                _viewport.AutoScrollPosition);
+            // Прокручиваемая область считается по КРАЙНЕЙ точке содержимого, а центрирование
+            // сдвигает картинку вправо и вниз. После уменьшения окна прежняя, большая область
+            // остаётся в силе (замер: 1108×701 при клиенте 883×649), и панель показывает полосы
+            // прокрутки, которым нечего прокручивать, да ещё и отъедает ими место у страницы.
+            // Сама она эту область не пересчитывает — просим явно.
+            _viewport.PerformLayout();
 
             if (oldScale > 0)
             {
@@ -377,13 +420,53 @@ namespace ExcelMerger
             get { return _image != null && !PreviewZoom.FitsEntirely(_picture.Size, _viewport.ClientSize); }
         }
 
-        protected override void OnResize(EventArgs e)
+        /// <summary>
+        /// Пересчёт положения картинки при любом изменении размера окна. Раньше при ручном
+        /// масштабе окно только обновляло подпись, и страница оставалась там, где её застало
+        /// прежнее положение: развернёшь окно — и она прижата к левому верхнему углу, а вокруг
+        /// серое поле. Масштаб при этом трогает только режим «по окну», ручной остаётся тем,
+        /// что выбрал пользователь.
+        ///
+        /// Именно OnLayout, а не OnResize: базовая раскладка расставляет пристыкованные панели,
+        /// и до неё <c>_viewport.ClientSize</c> ещё прежний — картинка вставала по устаревшим
+        /// размерам и промахивалась мимо центра (замер: 8 px после возврата из развёрнутого
+        /// окна). Флаг снимает повторный вход: назначение размеров картинке само поднимает
+        /// раскладку.
+        /// </summary>
+        protected override void OnLayout(LayoutEventArgs levent)
         {
-            base.OnResize(e);
-            if (_fitToWindow)
-                LayoutImage(); // подгонка следует за окном, ручной масштаб — нет
-            else
-                UpdateZoomUi();
+            base.OnLayout(levent);
+            RelayoutImage();
+        }
+
+        /// <summary>
+        /// Пересчитать раскладку картинки. Назначение размеров самой картинке поднимает и
+        /// раскладку окна, и событие размера области просмотра, поэтому вход сюда бывает
+        /// вложенным — но ПРОСТО отбрасывать вложенный вызов нельзя: пересчёт сам меняет
+        /// размер области, когда полоса прокрутки появляется или исчезает, и положение надо
+        /// поправить уже под новый размер (иначе страница остаётся смещённой на ширину полосы).
+        /// Поэтому вложенный запрос не теряется, а обслуживается тем же циклом. Витков не
+        /// больше трёх: дальше это колебание, и остановиться лучше, чем крутиться вечно.
+        /// </summary>
+        private void RelayoutImage()
+        {
+            if (_layingOut)
+            {
+                _layoutAgain = true;
+                return;
+            }
+            _layingOut = true;
+            try
+            {
+                for (int pass = 0; pass < 3; pass++)
+                {
+                    _layoutAgain = false;
+                    LayoutImage();
+                    if (!_layoutAgain)
+                        break;
+                }
+            }
+            finally { _layingOut = false; }
         }
 
         // Колесо мыши. Windows отправляет его контролу С ФОКУСОМ, а не тому, над которым

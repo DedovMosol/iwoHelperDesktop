@@ -3,6 +3,71 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.17.9] — 2026-07-27
+
+### Added
+- **A start screen with two sections.** The hub now asks for a section first — **PDF** or
+  **Other tools** — and shows the tools inside it. The window keeps one size on every screen so
+  it never jumps, `Esc` and a “Back” button in the header return to the top, and “Home” inside a
+  tool comes back to **its own section** rather than the top screen, so hopping between PDF tools
+  still costs one click. Dropping PDFs onto the “PDF” card carries them inside: the header says
+  how many files are waiting and the next tool you pick opens with them.
+- **“More operations” — a window of its own** (PDF section). Six actions over a single document
+  that until now hid in a “More actions” menu inside Split, where nobody found them: compress,
+  convert to grayscale, repair a damaged file, save pages as images, extract the text to a
+  `.txt`, edit the document properties. Split keeps a one-click bridge that hands the open
+  document over, so nothing has to be opened twice.
+- **Compressing a single file** is a real operation at last. Until now compression only existed
+  as an afterthought of merging and splitting. It writes a copy — sources are never modified —
+  and if the file is already optimized it says so instead of silently returning the same bytes.
+- **The user guide ships inside the program.** “About” has a new line, “User guide: open”, which
+  unpacks the document next to the settings and opens it. It works in the portable build too and
+  needs no internet, which is the whole point of an offline app.
+- **The full-size preview can be minimized.** The minimize box and a taskbar button of its own
+  come as a pair: the preview is modal, so a minimized window without a taskbar button could not
+  have been brought back at all.
+
+### Changed
+- **“◀ Earlier” / “Later ▶” became “◀ Move left” / “Move right ▶”.** A bare “Earlier” on a button
+  reads as “in the past”, not as an action. The grid is horizontal, the arrows are on the buttons
+  and the shortcuts are `Alt+←/→`, so the axis is what the eye follows. The tooltip stays ordinal
+  — “move the page one position earlier” — because at a row wrap “to the left” stops being true.
+- **“Excel Digest” is now “Merge Excel”**, in a pair with “Merge PDF”. The *result* is still
+  called a digest: a digest is what merging workbooks produces.
+- **The language globe sits where the eye looks for it** — centred against the title and the
+  subtitle instead of hanging above them. The position is computed from the real font heights,
+  so it stays centred at any display scale.
+- **“Document properties” was laid out again.** The buttons overlapped the last field by a pixel
+  and the fields had three pixels between groups: the layout was computed from literals, while
+  WinForms sizes a single-line text box by its font and ignores the height you set. Everything is
+  measured now, the window says which file it edits, and it states that an empty field clears the
+  property.
+
+### Fixed
+- **The page in the full-size preview no longer hides in the grey.** Its position was computed in
+  the window's coordinates while the viewport was scrolled — WinForms keeps a child control in
+  *content* coordinates, so the origin drifted by the scroll on every zoom step and accumulated.
+  Enlarging or maximizing the window did not re-centre the page at all, and a stale scrollable
+  area left phantom scrollbars behind. All three are fixed, and the centring maths moved into a
+  pure function under unit tests.
+- **The language chosen in the installer reaches the program on a reinstall.** Setup used to
+  write the language straight into `settings.txt` and only when that file did not exist yet, so
+  choosing English over an existing Russian installation changed nothing. It now hands the choice
+  over in a separate one-line file that the program applies once at startup and removes. Setup
+  never touches `settings.txt`, which is what protected the non-ASCII paths inside it.
+- **Ghostscript reporting success on a file it could not read.** On a password-protected document
+  the engine exits with zero and still leaves a valid-looking two-kilobyte stub, which passed both
+  replacement policies: “Repair a damaged PDF” and “Convert to grayscale” answered with a green
+  “Done” and an empty document. The engine's own error marker in its error stream is what counts
+  now, not the exit code.
+- **The preview's zoom bar at display scales above 100 %.** The window is deliberately not
+  auto-scaled (its size is measured in physical pixels), so the bar stayed in fixed pixels while
+  the font grew with the screen: at 150 % every caption on it was clipped. The bar is measured
+  from the current scale now, and the window's minimum size comes from the bar's real width — the
+  “Print” button used to sit outside a window squeezed to its minimum.
+- Gaps between the buttons of the right-hand panels differed between Merge and PDF → Word. They
+  follow one rhythm now.
+
 ## [1.17.8] — 2026-07-27
 
 ### Added

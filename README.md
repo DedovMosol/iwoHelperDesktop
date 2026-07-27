@@ -28,9 +28,9 @@ A small, self‑contained Windows application that bundles the office tasks peop
 
 ## 🚀 Features
 
-Four tools behind one start screen — each opens in its own window, runs long tasks in the background (with a Cancel button and taskbar progress), and remembers your last settings.
+Five tools behind one start screen with two sections (PDF and everything else) — each opens in its own window, runs long tasks in the background (with a Cancel button and taskbar progress), and remembers your last settings.
 
-### 📊 Excel Digest
+### 📊 Merge Excel
 Merge the first — or every — visible sheet of every workbook in a folder (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) into one file with all formatting intact (styles, formulas, charts, pivots), plus a table of contents, optional formula→value conversion, and a Word cover note.
 ### 📄 PDF Merge
 Build one PDF from several on a thumbnail grid — reorder, rotate, cut/copy/paste pages, set an exact zoom %, preview a page, and choose a compression level. Pages are copied **as‑is**, so nothing on them is re‑rendered.
@@ -60,9 +60,13 @@ Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print
 - **Multi‑file** — add several PDFs at once (drop onto the grid to insert at a spot), reorder / cut / copy / paste / rotate / preview pages across the whole set, then convert to one document. A long conversion can be **cancelled** with no `.docx` left behind.
 - **Limits** — scanned documents aren't supported yet (a clear message is shown instantly and the file is untouched).
 </details>
+### 🛠️ More operations
+Six actions over one document, each writing a **new** file — the source is never modified: **compress**, convert **to grayscale**, **repair** a damaged file (it picks the file itself — a broken document cannot be opened into a grid), save **pages as images** (PNG or JPEG at 96–600 dpi, the selection or all of them), extract the **text to a `.txt`** (tables kept as tab‑separated cells), and edit the **document properties** (title, author, subject, keywords — an empty field clears the property, which is how the author's name is removed before sending). Split has a one‑click bridge that hands its open document over.
+
 ### More
 - 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size” via bundled **Ghostscript**: downsamples images (to 150 or 72 dpi) while keeping text and vectors — nothing is rasterized. The result message names the resolution used, and the default level leaves the file untouched.
 - 🌐 **English & Russian** — the installer opens with a flag chooser and the app follows that choice. Switch anytime from a globe on the start screen or any tool’s **☰ Menu → Язык / Language** (each option shows a flag). Generated documents stay in Russian.
+- 📘 **User guide inside the program** — **About → “User guide: open”** unpacks the document from the `.exe` and opens it. No internet needed, the portable build has it too.
 - 🔄 **Update check & statistics** — compares with GitHub Releases (opens the page, downloads nothing), plus local operation counters you can clear.
 - 🪟 **One window set, one process** — tools open as independent windows that outlive the start screen, and launching the app again just brings the running one back instead of starting a second copy.
 - 🔒 **Safe by design** — no network, no admin, not packed or obfuscated, and writes only to folders you choose and `%APPDATA%`.
@@ -71,7 +75,7 @@ Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print
 
 |  |  |
 |:--:|:--:|
-| <img src="docs/screenshots/hub.png" width="400" alt="Start screen"><br>**Start screen** — pick a tool | <img src="docs/screenshots/excel.png" width="400" alt="Excel Digest"><br>**Excel Digest** |
+| <img src="docs/screenshots/hub.png" width="400" alt="Start screen"><br>**Start screen** — pick a section, then a tool | <img src="docs/screenshots/excel.png" width="400" alt="Merge Excel"><br>**Merge Excel** |
 | <img src="docs/screenshots/pdf-merge.png" width="400" alt="PDF Merge"><br>**PDF Merge** — thumbnails & compression | <img src="docs/screenshots/pdf-split.png" width="400" alt="PDF Split"><br>**PDF Split** — modes & compression |
 | <img src="docs/screenshots/pdf-word.png" width="400" alt="PDF to Word"><br>**PDF → Word** — text & tables into an editable `.docx` | |
 
@@ -88,18 +92,18 @@ Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print
 - **Portable** — a single `iwoHelperDesktop-1.17.8.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
 - The x64 and x86 packages are functionally identical — take **x64** unless your Windows is 32‑bit.
 
-> Requirements: Windows 8.1 / 10 / 11 with .NET Framework 4.8 — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Excel Digest** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split and Compression** need neither Excel nor Word.
+> Requirements: Windows 8.1 / 10 / 11 with .NET Framework 4.8 — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split and Compression** need neither Excel nor Word.
 
 ## 🖥️ Usage
 
-Launch the app and pick a tool from the start screen — or **drop PDF files onto a card** (Merge, Split, PDF → Word) to open it with the files already loaded. Tools open as independent windows, and a **⌂ Home** button returns to the chooser. Long tasks run in the background with progress shown in the window (down to “page N of M”) and on the taskbar button — a real, per‑page bar for the PDF tools and a file list for Excel Digest, a **PDF task of five pages or more can be cancelled** with a button that replaces the action while it runs, leaving no half‑written file. An empty page grid tells you how to fill it, the status line counts your selection, and **☰ Menu → Keyboard shortcuts** lists every grid key.
+Launch the app, pick a section on the start screen (**PDF** or **Other tools**) and then a tool — or **drop PDF files onto a card** to open it with the files already loaded (dropping them on the “PDF” section carries them inside, and the next tool you pick gets them). `Esc` and **◀ Back** return to the top, and **⌂ Home** inside a tool comes back to its own section. Tools open as independent windows, and a **⌂ Home** button returns to the chooser. Long tasks run in the background with progress shown in the window (down to “page N of M”) and on the taskbar button — a real, per‑page bar for the PDF tools and a file list for Merge Excel, a **PDF task of five pages or more can be cancelled** with a button that replaces the action while it runs, leaving no half‑written file. An empty page grid tells you how to fill it, the status line counts your selection, and **☰ Menu → Keyboard shortcuts** lists every grid key.
 
-- **Excel Digest** — pick the source folder, set the output name and format, arrange or exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
+- **Merge Excel** — pick the source folder, set the output name and format, arrange or exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
 - **PDF Merge / Split** — add PDFs (button or drag‑and‑drop, including straight onto the page grid), reorder or select pages on the thumbnail grid, choose a **Compression** level if desired, and save. **Double‑click a page for a full‑size preview** — a right‑click there rotates it, and the window remembers its size (or double‑click a page number to move that page). Set the zoom **percentage** exactly in the “%” box (or the slider, Ctrl+wheel, or Ctrl+0 to reset to 100%). The last zoom, compression level, and the window's size and position come back next time. The grid speaks keyboard: Ctrl+X/C/V move or duplicate pages (cut pages stay dimmed until pasted, Esc cancels, a click in a gap places the insertion caret — hovering a gap hints it), Ctrl+Z / Ctrl+Y undo and redo edits (rotations included), Ctrl+G jumps to a page, Ctrl+Shift+«+»/«−» rotates the selection — or hover a tile and click its ↺/↻ buttons (the right‑click menu also rotates **all** pages and moves the selection **after page N…**).
 - **PDF → Word** — add one or several born‑digital PDFs (button or drag‑and‑drop — dropping onto the grid inserts at that spot), reorder with the mouse or Ctrl+X/C/V, **double‑click a page to preview it** and right‑click the preview to rotate (or double‑click its number to move it), or drop pages across all of them if needed, then **Convert to Word…** and choose the `.docx` name — they merge into one document.
 
 <details>
-<summary><b>Full Excel Digest guide, options and edge cases</b></summary>
+<summary><b>Full Merge Excel guide, options and edge cases</b></summary>
 
 1. Select the source folder (Browse… or drop it onto the window). The file count is shown immediately.
 2. Set the output name and format (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`). “Sheets” takes the first sheet of each file or all of them.
@@ -135,7 +139,7 @@ The compressing levels downsample images while keeping text and vectors (the sam
 </details>
 
 <details>
-<summary><b>Command‑line mode (Excel Digest, for scripts)</b></summary>
+<summary><b>Command‑line mode (Merge Excel, for scripts)</b></summary>
 
 ```
 iwoHelperDesktop.exe --cli <source_folder> <digest_path> [--toc] [--values] [--allsheets]

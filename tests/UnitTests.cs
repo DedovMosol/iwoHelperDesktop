@@ -203,6 +203,7 @@ namespace ExcelMerger.Tests
             Run("StampDetector: нет одного опорного слова -> не штамп", TestStampMissingAnchor);
             Run("StampDetector: опорные слова разбросаны по странице -> не штамп", TestStampScatteredRejected);
             Run("Loc: каталог полон — у каждого ключа непустые ru и en", TestLocCatalogComplete);
+            Run("Loc: каждый запрашиваемый кодом ключ есть в каталоге", TestLocKeysUsedInCodeExist);
             Run("Loc: плейсхолдеры {N} у ru и en совпадают", TestLocPlaceholders);
             Run("Loc: перетаскивание — повелительное и «окно программы»", TestLocDragHints);
             Run("Loc: Init/Current/Parse/Code", TestLocInit);
@@ -259,6 +260,11 @@ namespace ExcelMerger.Tests
 
             // ---------- 1.17.8 ----------
             Run("Окна: при минимальном размере ничего не обрезано и кнопки не наложены", TestWindowsSurviveMinimumSize);
+            Run("Диалоги: ничего не свисает из окна и контролы не наложены", TestDialogsLayoutIsSound);
+            Run("Хаб: разделы, «Назад» и Esc показывают свой набор карточек", TestHubNavigation);
+            Run("Хаб: придержанные файлы забываются при уходе из раздела", TestHubPendingFilesCleared);
+            Run("Хаб: из карточек открывается каждый инструмент, и именно свой", TestHubOpensEveryTool);
+            Run("Просмотр: окно сворачивается и имеет кнопку на панели задач", TestPreviewCanMinimize);
             Run("Окна: «Главная» последняя в обходе Tab (фокус не на ней)", TestHomeHeaderLastInTabOrder);
             Run("HeaderBand.TextRows: заголовок и подпись помещаются на любом масштабе экрана", TestHeaderRowsFitAnyDpi);
             Run("MathUtil.Median: нижняя медиана, пустой вход, вход не переставлен", TestMedian);
@@ -270,6 +276,7 @@ namespace ExcelMerger.Tests
             Run("XyCut.OrderTree: этажи и колонки деревом, AvailRight по соседней колонке", TestXyCutOrderTreeShape);
             Run("Ui.OnUi: null/без хэндла/разрушенное окно — false без исключения", TestOnUiGuard);
             Run("UserSettings: язык не затирается записью устаревшего экземпляра", TestSettingsLanguageNotClobbered);
+            Run("Установщик: язык приезжает маркером и применяется один раз", TestSetupLanguageMarker);
 
             // ---------- 1.17.8 ----------
             Run("Чередование: порядок разбирается на документы по непрерывным отрезкам", TestInterleaveRuns);
@@ -286,11 +293,13 @@ namespace ExcelMerger.Tests
             Run("Экспорт: ширина в пикселях по разрешению, расширения файлов", TestExportPixelWidth);
             Run("Ghostscript: аргументы режимов серого и починки", TestConvertArguments);
             Run("Ghostscript: политика замены мягче, чем у сжатия", TestConvertShouldReplace);
+            Run("Ghostscript: нулевой код возврата с «****» в потоке — это отказ", TestEngineSucceeded);
             Run("Ghostscript (живой): серое действительно серое, битый файл чинится", TestConvertLive);
             Run("Просмотр: ступени масштаба и проценты", TestPreviewZoomSteps);
             Run("Просмотр: вписывание по окну без растягивания мелкой страницы", TestPreviewZoomFit);
             Run("Просмотр: Ctrl+колесо увеличивает к точке под курсором", TestPreviewZoomAnchor);
             Run("Просмотр: панорама и порог перетаскивания", TestPreviewPan);
+            Run("Просмотр: положение страницы считается в координатах содержимого", TestPreviewCentered);
             Run("Сетка: выбор чётных и нечётных страниц (нумерация с единицы)", TestSelectEveryOther);
             Run("Добивка: позиции пустых страниц для двусторонней печати", TestBlankPagePositions);
             Run("Добивка (живая): пустые страницы в файле и нужного размера", TestBlankPageMergeLive);
@@ -2596,6 +2605,52 @@ namespace ExcelMerger.Tests
             AssertTrue(n > 100, "каталог непустой (ключей: " + n + ")");
         }
 
+        /// <summary>
+        /// Каждый ключ, который код запрашивает у каталога, обязан в нём быть. Промах виден
+        /// только глазами — Loc.T возвращает сам ключ, и в интерфейсе появляется «split.btn.open»
+        /// вместо надписи. Это единственная защита от опечатки при переименовании ключей, а
+        /// переименования случаются: в 1.17.9 строки одного открытого документа переехали из
+        /// «split.*» в «common.*», а шесть операций — в «ops.*».
+        ///
+        /// Исходники ищем от каталога сборки: тесты компилируются вместе с src и всегда лежат
+        /// внутри репозитория. Не нашли — это ОШИБКА, а не повод промолчать: проверка, которая
+        /// сама себя отключает, зеленеет ничего не проверив.
+        /// </summary>
+        private static void TestLocKeysUsedInCodeExist()
+        {
+            string dir = SourceDir();
+            AssertTrue(dir != null, "каталог src не найден рядом с тестами");
+            var missing = new List<string>();
+            int checked_ = 0;
+            var re = new System.Text.RegularExpressions.Regex(
+                "Loc\\.T\\(\"([^\"]+)\"\\)", System.Text.RegularExpressions.RegexOptions.Compiled);
+            foreach (string file in Directory.GetFiles(dir, "*.cs"))
+                foreach (System.Text.RegularExpressions.Match m in re.Matches(File.ReadAllText(file)))
+                {
+                    string key = m.Groups[1].Value;
+                    checked_++;
+                    if (Loc.Pair(key) == null)
+                        missing.Add(Path.GetFileName(file) + ": " + key);
+                }
+            AssertTrue(checked_ > 200, "ключи в коде найдены (проверено: " + checked_ + ")");
+            AssertTrue(missing.Count == 0, "ключей нет в каталоге: " + string.Join(", ", missing.ToArray()));
+        }
+
+        /// <summary>Каталог src репозитория относительно каталога запуска тестов (bin или bin\x86).</summary>
+        private static string SourceDir()
+        {
+            string at = AppDomain.CurrentDomain.BaseDirectory;
+            for (int up = 0; up < 5 && at != null; up++)
+            {
+                string candidate = Path.Combine(at, "src");
+                if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "Loc.cs")))
+                    return candidate;
+                DirectoryInfo parent = Directory.GetParent(at);
+                at = parent == null ? null : parent.FullName;
+            }
+            return null;
+        }
+
         private static void TestLocPlaceholders()
         {
             // {0},{1}… у ru и en должны совпадать — иначе string.Format кинет на одном из языков.
@@ -2671,7 +2726,10 @@ namespace ExcelMerger.Tests
             var whitelist = new HashSet<string>
             {
                 Loc.Pair("menu.language")[1],
-                AboutForm.DonationBank
+                AboutForm.DonationBank,
+                // Подпись глобуса на стартовом экране двуязычна намеренно: её читают как раз
+                // тогда, когда язык интерфейса непонятен или выбран по ошибке.
+                Loc.Pair("lang.tooltip")[1]
             };
             var th = new System.Threading.Thread(delegate()
             {
@@ -2685,7 +2743,8 @@ namespace ExcelMerger.Tests
                     forms = new System.Windows.Forms.Form[]
                     {
                         new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back),
-                        new OcrForm(back), new StartForm(), new AboutForm(), new StatsForm()
+                        new OcrForm(back), new PdfOpsForm(back), new StartForm(),
+                        new AboutForm(), new StatsForm()
                     };
                 }
                 catch (Exception ex) { offenders.Add("ctor: " + ex.Message); return; }
@@ -2720,6 +2779,11 @@ namespace ExcelMerger.Tests
                 if (!isValue)
                 {
                     CheckCyrillic(child.Text, child.GetType().Name + ".Text", offenders, whitelist);
+                    // Подписи рисуемых вручную карточек живут НЕ в Text (там пусто), а в полях
+                    // доступности — без этой проверки заголовки стартового экрана не проверялись
+                    // на язык вообще, и английский интерфейс мог показать русскую карточку.
+                    CheckCyrillic(child.AccessibleName, child.GetType().Name + ".AccessibleName", offenders, whitelist);
+                    CheckCyrillic(child.AccessibleDescription, child.GetType().Name + ".AccessibleDescription", offenders, whitelist);
                     var combo = child as System.Windows.Forms.ComboBox;
                     if (combo != null)
                         foreach (object it in combo.Items)
@@ -4889,6 +4953,42 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
+        /// Язык, выбранный флагом в установщике, приезжает отдельным ASCII-маркером и
+        /// применяется ОДИН раз. До 1.17.9 установщик писал язык прямо в settings.txt и только
+        /// при первой установке — поэтому переустановка с другим флагом до программы не
+        /// доезжала. Здесь проверяются обе половины: маркер читается и маркер снимается.
+        /// </summary>
+        private static void TestSetupLanguageMarker()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "iwo_setuplang_" + Guid.NewGuid().ToString("N"));
+            AppPaths.SetRootForTests(root);
+            try
+            {
+                Directory.CreateDirectory(root);
+                AssertTrue(SetupLanguage.Read() == null, "без файла выбора установщика нет");
+
+                File.WriteAllText(AppPaths.SetupLanguageFile, "en");
+                AssertEqual("en", SetupLanguage.Read(), "маркер прочитан");
+
+                // Установщик пишет строками, поэтому перевод строки в конце — норма.
+                File.WriteAllText(AppPaths.SetupLanguageFile, "ru\r\n");
+                AssertEqual("ru", SetupLanguage.Read(), "перевод строки не мешает");
+
+                SetupLanguage.Consume();
+                AssertTrue(SetupLanguage.Read() == null, "снятый маркер больше не применяется");
+
+                // Чужое содержимое (правил руками, попал мусор) языком не считается.
+                File.WriteAllText(AppPaths.SetupLanguageFile, "deutsch");
+                AssertTrue(SetupLanguage.Read() == null, "неизвестный код игнорируется");
+            }
+            finally
+            {
+                AppPaths.SetRootForTests(null);
+                try { Directory.Delete(root, true); } catch { }
+            }
+        }
+
+        /// <summary>
         /// Выбранный язык обязан пережить запись настроек чужим окном: WriteAll берёт язык из
         /// ЖИВОГО Loc, а не из своего поля, ровно потому, что устаревший экземпляр однажды уже
         /// стирал выбор пользователя. Ветки zoom/compression и границ окон покрыты отдельно.
@@ -4953,6 +5053,128 @@ namespace ExcelMerger.Tests
                     }
             });
             AssertTrue(offenders.Count == 0, "при минимальном размере окна: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Модальные диалоги обязаны быть целыми на СВОЁМ размере: ничего не свисает из окна и
+        /// никакие два элемента не наложены. Сжимать их до MinimumSize, как окна-инструменты,
+        /// нельзя — он у них не задан и равен нулю: «О программе» схлопывается в 136×39, и все
+        /// девятнадцать контролов оказываются снаружи, то есть тест ловил бы не дефект, а сам
+        /// себя. Проверка нужна: наложение кнопок на поле в «Свойствах документа» прожило до
+        /// 1.17.9 именно потому, что диалоги в раскладочные тесты не входили.
+        /// </summary>
+        private static void TestDialogsLayoutIsSound()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_dialogs_", delegate
+            {
+                foreach (System.Windows.Forms.Form f in NewAllDialogs(offenders))
+                    using (f)
+                    {
+                        string where = f.GetType().Name;
+                        try
+                        {
+                            f.Show();
+                            f.PerformLayout();
+                            where += " (" + f.ClientSize.Width + "×" + f.ClientSize.Height + ")";
+                            CheckFits(f, where, offenders);
+                            CheckControlsDoNotOverlap(f, where, offenders);
+                            CheckButtonsDoNotOverlap(f, where, offenders);
+                            f.Close();
+                        }
+                        catch (Exception ex) { offenders.Add(where + " — раскладка: " + ex.Message); }
+                    }
+            });
+            AssertTrue(offenders.Count == 0, "раскладка диалогов: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Полноэкранный просмотр обязан и сворачиваться, и иметь СВОЮ кнопку на панели задач.
+        /// Это пара, порознь нельзя: окно модальное, и пока оно открыто, владелец отключён —
+        /// свёрнутое окно без кнопки на панели задач вернуть было бы нечем, а приложение
+        /// выглядело бы зависшим. Проверка дешёвая, а потеря любой из половин молчаливая.
+        /// </summary>
+        private static void TestPreviewCanMinimize()
+        {
+            bool minimize = false, taskbar = false, maximize = false;
+            string failure = null;
+            InIsolatedSettings("iwo_preview_", delegate
+            {
+                try
+                {
+                    using (var f = (System.Windows.Forms.Form)Construct(typeof(PagePreviewForm)))
+                    {
+                        minimize = f.MinimizeBox;
+                        maximize = f.MaximizeBox;
+                        taskbar = f.ShowInTaskbar;
+                    }
+                }
+                catch (Exception ex) { failure = Root(ex).Message; }
+            });
+            AssertTrue(failure == null, "окно просмотра не собралось: " + failure);
+            AssertTrue(minimize, "у просмотра есть кнопка свёртки");
+            AssertTrue(maximize, "у просмотра есть кнопка разворачивания");
+            AssertTrue(taskbar, "свёрнутый просмотр видно на панели задач (иначе его не вернуть)");
+        }
+
+        /// <summary>
+        /// Все модальные диалоги приложения. Конструкторы у них приватные (окна показываются
+        /// статическими методами), поэтому берём самый короткий конструктор и подставляем
+        /// нейтральные значения ПО ТИПАМ параметров — так проверка переживает смену сигнатуры
+        /// вместо того, чтобы разваливаться на ней.
+        /// </summary>
+        private static List<System.Windows.Forms.Form> NewAllDialogs(List<string> offenders)
+        {
+            var types = new[]
+            {
+                typeof(AboutForm), typeof(StatsForm), typeof(MetadataForm),
+                typeof(MessageForm), typeof(NumberPromptDialog)
+            };
+            var forms = new List<System.Windows.Forms.Form>();
+            foreach (Type t in types)
+            {
+                try { forms.Add((System.Windows.Forms.Form)Construct(t)); }
+                catch (Exception ex) { offenders.Add(t.Name + " — не собрался: " + Root(ex).Message); }
+            }
+            return forms;
+        }
+
+        /// <summary>Создать объект самым коротким конструктором, подставив значения по типам.</summary>
+        private static object Construct(Type t)
+        {
+            System.Reflection.ConstructorInfo best = null;
+            foreach (System.Reflection.ConstructorInfo c in t.GetConstructors(
+                         System.Reflection.BindingFlags.Instance |
+                         System.Reflection.BindingFlags.Public |
+                         System.Reflection.BindingFlags.NonPublic))
+                if (best == null || c.GetParameters().Length < best.GetParameters().Length)
+                    best = c;
+            if (best == null)
+                throw new Exception("нет конструктора");
+            System.Reflection.ParameterInfo[] ps = best.GetParameters();
+            var args = new object[ps.Length];
+            for (int i = 0; i < ps.Length; i++)
+                args[i] = Neutral(ps[i].ParameterType);
+            return best.Invoke(args);
+        }
+
+        /// <summary>Нейтральное значение параметра: текст, единица, первый элемент перечисления, пустой объект.</summary>
+        private static object Neutral(Type t)
+        {
+            if (t == typeof(string)) return "Проверка раскладки";
+            if (t.IsEnum) return Enum.GetValues(t).GetValue(0);
+            if (t == typeof(bool)) return false;
+            if (t == typeof(int)) return 1;
+            if (t.IsValueType) return Activator.CreateInstance(t);
+            // Ссылочный параметр (например PdfMetadata): null уронил бы конструктор, поэтому
+            // создаём пустой экземпляр, если это возможно.
+            try { return Activator.CreateInstance(t); }
+            catch { return null; }
+        }
+
+        private static Exception Root(Exception ex)
+        {
+            return ex.InnerException != null ? Root(ex.InnerException) : ex;
         }
 
         /// <summary>Рекурсивно: каждый контрол лежит внутри клиентской области своего родителя.</summary>
@@ -5075,7 +5297,8 @@ namespace ExcelMerger.Tests
             Action back = delegate { };
             return new System.Windows.Forms.Form[]
             {
-                new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back), new OcrForm(back)
+                new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back), new OcrForm(back),
+                new PdfOpsForm(back)
             };
         }
 
@@ -5122,10 +5345,50 @@ namespace ExcelMerger.Tests
                 AssertTrue(titleY >= 0, "заголовок не выше шапки" + at);
                 AssertTrue(titleY + titleH <= subtitleY, "заголовок не наезжает на подпись" + at);
                 AssertTrue(subtitleY + subtitleH <= band, "подпись не свисает из шапки" + at);
+
+                // Глобус языка выравнивается по центру текстового блока: он обязан оказаться
+                // внутри блока и целиком внутри шапки на любом масштабе, иначе иконка снова
+                // повиснет выше текста (как было до 1.17.9) или уедет за нижнюю грань.
+                int center = HeaderBand.TextBlockCenter(band, titleH, subtitleH);
+                AssertTrue(center > titleY && center < subtitleY + subtitleH,
+                    "центр текстового блока внутри самого блока" + at);
+                int iconH = (int)Math.Ceiling(30 * scale);
+                int iconTop = center - iconH / 2;
+                AssertTrue(iconTop >= 0 && iconTop + iconH <= band,
+                    "иконка по этому центру целиком внутри шапки" + at + " (top=" + iconTop + ", h=" + iconH + ")");
             }
         }
 
         // ---------- Масштаб просмотра ----------
+
+        /// <summary>
+        /// Положение страницы внутри прокручиваемой области. Смещение прокрутки прибавляется
+        /// как есть: WinForms хранит положение дочернего элемента в координатах СОДЕРЖИМОГО, а
+        /// AutoScrollPosition читается отрицательным. Без этой поправки начало содержимого
+        /// уползало на величину прокрутки при каждом шаге лупы, и страница пряталась в сером
+        /// поле — жалоба, с которой началась правка.
+        /// </summary>
+        private static void TestPreviewCentered()
+        {
+            var view = new System.Drawing.Size(800, 600);
+            // Мельче окна и без прокрутки — ровно по центру.
+            AssertEqual(new System.Drawing.Point(275, 200),
+                PreviewZoom.Centered(new System.Drawing.Size(250, 200), view, System.Drawing.Point.Empty),
+                "мелкая страница по центру");
+            // Крупнее окна — в начало содержимого, без отрицательных полей.
+            AssertEqual(new System.Drawing.Point(0, 0),
+                PreviewZoom.Centered(new System.Drawing.Size(1600, 1200), view, System.Drawing.Point.Empty),
+                "крупная страница от начала области");
+            // Прокрутка сдвигает НАЧАЛО содержимого: центр остаётся тем же местом страницы.
+            AssertEqual(new System.Drawing.Point(275 - 120, 200 - 340),
+                PreviewZoom.Centered(new System.Drawing.Size(250, 200), view,
+                    new System.Drawing.Point(-120, -340)),
+                "прокрутка учтена в координатах содержимого");
+            AssertEqual(new System.Drawing.Point(-120, -340),
+                PreviewZoom.Centered(new System.Drawing.Size(1600, 1200), view,
+                    new System.Drawing.Point(-120, -340)),
+                "крупная страница при прокрутке стоит ровно на смещении");
+        }
 
         private static void TestPreviewZoomSteps()
         {
@@ -5367,6 +5630,10 @@ namespace ExcelMerger.Tests
         /// Смена языка при открытом инструменте обязана оставить ГЛАВНЫЙ ЭКРАН рабочим:
         /// он пересоздаётся вместе с остальными, и если после пересборки на нём не окажется
         /// карточек или он окажется закрыт, пользователь останется без входа в инструменты.
+        ///
+        /// С 1.17.9 экран двухуровневый, поэтому проверяется ещё и РАЗДЕЛ: без его переноса
+        /// смена языка выбрасывала бы человека из «Инструментов PDF» на верхний экран — та же
+        /// по природе потеря состояния, что и уехавший за край свёрнутый хаб в 1.17.8.
         /// Пересборку зовём напрямую: обычный путь идёт через отложенный вызов и требует
         /// цикла сообщений, а проверяем мы здесь именно её результат.
         /// </summary>
@@ -5379,23 +5646,25 @@ namespace ExcelMerger.Tests
                 var ctx = new ShellContext();
                 try
                 {
-                    ctx.OpenTool("split", "Split", delegate(Action back) { return new PdfSplitForm(back); });
+                    ctx.OpenTool("split", "Split", delegate(Action back) { return new PdfSplitForm(back); }, HubLevel.Pdf);
+                    var before = HubOf(ctx) as StartForm;
+                    if (before == null) { failures.Add("главного экрана нет ещё до смены языка"); return; }
+                    before.ShowLevel(HubLevel.Pdf); // человек стоит в разделе PDF
                     Loc.Init(saved == Lang.Ru ? Lang.En : Lang.Ru); // язык уже другой, как в момент пересборки
                     typeof(ShellContext).GetMethod("RebuildOpenWindows",
                         System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                         .Invoke(ctx, null);
 
-                    System.Windows.Forms.Form hub = HubOf(ctx);
+                    var hub = HubOf(ctx) as StartForm;
                     if (hub == null || hub.IsDisposed)
                         failures.Add("после смены языка главного экрана нет");
                     else
                     {
-                        int cards = 0;
-                        foreach (System.Windows.Forms.Control c in hub.Controls)
-                            if (c is ChoiceCard)
-                                cards++;
+                        if (hub.Level != HubLevel.Pdf)
+                            failures.Add("раздел не сохранился: " + hub.Level);
+                        int cards = VisibleCards(hub);
                         if (cards != 4)
-                            failures.Add("на главном экране карточек " + cards + ", а должно быть 4");
+                            failures.Add("в разделе PDF карточек " + cards + ", а должно быть 4");
                         if (!hub.Visible)
                             failures.Add("главный экран не показан");
                     }
@@ -5408,6 +5677,243 @@ namespace ExcelMerger.Tests
                 }
             });
             AssertTrue(failures.Count == 0, "пересборка по смене языка: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>
+        /// Двухуровневый стартовый экран: переходы вперёд и назад показывают ровно свой набор
+        /// карточек, кнопка «Назад» появляется только внутри раздела, а Esc возвращает наверх.
+        /// Проверяется через настоящие клики по карточкам — иначе потерянный обработчик
+        /// (карточка есть, а нажатие ничего не делает) прошёл бы мимо.
+        /// </summary>
+        private static void TestHubNavigation()
+        {
+            var failures = new List<string>();
+            InIsolatedSettings("iwo_hub_nav_", delegate
+            {
+                using (var hub = new StartForm())
+                {
+                    hub.Show();
+                    Check(hub.Level == HubLevel.Main, "стартуем с главного уровня", failures);
+                    Check(VisibleCards(hub) == 2, "на главном две карточки разделов", failures);
+                    Check(!BackButton(hub).Visible, "на главном «Назад» не показывается", failures);
+
+                    ClickCard(FirstVisibleCard(hub)); // карточка «PDF»
+                    Check(hub.Level == HubLevel.Pdf, "клик по разделу PDF открыл его", failures);
+                    Check(VisibleCards(hub) == 4, "в разделе PDF четыре инструмента", failures);
+                    Check(BackButton(hub).Visible, "в разделе есть «Назад»", failures);
+
+                    BackButton(hub).PerformClick();
+                    Check(hub.Level == HubLevel.Main, "«Назад» вернул на главный", failures);
+
+                    // Второй раздел: карточек там пока одна, и это нормально.
+                    var cards = new List<ChoiceCard>();
+                    CollectCards(hub, cards);
+                    ClickCard(cards[1]);
+                    Check(hub.Level == HubLevel.Other, "клик по «Иному функционалу» открыл его", failures);
+                    Check(VisibleCards(hub) == 1, "в ином функционале одна карточка", failures);
+
+                    hub.ShowLevel(HubLevel.Pdf);
+                    SendEscape(hub);
+                    Check(hub.Level == HubLevel.Main, "Esc возвращает из раздела", failures);
+                    hub.Close();
+                }
+            });
+            AssertTrue(failures.Count == 0, "навигация хаба: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>
+        /// Файлы, брошенные на карточку раздела, ждут выбора инструмента — но НЕ ДОЛЬШЕ. Набор
+        /// обязан забыться при уходе из раздела: иначе он «прилипнет», и следующий клик по
+        /// карточке откроет инструмент с чужими файлами. Самая вероятная ошибка в этой схеме.
+        /// </summary>
+        private static void TestHubPendingFilesCleared()
+        {
+            var failures = new List<string>();
+            InIsolatedSettings("iwo_hub_pending_", delegate
+            {
+                using (var hub = new StartForm())
+                {
+                    hub.Show();
+                    hub.ShowLevel(HubLevel.Pdf);
+                    SetPending(hub, new[] { "a.pdf", "b.pdf" });
+                    Check(GetPending(hub) != null, "набор принят", failures);
+
+                    hub.ShowLevel(HubLevel.Main);
+                    Check(GetPending(hub) == null, "уход из раздела забывает набор", failures);
+
+                    hub.ShowLevel(HubLevel.Pdf);
+                    SetPending(hub, new[] { "a.pdf" });
+                    BackButton(hub).PerformClick();
+                    Check(GetPending(hub) == null, "«Назад» забывает набор", failures);
+                    hub.Close();
+                }
+            });
+            AssertTrue(failures.Count == 0, "придержанные файлы: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>
+        /// Из хаба обязан открываться КАЖДЫЙ инструмент, и именно свой: перепутанная фабрика
+        /// (карточка «Прочие операции», открывающая объединение) — ошибка, которую глазами
+        /// ловят в последнюю очередь. Кликаем по всем карточкам обоих разделов и сверяем типы.
+        /// </summary>
+        private static void TestHubOpensEveryTool()
+        {
+            var failures = new List<string>();
+            InIsolatedSettings("iwo_hub_tools_", delegate
+            {
+                var ctx = new ShellContext();
+                try
+                {
+                    var hub = HubOf(ctx) as StartForm;
+                    if (hub == null) { failures.Add("хаба нет"); return; }
+                    var expected = new List<Type>
+                    {
+                        typeof(PdfMergeForm), typeof(PdfSplitForm), typeof(OcrForm), typeof(PdfOpsForm)
+                    };
+                    hub.ShowLevel(HubLevel.Pdf);
+                    var cards = new List<ChoiceCard>();
+                    CollectCards(hub, cards);
+                    if (cards.Count != 4) { failures.Add("карточек в разделе PDF: " + cards.Count); return; }
+                    for (int i = 0; i < cards.Count; i++)
+                    {
+                        ClickCard(cards[i]);
+                        if (FindOpenTool(ctx, expected[i]) == null)
+                            failures.Add("карточка " + i + " не открыла " + expected[i].Name);
+                    }
+
+                    hub.ShowLevel(HubLevel.Other);
+                    cards.Clear();
+                    CollectCards(hub, cards);
+                    if (cards.Count != 1) { failures.Add("карточек в ином функционале: " + cards.Count); return; }
+                    ClickCard(cards[0]);
+                    if (FindOpenTool(ctx, typeof(MainForm)) == null)
+                        failures.Add("карточка не открыла свод Excel");
+                }
+                catch (Exception ex) { failures.Add(Root(ex).GetType().Name + ": " + Root(ex).Message); }
+                finally
+                {
+                    CloseOpenTools(ctx);
+                    try { ctx.Dispose(); } catch { }
+                }
+            });
+            AssertTrue(failures.Count == 0, "открытие инструментов из хаба: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        private static void Check(bool ok, string what, List<string> failures)
+        {
+            if (!ok)
+                failures.Add(what);
+        }
+
+        /// <summary>Нажать карточку так же, как это делает мышь (обработчик Click подписан на неё).</summary>
+        private static void ClickCard(ChoiceCard card)
+        {
+            typeof(System.Windows.Forms.Control).GetMethod("OnClick",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(card, new object[] { EventArgs.Empty });
+        }
+
+        private static void SendEscape(System.Windows.Forms.Form form)
+        {
+            typeof(System.Windows.Forms.Control).GetMethod("OnKeyDown",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(form, new object[]
+                {
+                    new System.Windows.Forms.KeyEventArgs(System.Windows.Forms.Keys.Escape)
+                });
+        }
+
+        private static ChoiceCard FirstVisibleCard(System.Windows.Forms.Control parent)
+        {
+            var cards = new List<ChoiceCard>();
+            CollectCards(parent, cards);
+            return cards.Count > 0 ? cards[0] : null;
+        }
+
+        /// <summary>Видимые карточки текущего уровня, сверху вниз и слева направо (как их видит глаз).</summary>
+        private static void CollectCards(System.Windows.Forms.Control parent, List<ChoiceCard> into)
+        {
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+            {
+                if (!c.Visible)
+                    continue;
+                var card = c as ChoiceCard;
+                if (card != null)
+                    into.Add(card);
+                else
+                    CollectCards(c, into);
+            }
+            into.Sort(delegate(ChoiceCard a, ChoiceCard b)
+            {
+                int byRow = a.Top.CompareTo(b.Top);
+                return byRow != 0 ? byRow : a.Left.CompareTo(b.Left);
+            });
+        }
+
+        private static System.Windows.Forms.Button BackButton(System.Windows.Forms.Control parent)
+        {
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+            {
+                var b = c as System.Windows.Forms.Button;
+                if (b != null && b.Text == Loc.T("hub.back"))
+                    return b;
+                System.Windows.Forms.Button inner = BackButton(c);
+                if (inner != null)
+                    return inner;
+            }
+            return null;
+        }
+
+        private static void SetPending(StartForm hub, string[] files)
+        {
+            typeof(StartForm).GetMethod("SetPending",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(hub, new object[] { files });
+        }
+
+        private static string[] GetPending(StartForm hub)
+        {
+            return (string[])typeof(StartForm).GetField("_pending",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(hub);
+        }
+
+        private static System.Windows.Forms.Form FindOpenTool(ShellContext ctx, Type type)
+        {
+            foreach (System.Windows.Forms.Form f in OpenTools(ctx))
+                if (type.IsInstanceOfType(f))
+                    return f;
+            return null;
+        }
+
+        private static List<System.Windows.Forms.Form> OpenTools(ShellContext ctx)
+        {
+            var registry = (ToolRegistry)typeof(ShellContext).GetField("_tools",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(ctx);
+            return registry.OpenForms();
+        }
+
+        private static void CloseOpenTools(ShellContext ctx)
+        {
+            foreach (System.Windows.Forms.Form f in OpenTools(ctx))
+                try { f.Close(); } catch { }
+        }
+
+        /// <summary>Сколько карточек ВИДНО на текущем уровне хаба (уровни — панели одного окна).</summary>
+        private static int VisibleCards(System.Windows.Forms.Control parent)
+        {
+            int n = 0;
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+            {
+                if (!c.Visible)
+                    continue;
+                if (c is ChoiceCard)
+                    n++;
+                else
+                    n += VisibleCards(c);
+            }
+            return n;
         }
 
         /// <summary>
@@ -5427,7 +5933,7 @@ namespace ExcelMerger.Tests
                 var ctx = new ShellContext();
                 try
                 {
-                    ctx.OpenTool("split", "Split", delegate(Action back) { return new PdfSplitForm(back); });
+                    ctx.OpenTool("split", "Split", delegate(Action back) { return new PdfSplitForm(back); }, HubLevel.Pdf);
                     System.Windows.Forms.Form hub = HubOf(ctx);
                     if (hub == null) { failures.Add("главного экрана нет ещё до смены языка"); return; }
                     hub.WindowState = System.Windows.Forms.FormWindowState.Minimized;
@@ -5532,11 +6038,59 @@ namespace ExcelMerger.Tests
 
                 AssertTrue(PdfConvert.Apply(broken, PdfConvertMode.Repair), "восстановление применено");
                 AssertEqual(1, PdfPageCount(broken), "починенный файл снова открывается");
+
+                // 3. Защищённый паролем файл движок прочитать не может, но выходит с НУЛЁМ и
+                // оставляет годную по заголовку пустую заглушку в пару килобайт. До 1.17.9 она
+                // проходила обе политики замены, и пользователь получал зелёное «Готово» с
+                // пустым документом. Проверяем именно исход: преобразование НЕ применилось и
+                // файл остался прежним, байт в байт.
+                string locked = Path.Combine(dir, "запароленный.pdf");
+                MakeProtectedPdf(locked);
+                byte[] before = File.ReadAllBytes(locked);
+                AssertTrue(!PdfConvert.Apply(locked, PdfConvertMode.Repair),
+                    "защищённый файл не считается успешно преобразованным");
+                AssertTrue(!PdfCompression.Compress(locked, CompressionLevel.Good),
+                    "и сжатым тоже не считается");
+                // Сравниваем длины как long: AssertEqual сверяет и тип, а Length у массива int.
+                AssertEqual((long)before.Length, new FileInfo(locked).Length, "файл не подменён заглушкой");
             }
             finally
             {
                 try { Directory.Delete(dir, true); } catch { }
             }
+        }
+
+        /// <summary>Одностраничный PDF с паролем на открытие: движок его прочитать не сможет.</summary>
+        private static void MakeProtectedPdf(string path)
+        {
+            using (var doc = new PdfDocument())
+            {
+                PdfPage page = doc.AddPage();
+                using (XGraphics g = XGraphics.FromPdfPage(page))
+                    g.DrawString("Проверка", new XFont("Times New Roman", 14), XBrushes.Black,
+                        new XPoint(50, 100));
+                doc.SecuritySettings.UserPassword = "1234";
+                doc.Save(path);
+            }
+        }
+
+        /// <summary>
+        /// Коду возврата Ghostscript верить нельзя: на нечитаемом файле он выходит с нулём и
+        /// оставляет заглушку. Признак отказа — «****» в потоке ошибок, и он не срабатывает
+        /// на файлах, которые движок штатно чинит (там при -dQUIET поток пуст).
+        /// </summary>
+        private static void TestEngineSucceeded()
+        {
+            AssertTrue(GsRewrite.EngineSucceeded(0, ""), "штатная работа: ноль и пустой поток");
+            AssertTrue(GsRewrite.EngineSucceeded(0, null), "поток может быть null");
+            AssertTrue(!GsRewrite.EngineSucceeded(1, ""), "ненулевой код — отказ");
+            AssertTrue(!GsRewrite.EngineSucceeded(-1, "timeout"), "таймаут — отказ");
+            AssertTrue(!GsRewrite.EngineSucceeded(0,
+                    "GPL Ghostscript 10.07.1:\n   **** This file requires a password for access."),
+                "ноль с «****» в потоке — всё равно отказ");
+            // Ровно то, что печатает движок на файле, который он чинит: при -dQUIET поток пуст,
+            // поэтому «Восстановить повреждённый PDF» не должен ловить ложный отказ.
+            AssertTrue(GsRewrite.EngineSucceeded(0, "\n"), "перевод строки не считается сообщением");
         }
 
         /// <summary>PDF из заданного числа пустых страниц ПО ТОЧНОМУ пути.</summary>

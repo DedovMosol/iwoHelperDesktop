@@ -119,6 +119,27 @@ namespace ExcelMerger
             catch { } // нет ассоциации/проводника — молча
         }
 
+        /// <summary>
+        /// Открыть файл или папку по ЯВНОМУ действию пользователя: не получилось — сказать об
+        /// этом диалогом, а не промолчать (в отличие от <see cref="OpenPath"/>, который
+        /// открывает результат операции сам собой и молчит, потому что файл в любом случае
+        /// уже создан).
+        /// </summary>
+        public static void OpenPathOrWarn(IWin32Window owner, string title, string path, bool selectInFolder = false)
+        {
+            try
+            {
+                if (selectInFolder)
+                    using (Process.Start("explorer.exe", "/select,\"" + path + "\"")) { }
+                else
+                    using (Process.Start(path)) { }
+            }
+            catch (Exception ex)
+            {
+                Dialogs.Error(owner, title, Loc.T("common.err.openFailed"), ex.Message);
+            }
+        }
+
         /// <summary>Ссылка, открывающая URL в браузере по умолчанию.</summary>
         public static LinkLabel UrlLink(Control parent, string text, int x, int y, string url)
         {

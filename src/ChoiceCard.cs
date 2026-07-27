@@ -13,7 +13,11 @@ namespace ExcelMerger
         Excel,
         Pdf,
         PdfSplit,
-        Ocr
+        Ocr,
+        /// <summary>«Прочие операции» с PDF — ползунки настроек на красном листе.</summary>
+        Tools,
+        /// <summary>Раздел «Иной функционал» — плитка приложений на синем листе.</summary>
+        Other
     }
 
     /// <summary>
@@ -205,6 +209,7 @@ namespace ExcelMerger
             Color main, fold;
             if (excel) { main = Theme.Accent; fold = Theme.AccentPressed; }
             else if (_glyph == CardGlyph.Ocr) { main = Theme.WordViolet; fold = Theme.WordVioletDark; }
+            else if (_glyph == CardGlyph.Other) { main = Theme.HubBlue; fold = Theme.HubBlueDark; }
             else { main = PdfRed; fold = PdfFold; }
 
             // Координаты из примера (viewBox 24) масштабируются в прямоугольник значка.
@@ -254,6 +259,38 @@ namespace ExcelMerger
                     g.DrawLine(pen, p(15f, 16.5f), p(7f, 6.5f));   // лезвие
                     g.DrawEllipse(pen, p(7f, 15.5f).X, p(7f, 15.5f).Y, 3.4f * s, 3.4f * s);   // кольцо
                     g.DrawEllipse(pen, p(13.6f, 15.5f).X, p(13.6f, 15.5f).Y, 3.4f * s, 3.4f * s); // кольцо
+                }
+            }
+            else if (_glyph == CardGlyph.Tools)
+            {
+                // Три ползунка — общепринятый знак «настройки и прочие действия».
+                using (var pen = new Pen(Color.White, 1.6f * s))
+                using (var knob = new SolidBrush(Color.White))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    float[] rows = { 11.5f, 15f, 18.5f };
+                    float[] knobs = { 15f, 9.5f, 13f }; // ползунки на разных позициях — это регуляторы
+                    for (int i = 0; i < rows.Length; i++)
+                    {
+                        g.DrawLine(pen, p(7f, rows[i]), p(17f, rows[i]));
+                        PointF c = p(knobs[i], rows[i]);
+                        float radius = 1.7f * s;
+                        g.FillEllipse(knob, c.X - radius, c.Y - radius, 2 * radius, 2 * radius);
+                    }
+                }
+            }
+            else if (_glyph == CardGlyph.Other)
+            {
+                // Плитка из четырёх квадратов — «прочие инструменты», не про PDF.
+                using (var brush = new SolidBrush(Color.White))
+                {
+                    float side = 3.6f * s, gap = 1.6f * s;
+                    PointF start = p(8f, 11f);
+                    for (int row = 0; row < 2; row++)
+                        for (int col = 0; col < 2; col++)
+                            g.FillRectangle(brush, start.X + col * (side + gap),
+                                start.Y + row * (side + gap), side, side);
                 }
             }
             else if (_glyph == CardGlyph.Ocr)

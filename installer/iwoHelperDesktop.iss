@@ -70,7 +70,7 @@ DisableWelcomePage=no
 ; InitializeWizard/PromptLanguageByFlags), а не стандартным дропдауном Inno: он не умеет
 ; флаги. Дефолтный дропдаун выключен; язык мастера авто-определяется по системе, а при
 ; выборе другого флага setup перезапускается с /LANG=. Выбранный язык становится и языком
-; приложения по умолчанию (см. SeedLanguage) — англоязычному не выскакивает русский.
+; приложения по умолчанию (см. WriteLanguageMarker) — англоязычному не выскакивает русский.
 ShowLanguageDialog=no
 ; НЕ подхватывать язык прошлой установки (по умолчанию Inno делает именно это, запоминая его
 ; в «Inno Setup: Language» ветки удаления). Иначе однажды поставленный английский становится
@@ -101,7 +101,7 @@ LicenseFile=license_installer.txt
 
 [Languages]
 ; Английский (Default.isl) и русский. Язык выбирается своим стартовым экраном с флагами
-; и задаёт ЯЗЫК ПРИЛОЖЕНИЯ по умолчанию — [Code] сидит его в settings.txt. По умолчанию
+; и задаёт ЯЗЫК ПРИЛОЖЕНИЯ — [Code] передаёт его отдельным маркером. По умолчанию
 ; предлагается язык системы (LanguageDetectionMethod=uilanguage), а англ. стоит первым,
 ; поэтому нераспознанная локаль получает английский мастер, а не русский.
 Name: "en"; MessagesFile: "compiler:Default.isl"
@@ -156,7 +156,7 @@ const
 
 var
   // Выбор пользователя на стартовом экране. Может отличаться от языка мастера, если
-  // перезапуск не удался, поэтому язык ПРОГРАММЫ берём отсюда (см. SeedLanguage).
+  // перезапуск не удался, поэтому язык ПРОГРАММЫ берём отсюда (см. WriteLanguageMarker).
   ChosenLanguage: String;
 
 // Есть ли среди аргументов командной строки переключатель с данным префиксом (например
@@ -287,7 +287,7 @@ end;
 // режима установки Inno — раньше него кастомную форму показать нельзя: в InitializeSetup ещё нет
 // цикла сообщений, модальная форма не держится). Если выбран НЕ системный язык — перезапускаем
 // setup с /LANG= И тем же режимом установки (/ALLUSERS|/CURRENTUSER, чтобы диалог режима не
-// повторялся): весь мастер и приложение (см. SeedLanguage) получат выбранный язык. Пропуск —
+// повторялся): весь мастер и приложение (см. WriteLanguageMarker) получат выбранный язык. Пропуск —
 // тихая установка и уже перезапущенный экземпляр.
 procedure InitializeWizard();
 var
@@ -322,35 +322,44 @@ begin
     MsgBox(CustomMessage('LangSwitchFailed'), mbInformation, MB_OK);
 end;
 
-// Записать язык приложения по умолчанию из выбранного языка мастера в settings.txt
-// (%APPDATA%\iwo Helper Desktop). Приложение читает эту строку при старте — так язык
-// установки становится языком интерфейса. Пишем ТОЛЬКО при ПЕРВОЙ установке (файла ещё
-// нет): единственную ASCII-строку language=xx. Перезаписывать существующий файл нельзя —
-// Inno читает/пишет его в системной кодировке (ANSI), а .NET пишет UTF-8, поэтому
-// read-modify-write испортил бы НЕ-ASCII содержимое (кириллические пути в lastInputFolder).
-// Если файл уже есть — язык задан приложением или прошлой установкой, не трогаем.
-procedure SeedLanguage();
+// Выбирал ли пользователь язык ЯВНО. Два случая, и второй легко упустить:
+//   1) в этом экземпляре нажата кнопка флага (ChosenLanguage заполнен);
+//   2) экземпляру передан /LANG= — это перезапуск ПОСЛЕ нажатия (флаги там уже не
+//      показываются, ChosenLanguage пуст), либо запуск с ключом вручную, что тоже выбор.
+// Без второго случая главный сценарий не работал бы вовсе: экземпляр, показавший флаги,
+// завершается через ExitProcess до записи, а перезапущенный считал бы, что выбора не было.
+// Закрытие окна выбора крестиком или Esc выбором НЕ считается — язык, выставленный в самой
+// программе, переустановка молча не сбрасывает.
+function LanguageChosenExplicitly(): Boolean;
+begin
+  Result := (ChosenLanguage <> '') or HasSwitch('/LANG=');
+end;
+
+// Передать выбранный язык приложению. Пишем ОТДЕЛЬНЫЙ файл в одну ASCII-строку, а не строку
+// в settings.txt: Inno читает и пишет текст в системной кодировке (ANSI), а .NET — в UTF-8,
+// поэтому правка общего файла испортила бы всё не-ASCII внутри (например кириллические пути
+// последних папок). Приложение прочитает маркер при первом запуске, применит язык, сохранит
+// его своим путём и файл уберёт (см. src\SetupLanguage.cs).
+procedure WriteLanguageMarker();
 var
-  Dir, FilePath, Code: String;
+  Dir, Code: String;
   Lines: TArrayOfString;
 begin
-  Dir := ExpandConstant('{userappdata}\iwo Helper Desktop');
-  FilePath := Dir + '\settings.txt';
-  if FileExists(FilePath) then
-    Exit; // настройки уже есть — язык задан, кодировку не рискуем
-  // Приоритет у выбора на стартовом экране: если перезапустить мастер на нём не удалось,
-  // язык мастера и выбор пользователя расходятся, и верен именно выбор.
+  if not LanguageChosenExplicitly() then
+    Exit;
   if ChosenLanguage <> '' then Code := ChosenLanguage
-  else if ActiveLanguage() = 'en' then Code := 'en'
-  else Code := 'ru';
+  else Code := ActiveLanguage();
+  if (Code <> 'ru') and (Code <> 'en') then
+    Exit; // неизвестный код — пусть приложение решает само, как при portable-запуске
+  Dir := ExpandConstant('{userappdata}\iwo Helper Desktop');
   ForceDirectories(Dir);
   SetArrayLength(Lines, 1);
-  Lines[0] := 'language=' + Code; // единственная строка, чистый ASCII
-  SaveStringsToFile(FilePath, Lines, False);
+  Lines[0] := Code;
+  SaveStringsToFile(Dir + '\setup-language.txt', Lines, False);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
-    SeedLanguage(); // язык установки → язык приложения по умолчанию
+    WriteLanguageMarker(); // язык установки → язык приложения
 end;

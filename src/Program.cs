@@ -12,13 +12,15 @@ namespace ExcelMerger
         [STAThread]
         private static int Main(string[] args)
         {
-            // Язык интерфейса — до создания окон. Явный выбор (инсталлер сидит settings.txt при
-            // установке, либо прошлый запуск сохранил) применяем как есть; первый запуск без
-            // настроек (portable-версия) берёт язык по системной локали, чтобы англоязычному не
-            // выскакивал русский.
+            // Язык интерфейса — до создания окон, по старшинству источника: выбор в установщике
+            // (одноразовый маркер), затем сохранённый прошлым запуском, затем системная локаль
+            // (первый запуск portable-версии — чтобы англоязычному не выскакивал русский).
+            // Маркер здесь только ЧИТАЕТСЯ: снимет его GUI-путь ниже, иначе служебный прогон
+            // (--selftest и прочие) съел бы выбор пользователя, ничего ему не показав.
             UserSettings startup = UserSettings.Load();
-            Loc.Init(startup.Language != null
-                ? Loc.Parse(startup.Language)
+            string setupLanguage = SetupLanguage.Read();
+            Loc.Init(setupLanguage != null ? Loc.Parse(setupLanguage)
+                : startup.Language != null ? Loc.Parse(startup.Language)
                 : Loc.DefaultForCulture(System.Globalization.CultureInfo.CurrentUICulture.Name));
             if (args.Length >= 1 && string.Equals(args[0], "--selftest", StringComparison.OrdinalIgnoreCase))
                 return RunSelfTest();
@@ -54,6 +56,14 @@ namespace ExcelMerger
             {
                 SingleInstance.SignalExisting();
                 return 0; // WinRT здесь не загружался, обычного возврата достаточно
+            }
+            if (setupLanguage != null)
+            {
+                // Выбор установщика применён: убираем маркер и переносим язык в настройки
+                // приложения штатным путём (UTF-8, прочие поля на месте). Дальше язык живёт
+                // там, и следующая смена в самой программе уже никем не перебивается.
+                SetupLanguage.Consume();
+                UserSettings.Load().Save();
             }
             Application.Run(new ShellContext()); // хаб + инструменты как независимые окна
             // Все окна закрыты, настройки/COM уже освобождены детерминированно.
@@ -129,6 +139,12 @@ namespace ExcelMerger
                 using (var ocr = new OcrForm(noop))
                 {
                     IntPtr handle = ocr.Handle;
+                    if (handle == IntPtr.Zero)
+                        return 3;
+                }
+                using (var ops = new PdfOpsForm(noop))
+                {
+                    IntPtr handle = ops.Handle;
                     if (handle == IntPtr.Zero)
                         return 3;
                 }

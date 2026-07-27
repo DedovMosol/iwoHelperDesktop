@@ -104,7 +104,7 @@ namespace ExcelMerger
                 "Ctrl+Wheel or the “%” box — zoom (Ctrl+0 — reset to 100%)");
             A("shortcuts.selectAll", "Ctrl+A — выделить все страницы", "Ctrl+A — select all pages");
             A("shortcuts.goto", "Ctrl+G — перейти к странице", "Ctrl+G — go to page");
-            A("shortcuts.move", "Alt+←/→ — переместить страницу раньше/позже", "Alt+←/→ — move the page earlier/later");
+            A("shortcuts.move", "Alt+←/→ — переместить страницу влево/вправо", "Alt+←/→ — move the page left/right");
             A("shortcuts.cutcopy", "Ctrl+X / Ctrl+C — вырезать / копировать", "Ctrl+X / Ctrl+C — cut / copy");
             A("shortcuts.paste", "Ctrl+V — вставить (по каретке или после выбранного)", "Ctrl+V — paste (at the caret or after the selection)");
             A("shortcuts.delete", "Delete — удалить выбранные; Esc — отменить вырезание", "Delete — remove selected; Esc — cancel the cut");
@@ -126,8 +126,23 @@ namespace ExcelMerger
             A("shell.toolOpen.body", "«{0}» уже запущен — открыто его окно.", "“{0}” is already running — its window is open.");
 
             // hub.* — стартовый экран (выбор инструмента)
-            A("hub.subtitle", "Выберите инструмент", "Choose a tool");
-            A("hub.excel.name", "Свод Excel", "Excel Digest");
+            A("hub.subtitle", "Выберите раздел", "Choose a section");
+            A("hub.subtitle.pdf", "Инструменты PDF", "PDF tools");
+            A("hub.subtitle.other", "Иной функционал", "Other tools");
+            A("hub.back", "◀ Назад", "◀ Back");
+            A("hub.pending", "Выберите инструмент для файлов: {0}", "Choose a tool for {0} file(s)");
+            A("hub.section.pdf.name", "PDF", "PDF");
+            A("hub.section.pdf.desc",
+                "Объединение, разделение, PDF → Word и прочие операции: сжатие, картинки, текст, оттенки серого, восстановление, свойства документа.",
+                "Merge, split, PDF → Word and more operations: compression, images, text, grayscale, repair, document properties.");
+            A("hub.section.other.name", "Иной функционал", "Other tools");
+            A("hub.section.other.desc", "Инструменты, не связанные с PDF. Пока здесь объединение книг Excel.",
+                "Tools unrelated to PDF. For now, merging Excel workbooks lives here.");
+            A("hub.other.soon", "Сюда будут добавляться инструменты, не связанные с PDF.",
+                "Tools unrelated to PDF will be added here.");
+            // Название действия — «Объединение Excel» (в пару к «Объединение PDF»), а его
+            // РЕЗУЛЬТАТ по-прежнему называется сводом: свод собирают, объединяя книги.
+            A("hub.excel.name", "Объединение Excel", "Merge Excel");
             A("hub.excel.desc",
                 "Объединить листы из нескольких файлов Excel в один свод: оглавление, замена формул значениями, сопроводительная записка Word.",
                 "Merge sheets from several Excel files into one digest: table of contents, replace formulas with values, a Word cover note.");
@@ -143,6 +158,10 @@ namespace ExcelMerger
             A("hub.ocr.desc",
                 "Извлечь текст цифрового PDF (сохранённого из Word и т.п.) в редактируемый Word (.docx). Поддержка отсканированных документов в настоящее время недоступна.",
                 "Extract the text of a born‑digital PDF (saved from Word, etc.) into an editable Word (.docx). Scanned documents are not supported yet.");
+            A("hub.ops.name", "Прочие операции", "More operations");
+            A("hub.ops.desc",
+                "Сжать документ, сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
+                "Compress a document, save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties.");
             A("hub.update", "⟳ Проверить обновления", "⟳ Check for updates");
             A("hub.about", "О программе", "About");
 
@@ -158,12 +177,29 @@ namespace ExcelMerger
             A("common.busy", "Дождитесь завершения…", "Wait for it to finish…");
             A("common.err.openFailed", "Не удалось открыть", "Could not open");
             // Общие для PDF-инструментов: перестановка/удаление страниц, диалоги выбора файлов
-            A("common.earlier", "◀ Раньше", "◀ Earlier");
-            A("common.later", "Позже ▶", "Later ▶");
+            // Подпись — по оси сетки (она горизонтальная, стрелки стоят на самих кнопках, и
+            // клавиши те же Alt+←/→), а подсказка — по порядку страниц: на переносе строки
+            // «левее» перестаёт быть правдой, а «на одну позицию раньше» верно всегда.
+            A("common.earlier", "◀ Влево", "◀ Move left");
+            A("common.later", "Вправо ▶", "Move right ▶");
             A("common.remove", "Удалить", "Remove");
-            A("common.tip.earlier", "Переместить страницу раньше (Alt+←)", "Move the page earlier (Alt+←)");
-            A("common.tip.later", "Переместить страницу позже (Alt+→)", "Move the page later (Alt+→)");
+            A("common.tip.earlier", "Переместить страницу на одну позицию раньше (Alt+←)",
+                "Move the page one position earlier (Alt+←)");
+            A("common.tip.later", "Переместить страницу на одну позицию позже (Alt+→)",
+                "Move the page one position later (Alt+→)");
             A("common.tip.remove", "Убрать выбранные страницы из вывода (Delete)", "Remove the selected pages from the output (Delete)");
+            // Общие строки инструментов ОДНОГО документа («Разделение PDF», «Прочие операции»):
+            // оба открывают один файл и показывают его страницы, поэтому тексты у них общие.
+            A("common.btn.openPdf", "Открыть PDF…", "Open PDF…");
+            A("common.tip.openPdf", "Файл также можно перетащить в окно программы",
+                "You can also drag the file onto the program window");
+            A("common.status.openPdf", "Откройте PDF — кнопкой «Открыть PDF…» или перетащите его в окно программы.",
+                "Open a PDF — with “Open PDF…” or drag it onto the program window.");
+            A("common.status.opened", "Открыт «{0}»: страниц {1}.", "Opened “{0}”: {1} pages.");
+            A("common.err.fileNotOpened", "Файл не открыт", "File not opened");
+            A("common.grid.emptyOpen", "Перетащите PDF сюда\nили нажмите «Открыть PDF…»",
+                "Drop a PDF here\nor click “Open PDF…”");
+            A("common.grid.dropOpen", "Отпустите, чтобы открыть", "Drop to open");
             A("common.pdfFilter", "Документы PDF (*.pdf)|*.pdf", "PDF documents (*.pdf)|*.pdf");
             A("common.pdfSaveFilter", "Документ PDF (*.pdf)|*.pdf", "PDF document (*.pdf)|*.pdf");
             A("common.pickPdf", "Выберите PDF-файлы", "Choose PDF files");
@@ -194,10 +230,6 @@ namespace ExcelMerger
             A("pdf.tip.padEven",
                 "Для двусторонней печати. После документа с нечётным числом страниц добавляется пустая, чтобы следующий документ начинался с новой стороны листа, а не с оборота предыдущего.",
                 "For double-sided printing. A blank page is added after a document with an odd page count, so the next document starts on a fresh side of the sheet instead of the back of the previous one.");
-            A("split.err.sameFile", "Нельзя записать поверх исходника", "Cannot write over the source");
-            A("split.err.sameFile.body",
-                "Приложение не изменяет исходные файлы. Укажите другое имя — результат появится рядом.",
-                "The app does not modify source files. Choose another name and the result will appear alongside.");
             // Подпись прямо говорит, что это про ЧАСТИ, а папку и базовое имя спросят отдельно:
             // иначе поле и окно сохранения выглядят как два способа задать одно и то же.
             A("split.lbl.template", "Как назвать части (необязательно)", "How to name the parts (optional)");
@@ -206,16 +238,13 @@ namespace ExcelMerger
                 "You choose the folder and the base name next, in the save dialog. This is only how the names of the PARTS are built from that base name. Empty — as before: the base name plus a number or a range. Right-click inserts the keywords: [BASENAME] — the base name from the save dialog, [FILENUMBER] — part number, [CURRENTPAGE] — first page of the part, [BOOKMARK] — bookmark title, [TIMESTAMP] — date and time. Hashes pad with zeros ([FILENUMBER###] = 001), a number offsets the count ([FILENUMBER10] = 11).");
             A("preview.menu.print", "Печать", "Print");
             A("preview.err.printFailed", "Не удалось напечатать", "Could not print");
-            A("split.menu.metadata", "Свойства документа", "Document properties");
-            A("split.suffix.meta", "_свойства", "_properties");
-            A("split.status.savingMeta", "Запись свойств…", "Saving properties…");
-            A("split.status.metaSaved", "Свойства записаны", "Properties saved");
-            A("split.err.metaFailed", "Не удалось записать свойства", "Could not save the properties");
             A("meta.title", "Свойства документа", "Document properties");
             A("meta.field.title", "Заголовок", "Title");
             A("meta.field.author", "Автор", "Author");
             A("meta.field.subject", "Тема", "Subject");
             A("meta.field.keywords", "Ключевые слова", "Keywords");
+            A("meta.hint.empty", "Пустое поле очищает свойство файла.",
+                "An empty field clears that property.");
             A("grid.menu.selectOdd", "Выделить нечётные страницы", "Select odd pages");
             A("grid.menu.selectEven", "Выделить чётные страницы", "Select even pages");
             // Чередование страниц («Объединение PDF» → меню).
@@ -230,40 +259,106 @@ namespace ExcelMerger
                 "Односторонний сканер обычно выдаёт оборотные стороны в обратном порядке.\n\n«Да» — брать второй документ с конца, «Нет» — по порядку.",
                 "A single-sided scanner usually produces the back sides in reverse order.\n\n“Yes” — take the second document from the end, “No” — in order.");
             A("pdf.interleave.done", "Страницы чередуются, документов: {0}", "Pages interleaved, documents: {0}");
-            // Дополнительные преобразования одного документа («Разделение PDF» → меню «Ещё»).
-            A("split.btn.more", "Доп. действия", "More actions");
             A("split.btn.print", "Печать", "Print");
             A("split.tip.print",
                 "Напечатать выделенные страницы, а если ничего не выделено — весь документ.",
                 "Print the selected pages, or the whole document if nothing is selected.");
             A("preview.print", "Печать", "Print");
-            A("split.tip.more",
-                "Сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
-                "Save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties.");
-            A("split.menu.toImages", "Сохранить страницы картинками", "Save pages as images");
-            A("split.menu.dpi", "{0} dpi", "{0} dpi");
-            A("split.menu.toText", "Извлечь текст в .txt", "Extract text to .txt");
-            A("split.menu.grayscale", "Перевести в оттенки серого", "Convert to grayscale");
-            A("split.menu.repair", "Восстановить повреждённый PDF", "Repair a damaged PDF");
-            A("split.pick.imagesDir", "Куда сохранить картинки", "Where to save the images");
-            A("split.pick.repair", "Выберите повреждённый PDF", "Choose the damaged PDF");
-            A("split.txtFilter", "Текстовый файл (*.txt)|*.txt", "Text file (*.txt)|*.txt");
-            A("split.ask.jpeg.title", "Сохранить в JPEG?", "Save as JPEG?");
-            A("split.ask.jpeg.body",
+            // Из «Разделения» шесть операций переехали в своё окно, здесь остался переход в него
+            // с уже открытым документом — чтобы не открывать файл заново.
+            A("split.btn.ops", "Прочие операции", "More operations");
+            A("split.tip.ops",
+                "Сжать, сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа. Откроется отдельное окно с этим же документом.",
+                "Compress, save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties. Opens a separate window with the same document.");
+
+            // ops.* — окно «Прочие операции» (PdfOpsForm): шесть действий над одним документом.
+            // До 1.17.9 они были спрятаны в меню «Доп. действия» внутри «Разделения PDF», где их
+            // никто не находил, а самостоятельного сжатия одного файла не было вовсе.
+            A("ops.header.subtitle", "Сжатие, картинки, текст, оттенки серого, восстановление и свойства одного документа.",
+                "Compression, images, text, grayscale, repair and properties of a single document.");
+            A("ops.pickPdf", "Выберите PDF", "Choose a PDF");
+            A("ops.group.convert", "Преобразовать документ", "Convert the document");
+            A("ops.group.extract", "Извлечь из документа", "Extract from the document");
+            A("ops.group.edit", "Правка", "Edit");
+            A("ops.btn.compress", "Сжать…", "Compress…");
+            A("ops.tip.compress",
+                "Уменьшить размер файла: копия с изображениями пониженного разрешения. Уровень выбирается в списке «Сжатие» внизу окна, текст и векторы не растрируются.",
+                "Reduce the file size: a copy with downsampled images. Choose the level in the “Compression” list at the bottom, text and vectors are never rasterized.");
+            A("ops.btn.grayscale", "В оттенки серого…", "To grayscale…");
+            A("ops.tip.grayscale", "Копия без цвета: дешевле печатать, файл обычно меньше.",
+                "A copy without colour: cheaper to print and usually smaller.");
+            A("ops.btn.repair", "Восстановить…", "Repair…");
+            A("ops.tip.repair",
+                "Перезапись документа движком чинит битую таблицу ссылок — типичный «файл повреждён». Файл выбирается отдельно: повреждённый в сетку не открывается.",
+                "Rewriting the document with the engine fixes a broken cross-reference table — the typical “file is damaged”. The file is chosen separately: a damaged one cannot be opened into the grid.");
+            A("ops.btn.images", "Страницы в картинки…", "Pages to images…");
+            A("ops.tip.images",
+                "Сохранить выделенные страницы (а если ничего не выделено — все) в PNG или JPEG выбранного разрешения.",
+                "Save the selected pages (or all of them if nothing is selected) as PNG or JPEG at the chosen resolution.");
+            A("ops.btn.text", "Текст в .txt…", "Text to .txt…");
+            A("ops.tip.text",
+                "Извлечь текстовый слой в .txt. Таблицы сохраняются: ячейки разделяются табуляцией и вставляются в таблицу.",
+                "Extract the text layer to .txt. Tables are kept: cells are separated by tabs and paste as a table.");
+            A("ops.btn.metadata", "Свойства документа…", "Document properties…");
+            A("ops.tip.metadata",
+                "Заголовок, автор, тема и ключевые слова. Результат — новый файл, исходник не меняется.",
+                "Title, author, subject and keywords. The result is a new file, the source is not modified.");
+            A("ops.menu.dpi", "{0} dpi", "{0} dpi");
+            A("ops.pick.imagesDir", "Куда сохранить картинки", "Where to save the images");
+            A("ops.pick.repair", "Выберите повреждённый PDF", "Choose the damaged PDF");
+            A("ops.txtFilter", "Текстовый файл (*.txt)|*.txt", "Text file (*.txt)|*.txt");
+            A("ops.ask.jpeg.title", "Сохранить в JPEG?", "Save as JPEG?");
+            A("ops.ask.jpeg.body",
                 "JPEG заметно компактнее, но сжимает с потерями. PNG крупнее и сохраняет страницу точно.\n\n«Да» — JPEG, «Нет» — PNG.",
                 "JPEG is much smaller but compresses with losses. PNG is larger and keeps the page exactly.\n\n“Yes” — JPEG, “No” — PNG.");
-            A("split.status.exporting", "Сохранение картинок…", "Saving images…");
-            A("split.status.exportingPage", "Сохранение: страница {0} из {1}…", "Saving: page {0} of {1}…");
-            A("split.status.extractingText", "Извлечение текста…", "Extracting text…");
-            A("split.status.exported", "Сохранено файлов: {0}", "Files saved: {0}");
-            A("split.status.converting", "Преобразование…", "Converting…");
-            A("split.status.converted", "Преобразование выполнено", "Conversion done");
-            A("split.status.convertFailed", "Преобразовать не удалось — файл оставлен без изменений.",
+            A("ops.status.exporting", "Сохранение картинок…", "Saving images…");
+            A("ops.status.exportingPage", "Сохранение: страница {0} из {1}…", "Saving: page {0} of {1}…");
+            A("ops.status.extractingText", "Извлечение текста…", "Extracting text…");
+            A("ops.status.exported", "Сохранено файлов: {0}", "Files saved: {0}");
+            A("ops.status.converting", "Преобразование…", "Converting…");
+            A("ops.status.converted", "Преобразование выполнено", "Conversion done");
+            A("ops.status.convertFailed", "Преобразовать не удалось — файл оставлен без изменений.",
                 "The conversion failed — the file was left unchanged.");
-            A("split.suffix.gray", "_серый", "_gray");
-            A("split.suffix.repaired", "_восстановленный", "_repaired");
-            A("split.err.exportFailed", "Не удалось сохранить", "Could not save");
-            A("split.err.convertFailed", "Не удалось преобразовать", "Could not convert");
+            A("ops.status.compressing", "Сжатие…", "Compressing…");
+            A("ops.status.compressed", "Сжато, изображения до {0} dpi", "Compressed, images to {0} dpi");
+            A("ops.status.notCompressed", "Файл уже оптимизирован — копия сохранена без изменений",
+                "The file is already optimized — the copy was saved unchanged");
+            A("ops.compress.pickLevel.title", "Выберите уровень сжатия", "Choose a compression level");
+            A("ops.compress.pickLevel.body",
+                "В списке «Сжатие» внизу окна выбрано «без сжатия» — сжимать нечем. Выберите «Хорошо» или «Нормально» и повторите.",
+                "The “Compression” list at the bottom is set to “no compression” — there is nothing to compress with. Choose “Good” or “Smaller” and try again.");
+            A("ops.status.savingMeta", "Запись свойств…", "Saving properties…");
+            A("ops.status.metaSaved", "Свойства записаны", "Properties saved");
+            A("ops.suffix.gray", "_серый", "_gray");
+            A("ops.suffix.repaired", "_восстановленный", "_repaired");
+            A("ops.suffix.meta", "_свойства", "_properties");
+            A("ops.suffix.compressed", "_сжатый", "_compressed");
+            A("ops.err.exportFailed", "Не удалось сохранить", "Could not save");
+            A("ops.err.convertFailed", "Не удалось преобразовать", "Could not convert");
+            A("ops.err.metaFailed", "Не удалось записать свойства", "Could not save the properties");
+            A("ops.err.sameFile", "Нельзя записать поверх исходника", "Cannot write over the source");
+            A("ops.err.sameFile.body",
+                "Приложение не изменяет исходные файлы. Укажите другое имя — результат появится рядом.",
+                "The app does not modify source files. Choose another name and the result will appear alongside.");
+            A("ops.help.body",
+                "1. Откройте PDF — кнопкой «Открыть PDF…» или перетащите файл в окно программы.\n" +
+                "2. Нажмите нужное действие в панели справа. Каждое пишет РЕЗУЛЬТАТ В НОВЫЙ ФАЙЛ — исходник остаётся как был.\n\n" +
+                "• «Сжать…» — копия с изображениями пониженного разрешения (уровень — в списке «Сжатие» внизу). Текст и векторы не растрируются, поэтому документ остаётся читаемым и после сжатия.\n" +
+                "• «В оттенки серого…» — копия без цвета: дешевле печатать.\n" +
+                "• «Восстановить…» — лечит «файл повреждён»: движок перезаписывает документ и чинит битую таблицу ссылок. Файл выбирается отдельным окном, потому что повреждённый в сетку не открывается.\n" +
+                "• «Страницы в картинки…» — выделенные страницы (или все) в PNG либо JPEG выбранного разрешения.\n" +
+                "• «Текст в .txt…» — текстовый слой документа, таблицы сохраняются ячейками через табуляцию.\n" +
+                "• «Свойства документа…» — заголовок, автор, тема, ключевые слова. Пустое поле очищает свойство: так убирают имя автора перед отправкой.\n\n" +
+                "Отсканированный документ (без текстового слоя) текста не отдаст — там нечего извлекать.",
+                "1. Open a PDF — with “Open PDF…” or drag the file onto the program window.\n" +
+                "2. Click the action you need in the panel on the right. Every one writes its RESULT INTO A NEW FILE — the source is left as it was.\n\n" +
+                "• “Compress…” — a copy with downsampled images (the level is in the “Compression” list below). Text and vectors are never rasterized, so the document stays readable after compression.\n" +
+                "• “To grayscale…” — a copy without colour: cheaper to print.\n" +
+                "• “Repair…” — cures “the file is damaged”: the engine rewrites the document and fixes a broken cross-reference table. The file is chosen in a separate dialog, because a damaged one cannot be opened into the grid.\n" +
+                "• “Pages to images…” — the selected pages (or all of them) as PNG or JPEG at the chosen resolution.\n" +
+                "• “Text to .txt…” — the text layer of the document, tables are kept as tab-separated cells.\n" +
+                "• “Document properties…” — title, author, subject, keywords. An empty field clears the property: that is how the author's name is removed before sending.\n\n" +
+                "A scanned document (without a text layer) will not give up any text — there is nothing to extract there.");
             A("preview.fit", "По окну", "Fit to window");
             A("preview.tip.zoomIn", "Увеличить (Ctrl+колесо)", "Zoom in (Ctrl+wheel)");
             A("preview.tip.zoomOut", "Уменьшить (Ctrl+колесо)", "Zoom out (Ctrl+wheel)");
@@ -424,6 +519,8 @@ namespace ExcelMerger
                 "Office tools: Excel sheet digest, merge, split and compress PDFs, " +
                 "convert a born‑digital PDF to Word (scanned documents are not supported yet).");
             A("about.author", "Автор: Dodonov Andrey (DedovMosol)", "Author: Dodonov Andrey (DedovMosol)");
+            A("about.manual", "Инструкция по работе с программой:", "User guide:");
+            A("about.manual.open", "открыть", "open");
             A("about.license", "© 2026 · Лицензия MIT", "© 2026 · MIT License");
             A("about.privacy", "Политика конфиденциальности", "Privacy Policy");
             A("about.privacyNote", "(данные не покидают ваш ПК)", "(your data never leaves your PC)");
@@ -459,8 +556,6 @@ namespace ExcelMerger
             // split.* — инструмент «Разделение PDF» (PdfSplitForm)
             A("split.header.subtitle", "Извлечение страниц из документа формата *.pdf со сжатием.",
                 "Extract pages from a *.pdf document, with compression.");
-            A("split.btn.open", "Открыть PDF…", "Open PDF…");
-            A("split.tip.open", "Файл также можно перетащить в окно программы", "You can also drag the file onto the program window");
             A("split.tip.ranges", "Номера страниц через запятую: 1-3 — с 1 по 3, 5 — одна страница, 8- — с 8 до конца.",
                 "Page numbers separated by commas: 1-3 for pages 1 to 3, 5 for a single page, 8- from page 8 to the end.");
             A("split.tip.everyN", "Документ режется на файлы по N страниц (1 — каждая страница отдельным файлом).",
@@ -475,14 +570,7 @@ namespace ExcelMerger
             A("split.chk.combine", "Объединить в один файл", "Combine into one file");
             A("split.tip.combine", "Все указанные страницы — в один PDF, а не по файлу на диапазон",
                 "All listed pages into one PDF, not one file per range");
-            A("split.status.openPdf", "Откройте PDF — кнопкой «Открыть PDF…» или перетащите его в окно программы.",
-                "Open a PDF — with “Open PDF…” or drag it onto the program window.");
             A("split.pickPdf", "Выберите PDF для разделения", "Choose a PDF to split");
-            A("split.err.fileNotOpened", "Файл не открыт", "File not opened");
-            A("split.status.opened", "Открыт «{0}»: страниц {1}.", "Opened “{0}”: {1} pages.");
-            A("split.grid.empty", "Перетащите PDF сюда\nили нажмите «Открыть PDF…»",
-                "Drop a PDF here\nor click “Open PDF…”");
-            A("split.grid.drop", "Отпустите, чтобы открыть", "Drop to open");
             A("split.hint.extract", "Выделите нужные страницы в сетке (Ctrl+A — все).",
                 "Select the pages in the grid (Ctrl+A — all).");
             A("split.hint.bookmarks", "По одному файлу на закладку верхнего уровня.",
@@ -525,10 +613,10 @@ namespace ExcelMerger
                 "(при разбиении к имени добавятся номера или метки).\n\n" +
                 "Кнопка «Печать» отправляет на принтер выделенные страницы, а если ничего не " +
                 "выделено — весь документ.\n" +
-                "Кнопка «Доп. действия» — всё остальное с этим документом: сохранение " +
-                "страниц картинками (PNG или JPEG, 96–600 dpi), извлечение текста в .txt, перевод " +
-                "в оттенки серого, восстановление повреждённого файла и правка свойств документа " +
-                "(заголовок, автор, ключевые слова). Результат всегда пишется в НОВЫЙ файл.\n\n" +
+                "Кнопка «Прочие операции» открывает соседнее окно с ЭТИМ ЖЕ документом: сжатие, " +
+                "сохранение страниц картинками (PNG или JPEG, 96–600 dpi), извлечение текста в .txt, " +
+                "перевод в оттенки серого, восстановление повреждённого файла и правка свойств " +
+                "документа (заголовок, автор, ключевые слова). Результат всегда пишется в НОВЫЙ файл.\n\n" +
                 "Страницы копируются как есть, без переконвертации. Исходный файл не изменяется; " +
                 "имена не перезаписываются (при совпадении добавляется номер).\n" +
                 "Масштаб сетки — регулятором, полем «%» (Ctrl+0 — 100%) или Ctrl+колесо. " +
@@ -551,9 +639,9 @@ namespace ExcelMerger
                 "(when splitting, numbers or labels are appended to the name).\n\n" +
                 "The “Print” button sends the selected pages to the printer, or the whole document " +
                 "if nothing is selected.\n" +
-                "The “More actions” button covers everything else you can do with this document: " +
-                "save pages as images (PNG or JPEG, 96–600 dpi), extract the text to a " +
-                ".txt, convert to grayscale, repair a damaged file and edit the document properties " +
+                "The “More operations” button opens the neighbouring window with THIS SAME document: " +
+                "compression, saving pages as images (PNG or JPEG, 96–600 dpi), extracting the text to a " +
+                ".txt, converting to grayscale, repairing a damaged file and editing the document properties " +
                 "(title, author, keywords). The result is always written to a NEW file.\n\n" +
                 "Pages are copied as‑is, without re‑conversion. The source file is not changed; " +
                 "names are not overwritten (a number is added on a clash).\n" +
@@ -580,7 +668,7 @@ namespace ExcelMerger
                 "1. Добавьте PDF-файлы — кнопкой «Добавить PDF…» или перетащите их в окно программы.\n" +
                 "2. Появится сетка миниатюр страниц. Масштаб — регулятором, полем «%» рядом " +
                 "(впишите число, Ctrl+0 или двойной клик по «%» — 100%) или Ctrl+колесо мыши.\n" +
-                "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Раньше» / «Позже ▶».\n" +
+                "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Влево» / «Вправо ▶».\n" +
                 "   Лишние страницы удаляйте кнопкой «Удалить».\n" +
                 "4. При необходимости выберите «Сжатие» (по умолчанию «Отлично» — без сжатия). " +
                 "«Хорошо»/«Нормально» уменьшают размер за счёт понижения разрешения изображений " +
@@ -603,7 +691,7 @@ namespace ExcelMerger
                 "1. Add PDF files — with “Add PDF…” or drag them onto the program window.\n" +
                 "2. A grid of page thumbnails appears. Zoom with the slider, the “%” box next to it " +
                 "(type a number, Ctrl+0 or double‑click “%” for 100%) or Ctrl+mouse wheel.\n" +
-                "3. Set the order: drag thumbnails or use “◀ Earlier” / “Later ▶”.\n" +
+                "3. Set the order: drag thumbnails or use “◀ Move left” / “Move right ▶”.\n" +
                 "   Remove pages you don’t need with “Remove”.\n" +
                 "4. Optionally choose “Compression” (default “Excellent” — no compression). " +
                 "“Good”/“Normal” shrink the size by downsampling images " +
@@ -649,7 +737,7 @@ namespace ExcelMerger
                 "1. Добавьте один или несколько PDF — кнопкой «Добавить PDF…» (можно выбрать сразу " +
                 "несколько) или перетащите их в окно программы. Страницы всех файлов показываются одной сеткой.\n" +
                 "2. При необходимости измените порядок страниц: перетащите миниатюру или выделите " +
-                "её и нажмите «◀ Раньше»/«Позже ▶» (Alt+←/→). Лишние страницы уберите из вывода " +
+                "её и нажмите «◀ Влево»/«Вправо ▶» (Alt+←/→). Лишние страницы уберите из вывода " +
                 "кнопкой «Удалить» (Delete). В Word попадут страницы в показанном порядке.\n" +
                 "3. Нажмите «Конвертировать в Word…» и укажите имя .docx — все выбранные страницы " +
                 "соберутся в один документ.\n\n" +
@@ -674,7 +762,7 @@ namespace ExcelMerger
                 "1. Add one or several PDFs — with “Add PDF…” (you can pick several at once) or by " +
                 "drag them onto the program window. Pages of all files are shown in a single grid.\n" +
                 "2. Reorder pages if needed: drag a thumbnail, or select it and click " +
-                "“◀ Earlier”/“Later ▶” (Alt+←/→). Drop pages you don’t need with " +
+                "“◀ Move left”/“Move right ▶” (Alt+←/→). Drop pages you don’t need with " +
                 "“Remove” (Delete). Word gets the pages in the order shown.\n" +
                 "3. Click “Convert to Word…” and choose a .docx name — all selected pages " +
                 "are assembled into one document.\n\n" +

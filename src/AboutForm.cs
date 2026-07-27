@@ -45,6 +45,13 @@ namespace ExcelMerger
             int y = desc.Bottom + 14;
             Ui.Label(this, Loc.T("about.author"), 24, y, Font, Theme.TextPrimary); y += 24;
 
+            // Руководство пользователя лежит ресурсом в exe и открывается отсюда: держать его
+            // только в интернете для офлайнового приложения было бы обманом.
+            Label manual = Ui.Label(this, Loc.T("about.manual"), 24, y, Font, Theme.TextPrimary);
+            LinkLabel openManual = Ui.Link(this, Loc.T("about.manual.open"), manual.Right + 6, y);
+            openManual.LinkClicked += delegate { UserManual.Open(this, Loc.T("hub.about")); };
+            y += 24;
+
             Label tg = Ui.Label(this, "Telegram:", 24, y, Font, Theme.TextPrimary);
             Ui.UrlLink(this, "t.me/i_wantout", tg.Right + 6, y, "https://t.me/i_wantout"); y += 24;
             Label gh = Ui.Label(this, "GitHub:", 24, y, Font, Theme.TextPrimary);

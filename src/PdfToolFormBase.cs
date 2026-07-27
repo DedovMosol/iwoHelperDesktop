@@ -38,7 +38,8 @@ namespace ExcelMerger
         protected bool Working { get { return _busy || _loading; } }
         // Отмена длинных операций: кнопка «Отмена» показывается поверх кнопки действия во
         // время операции от CancelPageThreshold единиц. Флаг ставит UI-поток, читает воркер.
-        private Button _actionButton;
+        private Button _actionButton;   // кнопка действия (у окна «Прочие операции» её нет)
+        private bool _cancelSlot;       // место для «Отмены» объявлено формой
         private Button _btnCancel;
         private volatile bool _cancelRequested;
         private bool _cancelOffered; // на эту операцию показана кнопка отмены (восстановить в EndProgress)
@@ -248,6 +249,13 @@ namespace ExcelMerger
 
         /// <summary>Idle-текст статуса конкретного инструмента (без выделения). Переопределяют формы.</summary>
         protected virtual string IdleStatusText() { return ""; }
+
+        /// <summary>
+        /// Имя инструмента для заголовков диалогов (реализуют формы). Объявлено здесь, а не в
+        /// промежуточных базах: заголовок нужен обеим ветвям — и инструментам, собирающим итог
+        /// из нескольких файлов, и инструментам одного открытого документа.
+        /// </summary>
+        protected abstract string ToolTitle { get; }
 
         /// <summary>
         /// Обновить статус «покоя»: счётчик выделения или idle-текст инструмента. Во время
@@ -547,6 +555,40 @@ namespace ExcelMerger
         protected void RegisterActionButton(Button b)
         {
             _actionButton = b;
+            _cancelSlot = true;
+        }
+
+        /// <summary>
+        /// Где показывать «Отмену» окну БЕЗ единственной кнопки действия («Прочие операции»:
+        /// там каждая операция — своя кнопка в панели, подменять нечего). Место то же, что у
+        /// кнопки действия остальных инструментов — правый нижний угол, чтобы отмена всегда
+        /// была там, где её станут искать.
+        ///
+        /// Кнопку создаём СРАЗУ, пусть и скрытой: ленивое создание к первой операции взяло бы
+        /// координаты, посчитанные для прежнего размера окна, а так её держит в углу якорь.
+        /// </summary>
+        protected void RegisterCancelArea(Rectangle bounds, AnchorStyles anchor)
+        {
+            _cancelSlot = true;
+            EnsureCancelButton(bounds, anchor);
+        }
+
+        /// <summary>Создать скрытую кнопку «Отмена» в заданном месте (один раз на окно).</summary>
+        private void EnsureCancelButton(Rectangle bounds, AnchorStyles anchor)
+        {
+            if (_btnCancel != null)
+                return;
+            _btnCancel = new RoundedButton(false);
+            _btnCancel.Bounds = bounds;
+            _btnCancel.Anchor = anchor;
+            _btnCancel.Visible = false;
+            _btnCancel.Click += delegate
+            {
+                _cancelRequested = true;
+                _btnCancel.Enabled = false;
+                _btnCancel.Text = Loc.T("common.canceling");
+            };
+            Controls.Add(_btnCancel);
         }
 
         /// <summary>
@@ -564,34 +606,29 @@ namespace ExcelMerger
         /// <summary>Показать/скрыть кнопку «Отмена» поверх кнопки действия (создаётся один раз по её геометрии).</summary>
         private void ShowCancelButton(bool show)
         {
-            if (_actionButton == null)
+            if (!_cancelSlot)
                 return;
             if (!show)
             {
                 _cancelOffered = false;
                 if (_btnCancel != null)
                     _btnCancel.Visible = false;
-                _actionButton.Visible = true;
+                if (_actionButton != null)
+                    _actionButton.Visible = true;
                 return;
             }
+            // У окна с кнопкой действия «Отмена» встаёт ровно на её место, и берём его ЖИВЫМ:
+            // окно могли изменить в размере с момента постройки.
+            if (_actionButton != null)
+                EnsureCancelButton(_actionButton.Bounds, _actionButton.Anchor);
             if (_btnCancel == null)
-            {
-                _btnCancel = new RoundedButton(false);
-                _btnCancel.Bounds = _actionButton.Bounds;
-                _btnCancel.Anchor = _actionButton.Anchor;
-                _btnCancel.Click += delegate
-                {
-                    _cancelRequested = true;
-                    _btnCancel.Enabled = false;
-                    _btnCancel.Text = Loc.T("common.canceling");
-                };
-                Controls.Add(_btnCancel);
-            }
+                return;
             _btnCancel.Text = Loc.T("common.cancel");
             _btnCancel.Enabled = true;
             _btnCancel.Visible = true;
             _btnCancel.BringToFront();
-            _actionButton.Visible = false;
+            if (_actionButton != null)
+                _actionButton.Visible = false; // окно без единственной кнопки действия прятать нечего
             _cancelOffered = true;
         }
 
