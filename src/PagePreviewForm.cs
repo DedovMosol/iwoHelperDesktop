@@ -204,12 +204,11 @@ namespace ExcelMerger
                     return;
                 settings = dialog.PrinterSettings;
             }
-            string path = _page.SourcePath;
-            var pages = new System.Collections.Generic.List<int> { _page.PageIndex };
+            var pages = new System.Collections.Generic.List<PdfPageRef> { _page.Clone() };
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
-                try { PdfPrintService.Print(path, pages, settings); }
+                try { PdfPrintService.Print(pages, settings); }
                 catch (Exception ex) { error = ex; }
                 Exception shown = error;
                 if (shown != null)

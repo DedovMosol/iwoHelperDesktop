@@ -46,36 +46,42 @@ namespace ExcelMerger
         /// Напечатать указанные страницы. settings уже выбраны пользователем в диалоге печати.
         /// Отмена проверяется между страницами: начатый лист дорисовывается, следующий не идёт.
         /// </summary>
-        public static void Print(string sourcePath, IList<int> pageIndexes, PrinterSettings settings,
+        public static void Print(IList<PdfPageRef> pages, PrinterSettings settings,
             Action<int, int> progress = null, Func<bool> cancelled = null)
         {
-            if (pageIndexes == null || pageIndexes.Count == 0)
+            if (pages == null || pages.Count == 0)
                 throw new MergeException(Loc.T("err.export.noPages"));
 
             using (var renderer = new PdfThumbnailRenderer())
             using (var doc = new PrintDocument())
             {
                 doc.PrinterSettings = settings;
-                doc.DocumentName = System.IO.Path.GetFileName(sourcePath);
+                doc.DocumentName = System.IO.Path.GetFileName(pages[0].SourcePath);
                 doc.OriginAtMargins = false; // печатаем по всей доступной области, а не по полям
 
-                int next = 0; // индекс в pageIndexes, а не номер страницы документа
+                int next = 0; // индекс в списке страниц, а не номер страницы документа
                 doc.PrintPage += delegate(object s, PrintPageEventArgs e)
                 {
+                    PdfPageRef ref_ = pages[next];
                     // Ширину рендера считаем от РЕАЛЬНОГО размера листа принтера, а не страницы
                     // PDF: так одинаково печатаются и A4, и нестандартные вставки.
                     int width = Math.Max(1, e.PageBounds.Width * RenderDpi / 100);
-                    using (Bitmap page = renderer.Render(sourcePath, pageIndexes[next], width))
+                    using (Bitmap page = renderer.Render(ref_.SourcePath, ref_.PageIndex, width))
                     {
                         if (page != null)
+                        {
+                            // Поворот, назначенный пользователем в сетке, обязан попасть и на
+                            // бумагу: иначе на экране страница стоит правильно, а печатается боком.
+                            if (ref_.Rotation != 0)
+                                page.RotateFlip(PageRotation.FlipFor(ref_.Rotation));
                             e.Graphics.DrawImage(page, FitToPage(page.Size, e.PageBounds));
+                        }
                     }
                     next++;
                     if (progress != null)
-                        progress(next, pageIndexes.Count);
+                        progress(next, pages.Count);
                     // Отмена — только между листами: прерывать наполовину напечатанный лист нечем.
-                    e.HasMorePages = next < pageIndexes.Count &&
-                                     (cancelled == null || !cancelled());
+                    e.HasMorePages = next < pages.Count && (cancelled == null || !cancelled());
                 };
                 doc.Print();
             }
