@@ -180,6 +180,8 @@ namespace ExcelMerger
             // фаза называется в статусе, а полоса на это время становится бегущей.
             A("common.status.compressing", "Сжатие…", "Compressing…");
             // Полноэкранный просмотр: лупа и подгонка по окну.
+            A("grid.menu.selectOdd", "Выделить нечётные страницы", "Select odd pages");
+            A("grid.menu.selectEven", "Выделить чётные страницы", "Select even pages");
             // Чередование страниц («Объединение PDF» → меню).
             A("pdf.menu.interleave", "Чередовать страницы документов", "Interleave pages of the documents");
             A("pdf.interleave.needTwo.title", "Нужно минимум два документа", "At least two documents are needed");

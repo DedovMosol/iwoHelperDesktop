@@ -21,7 +21,7 @@ namespace ExcelMerger
     /// Bitmap освобождается при закрытии, поздний результат после закрытия отбрасывается.
     /// Только UI-поток, кроме тела фонового рендера.
     /// </summary>
-    internal sealed class PagePreviewForm : Form
+    internal sealed class PagePreviewForm : Form, IMessageFilter
     {
         private const int RenderWidthCap = 1600; // верхняя граница ширины рендера (память/скорость)
 
@@ -125,6 +125,7 @@ namespace ExcelMerger
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+            Application.AddMessageFilter(this); // снимается в OnFormClosed — иначе удержит окно
             int width = Math.Min(RenderWidthCap, Math.Max(ClientSize.Width, 400));
             _worker = new Thread(delegate() { RenderInBackground(width); });
             _worker.IsBackground = true;
@@ -341,20 +342,43 @@ namespace ExcelMerger
                 UpdateZoomUi();
         }
 
-        /// <summary>
-        /// Ctrl+колесо — масштаб к точке под курсором (как в браузерах и просмотрщиках), без
-        /// Ctrl колесо прокручивает страницу штатно. Событие берём на уровне окна: колесо
-        /// приходит контролу под курсором, а он у нас не один.
-        /// </summary>
-        protected override void OnMouseWheel(MouseEventArgs e)
+        // Колесо мыши. Windows отправляет его контролу С ФОКУСОМ, а не тому, над которым
+        // курсор, поэтому обычная подписка на событие вела бы себя по-разному в зависимости
+        // от того, где сейчас фокус: над панелью с прокруткой колесо могло бы и прокручивать,
+        // и не доходить вовсе. Фильтр сообщений снимает эту зависимость: пока окно открыто,
+        // колесо над областью просмотра обрабатываем сами — с Ctrl это масштаб к точке под
+        // курсором (как в браузерах), без Ctrl обычная вертикальная прокрутка.
+        private const int WmMouseWheel = 0x020A;
+        private const int WheelNotch = 120;   // стандартный «щелчок» колеса
+        private const int ScrollPerNotch = 60; // на сколько пикселей прокручивать за щелчок
+
+        bool IMessageFilter.PreFilterMessage(ref Message m)
         {
-            if ((ModifierKeys & Keys.Control) == 0 || _image == null)
+            if (m.Msg != WmMouseWheel || _closed || _image == null)
+                return false;
+            Point screen = Cursor.Position;
+            if (!_viewport.RectangleToScreen(_viewport.ClientRectangle).Contains(screen))
+                return false; // курсор вне области просмотра — пусть обрабатывают как обычно
+            int delta = (short)((long)m.WParam >> 16);
+            Point inViewport = _viewport.PointToClient(screen);
+            if ((ModifierKeys & Keys.Control) != 0)
             {
-                base.OnMouseWheel(e);
-                return;
+                ApplyScale(PreviewZoom.Next(_scale, delta > 0 ? +1 : -1), inViewport);
+                return true;
             }
-            Point inViewport = _viewport.PointToClient(PointToScreen(e.Location));
-            ApplyScale(PreviewZoom.Next(_scale, e.Delta > 0 ? +1 : -1), inViewport);
+            ScrollBy(0, -delta * ScrollPerNotch / WheelNotch);
+            return true;
+        }
+
+        /// <summary>
+        /// Сдвинуть прокрутку на dx/dy пикселей. ВНИМАНИЕ: AutoScrollPosition ЧИТАЕТСЯ
+        /// отрицательным, а ЗАДАЁТСЯ положительным — давняя особенность WinForms.
+        /// </summary>
+        private void ScrollBy(int dx, int dy)
+        {
+            _viewport.AutoScrollPosition = new Point(
+                -_viewport.AutoScrollPosition.X + dx,
+                -_viewport.AutoScrollPosition.Y + dy);
         }
 
         private void OnSurfaceMouseDown(object sender, MouseEventArgs e)
@@ -428,6 +452,7 @@ namespace ExcelMerger
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             _closed = true;
+            Application.RemoveMessageFilter(this); // снимаем всегда: фильтр держал бы ссылку на окно
             base.OnFormClosed(e);
             _picture.Image = null; // снять ссылку до Dispose bitmap
             if (_image != null)
