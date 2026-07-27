@@ -6,19 +6,19 @@ versions follow [SemVer](https://semver.org/).
 ## [1.17.8] — 2026-07-27
 
 ### Added
-- **Printing.** A “Print…” button sits on the Split screen — select the pages you want, or none
-  for the whole document — and another one in the full-size preview, where the right-click menu
-  also offers it. Pages are rendered at 200 dpi and fitted into the sheet whole and centred:
-  stretching a page to the edges would crop the margins, which is where signatures and page
-  numbers live.
+- **Printing, on every PDF screen.** A “Print” button on Merge, Split and PDF → Word prints the
+  pages you selected, or all of them if you selected none, and the full-size preview has one too
+  alongside its right-click entry. Pages are rendered at 200 dpi and fitted into the sheet whole
+  and centred — stretching a page to the edges would crop the margins, which is where signatures
+  and page numbers live — and a rotation you set in the grid reaches the paper as well.
 - **Zoom and pan in the full-size preview.** The page you open by double-clicking a tile now
   has a magnifier: − / + buttons, `Ctrl`+wheel, a “fit to window” button and `Ctrl+0` for actual
   size. Zooming with the wheel keeps the point under the cursor in place — you magnify what you
   are looking at, not the middle of the page — and once the page is larger than the window you
   drag it with the hand cursor. `Esc` and the close button close it.
-- **Interleave the pages of several documents** (Merge → menu). This assembles the two stacks a
-  single-sided scanner produces: fronts in one file, backs in another and usually in reverse
-  order. With exactly two documents the app asks whether the second one is reversed. A single
+- **Assemble a double-sided scan** (Merge → menu). For a scanner that takes one side at a time:
+  scan the stack face up, flip it, scan again, add both files and use this item. The app asks
+  whether the second file came out in reverse and lays the pages out as 1, 2, 3, 4… A single
   `Ctrl+Z` puts the order back.
 - **Save pages as images** (Split → “More with this document”): PNG or JPEG at 96, 150, 300 or
   600 dpi, either the selected pages or all of them. The resolution is applied to each page's
@@ -34,7 +34,7 @@ versions follow [SemVer](https://semver.org/).
   `[TIMESTAMP]`. Hashes pad with zeros (`[FILENUMBER###]` → `001`) and a number offsets the
   count (`[FILENUMBER10]` → `11`). The field is optional on purpose: left empty, the parts get
   exactly the names they got before, so a new capability does not rename anyone's files.
-- **Print on both sides without a document starting on a back** (Merge → “Double-sided printing”): a
+- **Print on both sides without a document starting on a back** (Merge → “Add a blank page”): a
   blank page is added after a document with an odd page count so the next one starts on the
   front of a sheet. The last document is deliberately not padded — nothing is printed after
   it. The blanks are added when the file is written, not kept in the page grid: putting them
@@ -58,6 +58,9 @@ versions follow [SemVer](https://semver.org/).
   so there is one list and one way to reach it.
 - **The in-app instructions match the app again** — they now describe printing, the extra
   actions, the part-name template, interleaving and double-sided padding.
+- **Changing the language no longer throws every window at you.** Rebuilding the windows in the
+  new language used to bring each of them to the front and restore the minimized ones. Only the
+  window you were working in comes forward now; the rest update where they stand.
 - Everything that writes a result beside a source now refuses to write **over** it. The app
   does not modify sources, and writing a file into itself would have damaged it as well — the
   source is open for reading at that moment.

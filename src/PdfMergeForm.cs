@@ -24,6 +24,7 @@ namespace ExcelMerger
         private Button _btnDown;
         private Button _btnRemove;
         private Button _btnSave;
+        private Button _btnPrint;
         private CheckBox _chkPadEven; // добить документы до чётного числа страниц (двусторонняя печать)
 
         public PdfMergeForm() : this(null) { }
@@ -87,12 +88,17 @@ namespace ExcelMerger
             _btnRemove = AddButton(Loc.T("common.remove"), col, m + 204, 130, 30);
             _btnRemove.Click += delegate { RemoveSelected(); };
             _tips.SetToolTip(_btnRemove, Loc.T("common.tip.removePages"));
+            // Печать того, что собрано в сетке: страницы уже в нужном порядке и с поворотами,
+            // и распечатать их до сохранения — нормальный способ проверить результат.
+            _btnPrint = AddButton(Loc.T("common.btn.print"), col, m + 240, 130, 30);
+            _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
+            _tips.SetToolTip(_btnPrint, Loc.T("common.tip.print"));
 
             _chkPadEven = new AccentCheckBox();
             _chkPadEven.Text = Loc.T("pdf.chk.padEven");
             // Под кнопками и по их ширине. Подпись длиннее колонки, поэтому переносится на
             // две строки (см. AccentCheckBox) — обрезать её ради одной строки нельзя.
-            _chkPadEven.SetBounds(col, m + 248, 130, 40);
+            _chkPadEven.SetBounds(col, m + 280, 130, 40);
             _chkPadEven.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _chkPadEven.ForeColor = Theme.TextPrimary;
             _tips.SetToolTip(_chkPadEven, Loc.T("pdf.tip.padEven"));
@@ -256,6 +262,7 @@ namespace ExcelMerger
             _btnUp.Enabled = one;
             _btnDown.Enabled = one;
             _btnRemove.Enabled = !Working && _grid.SelectedCount > 0;
+            _btnPrint.Enabled = !Working && _order.Count > 0;
             _btnSave.Enabled = !Working && _order.Count > 0;
         }
     }

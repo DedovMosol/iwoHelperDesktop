@@ -179,13 +179,21 @@ namespace ExcelMerger
             // Сжатие идёт отдельным процессом (Ghostscript) и о ходе не сообщает, поэтому
             // фаза называется в статусе, а полоса на это время становится бегущей.
             A("common.status.compressing", "Сжатие…", "Compressing…");
+            A("common.status.printing", "Печать…", "Printing…");
+            A("common.status.printingPage", "Печать: страница {0} из {1}…", "Printing: page {0} of {1}…");
+            A("common.status.printed", "Отправлено на печать страниц: {0}", "Pages sent to the printer: {0}");
+            A("common.err.printFailed", "Не удалось напечатать", "Could not print");
+            A("common.btn.print", "Печать", "Print");
+            A("common.tip.print",
+                "Напечатать выделенные страницы, а если ничего не выделено — все.",
+                "Print the selected pages, or all of them if nothing is selected.");
             // Полноэкранный просмотр: лупа и подгонка по окну.
             // Подпись называет НАЗНАЧЕНИЕ, а не механику: «добить до чётного» ничего не говорит
             // тому, кто просто хочет напечатать с двух сторон. Что именно произойдёт — в подсказке.
-            A("pdf.chk.padEven", "Двусторонняя печать", "Double-sided printing");
+            A("pdf.chk.padEven", "Добавлять пустую страницу", "Add a blank page");
             A("pdf.tip.padEven",
-                "Включите, если будете печатать с двух сторон листа. После документа с нечётным числом страниц добавится пустая — иначе следующий документ начнётся на обороте предыдущего.",
-                "Turn this on if you will print on both sides of the sheet. A blank page is added after a document with an odd page count — otherwise the next document starts on the back of the previous one.");
+                "Для двусторонней печати. После документа с нечётным числом страниц добавляется пустая, чтобы следующий документ начинался с новой стороны листа, а не с оборота предыдущего.",
+                "For double-sided printing. A blank page is added after a document with an odd page count, so the next document starts on a fresh side of the sheet instead of the back of the previous one.");
             A("split.err.sameFile", "Нельзя записать поверх исходника", "Cannot write over the source");
             A("split.err.sameFile.body",
                 "Приложение не изменяет исходные файлы. Укажите другое имя — результат появится рядом.",
@@ -196,11 +204,7 @@ namespace ExcelMerger
             A("split.tip.template",
                 "Папку и базовое имя вы зададите дальше, в окне сохранения. Здесь — только как из базового имени собираются имена ЧАСТЕЙ. Пусто — как раньше: базовое имя плюс номер или диапазон. Правый клик подставляет обозначения: [BASENAME] — базовое имя из окна сохранения, [FILENUMBER] — номер части, [CURRENTPAGE] — первая страница части, [BOOKMARK] — название закладки, [TIMESTAMP] — дата и время. Решётки дополняют нулями ([FILENUMBER###] = 001), число сдвигает нумерацию ([FILENUMBER10] = 11).",
                 "You choose the folder and the base name next, in the save dialog. This is only how the names of the PARTS are built from that base name. Empty — as before: the base name plus a number or a range. Right-click inserts the keywords: [BASENAME] — the base name from the save dialog, [FILENUMBER] — part number, [CURRENTPAGE] — first page of the part, [BOOKMARK] — bookmark title, [TIMESTAMP] — date and time. Hashes pad with zeros ([FILENUMBER###] = 001), a number offsets the count ([FILENUMBER10] = 11).");
-            A("split.status.printing", "Печать…", "Printing…");
-            A("split.status.printingPage", "Печать: страница {0} из {1}…", "Printing: page {0} of {1}…");
-            A("split.status.printed", "Отправлено на печать страниц: {0}", "Pages sent to the printer: {0}");
-            A("split.err.printFailed", "Не удалось напечатать", "Could not print");
-            A("preview.menu.print", "Печать…", "Print…");
+            A("preview.menu.print", "Печать", "Print");
             A("preview.err.printFailed", "Не удалось напечатать", "Could not print");
             A("split.menu.metadata", "Свойства документа", "Document properties");
             A("split.suffix.meta", "_свойства", "_properties");
@@ -215,7 +219,7 @@ namespace ExcelMerger
             A("grid.menu.selectOdd", "Выделить нечётные страницы", "Select odd pages");
             A("grid.menu.selectEven", "Выделить чётные страницы", "Select even pages");
             // Чередование страниц («Объединение PDF» → меню).
-            A("pdf.menu.interleave", "Чередовать страницы документов", "Interleave pages of the documents");
+            A("pdf.menu.interleave", "Собрать двусторонний скан (лицо + оборот)", "Assemble a double-sided scan (fronts + backs)");
             A("pdf.interleave.needTwo.title", "Нужно минимум два документа", "At least two documents are needed");
             A("pdf.interleave.needTwo.body",
                 "Чередование собирает страницы нескольких документов по очереди. Добавьте второй файл — например пачку оборотных сторон.",
@@ -227,13 +231,12 @@ namespace ExcelMerger
                 "A single-sided scanner usually produces the back sides in reverse order.\n\n“Yes” — take the second document from the end, “No” — in order.");
             A("pdf.interleave.done", "Страницы чередуются, документов: {0}", "Pages interleaved, documents: {0}");
             // Дополнительные преобразования одного документа («Разделение PDF» → меню «Ещё»).
-            A("split.menu.more", "Доп. действия", "More actions");
-            A("split.btn.more", "Доп. действия…", "More actions…");
-            A("split.btn.print", "Печать…", "Print…");
+            A("split.btn.more", "Доп. действия", "More actions");
+            A("split.btn.print", "Печать", "Print");
             A("split.tip.print",
                 "Напечатать выделенные страницы, а если ничего не выделено — весь документ.",
                 "Print the selected pages, or the whole document if nothing is selected.");
-            A("preview.print", "Печать…", "Print…");
+            A("preview.print", "Печать", "Print");
             A("split.tip.more",
                 "Сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
                 "Save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties.");
@@ -520,7 +523,9 @@ namespace ExcelMerger
                 "название закладки). Пусто — имена как обычно.\n" +
                 "5. Нажмите «Извлечь…»/«Разделить…» и укажите папку и базовое имя результата " +
                 "(при разбиении к имени добавятся номера или метки).\n\n" +
-                "Кнопка «Доп. действия…» — всё остальное с этим документом: печать, сохранение " +
+                "Кнопка «Печать» отправляет на принтер выделенные страницы, а если ничего не " +
+                "выделено — весь документ.\n" +
+                "Кнопка «Доп. действия» — всё остальное с этим документом: сохранение " +
                 "страниц картинками (PNG или JPEG, 96–600 dpi), извлечение текста в .txt, перевод " +
                 "в оттенки серого, восстановление повреждённого файла и правка свойств документа " +
                 "(заголовок, автор, ключевые слова). Результат всегда пишется в НОВЫЙ файл.\n\n" +
@@ -544,8 +549,10 @@ namespace ExcelMerger
                 "bookmark title). Empty — the usual names.\n" +
                 "5. Click “Extract…”/“Split…” and choose the folder and base name for the result " +
                 "(when splitting, numbers or labels are appended to the name).\n\n" +
-                "The “More actions…” button covers everything else you can do with this document: " +
-                "print it, save pages as images (PNG or JPEG, 96–600 dpi), extract the text to a " +
+                "The “Print” button sends the selected pages to the printer, or the whole document " +
+                "if nothing is selected.\n" +
+                "The “More actions” button covers everything else you can do with this document: " +
+                "save pages as images (PNG or JPEG, 96–600 dpi), extract the text to a " +
                 ".txt, convert to grayscale, repair a damaged file and edit the document properties " +
                 "(title, author, keywords). The result is always written to a NEW file.\n\n" +
                 "Pages are copied as‑is, without re‑conversion. The source file is not changed; " +

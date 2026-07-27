@@ -51,7 +51,7 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            InitShell(Title, new Size(800, 660), new Size(700, 560), Theme.PdfRed);
+            InitShell(Title, new Size(800, 660), new Size(700, 600), Theme.PdfRed);
             // Дроп PDF на окно — открыть первый файл (разделение работает с одним документом).
             WireFileDrop(delegate(string[] paths) { LoadSource(paths[0]); });
             BuildHeaderWithHome(Title,
@@ -165,7 +165,7 @@ namespace ExcelMerger
             _btnPrint.SetBounds(px, m + 336, 74, 32);
             _btnPrint.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _tips.SetToolTip(_btnPrint, Loc.T("split.tip.print"));
-            _btnPrint.Click += delegate { PrintPages(); };
+            _btnPrint.Click += delegate { PrintSelectedPages(); };
             Controls.Add(_btnPrint);
 
             _btnTools = new RoundedButton(false);
@@ -440,40 +440,15 @@ namespace ExcelMerger
             });
         }
 
-        /// <summary>
-        /// Печать выбранных (или всех) страниц. Диалог принтера показываем на UI-потоке, а сама
-        /// печать идёт в фоне: рендер страниц не мгновенный, и окно не должно замирать.
-        /// </summary>
-        private void PrintPages()
+        /// <summary>Печать выбранных (или всех) страниц — через общий механизм базы.</summary>
+        private void PrintSelectedPages()
         {
-            if (Working || _sourcePath == null)
+            if (_sourcePath == null)
                 return;
-            List<int> pages = PagesForExport();
-            System.Drawing.Printing.PrinterSettings settings;
-            using (var dialog = new PrintDialog())
-            {
-                dialog.AllowSomePages = false; // выбор страниц делается в сетке, а не здесь
-                dialog.UseEXDialog = true;
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                settings = dialog.PrinterSettings;
-            }
-            string source = _sourcePath;
-            BeginOperation(Loc.T("split.status.printing"), pages.Count, Loc.T("split.status.printingPage"));
-            Action<int, int> onProgress = UiProgress();
-            Func<bool> cancel = CancelToken();
-            Ui.RunWorker(delegate()
-            {
-                Exception error = null;
-                try { PdfPrintService.Print(source, pages, settings, onProgress, cancel); }
-                catch (Exception ex) { error = ex; }
-                OnUi(delegate
-                {
-                    if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("split.err.printFailed")))
-                        return;
-                    SetStatus(SuccessStatus(string.Format(Loc.T("split.status.printed"), pages.Count)), Theme.OkGreen);
-                });
-            });
+            var refs = new List<PdfPageRef>();
+            foreach (int i in PagesForExport())
+                refs.Add(i < _pages.Count ? _pages[i] : new PdfPageRef { SourcePath = _sourcePath, PageIndex = i });
+            PrintPages(refs);
         }
 
         /// <summary>Страницы для экспорта: выбранные в сетке, а если ничего не выбрано — все.</summary>

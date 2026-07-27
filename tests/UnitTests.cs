@@ -5012,12 +5012,17 @@ namespace ExcelMerger.Tests
         /// <summary>Элемент, с которым работает пользователь (а не фоновая подпись).</summary>
         private static bool IsInteractive(System.Windows.Forms.Control c)
         {
+            // ВАЖНО: собственные составные элементы (выбор сжатия — UserControl со списком
+            // внутри) под стандартные типы не подходят и раньше выпадали из проверки — из-за
+            // этого кнопки панели наехали на список сжатия и это никто не заметил.
             return c is System.Windows.Forms.ButtonBase ||
                    c is System.Windows.Forms.TextBoxBase ||
                    c is System.Windows.Forms.ComboBox ||
                    c is System.Windows.Forms.NumericUpDown ||
                    c is System.Windows.Forms.ListView ||
-                   c is PdfPageGrid;
+                   c is System.Windows.Forms.TrackBar ||
+                   c is PdfPageGrid ||
+                   c is CompressionPicker;
         }
 
         private static string Describe(System.Windows.Forms.Control c)
