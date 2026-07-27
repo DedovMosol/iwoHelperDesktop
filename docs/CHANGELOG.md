@@ -3,7 +3,9 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
-## [1.17.9] — 2026-07-27
+## [Unreleased]
+
+Ready for 1.17.9, not published yet — the version in the build is still 1.17.8.
 
 ### Added
 - **A start screen with two sections.** The hub now asks for a section first — **PDF** or
