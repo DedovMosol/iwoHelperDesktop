@@ -25,6 +25,8 @@ versions follow [SemVer](https://semver.org/).
   entirely — cells come out separated by tabs and paste into a spreadsheet as a table. Pages are
   separated by a form feed, as `pdftotext` does, and the file is UTF-8 with a byte-order mark so
   Notepad shows Cyrillic correctly.
+- **Select odd or even pages** from the page grid's context menu — the two sides of a
+  double-sided stack, so rotating or deleting one side no longer means ticking fifty tiles.
 - **Convert to grayscale** and **repair a damaged PDF** (Split → “More with this document”).
   Repair rewrites the file through the PDF engine, which is what fixes a broken cross-reference
   table — the usual “this file is damaged”. It picks the file with its own dialog, because a

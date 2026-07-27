@@ -292,12 +292,13 @@ namespace ExcelMerger.Tests
             Run("Просмотр: вписывание по окну без растягивания мелкой страницы", TestPreviewZoomFit);
             Run("Просмотр: Ctrl+колесо увеличивает к точке под курсором", TestPreviewZoomAnchor);
             Run("Просмотр: панорама и когда клик закрывает окно", TestPreviewPanAndClose);
+            Run("Сетка: выбор чётных и нечётных страниц (нумерация с единицы)", TestSelectEveryOther);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 265;
+            const int MinTests = 266;
             int total = _passed + _failed;
             if (total < MinTests)
             {
@@ -5146,6 +5147,26 @@ namespace ExcelMerger.Tests
                 "дрожание руки при клике перетаскиванием не считается");
             AssertTrue(PreviewZoom.IsDrag(new System.Drawing.Point(10, 10), new System.Drawing.Point(30, 10), t),
                 "заметное движение — перетаскивание");
+        }
+
+        /// <summary>
+        /// Выбор одной стороны двусторонней пачки. Нумерация — пользовательская, с единицы:
+        /// нечётные страницы 1, 3, 5 это индексы 0, 2, 4. Перепутать легко, а последствие
+        /// заметное — пользователь повернул бы не ту сторону всего документа.
+        /// </summary>
+        private static void TestSelectEveryOther()
+        {
+            AssertEqual("0,2,4", string.Join(",", Array.ConvertAll(
+                PdfPageGrid.EveryOtherIndices(6, false), Convert.ToString)), "нечётные страницы 1, 3, 5");
+            AssertEqual("1,3,5", string.Join(",", Array.ConvertAll(
+                PdfPageGrid.EveryOtherIndices(6, true), Convert.ToString)), "чётные страницы 2, 4, 6");
+            AssertEqual("0,2", string.Join(",", Array.ConvertAll(
+                PdfPageGrid.EveryOtherIndices(3, false), Convert.ToString)), "нечётные при нечётной длине");
+            AssertEqual("1", string.Join(",", Array.ConvertAll(
+                PdfPageGrid.EveryOtherIndices(3, true), Convert.ToString)), "чётные при нечётной длине");
+            AssertEqual(0, PdfPageGrid.EveryOtherIndices(0, true).Length, "пустой документ — пустой выбор");
+            AssertEqual(0, PdfPageGrid.EveryOtherIndices(-5, false).Length, "отрицательная длина не роняет");
+            AssertEqual(0, PdfPageGrid.EveryOtherIndices(1, true).Length, "одна страница — чётных нет");
         }
 
         // ---------- Преобразования Ghostscript ----------

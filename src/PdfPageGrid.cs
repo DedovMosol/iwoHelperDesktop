@@ -844,6 +844,36 @@ namespace ExcelMerger
             Ui.SelectAllItems(_list);
         }
 
+        /// <summary>
+        /// Номера позиций чётных или нечётных страниц (нумерация с 1, как её видит
+        /// пользователь): нечётные — 1, 3, 5 (индексы 0, 2, 4), чётные — 2, 4, 6.
+        /// Нужно для двусторонних сканов, где обрабатывают только одну сторону пачки.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static int[] EveryOtherIndices(int count, bool even)
+        {
+            if (count <= 0)
+                return new int[0];
+            var result = new List<int>((count + 1) / 2);
+            for (int i = even ? 1 : 0; i < count; i += 2)
+                result.Add(i);
+            return result.ToArray();
+        }
+
+        /// <summary>Выделить чётные или нечётные страницы (по номеру, а не по индексу).</summary>
+        public void SelectEveryOther(bool even)
+        {
+            int[] wanted = EveryOtherIndices(_list.Items.Count, even);
+            _list.BeginUpdate();
+            _list.SelectedIndices.Clear();
+            foreach (int i in wanted)
+                _list.Items[i].Selected = true;
+            _list.EndUpdate();
+            if (wanted.Length > 0)
+                _list.Items[wanted[0]].EnsureVisible();
+            _list.Focus();
+        }
+
         public void SelectIndex(int index)
         {
             if (index < 0 || index >= _list.Items.Count)
@@ -1433,6 +1463,10 @@ namespace ExcelMerger
             _menu.Items.Add(new ToolStripSeparator());
             _miDelete = AddMenuItem(Loc.T("grid.menu.delete"), "Del", delegate { var h = DeleteRequested; if (h != null) h(this, EventArgs.Empty); });
             _miGoTo = AddMenuItem(Loc.T("grid.menu.goto"), "Ctrl+G", delegate { var h = GoToRequested; if (h != null) h(this, EventArgs.Empty); });
+            // Выбор одной стороны двусторонней пачки: дальше её поворачивают или удаляют
+            // целиком, и отмечать полсотни плиток руками для этого не нужно.
+            _menu.Items.Add(Loc.T("grid.menu.selectOdd"), null, delegate { SelectEveryOther(false); });
+            _menu.Items.Add(Loc.T("grid.menu.selectEven"), null, delegate { SelectEveryOther(true); });
             _menu.Opening += OnMenuOpening;
             _list.ContextMenuStrip = _menu;
         }
