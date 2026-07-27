@@ -297,12 +297,13 @@ namespace ExcelMerger.Tests
             Run("Добивка (живая): пустые страницы в файле и нужного размера", TestBlankPageMergeLive);
             Run("Шаблон имени частей: пустой сохраняет прежние имена", TestPartNameOptional);
             Run("Шаблон имени частей (живой): имена файлов по шаблону", TestSplitTemplateLive);
+            Run("Защита: запись поверх исходника распознаётся заранее", TestSameFileGuard);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 270;
+            const int MinTests = 271;
             int total = _passed + _failed;
             if (total < MinTests)
             {
@@ -5271,6 +5272,24 @@ namespace ExcelMerger.Tests
                 AssertEqual("лист02из2", Path.GetFileNameWithoutExtension(shaped[1]), "вторая часть по шаблону");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>
+        /// Запись «в самого себя» обязана распознаваться до начала работы: приложение не меняет
+        /// исходники, а операция ещё и испортила бы файл — источник в этот момент открыт на чтение.
+        /// Разный регистр и «.\» в пути — тот же файл, файловая система Windows их не различает.
+        /// </summary>
+        private static void TestSameFileGuard()
+        {
+            string dir = Path.GetTempPath();
+            string a = Path.Combine(dir, "документ.pdf");
+            AssertTrue(OutputFile.IsSameFile(a, a), "тот же путь");
+            AssertTrue(OutputFile.IsSameFile(a, Path.Combine(dir, "ДОКУМЕНТ.PDF")), "регистр не различает файлы");
+            AssertTrue(OutputFile.IsSameFile(a, Path.Combine(dir, ".", "документ.pdf")), "путь через «.» — тот же файл");
+            AssertTrue(!OutputFile.IsSameFile(a, Path.Combine(dir, "другой.pdf")), "разные файлы");
+            AssertTrue(!OutputFile.IsSameFile(null, a), "null — не тот же файл");
+            AssertTrue(!OutputFile.IsSameFile(a, ""), "пустой путь — не тот же файл");
+            AssertTrue(!OutputFile.IsSameFile(a, "|негодный<путь>"), "негодный путь не роняет проверку");
         }
 
         // ---------- Преобразования Ghostscript ----------
