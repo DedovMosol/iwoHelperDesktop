@@ -63,7 +63,7 @@ Six actions over one document, each writing a **new** file — the source is nev
 - 🗜️ **PDF Compression** — Acrobat‑level “Reduce File Size” via bundled **Ghostscript**: downsamples images (to 150 or 72 dpi) while keeping text and vectors — nothing is rasterized. The result message names the resolution used, and the default level leaves the file untouched.
 - 🌐 **English & Russian** — the installer opens with a flag chooser and the app follows that choice. Switch anytime from a globe on the start screen or any tool’s **☰ Menu → Язык / Language** (each option shows a flag). Generated documents stay in Russian.
 - 📘 **User guide inside the program** — **About → “User guide: open”** unpacks the document from the `.exe` and opens it. No internet needed, the portable build has it too.
-- 🔄 **Update check & statistics** — compares with GitHub Releases and, if a newer version exists, offers to open the release page in your browser (it downloads and installs nothing), plus local operation counters you can clear.
+- 🔄 **Update check & statistics** — compares with GitHub Releases and, if a newer version exists, offers to open the release page in your browser (it downloads and installs nothing). It also runs once at startup, in the background and silently: it speaks up only when there is a newer version, and that notice carries a “Don't remind me about this version” box. Plus local operation counters you can clear.
 - 🪟 **One window set, one process** — tools open as independent windows that outlive the start screen, and launching the app again just brings the running one back instead of starting a second copy.
 - 🔒 **Safe by design** — no network, no admin, not packed or obfuscated, and writes only to folders you choose and `%APPDATA%`.
 
@@ -173,7 +173,7 @@ Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open pro
 
 ## 🔒 Privacy
 
-**Your files never leave your computer.** No telemetry, no analytics, no accounts, no background network calls. Everything — Excel, PDF merge/split, compression, images, text, document properties, PDF → Word — runs locally, the only network request is the **manual** update check, which reads the latest version tag from GitHub and sends no file contents or personal data. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
+**Your files never leave your computer.** No telemetry, no analytics, no accounts. Everything — Excel, PDF merge/split, compression, images, text, document properties, PDF → Word — runs locally, and the only network request is the update check, which reads the latest version tag from GitHub and sends no file contents or personal data. It runs when you press the button and once at startup — the startup one stays silent unless a newer version exists, and can be turned off. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
 
 ## ⚖️ License
 

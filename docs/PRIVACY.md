@@ -8,9 +8,10 @@
 iwo Helper Desktop is an **offline desktop application**. It does **not** collect,
 transmit, sell, or share any personal data, and it does **not** contain any telemetry,
 analytics, advertising, or user accounts. Everything you do with your files happens
-**locally on your own computer**. The only time the app talks to the network is when
-**you** click “Check for updates,” and even then it only reads a version number from
-GitHub — no file contents or personal data are ever sent.
+**locally on your own computer**. The only time the app talks to the network is the
+update check — when **you** click “Check for updates,” and once at startup — and even
+then it only reads a version number from GitHub. No file contents or personal data are
+ever sent, and the startup check can be turned off.
 
 ## What the app does with your files
 
@@ -88,8 +89,8 @@ You can delete this folder at any time, the app recreates only what it needs.
 
 ## Network use
 
-The app makes **no background network calls**. The single network feature is the
-**update check**, which runs **only when you start it** (“Check for updates”):
+The single network feature is the **update check**. It runs when you click “Check for
+updates”, and once when the app starts:
 
 - It sends an HTTPS request to the GitHub Releases API
   (`https://api.github.com/repos/DedovMosol/iwoHelperDesktop/releases/latest`) with a
@@ -97,6 +98,13 @@ The app makes **no background network calls**. The single network feature is the
 - No file contents, file names, identifiers, or personal data are included in the request.
 - The app never downloads or installs updates automatically, if a newer version exists,
   it asks first and only then opens the release page in **your** browser.
+- The **startup** check says nothing unless a newer version exists: no network, no answer
+  and “you are up to date” are all silent, because you did not ask the question. When it
+  does have news, the notice carries a “Don't remind me about this version” box, and the
+  check itself can be switched off — the setting is stored in `settings.txt`
+  (`updateCheckOnStart`), together with the version you asked to skip (`skippedVersion`).
+
+Apart from this check the app makes **no background network calls**.
 
 Links in the app (download page, project page, Telegram, this policy) simply open in your
 default browser when clicked, the app itself does not track those clicks.
