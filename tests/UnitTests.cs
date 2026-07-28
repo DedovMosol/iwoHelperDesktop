@@ -5502,6 +5502,57 @@ namespace ExcelMerger.Tests
                         f.Close();
                     }
 
+                    // Подтверждённое ВЫКЛЮЧЕНИЕ обязано сработать. Здесь жила ошибка: пока
+                    // модальный вопрос на экране, окно теряет и возвращает фокус, а на
+                    // возврате перечитывает настройки и ставит флажок обратно по диску —
+                    // и обработчик сохранял прочитанное ПОСЛЕ диалога, то есть прежнее
+                    // значение. Человек соглашался выключить историю, а она оставалась.
+                    OperationHistory.SetEnabled(true);
+                    OperationHistory.Record("hist.op.merge", @"C:\есть\что терять.pdf");
+                    using (var f = new SettingsForm())
+                    {
+                        f.Show();
+                        AccentCheckBox keep = null;
+                        foreach (System.Windows.Forms.Control c in f.Controls)
+                            if (c is AccentCheckBox && c.Text == Loc.T("settings.chk.history"))
+                                keep = (AccentCheckBox)c;
+                        if (keep == null)
+                            offenders.Add("флажок истории не найден");
+                        else
+                        {
+                            // Заглушка обязана ВОСПРОИЗВЕСТИ то, что делает настоящий диалог:
+                            // пока он на экране, окно теряет и возвращает фокус, а на возврате
+                            // перечитывает настройки и ставит флажок обратно по диску. Простое
+                            // «вернуть true» убирало бы само условие ошибки, и проверка зеленела
+                            // бы на сломанном коде — что и случилось с первой её версией.
+                            f.ConfirmClearHistory = delegate { keep.Checked = true; return true; };
+                            keep.Checked = false; // снимаем — идёт ветка с подтверждением
+                            if (OperationHistory.Load().Enabled)
+                                offenders.Add("подтверждённое выключение истории не сохранилось");
+                            if (OperationHistory.Load().Entries.Count != 0)
+                                offenders.Add("выключение не стёрло накопленное");
+                        }
+                        f.Close();
+                    }
+
+                    // Отказ от вопроса ничего не меняет.
+                    OperationHistory.SetEnabled(true);
+                    OperationHistory.Record("hist.op.merge", @"C:\остаться\должно.pdf");
+                    using (var f = new SettingsForm())
+                    {
+                        f.ConfirmClearHistory = delegate { return false; }; // «нет, передумал»
+                        f.Show();
+                        foreach (System.Windows.Forms.Control c in f.Controls)
+                            if (c is AccentCheckBox && c.Text == Loc.T("settings.chk.history"))
+                                ((AccentCheckBox)c).Checked = false;
+                        if (!OperationHistory.Load().Enabled)
+                            offenders.Add("отказ от вопроса всё равно выключил историю");
+                        if (OperationHistory.Load().Entries.Count != 1)
+                            offenders.Add("отказ от вопроса стёр записи");
+                        f.Close();
+                    }
+
+                    OperationHistory.Clear();
                     OperationHistory.SetEnabled(true);
                     OperationHistory.Record("hist.op.split", @"C:\папка частей");
                     if (OperationHistory.Load().Entries.Count != 1)

@@ -202,23 +202,42 @@ namespace ExcelMerger
                 : string.Format(Loc.T("settings.history.count"), h.Entries.Count);
         }
 
+        /// <summary>
+        /// Подтверждение стирания истории. Отдельным полем, чтобы проверка могла ответить за
+        /// человека: ветка «согласился» без этого недостижима автоматически, а именно в ней
+        /// и жила ошибка.
+        /// </summary>
+        internal Func<bool> ConfirmClearHistory { get; set; }
+
         private void OnKeepHistoryChanged(object sender, EventArgs e)
         {
             if (_loading)
                 return;
+            // Намерение снимаем СРАЗУ, до всякого диалога. Пока модальное окно на экране, наше
+            // теряет и возвращает фокус, а на возврате OnActivated перечитывает настройки и
+            // ставит флажок обратно по диску. Прочитанное ПОСЛЕ диалога значение оказывалось
+            // прежним — подтверждённое выключение молча не срабатывало.
+            bool wanted = _keepHistory.Checked;
+
             // Выключение стирает накопленное — так решено в хранилище. Спрашиваем прямо, а не
             // молча: человек мог не ожидать, что снятие флажка удалит уже собранный список.
-            if (!_keepHistory.Checked && OperationHistory.Load().Entries.Count > 0 &&
-                !Dialogs.ConfirmWarning(this, Loc.T("settings.title"),
-                    Loc.T("settings.confirm.clearHistory.title"), Loc.T("settings.confirm.clearHistory.body")))
+            if (!wanted && OperationHistory.Load().Entries.Count > 0 && !AskClearHistory())
             {
                 _loading = true;
                 _keepHistory.Checked = true; // отказался — возвращаем флажок, ничего не трогаем
                 _loading = false;
                 return;
             }
-            OperationHistory.SetEnabled(_keepHistory.Checked);
+            OperationHistory.SetEnabled(wanted);
             LoadAndShow();
+        }
+
+        private bool AskClearHistory()
+        {
+            if (ConfirmClearHistory != null)
+                return ConfirmClearHistory();
+            return Dialogs.ConfirmWarning(this, Loc.T("settings.title"),
+                Loc.T("settings.confirm.clearHistory.title"), Loc.T("settings.confirm.clearHistory.body"));
         }
 
         private void OnHistoryAutoChanged(object sender, EventArgs e)
@@ -231,8 +250,7 @@ namespace ExcelMerger
 
         private void OnClearHistory(object sender, EventArgs e)
         {
-            if (Dialogs.ConfirmWarning(this, Loc.T("settings.title"),
-                    Loc.T("settings.confirm.clearHistory.title"), Loc.T("settings.confirm.clearHistory.body")))
+            if (AskClearHistory())
             {
                 OperationHistory.Clear();
                 LoadAndShow();
