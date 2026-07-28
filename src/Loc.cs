@@ -477,6 +477,9 @@ namespace ExcelMerger
                 "You have {0}. Open the download page in your browser?");
             A("update.none.title", "Обновлений нет", "No updates");
             A("update.none.body", "У вас последняя версия ({0}).", "You have the latest version ({0}).");
+            // Флажок называет ИМЕННО эту версию, а не «обновления вообще»: о следующем
+            // выпуске человек должен узнать, даже если про этот просил не напоминать.
+            A("update.skip", "Больше не напоминать об этой версии", "Don't remind me about this version");
 
             // gs.* — предупреждение об отсутствии Ghostscript
             A("gs.title", "Сжатие недоступно", "Compression unavailable");

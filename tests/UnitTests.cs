@@ -317,12 +317,15 @@ namespace ExcelMerger.Tests
             Run("Смена языка: свёрнутый главный экран не уезжает за экран", TestLanguageRebuildKeepsMinimizedHubOnScreen);
             Run("Руководство: проверка вшитости умеет отвечать «нет»", TestUserManualPackedDetectsAbsence);
             Run("Руководство: распаковывается рядом с настройками, под своим именем", TestUserManualPath);
+            Run("Обновления: решение показывать уведомление при запуске", TestShouldNotifyUpdate);
+            Run("Обновления: настройки не затираются устаревшим Save", TestUpdatePrefsNotClobbered);
+            Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 290;
+            const int MinTests = 293;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -910,6 +913,30 @@ namespace ExcelMerger.Tests
             AssertTrue(!UpdateChecker.IsNewer(new Version(1, 11, 2), new Version(1, 11, 2)), "равные — не новее");
             AssertTrue(!UpdateChecker.IsNewer(new Version(1, 11, 0), new Version(1, 11, 2)), "старее — не новее");
             AssertTrue(!UpdateChecker.IsNewer(null, new Version(1, 0, 0)), "null latest — не новее");
+        }
+
+        /// <summary>
+        /// Решение «показывать ли уведомление при запуске». Ветка «пропущенная версия»
+        /// сравнивается по СТАРШИНСТВУ, а не по равенству: один флажок не должен отключать
+        /// уведомления навсегда, иначе о следующих выпусках человек не узнает.
+        /// </summary>
+        private static void TestShouldNotifyUpdate()
+        {
+            var current = new Version(1, 17, 9);
+            var next = new Version(1, 18, 0);
+            var later = new Version(1, 18, 1);
+
+            AssertTrue(UpdateChecker.ShouldNotify(next, current, null), "новее и ничего не пропущено");
+            AssertTrue(!UpdateChecker.ShouldNotify(current, current, null), "та же версия — молчим");
+            AssertTrue(!UpdateChecker.ShouldNotify(new Version(1, 17, 8), current, null), "старее — молчим");
+            AssertTrue(!UpdateChecker.ShouldNotify(null, current, null), "не разобрали ответ — молчим");
+
+            AssertTrue(!UpdateChecker.ShouldNotify(next, current, "1.18.0"), "про эту версию просили не напоминать");
+            AssertTrue(UpdateChecker.ShouldNotify(later, current, "1.18.0"), "СЛЕДУЮЩАЯ версия — напоминаем снова");
+            AssertTrue(!UpdateChecker.ShouldNotify(next, current, "1.19.0"), "пропущенная выше найденной — молчим");
+            AssertTrue(UpdateChecker.ShouldNotify(next, current, "мусор"), "непонятная пропущенная не глушит проверку");
+            AssertTrue(UpdateChecker.ShouldNotify(next, current, ""), "пустая пропущенная не глушит проверку");
+            AssertTrue(!UpdateChecker.ShouldNotify(next, current, "v1.18.0"), "пропущенная с «v» разбирается так же");
         }
 
         private static void TestShouldAutoClear()
@@ -4486,6 +4513,48 @@ namespace ExcelMerger.Tests
             }
         }
 
+        /// <summary>
+        /// Настройки обновлений живут по тому же правилу, что масштаб и границы окон: своего
+        /// окна-владельца у них нет, поэтому общий Save из долгоживущей формы обязан оставить
+        /// их в покое. Иначе просьба «не напоминать» отменялась бы сама собой при следующем
+        /// закрытии любого окна — дефект, который вручную не поймать никогда.
+        /// </summary>
+        private static void TestUpdatePrefsNotClobbered()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "iwo_upd_" + Guid.NewGuid().ToString("N"));
+            AppPaths.SetRootForTests(root);
+            try
+            {
+                AssertTrue(UserSettings.Load().UpdateCheckOnStart, "по умолчанию проверка при запуске включена");
+                AssertEqual(null, UserSettings.Load().SkippedVersion, "по умолчанию ничего не пропущено");
+
+                UserSettings.SaveSkippedVersion("1.18.0");
+                UserSettings.SaveUpdateCheckOnStart(false);
+                AssertEqual("1.18.0", UserSettings.Load().SkippedVersion, "пропущенная версия записана");
+                AssertTrue(!UserSettings.Load().UpdateCheckOnStart, "проверка при запуске выключена");
+
+                // Устаревший экземпляр (создан ДО этих правок) сохраняет свои поля.
+                var stale = new UserSettings { LastInputFolder = "Y" };
+                stale.Save();
+
+                UserSettings after = UserSettings.Load();
+                AssertEqual("1.18.0", after.SkippedVersion, "общий Save НЕ затёр пропущенную версию");
+                AssertTrue(!after.UpdateCheckOnStart, "общий Save НЕ включил проверку обратно");
+                AssertEqual("Y", after.LastInputFolder, "общий Save сохранил собственные поля экземпляра");
+
+                // Узкие методы не мешают друг другу: запись версии не трогает флаг и наоборот.
+                UserSettings.SaveSkippedVersion("1.18.1");
+                AssertTrue(!UserSettings.Load().UpdateCheckOnStart, "запись версии не включила проверку");
+                UserSettings.SaveUpdateCheckOnStart(true);
+                AssertEqual("1.18.1", UserSettings.Load().SkippedVersion, "запись флага не стёрла версию");
+            }
+            finally
+            {
+                AppPaths.SetRootForTests(null);
+                try { Directory.Delete(root, true); } catch { }
+            }
+        }
+
         private static void TestWindowBoundsPersistence()
         {
             string root = Path.Combine(Path.GetTempPath(), "iwo_wnd_" + Guid.NewGuid().ToString("N"));
@@ -5130,6 +5199,60 @@ namespace ExcelMerger.Tests
                     }
             });
             AssertTrue(offenders.Count == 0, "раскладка диалогов: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Подпись флажка «больше не напоминать» обязана помещаться в диалог ЦЕЛИКОМ на обоих
+        /// языках. Ширина флажка ограничена шириной текстовой колонки, поэтому подпись длиннее
+        /// неё не вылезет за окно — она молча обрежется, а это ровно тот дефект, который глазами
+        /// не замечают: текст выглядит просто коротким. Меряем настоящим контролом в настоящем
+        /// диалоге, а не прикидкой по числу букв.
+        /// </summary>
+        private static void TestUpdateSkipCaptionFits()
+        {
+            var offenders = new List<string>();
+            Lang before = Loc.Current;
+            InIsolatedSettings("iwo_skipcap_", delegate
+            {
+                try
+                {
+                    foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                    {
+                        Loc.Init(lang);
+                        using (var f = (System.Windows.Forms.Form)Construct(typeof(MessageForm)))
+                        {
+                            f.Show();
+                            f.PerformLayout();
+                            AccentCheckBox box = null;
+                            foreach (System.Windows.Forms.Control c in f.Controls)
+                                if (c is AccentCheckBox)
+                                    box = (AccentCheckBox)c;
+                            if (box == null)
+                            {
+                                offenders.Add(lang + ": флажок не собрался");
+                                continue;
+                            }
+                            // Доступная ширина — от левого края флажка до правого поля диалога.
+                            // Поле берём из отступа значка слева: раскладка симметрична, и так
+                            // проверка не разъедется, если поле однажды поменяют.
+                            int pad = box.Left;
+                            foreach (System.Windows.Forms.Control c in f.Controls)
+                                if (c is System.Windows.Forms.PictureBox)
+                                    pad = c.Left;
+                            int room = f.ClientSize.Width - box.Left - pad;
+                            box.Text = Loc.T("update.skip"); // настоящая подпись вместо нейтральной
+                            int want = box.GetPreferredSize(System.Drawing.Size.Empty).Width;
+                            if (want > room)
+                                offenders.Add(lang + ": подпись «" + box.Text + "» просит " + want +
+                                              " px, а колонка " + room);
+                            f.Close();
+                        }
+                    }
+                }
+                catch (Exception ex) { offenders.Add("не собралось: " + Root(ex).Message); }
+            });
+            Loc.Init(before);
+            AssertTrue(offenders.Count == 0, "флажок обновления: " + string.Join(" | ", offenders.ToArray()));
         }
 
         /// <summary>
