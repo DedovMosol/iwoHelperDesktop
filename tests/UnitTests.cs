@@ -5299,6 +5299,23 @@ namespace ExcelMerger.Tests
                         {
                             if (unskip.Text.IndexOf("1.18.0", StringComparison.Ordinal) < 0)
                                 offenders.Add("кнопка не называет версию: " + unskip.Text);
+                            // Кнопка автоширины: длинный перевод мог бы вынести её за окно.
+                            // Проверяем на ОБОИХ языках — английская подпись длиннее русской.
+                            foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                            {
+                                Lang was = Loc.Current;
+                                Loc.Init(lang);
+                                using (var g = new SettingsForm())
+                                {
+                                    g.Show();
+                                    RoundedButton u = FindUnskip(g);
+                                    if (u != null && u.Right > g.ClientSize.Width - 24)
+                                        offenders.Add(lang + ": кнопка «" + u.Text + "» выходит за окно (" +
+                                                      u.Right + " > " + (g.ClientSize.Width - 24) + ")");
+                                    g.Close();
+                                }
+                                Loc.Init(was);
+                            }
                             unskip.PerformClick();
                             if (!string.IsNullOrEmpty(UserSettings.Load().SkippedVersion))
                                 offenders.Add("нажатие не стёрло пропущенную версию");
@@ -5321,22 +5338,16 @@ namespace ExcelMerger.Tests
             return null;
         }
 
-        /// <summary>Кнопка «снова напоминать» — единственная, чья подпись собрана по шаблону с версией.</summary>
+        /// <summary>
+        /// Кнопка «снова напоминать» — по ИМЕНИ, а не по подписи: пока отменять нечего,
+        /// подписи у неё нет, и поиск «первой кнопки без текста» находил бы любую следующую,
+        /// которую когда-нибудь добавят рядом, то есть проверял бы не то.
+        /// </summary>
         private static RoundedButton FindUnskip(System.Windows.Forms.Form f)
         {
-            string prefix = Loc.T("settings.btn.unskip");
-            int brace = prefix.IndexOf('{');
-            if (brace > 0)
-                prefix = prefix.Substring(0, brace);
             foreach (System.Windows.Forms.Control c in f.Controls)
-            {
-                var b = c as RoundedButton;
-                if (b != null && b.Text != null && b.Text.StartsWith(prefix, StringComparison.Ordinal))
-                    return b;
-                // Пока отменять нечего, подписи у кнопки нет — узнаём её по месту в окне.
-                if (b != null && string.IsNullOrEmpty(b.Text))
-                    return b;
-            }
+                if (c is RoundedButton && c.Name == SettingsForm.UnskipName)
+                    return (RoundedButton)c;
             return null;
         }
 
