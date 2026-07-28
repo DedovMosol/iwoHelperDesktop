@@ -167,11 +167,11 @@ Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET F
 
 Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open projects:
 
-[![PdfSharp](https://img.shields.io/badge/PdfSharp-MIT-1f6feb?style=for-the-badge)](https://github.com/empira/PDFsharp)
-[![PdfPig](https://img.shields.io/badge/PdfPig-Apache%202.0-1f6feb?style=for-the-badge)](https://github.com/UglyToad/PdfPig)
-[![Ghostscript](https://img.shields.io/badge/Ghostscript-AGPL-d32f2f?style=for-the-badge)](https://ghostscript.com/)
-[![Inno Setup](https://img.shields.io/badge/Inno%20Setup-installer-107C41?style=for-the-badge)](https://jrsoftware.org/isinfo.php)
-[![Windows.Data.Pdf](https://img.shields.io/badge/Windows.Data.Pdf-WinRT-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://learn.microsoft.com/uwp/api/windows.data.pdf)
+[![PdfSharp](https://img.shields.io/badge/PdfSharp-MIT-1f6feb)](https://github.com/empira/PDFsharp)
+[![PdfPig](https://img.shields.io/badge/PdfPig-Apache%202.0-1f6feb)](https://github.com/UglyToad/PdfPig)
+[![Ghostscript](https://img.shields.io/badge/Ghostscript-AGPL-d32f2f)](https://ghostscript.com/)
+[![Inno Setup](https://img.shields.io/badge/Inno%20Setup-installer-107C41)](https://jrsoftware.org/isinfo.php)
+[![Windows.Data.Pdf](https://img.shields.io/badge/Windows.Data.Pdf-WinRT-0078D6?logo=windows&logoColor=white)](https://learn.microsoft.com/uwp/api/windows.data.pdf)
 
 ## 🔒 Privacy
 
