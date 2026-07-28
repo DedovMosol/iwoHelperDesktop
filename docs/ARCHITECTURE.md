@@ -43,12 +43,14 @@ offline tools** behind one start screen with two sections (PDF and everything el
 
 Cross-cutting services: optional **PDF compression** (Ghostscript as a child process),
 page **thumbnails** (WinRT `Windows.Data.Pdf`), a Word cover note, reports,
-usage counters, a manual update check, an embedded user guide, and a Russian/English UI.
+usage counters and a history of what was produced and where, an update check (by button and
+once at startup), an embedded user guide, and a Russian/English UI.
 
 The guiding principles, in priority order:
 
 - **Offline and private.** No telemetry, no background network. The only network call is
-  the manual update check. Files are written only to user-chosen folders and `%APPDATA%`.
+  the update check — by button, and once at startup unless switched off. Files are written
+  only to user-chosen folders and `%APPDATA%`.
 - **Zero footprint.** Target machines have nothing installed: .NET Framework 4.8 ships
   with Windows 10/11 (one-time install on Windows 8.1), Office is driven late-bound (no
   interop assemblies), managed libraries are embedded into the single exe, installs are
@@ -71,7 +73,7 @@ flowchart LR
     APP -->|"child process"| GS["Ghostscript<br>(compression, grayscale,<br>repair, raster fallbacks)"]
     APP -->|"read/write"| FS[("User files<br>.xlsx / .pdf / .docx")]
     APP -->|"settings, stats,<br>reports, crash log"| AD[("APPDATA / iwo Helper Desktop")]
-    APP -.->|"manual update check<br>(version tag only)"| GH["GitHub Releases API"]
+    APP -.->|"update check<br>(version tag only)"| GH["GitHub Releases API"]
 ```
 
 | Dependency | Kind | Used for | Needed by |
@@ -131,6 +133,9 @@ are conceptual.
 | `CrashReport.cs` | Global exception handlers: branded dialog on the UI thread, silent log otherwise, `%APPDATA%\…\crash.log` with size rotation. |
 | `UserSettings.cs`, `AppPaths.cs` | `settings.txt` (language, remembered options, PDF zoom width and compression level) and all `%APPDATA%` paths. Fields owned by another window are never clobbered by a stale instance: `Save` re-reads zoom/compression from disk (the PDF tools write them explicitly via `SaveView`), the same way language is taken from the live `Loc`. |
 | `UsageStats.cs` | Local operation counters in `stats.txt`, guarded by a cross-process mutex, optional auto-clear. |
+| `OperationHistory.cs` | What was produced and where, in `history.txt`: paths and names only, never a copy. Same rules as the counters (own cross-process mutex), plus a ring of the last 200 entries and a sliding age limit. Reading only filters in memory — writing happens under the lock, so a second copy of the app cannot meet a half-written file. Pure `Escape`/`ParseEntry`/`Trim`/`KeepRecent` are unit-tested. |
+| `SettingsForm.cs` | What belongs to the whole program rather than an open document: the startup update check and its manual button, and the history switch, age limit and clearing. Laid out from measured control sizes, not literals, and re-read on activation — a modal window over it can change the same settings. |
+| `HistoryForm.cs` | The list itself, newest first, with “open” and “show in folder”. A window of its own because Settings is already as tall as the smallest supported screen allows, and because a list is not a setting. Existence is checked before opening: the path may have gone stale. |
 | `UpdateChecker.cs` | Manual check: reads the latest release tag from the GitHub API, compares, and on a newer version asks before opening the Releases page (`Ui.OpenUrlOrShow`, which shows the address when no browser can be started — a swallowed failure would answer “Yes” with nothing at all). Downloads and installs nothing. Pure `ParseTag`/`IsNewer` for tests. |
 | `Loc.cs`, `Flags.cs` | Localization catalog and GDI-drawn menu flags — see [Localization](#localization). |
 | `SetupLanguage.cs` | The language picked in the installer. Setup writes a one-line ASCII file next to the settings, the app applies it at startup (it outranks the stored language), saves it the normal UTF-8 way and removes the marker. Setup never edits `settings.txt` itself: it writes text in the system code page while the app reads UTF-8, and a read-modify-write would corrupt non-ASCII paths inside. |
@@ -394,7 +399,7 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` (288 tests, custom exe runner, zero
+1. **Unit tests** — `tests/UnitTests.cs` (301 tests, custom exe runner, zero
    dependencies, no Office) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
    zoom percentage and wheel-step chaining, the number-strip hit-test and double-click
