@@ -315,12 +315,14 @@ namespace ExcelMerger.Tests
             Run("Сжатие: подписи называют разрешение из того же источника", TestCompressionLabelsNameDpi);
             Run("Смена языка: главный экран остаётся рабочим", TestLanguageRebuildKeepsHubUsable);
             Run("Смена языка: свёрнутый главный экран не уезжает за экран", TestLanguageRebuildKeepsMinimizedHubOnScreen);
+            Run("Руководство: проверка вшитости умеет отвечать «нет»", TestUserManualPackedDetectsAbsence);
+            Run("Руководство: распаковывается рядом с настройками, под своим именем", TestUserManualPath);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 288;
+            const int MinTests = 290;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -6754,6 +6756,36 @@ namespace ExcelMerger.Tests
                 return; // ожидаемая ошибка ввода
             }
             throw new Exception(what + ": ожидалось исключение, но его не было");
+        }
+
+        /// <summary>
+        /// Руководство пользователя вшито ресурсом в exe приложения, и его наличие проверяет
+        /// самопроверка (<c>--selftest</c>, код 4). Здесь проверяется ОБРАТНОЕ: что та проверка
+        /// вообще умеет отвечать «нет». Тестовая сборка руководство не несёт, поэтому
+        /// <see cref="UserManual.IsPacked"/> обязана вернуть false — иначе она вернула бы
+        /// «всё на месте» и на exe без ресурса, а самопроверка зеленела бы, ничего не проверив.
+        /// </summary>
+        private static void TestUserManualPackedDetectsAbsence()
+        {
+            if (UserManual.IsPacked())
+                throw new Exception("в тестовой сборке руководства нет, а проверка говорит, что есть");
+        }
+
+        /// <summary>
+        /// Документ распаковывается РЯДОМ С НАСТРОЙКАМИ и под человеческим именем: имя ресурса
+        /// внутри exe латинское (кириллица в именах ресурсов — лишний повод для сюрпризов), а в
+        /// заголовке Word пользователь должен увидеть нормальное название.
+        /// </summary>
+        private static void TestUserManualPath()
+        {
+            InIsolatedSettings("iwo_manual_", delegate
+            {
+                string path = UserManual.FilePath;
+                if (Path.GetDirectoryName(path) != Path.GetDirectoryName(AppPaths.SettingsFile))
+                    throw new Exception("руководство распаковывается не туда, где настройки: " + path);
+                if (Path.GetFileName(path) != "Инструкция пользователя.docx")
+                    throw new Exception("имя файла руководства не человеческое: " + Path.GetFileName(path));
+            });
         }
     }
 }

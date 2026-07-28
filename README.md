@@ -9,12 +9,10 @@
 [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Privacy: offline‑only](https://img.shields.io/badge/Privacy-offline--only-107C41)](docs/PRIVACY.md)
-![Windows](https://img.shields.io/badge/Windows-8.1%2B%20x64%2Fx86-0078D6?logo=windows&logoColor=white)
-[![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet-framework/net48)
 
 **Free, offline office tools in a single Windows app — merge Excel sheets, merge/split/compress PDFs at Acrobat‑level quality, and turn born‑digital PDFs back into editable Word. No subscription, no admin rights, no network.**
 
-[![Installer x64](https://img.shields.io/badge/Installer-x64-0F6CBD?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.17.9/iwoHelperDesktop-setup-1.17.9.exe) [![Portable x64](https://img.shields.io/badge/Portable-x64-107C41?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.17.9/iwoHelperDesktop-1.17.9.exe) [![Installer x86](https://img.shields.io/badge/Installer-x86-0F6CBD?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.17.9/iwoHelperDesktop-setup-1.17.9-x86.exe) [![Portable x86](https://img.shields.io/badge/Portable-x86-107C41?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.17.9/iwoHelperDesktop-1.17.9-x86.exe)
+**[⬇️ Download for Windows](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)** — installer or portable, x64 or x86 · [all files and notes](#️-download)
 
 📐 [Architecture](docs/ARCHITECTURE.md) · 🤝 [Contributing](CONTRIBUTING.md) · 📋 [Changelog](docs/CHANGELOG.md) · 🔒 [Privacy](docs/PRIVACY.md)
 

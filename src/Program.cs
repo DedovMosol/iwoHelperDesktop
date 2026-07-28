@@ -98,11 +98,19 @@ namespace ExcelMerger
         [DllImport("kernel32.dll")]
         private static extern bool AttachConsole(int processId);
 
-        /// <summary>Смоук-тест GUI без показа окна: конструктор формы и создание хэндла. 0 = OK.</summary>
+        /// <summary>
+        /// Смоук-тест GUI без показа окна: конструктор формы и создание хэндла.
+        /// 0 = OK, 3 = окно не создалось, 4 = в exe нет руководства пользователя.
+        /// </summary>
         private static int RunSelfTest()
         {
             try
             {
+                // Руководство лежит ресурсом и открывается из «О программе». Проверяем его
+                // здесь, а не в юнит-тестах: там своя сборка, и вшито ли оно в НАСТОЯЩИЙ exe,
+                // она сказать не может.
+                if (!UserManual.IsPacked())
+                    return 4;
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Action noop = delegate { };

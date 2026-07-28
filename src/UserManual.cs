@@ -25,6 +25,24 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Лежит ли документ внутри exe и похож ли он на .docx. Нужна самопроверке
+        /// (<c>--selftest</c>): ресурс держится одной строкой в csproj, и её пропажа ничем себя
+        /// не выдаёт — приложение соберётся, запустится и промолчит до того мгновения, когда
+        /// пользователь нажмёт «открыть» в «О программе» и получит ошибку.
+        /// </summary>
+        internal static bool IsPacked()
+        {
+            using (Stream source = Assembly.GetExecutingAssembly().GetManifestResourceStream(ResourceName))
+            {
+                if (source == null || source.Length < 4096) // пустышка вместо руководства — тоже отказ
+                    return false;
+                var head = new byte[2];
+                // .docx — это ZIP, и подпись «PK» отличает документ от случайно вшитого файла.
+                return source.Read(head, 0, 2) == 2 && head[0] == (byte)'P' && head[1] == (byte)'K';
+            }
+        }
+
+        /// <summary>
         /// Распаковать при необходимости и открыть в программе, назначенной для .docx.
         /// Ошибку показываем диалогом: это явное действие пользователя, молчать в ответ на
         /// нажатие нельзя.

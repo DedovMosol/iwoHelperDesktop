@@ -55,11 +55,11 @@ jobs:
         shell: cmd
         run: call tests\build_tests.cmd ${{ matrix.arch }}
 
-      - name: Смоук-тест GUI (создание окон без показа)
+      - name: Смоук-тест GUI (создание окон без показа, руководство внутри exe)
         shell: pwsh
         run: |
           $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--selftest' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode)"; exit 1 }
+          if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode) (3 = окно не создалось, 4 = в exe нет руководства)"; exit 1 }
 
       - name: Проверка вшитого PdfSharp
         shell: pwsh
@@ -124,3 +124,20 @@ jobs:
       # артефакта (portable + installer, x64 + x86) подписываются самоподписанным
       # сертификатом, который есть только на машине мейнтейнера. CI лишь собирает,
       # тестирует и валидирует установщики.
+
+  # Ссылки README — отдельной задачей и ОДИН раз: они не зависят от разрядности, а
+  # в матрице сборки удвоили бы обращения к GitHub и приблизили лимит на запросы без
+  # ключа. Битая ссылка на странице проекта — первое, что видит пришедший, и
+  # единственное, что никто никогда не перечитывает: адреса файлов релиза прибиты к
+  # версии, а якорь заголовка с эмодзи несёт невидимый U+FE0F и ломается незаметно.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Ссылки README (адреса, якоря разделов, пути в репозитории)
+        run: python tools/check_readme_links.py
