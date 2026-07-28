@@ -65,7 +65,11 @@ namespace ExcelMerger
                 SetupLanguage.Consume();
                 UserSettings.Load().Save();
             }
-            Application.Run(new ShellContext()); // хаб + инструменты как независимые окна
+            var shell = new ShellContext(); // хаб + инструменты как независимые окна
+            // Проверка обновлений идёт ФОНОМ и показа окна не задерживает: запрос уходит
+            // с таймаутом 10 с, а ответ доставляется в UI-поток уже работающего хаба.
+            shell.CheckForUpdatesOnStart();
+            Application.Run(shell);
             // Все окна закрыты, настройки/COM уже освобождены детерминированно.
             // Форсируем выход, чтобы финализация WinRT (Windows.Data.Pdf, если
             // открывали инструмент PDF) не уронила процесс при выгрузке CLR.

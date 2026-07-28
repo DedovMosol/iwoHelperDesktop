@@ -26,6 +26,12 @@ namespace ExcelMerger
         // свежей загрузки, поэтому долгоживущее окно не затрёт границы, записанные другим окном.
         public readonly Dictionary<string, string> WindowBounds =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Проверять обновления при запуске. По умолчанию включено, выключается в настройках.
+        public bool UpdateCheckOnStart = true;
+        // Версия, о которой пользователь просил больше не напоминать («v1.18.0» → «1.18.0»).
+        // Хранится ИМЕННО версия, а не флаг «никогда»: иначе один флажок отключил бы
+        // уведомления навсегда, и о следующих выпусках человек не узнал бы вовсе.
+        public string SkippedVersion;
 
         private static string FilePath
         {
@@ -55,6 +61,10 @@ namespace ExcelMerger
                     else if (key == "language" && (value == "ru" || value == "en")) s.Language = value;
                     else if (key == "zoomWidth") { int z; if (int.TryParse(value, out z)) s.ZoomWidth = z; }
                     else if (key == "compression") { int c; if (int.TryParse(value, out c)) s.CompressionLevel = c; }
+                    else if (key == "updateCheckOnStart" && bool.TryParse(value, out flag)) s.UpdateCheckOnStart = flag;
+                    // Пустая строка — «ничего не пропущено»: иначе пустое значение стало бы
+                    // версией, которую не разобрать, и проверка молча перестала бы срабатывать.
+                    else if (key == "skippedVersion") s.SkippedVersion = value.Length == 0 ? null : value;
                     else if (key.StartsWith("wnd.", StringComparison.Ordinal) && key.Length > 4)
                         s.WindowBounds[key.Substring(4)] = value;
                 }
@@ -72,8 +82,17 @@ namespace ExcelMerger
         /// </summary>
         public void Save()
         {
-            UserSettings disk = Load(); // свежие значения полей, которыми этот экземпляр не владеет
-            WriteAll(disk.ZoomWidth, disk.CompressionLevel, disk.WindowBounds);
+            // Свежий снимок с диска, на него переносим ТОЛЬКО свои поля. Так список
+            // «чужих» полей не приходится держать в голове: всё, что здесь не названо,
+            // остаётся с диска и достаётся своему владельцу в целости. Каждое новое поле
+            // по умолчанию оказывается чужим — это безопасная сторона ошибки.
+            UserSettings disk = Load();
+            disk.LastInputFolder = LastInputFolder;
+            disk.LastOutputFolder = LastOutputFolder;
+            disk.AddToc = AddToc;
+            disk.AllSheets = AllSheets;
+            disk.OutputExtension = OutputExtension;
+            disk.WriteAll();
         }
 
         /// <summary>
@@ -83,7 +102,9 @@ namespace ExcelMerger
         /// </summary>
         public void SaveView(int zoomWidth, int compressionLevel)
         {
-            WriteAll(zoomWidth, compressionLevel, WindowBounds);
+            ZoomWidth = zoomWidth;
+            CompressionLevel = compressionLevel;
+            WriteAll();
         }
 
         /// <summary>
@@ -93,12 +114,39 @@ namespace ExcelMerger
         /// </summary>
         public static void SaveWindowBounds(string formKey, string bounds)
         {
-            UserSettings disk = Load();
-            disk.WindowBounds[formKey] = bounds;
-            disk.WriteAll(disk.ZoomWidth, disk.CompressionLevel, disk.WindowBounds);
+            Change(delegate(UserSettings s) { s.WindowBounds[formKey] = bounds; });
         }
 
-        private void WriteAll(int zoomWidth, int compressionLevel, Dictionary<string, string> windowBounds)
+        /// <summary>
+        /// Запомнить версию, о которой просили не напоминать. Отдельным узким методом, а не
+        /// парой «флажок + версия» в одном вызове: совмещённый метод требовал бы от каждого
+        /// вызывающего передавать И текущее состояние проверки, а забытый параметр молча
+        /// включил бы обратно то, что пользователь выключил.
+        /// </summary>
+        public static void SaveSkippedVersion(string version)
+        {
+            Change(delegate(UserSettings s) { s.SkippedVersion = version; });
+        }
+
+        /// <summary>Включить или выключить проверку обновлений при запуске.</summary>
+        public static void SaveUpdateCheckOnStart(bool checkOnStart)
+        {
+            Change(delegate(UserSettings s) { s.UpdateCheckOnStart = checkOnStart; });
+        }
+
+        /// <summary>
+        /// Поменять одно поле поверх СВЕЖЕЙ загрузки. Общий приём для настроек, у которых нет
+        /// окна-владельца: правится ровно названное поле, остальные попадают на диск такими,
+        /// какими их оставил их собственный владелец.
+        /// </summary>
+        private static void Change(Action<UserSettings> change)
+        {
+            UserSettings disk = Load();
+            change(disk);
+            disk.WriteAll();
+        }
+
+        private void WriteAll()
         {
             try
             {
@@ -110,21 +158,20 @@ namespace ExcelMerger
                     "addToc=" + AddToc,
                     "allSheets=" + AllSheets,
                     "outputExtension=" + (OutputExtension ?? ".xlsx"),
-                    "zoomWidth=" + zoomWidth,
-                    "compression=" + compressionLevel,
+                    "zoomWidth=" + ZoomWidth,
+                    "compression=" + CompressionLevel,
+                    "updateCheckOnStart=" + UpdateCheckOnStart,
+                    "skippedVersion=" + (SkippedVersion ?? ""),
                     // Язык — из живого Loc (единый источник истины), а НЕ из поля этого
                     // экземпляра: другие формы держат устаревшую копию настроек и иначе
                     // затёрли бы язык обратно при своём Save.
                     "language=" + Loc.Code(Loc.Current)
                 };
                 // Границы окон (wnd.<Форма>=x,y,w,h,m) — отсортированно: детерминированный файл.
-                if (windowBounds != null)
-                {
-                    var keys = new List<string>(windowBounds.Keys);
-                    keys.Sort(StringComparer.Ordinal);
-                    foreach (string k in keys)
-                        lines.Add("wnd." + k + "=" + windowBounds[k]);
-                }
+                var keys = new List<string>(WindowBounds.Keys);
+                keys.Sort(StringComparer.Ordinal);
+                foreach (string k in keys)
+                    lines.Add("wnd." + k + "=" + WindowBounds[k]);
                 File.WriteAllLines(FilePath, lines);
             }
             catch { }

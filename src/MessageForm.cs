@@ -21,10 +21,11 @@ namespace ExcelMerger
         private const int BtnH = 36;
 
         private Bitmap _icon;
+        private AccentCheckBox _option; // «больше не напоминать»; null, если флажка нет
 
         public static void ShowMessage(IWin32Window owner, Kind kind, string title, string header, string body)
         {
-            using (var f = new MessageForm(kind, title, header, body, false, null, null))
+            using (var f = new MessageForm(kind, title, header, body, false, null, null, null))
                 f.ShowDialog(owner);
         }
 
@@ -32,18 +33,35 @@ namespace ExcelMerger
         public static void ShowMessage(IWin32Window owner, Kind kind, string title, string header, string body,
             string linkText, string linkUrl)
         {
-            using (var f = new MessageForm(kind, title, header, body, false, linkText, linkUrl))
+            using (var f = new MessageForm(kind, title, header, body, false, linkText, linkUrl, null))
                 f.ShowDialog(owner);
         }
 
         public static bool ShowConfirm(IWin32Window owner, string title, string header, string body)
         {
-            using (var f = new MessageForm(Kind.Warning, title, header, body, true, null, null))
+            using (var f = new MessageForm(Kind.Warning, title, header, body, true, null, null, null))
                 return f.ShowDialog(owner) == DialogResult.Yes;
         }
 
+        /// <summary>
+        /// Вопрос с кнопками Да/Нет и флажком под текстом («больше не напоминать»).
+        /// Ответ и состояние флажка возвращаются вместе: это ОДНО решение пользователя,
+        /// и спрашивать о нём двумя диалогами значило бы показать окно дважды.
+        /// Флажок читается до Dispose — форма жива всё время using-блока.
+        /// </summary>
+        public static bool ShowConfirm(IWin32Window owner, string title, string header, string body,
+            string optionText, out bool optionChecked)
+        {
+            using (var f = new MessageForm(Kind.Info, title, header, body, true, null, null, optionText))
+            {
+                bool yes = f.ShowDialog(owner) == DialogResult.Yes;
+                optionChecked = f._option != null && f._option.Checked;
+                return yes;
+            }
+        }
+
         private MessageForm(Kind kind, string title, string header, string body, bool confirm,
-            string linkText, string linkUrl)
+            string linkText, string linkUrl, string optionText)
         {
             Ui.InitDialog(this, title ?? "iwo Helper Desktop");
 
@@ -87,6 +105,20 @@ namespace ExcelMerger
             }
 
             int textBottom = Math.Max(y, Pad + IconSize);
+
+            // Флажок («больше не напоминать») — под текстом, по его левому краю. Ширину
+            // берём измеренную: подпись длиннее рамки была бы обрезана молча, а на двух
+            // языках длина разная.
+            if (!string.IsNullOrEmpty(optionText))
+            {
+                _option = new AccentCheckBox();
+                _option.Text = optionText;
+                Size want = _option.GetPreferredSize(Size.Empty);
+                _option.SetBounds(textLeft, textBottom + 16, Math.Min(want.Width, textW), want.Height);
+                Controls.Add(_option);
+                textBottom = _option.Bottom;
+            }
+
             int btnY = textBottom + 24;
 
             if (confirm)
