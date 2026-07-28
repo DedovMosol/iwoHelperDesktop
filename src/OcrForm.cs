@@ -158,6 +158,7 @@ namespace ExcelMerger
             if (!FinishOperation(error, Loc.T("ocr.status.failed"), Loc.T("ocr.err.convertFailed")))
                 return; // отмена или ошибка — статус и диалог уже показаны базой
             UsageStats.RecordPdfToWord();
+            OperationHistory.Record("hist.op.pdftoword", outPath);
             SetStatus(string.Format(Loc.T("ocr.status.done"), result.Pages), Theme.OkGreen);
             Ui.OpenPath(outPath); // авто-открытие результата; молча, если нет ассоциации .docx
         }

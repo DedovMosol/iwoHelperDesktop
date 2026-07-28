@@ -138,6 +138,32 @@ namespace ExcelMerger
             return entries.GetRange(entries.Count - MaxEntries, MaxEntries);
         }
 
+        /// <summary>
+        /// Убрать записи старше указанного числа дней (0 — не убирать ничего).
+        ///
+        /// Для СПИСКА автоочистка — это скользящая давность, а не «раз в N дней стереть всё»,
+        /// как у счётчиков. Счётчик копится от метки сброса, и обнулить его целиком осмысленно.
+        /// Список же состоит из разновозрастных записей: правило «период прошёл — чистим всё»,
+        /// применённое к нему, стёрло бы и сегодняшние операции из-за одной позавчерашней.
+        /// Заодно так честнее к приватности: старое уходит само, недавнее остаётся.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static List<HistoryEntry> KeepRecent(List<HistoryEntry> entries, DateTime nowUtc, int days)
+        {
+            var kept = new List<HistoryEntry>();
+            if (entries == null)
+                return kept;
+            if (days <= 0)
+            {
+                kept.AddRange(entries);
+                return kept;
+            }
+            foreach (HistoryEntry e in entries)
+                if ((nowUtc - e.WhenUtc).TotalDays < days)
+                    kept.Add(e);
+            return kept;
+        }
+
         // ---------- состояние ----------
 
         /// <summary>Прочитанная история: настройки и сами записи.</summary>
@@ -178,13 +204,15 @@ namespace ExcelMerger
                     if (entry != null) // испорченная строка пропускается молча, как в настройках
                         d.Entries.Add(entry);
                 }
-                // Автоочистка — при чтении, как у статистики: отдельного «будильника» нет,
-                // а история и нужна-то в момент, когда её открывают.
-                if (d.AutoClearDays > 0 && d.Entries.Count > 0 &&
-                    UsageStats.ShouldAutoClear(d.Entries[0].WhenUtc, DateTime.UtcNow, d.AutoClearDays))
+                // Устаревшие записи отсеиваются ПРИ ЧТЕНИИ и в память — писать отсюда нельзя:
+                // Load зовут и снаружи блокировки (чтобы показать список), и запись без неё
+                // столкнулась бы с записью второй копии приложения. На диск отсев попадает
+                // первой же мутацией: Mutate сохраняет ровно то, что вернул Load.
+                List<HistoryEntry> fresh = KeepRecent(d.Entries, DateTime.UtcNow, d.AutoClearDays);
+                if (fresh.Count != d.Entries.Count)
                 {
                     d.Entries.Clear();
-                    Save(d);
+                    d.Entries.AddRange(fresh);
                 }
             }
             catch { } // повреждённая история не повод мешать работе
@@ -240,6 +268,12 @@ namespace ExcelMerger
         public static void Record(string operationKey, string path)
         {
             if (string.IsNullOrEmpty(path))
+                return;
+            // Быстрый выход БЕЗ блокировки и без записи. Иначе выключенная история всё равно
+            // перечитывала бы и переписывала файл на каждой операции — и воссоздавала бы его
+            // после того, как человек его удалил. Решает всё равно проверка внутри мутации:
+            // здесь мы лишь не трогаем диск понапрасну.
+            if (!Load().Enabled)
                 return;
             Mutate(delegate(Data d)
             {
