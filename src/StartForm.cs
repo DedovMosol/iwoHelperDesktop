@@ -287,18 +287,15 @@ namespace ExcelMerger
 
         private void BuildBottomRow()
         {
-            // Нижний ряд виден на всех уровнях: «Проверить обновления» слева, «О программе» справа.
-            var update = new RoundedButton(false);
-            update.Text = Loc.T("hub.update");
-            update.SetBounds(Pad, BottomRowY, 224, BottomRowH);
-            // Запрос идёт в сеть с таймаутом 10 с. Без гашения кнопки она выглядела мёртвой,
-            // а нетерпеливые клики плодили по потоку и по диалогу с ошибкой на каждый.
-            update.Click += delegate
-            {
-                update.Enabled = false;
-                UpdateUi.Check(this, delegate { update.Enabled = true; });
-            };
-            Controls.Add(update);
+            // Нижний ряд виден на всех уровнях: «Настройки» слева, «О программе» справа.
+            // Проверка обновлений уехала ВНУТРЬ настроек: с 1.18.0 она идёт при запуске сама,
+            // и ручная кнопка из первого ряда превратилась в редкое действие. Заодно рядом с
+            // ней встал её собственный выключатель — раньше его негде было показать.
+            var settings = new RoundedButton(false);
+            settings.Text = Loc.T("settings.title");
+            settings.SetBounds(Pad, BottomRowY, 224, BottomRowH);
+            settings.Click += delegate { using (var f = new SettingsForm()) f.ShowDialog(this); };
+            Controls.Add(settings);
 
             var about = new RoundedButton(false);
             about.Text = Loc.T("hub.about");

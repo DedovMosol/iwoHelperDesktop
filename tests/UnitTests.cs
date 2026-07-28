@@ -322,12 +322,13 @@ namespace ExcelMerger.Tests
             Run("Обновления: окно показывается один раз, сторож отпускает", TestUpdateWindowShownOnce);
             Run("Обновления: настройки не затираются устаревшим Save", TestUpdatePrefsNotClobbered);
             Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
+            Run("Настройки (живое): флажок пишется, «снова напоминать» появляется по делу", TestSettingsUpdateControlsLive);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 295;
+            const int MinTests = 296;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -644,7 +645,11 @@ namespace ExcelMerger.Tests
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         texts.Add(it.Text);
                 AssertTrue(texts.Contains(Loc.T("menu.howTo")), "есть «Как пользоваться»");
-                AssertTrue(texts.Contains(Loc.T("menu.stats")), "есть «Статистика»");
+                // Статистика переехала ВНУТРЬ «Настроек»: отдельного пункта в меню быть не
+                // должно, иначе одно окно открывалось бы двумя путями и оба пришлось бы
+                // помнить при каждой правке.
+                AssertTrue(texts.Contains(Loc.T("settings.title")), "есть «Настройки»");
+                AssertTrue(!texts.Contains(Loc.T("menu.stats")), "отдельного пункта «Статистика» больше нет");
                 AssertTrue(texts.Contains(Loc.T("menu.language")), "есть выбор языка");
                 AssertTrue(texts.Contains("Папка отчётов"), "доп. пункт вставлен");
                 // «О программе» перенесена на стартовый экран — в меню её быть не должно.
@@ -2829,7 +2834,7 @@ namespace ExcelMerger.Tests
                     {
                         new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back),
                         new OcrForm(back), new PdfOpsForm(back), new StartForm(),
-                        new AboutForm(), new StatsForm()
+                        new AboutForm(), new StatsForm(), new SettingsForm()
                     };
                 }
                 catch (Exception ex) { offenders.Add("ctor: " + ex.Message); return; }
@@ -5246,6 +5251,96 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
+        /// Окно «Настройки» на НАСТОЯЩИХ контролах: флажок показывает то, что на диске, его
+        /// переключение сразу пишется, а кнопка «снова напоминать» есть ровно тогда, когда
+        /// отменять есть что. Последнее — не украшение: без этой кнопки галочка «больше не
+        /// напоминать» была бы необратимой, а необратимое действие без выхода — это дефект.
+        /// </summary>
+        private static void TestSettingsUpdateControlsLive()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_setwin_", delegate
+            {
+                try
+                {
+                    // 1. Чистые настройки: проверка включена, отменять нечего.
+                    using (var f = new SettingsForm())
+                    {
+                        f.Show();
+                        AccentCheckBox box = FindCheck(f);
+                        RoundedButton unskip = FindUnskip(f);
+                        if (box == null || unskip == null)
+                            offenders.Add("флажок или кнопка не собрались");
+                        else
+                        {
+                            if (!box.Checked) offenders.Add("на чистых настройках проверка должна быть включена");
+                            if (unskip.Visible) offenders.Add("отменять нечего, а кнопка «снова напоминать» видна");
+
+                            // 2. Снятие флажка пишется на диск сразу, без кнопки «Сохранить».
+                            box.Checked = false;
+                            if (UserSettings.Load().UpdateCheckOnStart)
+                                offenders.Add("снятый флажок не записался");
+                            box.Checked = true;
+                            if (!UserSettings.Load().UpdateCheckOnStart)
+                                offenders.Add("возвращённый флажок не записался");
+                        }
+                        f.Close();
+                    }
+
+                    // 3. Есть пропущенная версия — кнопка появилась и называет её.
+                    UserSettings.SaveSkippedVersion("1.18.0");
+                    using (var f = new SettingsForm())
+                    {
+                        f.Show();
+                        RoundedButton unskip = FindUnskip(f);
+                        if (unskip == null || !unskip.Visible)
+                            offenders.Add("пропущенная версия есть, а кнопка «снова напоминать» не видна");
+                        else
+                        {
+                            if (unskip.Text.IndexOf("1.18.0", StringComparison.Ordinal) < 0)
+                                offenders.Add("кнопка не называет версию: " + unskip.Text);
+                            unskip.PerformClick();
+                            if (!string.IsNullOrEmpty(UserSettings.Load().SkippedVersion))
+                                offenders.Add("нажатие не стёрло пропущенную версию");
+                            if (unskip.Visible)
+                                offenders.Add("версия стёрта, а кнопка осталась видна");
+                        }
+                        f.Close();
+                    }
+                }
+                catch (Exception ex) { offenders.Add("не собралось: " + Root(ex).Message); }
+            });
+            AssertTrue(offenders.Count == 0, "настройки обновлений: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        private static AccentCheckBox FindCheck(System.Windows.Forms.Form f)
+        {
+            foreach (System.Windows.Forms.Control c in f.Controls)
+                if (c is AccentCheckBox)
+                    return (AccentCheckBox)c;
+            return null;
+        }
+
+        /// <summary>Кнопка «снова напоминать» — единственная, чья подпись собрана по шаблону с версией.</summary>
+        private static RoundedButton FindUnskip(System.Windows.Forms.Form f)
+        {
+            string prefix = Loc.T("settings.btn.unskip");
+            int brace = prefix.IndexOf('{');
+            if (brace > 0)
+                prefix = prefix.Substring(0, brace);
+            foreach (System.Windows.Forms.Control c in f.Controls)
+            {
+                var b = c as RoundedButton;
+                if (b != null && b.Text != null && b.Text.StartsWith(prefix, StringComparison.Ordinal))
+                    return b;
+                // Пока отменять нечего, подписи у кнопки нет — узнаём её по месту в окне.
+                if (b != null && string.IsNullOrEmpty(b.Text))
+                    return b;
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Подпись флажка «больше не напоминать» обязана помещаться в диалог ЦЕЛИКОМ на обоих
         /// языках. Ширина флажка ограничена шириной текстовой колонки, поэтому подпись длиннее
         /// неё не вылезет за окно — она молча обрежется, а это ровно тот дефект, который глазами
@@ -5348,7 +5443,7 @@ namespace ExcelMerger.Tests
             var types = new[]
             {
                 typeof(AboutForm), typeof(StatsForm), typeof(MetadataForm),
-                typeof(MessageForm), typeof(NumberPromptDialog)
+                typeof(MessageForm), typeof(NumberPromptDialog), typeof(SettingsForm)
             };
             var forms = new List<System.Windows.Forms.Form>();
             foreach (Type t in types)
