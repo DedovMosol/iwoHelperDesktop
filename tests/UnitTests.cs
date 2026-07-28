@@ -5287,7 +5287,33 @@ namespace ExcelMerger.Tests
                         f.Close();
                     }
 
-                    // 3. Есть пропущенная версия — кнопка появилась и называет её.
+                    // 3. Настройки, изменённые СНАРУЖИ, подхватываются при возврате фокуса:
+                    // окно модально только для своего владельца, и вторые «Настройки» из
+                    // меню инструмента (или окно обновления поверх) меняют файл под ним.
+                    using (var f = new SettingsForm())
+                    {
+                        f.Show();
+                        AccentCheckBox box = FindCheck(f);
+                        UserSettings.SaveUpdateCheckOnStart(false); // «кто-то другой» выключил
+                        // Нужен НАСТОЯЩИЙ цикл «потерял фокус — вернул»: Activate() на уже
+                        // активном окне ничего не делает, и событие не приходит.
+                        using (var other = new System.Windows.Forms.Form())
+                        {
+                            other.ShowInTaskbar = false;
+                            other.Show();
+                            other.Activate();
+                            System.Windows.Forms.Application.DoEvents();
+                            f.Activate();
+                            System.Windows.Forms.Application.DoEvents();
+                            other.Close();
+                        }
+                        if (box != null && box.Checked)
+                            offenders.Add("внешнее изменение не подхвачено при возврате фокуса");
+                        f.Close();
+                    }
+                    UserSettings.SaveUpdateCheckOnStart(true);
+
+                    // 4. Есть пропущенная версия — кнопка появилась и называет её.
                     UserSettings.SaveSkippedVersion("1.18.0");
                     using (var f = new SettingsForm())
                     {
