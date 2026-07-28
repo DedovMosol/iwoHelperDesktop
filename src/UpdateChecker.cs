@@ -55,6 +55,22 @@ namespace ExcelMerger
             return skipped == null || latest > skipped;
         }
 
+        /// <summary>
+        /// Версия для показа человеку: до трёх чисел, но не больше, чем в ней есть.
+        ///
+        /// Прямой <c>ToString(3)</c> БРОСАЕТ <see cref="ArgumentException"/> на версии из двух
+        /// чисел, а тег вида «v1.18» на GitHub поставить никто не мешает — версия приходит
+        /// СНАРУЖИ. На пути проверки при запуске это означало бы отчёт о сбое сразу после
+        /// открытия программы, причём у всех пользователей разом и без их участия.
+        /// Чистая — под тест.
+        /// </summary>
+        public static string Display(Version version)
+        {
+            if (version == null)
+                return "";
+            return version.ToString(version.Build >= 0 ? 3 : 2);
+        }
+
         /// <summary>Запрос последнего тега с GitHub (сеть). Бросает при ошибке/недоступности.</summary>
         public static string FetchLatestTag()
         {
@@ -80,6 +96,23 @@ namespace ExcelMerger
     {
         private const string Title = "iwo Helper Desktop";
 
+        // Окно об обновлении в любой момент времени ровно одно. Проверка при запуске и
+        // проверка по кнопке — два НЕЗАВИСИМЫХ воркера: нажатие кнопки в первые десять
+        // секунд после запуска давало бы два одинаковых сообщения, одно поверх другого.
+        // Флаг трогает только UI-поток (оба показа приходят через Ui.OnUi), поэтому
+        // блокировка не нужна, а вложенный показ отсекается сам: пока модальное окно
+        // держит поток, флаг поднят.
+        private static bool _windowOpen;
+
+        internal static void ShowOnce(Action show)
+        {
+            if (_windowOpen)
+                return;
+            _windowOpen = true;
+            try { show(); }
+            finally { _windowOpen = false; }
+        }
+
         /// <summary>
         /// Проверить обновления: запрос в фоне, результат — в UI-потоке. done вызывается
         /// перед показом результата и возвращает в строй кнопку, которую вызывающий погасил
@@ -96,9 +129,11 @@ namespace ExcelMerger
                 catch (Exception ex) { error = ex; }
                 Ui.OnUi(owner, delegate // общий guard: своя копия уже дважды теряла catch
                 {
+                    // Кнопку возвращаем в строй ВСЕГДА, даже если показ отменён чужим
+                    // окном: иначе она осталась бы погашенной навсегда.
                     if (done != null)
                         done();
-                    ShowResult(owner, tag, error);
+                    ShowOnce(delegate { ShowResult(owner, tag, error); });
                 });
             });
         }
@@ -121,7 +156,7 @@ namespace ExcelMerger
             if (UpdateChecker.IsNewer(latest, current))
                 OfferUpdate(owner, latest, current, false);
             else
-                Dialogs.Info(owner, Title, Loc.T("update.none.title"), string.Format(Loc.T("update.none.body"), current.ToString(3)));
+                Dialogs.Info(owner, Title, Loc.T("update.none.title"), string.Format(Loc.T("update.none.body"), UpdateChecker.Display(current)));
         }
 
         /// <summary>
@@ -146,7 +181,7 @@ namespace ExcelMerger
                     // Настройки перечитываем здесь, а не при запуске воркера: за десять
                     // секунд ожидания сети пользователь мог отказаться от напоминаний.
                     if (UpdateChecker.ShouldNotify(latest, current, UserSettings.Load().SkippedVersion))
-                        OfferUpdate(owner, latest, current, true);
+                        ShowOnce(delegate { OfferUpdate(owner, latest, current, true); });
                 });
             });
         }
@@ -159,8 +194,8 @@ namespace ExcelMerger
         /// </summary>
         private static void OfferUpdate(Form owner, Version latest, Version current, bool withSkipOption)
         {
-            string header = string.Format(Loc.T("update.available.title"), latest.ToString(3));
-            string body = string.Format(Loc.T("update.available.body"), current.ToString(3));
+            string header = string.Format(Loc.T("update.available.title"), UpdateChecker.Display(latest));
+            string body = string.Format(Loc.T("update.available.body"), UpdateChecker.Display(current));
             // Ветки «с флажком» и «без» различаются ТОЛЬКО подписью флажка (пустая — флажка
             // нет): развилка из двух вызовов дала бы два разных значка у одного и того же
             // сообщения — синий при запуске и оранжевый по кнопке.
@@ -168,7 +203,7 @@ namespace ExcelMerger
             bool open = MessageForm.ShowConfirm(owner, Title, header, body,
                 withSkipOption ? Loc.T("update.skip") : null, out skip);
             if (skip)
-                UserSettings.SaveSkippedVersion(latest.ToString(3));
+                UserSettings.SaveSkippedVersion(UpdateChecker.Display(latest));
             if (open)
                 Ui.OpenUrlOrShow(owner, Title, UpdateChecker.ReleasesPage);
         }
