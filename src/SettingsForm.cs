@@ -15,9 +15,24 @@ namespace ExcelMerger
     /// которое придётся не забыть при правке. Вдобавок смена языка ПЕРЕСОБИРАЕТ открытые
     /// окна, и запуск пересборки из модального окна поверх пересобираемого владельца — уже
     /// наступавшая ловушка.
+    ///
+    /// Раскладка считается СВЕРХУ ВНИЗ от реальных размеров контролов, а не литералами.
+    /// Пояснение под флажком переносится по словам, и его высота зависит от шрифта и
+    /// масштаба экрана: на 150% посчитанная на глаз координата кнопки оказалась бы под
+    /// текстом. Ровно так уже разъезжались «Свойства документа» до 1.17.9.
     /// </summary>
     public class SettingsForm : Form
     {
+        private const int Pad = 24;        // поле слева и справа
+        private const int BtnH = 34;
+        private const int BtnMinW = 190;
+        private const int BtnTextPad = 28; // запас вокруг подписи внутри кнопки
+        private const int Gap = 10;        // между соседними строками одной группы
+        private const int GroupGap = 22;   // между группами
+
+        /// <summary>Имя кнопки «снова напоминать» — по нему её находит проверка.</summary>
+        internal const string UnskipName = "unskip";
+
         private readonly AccentCheckBox _checkOnStart;
         private readonly RoundedButton _unskip;
         private ToolTip _tips;
@@ -26,29 +41,31 @@ namespace ExcelMerger
         public SettingsForm()
         {
             Ui.InitDialog(this, Loc.T("settings.title"));
-            ClientSize = new Size(460, 336);
+            int width = 460;
+            ClientSize = new Size(width, 100); // высота считается ниже, по содержимому
             WindowChrome.Enable(this, Theme.HubBlue);
 
             Ui.AccentBar(this, 0, Theme.HubBlue);
-            Ui.Label(this, Loc.T("settings.title"), 24, 22, Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+            Label title = Ui.Label(this, Loc.T("settings.title"), Pad, 22,
+                Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
 
             // ---------- обновления ----------
-            Ui.Label(this, Loc.T("settings.section.updates"), 24, 70, Ui.Font(10.5f, FontStyle.Bold), Theme.TextPrimary);
+            int y = title.Bottom + GroupGap;
+            y = Section(Loc.T("settings.section.updates"), y).Bottom + Gap;
 
             _checkOnStart = new AccentCheckBox();
             _checkOnStart.Text = Loc.T("settings.chk.updateOnStart");
+            Controls.Add(_checkOnStart); // шрифт наследуется от формы: мерить только после этого
             Size want = _checkOnStart.GetPreferredSize(Size.Empty);
-            _checkOnStart.SetBounds(24, 98, Math.Min(want.Width, ClientSize.Width - 48), want.Height);
+            _checkOnStart.SetBounds(Pad, y, Math.Min(want.Width, width - 2 * Pad), want.Height);
             _checkOnStart.CheckedChanged += OnCheckOnStartChanged;
-            Controls.Add(_checkOnStart);
 
-            Label hint = Ui.Label(this, Loc.T("settings.hint.updates"), 24, 126, Font, Theme.TextMuted);
-            hint.MaximumSize = new Size(ClientSize.Width - 48, 0);
+            Label hint = Ui.Label(this, Loc.T("settings.hint.updates"), Pad, _checkOnStart.Bottom + 6,
+                Font, Theme.TextMuted);
+            hint.MaximumSize = new Size(width - 2 * Pad, 0); // перенос по словам в пределах полосы
             hint.AutoSize = true;
 
-            var checkNow = new RoundedButton(false);
-            checkNow.Text = Loc.T("settings.btn.checkNow");
-            checkNow.SetBounds(24, 178, 190, 34);
+            RoundedButton checkNow = AddButton(Loc.T("settings.btn.checkNow"), Pad, hint.Bottom + Gap + 4);
             checkNow.Click += delegate
             {
                 // Кнопка гасится на время запроса: сеть с таймаутом 10 с, а нетерпеливые
@@ -56,36 +73,63 @@ namespace ExcelMerger
                 checkNow.Enabled = false;
                 UpdateUi.Check(this, delegate { checkNow.Enabled = true; });
             };
-            Controls.Add(checkNow);
 
-            // «Снова напоминать» появляется, только если о какой-то версии просили молчать:
-            // кнопка, отменяющая то, чего не было, — это вопрос без ответа.
-            _unskip = new RoundedButton(false);
-            _unskip.SetBounds(226, 178, 210, 34);
+            // «Снова напоминать» — СВОЕЙ строкой, а не рядом: подпись несёт номер версии и на
+            // разных языках разной длины, и в паре кнопок она рано или поздно не поместилась
+            // бы по ширине. Место под неё держим всегда, даже когда она спрятана, иначе окно
+            // меняло бы высоту от того, отказывался ли человек от напоминаний.
+            _unskip = AddButton("", Pad, checkNow.Bottom + Gap);
+            _unskip.Name = UnskipName; // чтобы проверка находила кнопку по имени, а не по пустой подписи
             _unskip.Click += OnUnskip;
-            Controls.Add(_unskip);
 
             // ---------- статистика ----------
-            Ui.Label(this, Loc.T("settings.section.stats"), 24, 234, Ui.Font(10.5f, FontStyle.Bold), Theme.TextPrimary);
-
-            var stats = new RoundedButton(false);
-            stats.Text = Loc.T("settings.btn.stats");
-            stats.SetBounds(24, 262, 190, 34);
+            y = Section(Loc.T("settings.section.stats"), _unskip.Bottom + GroupGap).Bottom + Gap;
+            RoundedButton stats = AddButton(Loc.T("settings.btn.stats"), Pad, y);
             stats.Click += delegate { using (var f = new StatsForm()) f.ShowDialog(this); };
-            Controls.Add(stats);
 
             var close = new RoundedButton(true);
-            close.Text = Loc.T("common.close");
-            close.SetBounds(ClientSize.Width - 124, ClientSize.Height - 52, 100, 36);
-            close.Click += delegate { Close(); };
+            close.SetBounds(width - Pad - 100, stats.Bottom + GroupGap, 100, 36);
             Controls.Add(close);
+            close.Text = Loc.T("common.close");
+            close.Click += delegate { Close(); };
             AcceptButton = close;
             CancelButton = close;
+
+            ClientSize = new Size(width, close.Bottom + Pad);
 
             _tips = new ToolTip();
             _tips.SetToolTip(_checkOnStart, Loc.T("settings.tip.updateOnStart"));
 
             LoadAndShow();
+        }
+
+        /// <summary>Заголовок группы настроек.</summary>
+        private Label Section(string text, int y)
+        {
+            return Ui.Label(this, text, Pad, y, Ui.Font(10.5f, FontStyle.Bold), Theme.TextPrimary);
+        }
+
+        /// <summary>
+        /// Кнопка, ширина которой посчитана по её СОБСТВЕННОЙ подписи. Литеральная ширина
+        /// обрезает перевод многоточием: «Remind me about 1.18.0 again» длиннее русского
+        /// «Снова напоминать о 1.18.0», и та ширина, что подошла на одном языке, на другом
+        /// съедает конец подписи молча.
+        /// </summary>
+        private RoundedButton AddButton(string text, int x, int y)
+        {
+            var b = new RoundedButton(false);
+            b.SetBounds(x, y, BtnMinW, BtnH);
+            Controls.Add(b); // шрифт наследуется от формы, до добавления мерить нечем
+            SetButtonText(b, text);
+            return b;
+        }
+
+        /// <summary>Задать подпись и подогнать ширину под неё (подпись меняется в LoadAndShow).</summary>
+        private static void SetButtonText(RoundedButton button, string text)
+        {
+            button.Text = text;
+            int want = TextRenderer.MeasureText(text ?? "", button.Font).Width + BtnTextPad;
+            button.Width = Math.Max(BtnMinW, want);
         }
 
         /// <summary>
@@ -103,7 +147,7 @@ namespace ExcelMerger
             bool skipped = !string.IsNullOrEmpty(s.SkippedVersion);
             _unskip.Visible = skipped;
             if (skipped)
-                _unskip.Text = string.Format(Loc.T("settings.btn.unskip"), s.SkippedVersion);
+                SetButtonText(_unskip, string.Format(Loc.T("settings.btn.unskip"), s.SkippedVersion));
         }
 
         private void OnCheckOnStartChanged(object sender, EventArgs e)
