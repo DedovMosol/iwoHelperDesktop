@@ -12,8 +12,6 @@
 
 **Free, offline office tools in a single Windows app — merge Excel sheets, merge/split/compress PDFs at Acrobat‑level quality, and turn born‑digital PDFs back into editable Word. No subscription, no admin rights, no network.**
 
-**[⬇️ Download for Windows](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest)** — installer or portable, x64 or x86 · [all files and notes](#️-download)
-
 📐 [Architecture](docs/ARCHITECTURE.md) · 🤝 [Contributing](CONTRIBUTING.md) · 📋 [Changelog](docs/CHANGELOG.md) · 🔒 [Privacy](docs/PRIVACY.md)
 
 </div>
