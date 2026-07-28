@@ -319,6 +319,8 @@ namespace ExcelMerger.Tests
             Run("Руководство: распаковывается рядом с настройками, под своим именем", TestUserManualPath);
             Run("Обновления: решение показывать уведомление при запуске", TestShouldNotifyUpdate);
             Run("Обновления: версия из двух чисел не роняет показ", TestVersionDisplay);
+            Run("История: строка переживает запись и чтение, испорченная пропускается", TestHistoryEntryRoundTrip);
+            Run("История: кольцо хранит последние записи", TestHistoryTrim);
             Run("Обновления: окно показывается один раз, сторож отпускает", TestUpdateWindowShownOnce);
             Run("Обновления: настройки не затираются устаревшим Save", TestUpdatePrefsNotClobbered);
             Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
@@ -328,7 +330,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 296;
+            const int MinTests = 298;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -944,6 +946,71 @@ namespace ExcelMerger.Tests
             AssertTrue(UpdateChecker.ShouldNotify(next, current, "мусор"), "непонятная пропущенная не глушит проверку");
             AssertTrue(UpdateChecker.ShouldNotify(next, current, ""), "пустая пропущенная не глушит проверку");
             AssertTrue(!UpdateChecker.ShouldNotify(next, current, "v1.18.0"), "пропущенная с «v» разбирается так же");
+        }
+
+        /// <summary>
+        /// История: строка файла собирается и разбирается обратно без потерь, а испорченная
+        /// строка пропускается, а не роняет разбор. Разделитель — табуляция, потому что в
+        /// путях Windows встречаются и запятая, и точка с запятой; всё, что могло бы порвать
+        /// строку, экранируется.
+        /// </summary>
+        private static void TestHistoryEntryRoundTrip()
+        {
+            var when = new DateTime(2026, 7, 28, 9, 15, 30, DateTimeKind.Utc);
+            foreach (string path in new[]
+            {
+                @"C:\Папка\файл.pdf",
+                @"C:\с запятой, и точкой с запятой; внутри\файл.pdf",
+                "C:\\с\tтабуляцией.pdf",
+                "C:\\с\nпереводом строки.pdf",
+                "C:\\с\rвозвратом каретки.pdf",
+                @"\\сервер\общая папка\файл.pdf",
+                @"C:\обратная\\косая.pdf"
+            })
+            {
+                var e = new HistoryEntry { WhenUtc = when, Operation = "hist.op.merge", Path = path };
+                string line = OperationHistory.FormatEntry(e);
+                AssertTrue(line.IndexOf('\n') < 0 && line.IndexOf('\r') < 0,
+                    "запись не должна содержать переводов строки: " + path);
+                HistoryEntry back = OperationHistory.ParseEntry(line);
+                AssertTrue(back != null, "строка не разобралась: " + path);
+                AssertEqual(path, back.Path, "путь пережил запись и чтение");
+                AssertEqual("hist.op.merge", back.Operation, "ключ операции цел");
+                AssertEqual(when, back.WhenUtc, "время цело");
+            }
+
+            // Испорченное — пропускается, а не роняет.
+            AssertTrue(OperationHistory.ParseEntry(null) == null, "null");
+            AssertTrue(OperationHistory.ParseEntry("") == null, "пустая строка");
+            AssertTrue(OperationHistory.ParseEntry("enabled=True") == null, "не запись истории");
+            AssertTrue(OperationHistory.ParseEntry("e=мусор	op	C:\f.pdf") == null, "время не число");
+            AssertTrue(OperationHistory.ParseEntry("e=123	op") == null, "полей меньше трёх");
+            AssertTrue(OperationHistory.ParseEntry("e=123	op	") == null, "пустой путь — не запись");
+            AssertTrue(OperationHistory.ParseEntry("e=-99999999999999999999	op	C:\f.pdf") == null,
+                "время вне диапазона DateTime не роняет разбор");
+        }
+
+        /// <summary>
+        /// Кольцо истории: хранится не больше заданного числа записей, и остаются ПОСЛЕДНИЕ.
+        /// Без кольца файл рос бы без предела, а с ним и перечень путей, о которых человек
+        /// давно забыл, — то есть сведения, которых он не просил хранить.
+        /// </summary>
+        private static void TestHistoryTrim()
+        {
+            var few = new List<HistoryEntry>();
+            for (int i = 0; i < 5; i++)
+                few.Add(new HistoryEntry { Path = "f" + i });
+            AssertEqual(5, OperationHistory.Trim(few).Count, "мало записей — не режем");
+
+            var many = new List<HistoryEntry>();
+            for (int i = 0; i < OperationHistory.MaxEntries + 25; i++)
+                many.Add(new HistoryEntry { Path = "f" + i });
+            List<HistoryEntry> cut = OperationHistory.Trim(many);
+            AssertEqual(OperationHistory.MaxEntries, cut.Count, "обрезано до предела");
+            AssertEqual("f25", cut[0].Path, "остались ПОСЛЕДНИЕ, старые вытеснены");
+            AssertEqual("f" + (OperationHistory.MaxEntries + 24), cut[cut.Count - 1].Path, "самая новая на месте");
+
+            AssertEqual(0, OperationHistory.Trim(null).Count, "null — пустой список, не исключение");
         }
 
         /// <summary>
