@@ -30,9 +30,11 @@ namespace ExcelMerger
             howTo.Click += delegate { showHowTo(); };
             root.DropDownItems.Add(howTo);
 
-            var stats = new ToolStripMenuItem(Loc.T("menu.stats"));
-            stats.Click += delegate { using (var form = new StatsForm()) form.ShowDialog(owner); };
-            root.DropDownItems.Add(stats);
+            // «Статистика» живёт внутри «Настроек» — отдельным пунктом её здесь больше нет:
+            // два входа в одно окно приходится помнить в двух местах при каждой правке.
+            var settings = new ToolStripMenuItem(Loc.T("settings.title"));
+            settings.Click += delegate { using (var form = new SettingsForm()) form.ShowDialog(owner); };
+            root.DropDownItems.Add(settings);
 
             root.DropDownItems.Add(new ToolStripSeparator());
             root.DropDownItems.Add(BuildLanguageMenu());

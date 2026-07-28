@@ -160,7 +160,6 @@ namespace ExcelMerger
             A("hub.ops.desc",
                 "Сжать документ, сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
                 "Compress a document, save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties.");
-            A("hub.update", "⟳ Проверить обновления", "⟳ Check for updates");
             A("hub.about", "О программе", "About");
 
             // common.* — общие элементы нескольких окон
@@ -480,6 +479,21 @@ namespace ExcelMerger
             // Флажок называет ИМЕННО эту версию, а не «обновления вообще»: о следующем
             // выпуске человек должен узнать, даже если про этот просил не напоминать.
             A("update.skip", "Больше не напоминать об этой версии", "Don't remind me about this version");
+
+            // settings.* — окно «Настройки» (общее для всей программы, не для документа)
+            A("settings.title", "Настройки", "Settings");
+            A("settings.section.updates", "Обновления", "Updates");
+            A("settings.chk.updateOnStart", "Проверять обновления при запуске", "Check for updates at startup");
+            A("settings.tip.updateOnStart",
+                "Программа спросит GitHub номер последней версии и промолчит, если она у вас уже стоит",
+                "The app asks GitHub for the latest version number and stays quiet if you already have it");
+            A("settings.hint.updates",
+                "Единственное обращение в сеть. Передаётся только запрос номера версии, файлы и любые ваши данные не отправляются никогда.",
+                "The only network request. It asks for a version number and nothing else — your files and data are never sent.");
+            A("settings.btn.checkNow", "Проверить сейчас", "Check now");
+            A("settings.btn.unskip", "Снова напоминать о {0}", "Remind me about {0} again");
+            A("settings.section.stats", "Статистика", "Statistics");
+            A("settings.btn.stats", "Показать статистику", "Show statistics");
 
             // gs.* — предупреждение об отсутствии Ghostscript
             A("gs.title", "Сжатие недоступно", "Compression unavailable");
