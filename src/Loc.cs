@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ExcelMerger
@@ -492,7 +492,27 @@ namespace ExcelMerger
                 "The only network request. It asks for a version number and nothing else — your files and data are never sent.");
             A("settings.btn.checkNow", "Проверить сейчас", "Check now");
             A("settings.btn.unskip", "Снова напоминать о {0}", "Remind me about {0} again");
+            A("settings.section.history", "История и статистика", "History and statistics");
+            A("settings.chk.history", "Вести историю операций", "Keep a history of operations");
+            A("settings.tip.history",
+                "Хранятся только пути и имена файлов, сами файлы никуда не копируются",
+                "Only paths and file names are kept, the files themselves are never copied");
+            A("settings.lbl.historyAuto", "Убирать записи старше", "Remove entries older than");
+            A("settings.btn.historyClear", "Очистить историю", "Clear the history");
+            A("settings.history.empty", "Пока пусто", "Nothing yet");
+            A("settings.history.count", "Записей: {0}", "Entries: {0}");
+            A("settings.confirm.clearHistory.title", "Очистить историю операций?", "Clear the operation history?");
+            A("settings.confirm.clearHistory.body",
+                "Список путей будет удалён. Сами файлы останутся на месте.",
+                "The list of paths will be deleted. The files themselves stay where they are.");
             A("settings.section.stats", "Статистика", "Statistics");
+            // hist.op.* — названия операций в истории. Хранится КЛЮЧ, а не подпись: подпись
+            // зависит от языка, и записанная по-русски осталась бы русской после переключения.
+            A("hist.op.excel", "Свод Excel", "Excel digest");
+            A("hist.op.merge", "Объединение PDF", "PDF merge");
+            A("hist.op.extract", "Извлечение страниц", "Page extraction");
+            A("hist.op.split", "Разделение PDF", "PDF split");
+            A("hist.op.pdftoword", "PDF → Word", "PDF → Word");
             A("settings.btn.stats", "Показать статистику", "Show statistics");
 
             // gs.* — предупреждение об отсутствии Ghostscript

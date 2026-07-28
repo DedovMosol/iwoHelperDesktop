@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Application:** iwo Helper Desktop
-**Last updated:** 2026-07-27
+**Last updated:** 2026-07-28
 
 ## Summary
 
@@ -84,6 +84,12 @@ The app keeps a small amount of data **locally**, under
 - `Инструкция пользователя.docx` — the user guide, unpacked from the program itself when you
   open it from **About**. It is a copy of what already sits inside the `.exe`, nothing is
   downloaded.
+- `history.txt` — a list of your recent operations: when, which tool, and the path of the
+  result. **Paths and names only, never a copy of a file.** It is capped at the last 200
+  entries, can be limited to a number of days, cleared with one button, and switched off
+  entirely - switching it off clears what has been collected. Note that clearing the history
+  does not scrub paths that may have reached `crash.log` through the text of an error
+  message: the .NET message for a missing or locked file contains the path itself.
 
 You can delete this folder at any time, the app recreates only what it needs.
 
