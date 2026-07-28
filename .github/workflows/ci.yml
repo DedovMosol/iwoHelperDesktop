@@ -43,11 +43,34 @@ jobs:
       # Ghostscript ставим ДО юнит-тестов: иначе живой тест сжатия молча уходил в ветку
       # «движка нет», и настоящие проверки (сжатие применилось, размер уменьшился, заголовок
       # PDF цел, страницы не потеряны) в CI не выполнялись ни разу.
+      # choco ВОЗВРАЩАЕТ НОЛЬ, даже когда не поставил ничего: 2026-07-28 фид отдавал 504 и
+      # 503, в логе стояло «installed 0/1 packages», а шаг был зелёным — отказ всплывал через
+      # два шага и указывал на Ghostscript вместо установки. Поэтому: повтор при временном
+      # сбое сети (5xx на стороне фида проходят сами) и ЯВНАЯ проверка, что пакет на месте.
+      # Не поставился после трёх попыток — падаем здесь и с правильной причиной: собирать
+      # дальше можно, но проверять сжатие уже нечем, а зелёная сборка без этой проверки лжёт.
       - name: Ghostscript и Inno Setup (сжатие и установщик)
         shell: pwsh
         run: |
-          choco install ghostscript --no-progress -y ${{ matrix.gs_choco }}
-          choco install innosetup --no-progress -y
+          function Install-WithRetry([string]$package, [string]$extra) {
+            for ($try = 1; $try -le 3; $try++) {
+              Write-Host "== $package, попытка $try из 3 =="
+              $log = & choco install $package --no-progress -y $extra 2>&1 | Out-String
+              Write-Host $log
+              if ($log -notmatch 'packages failed') { return }
+              if ($try -lt 3) { Start-Sleep -Seconds (15 * $try) }
+            }
+            Write-Host "::error::$package не установлен после трёх попыток (фид Chocolatey недоступен?)"
+            exit 1
+          }
+          Install-WithRetry 'ghostscript' '${{ matrix.gs_choco }}'
+          Install-WithRetry 'innosetup' ''
+          # Проверка НАЛИЧИЯ, а не текста вывода: «installed 0/1 packages» без слова failed
+          # означает «уже стоит», и разбирать английские фразы choco — ненадёжная опора.
+          # Каталог на месте — установка удалась, чем бы choco ни отчитался.
+          $gs = Get-ChildItem "$env:ProgramFiles\gs", "${env:ProgramFiles(x86)}\gs" -Directory -ErrorAction SilentlyContinue
+          if (-not $gs) { Write-Host '::error::Ghostscript не найден после установки'; exit 1 }
+          Write-Host ('Ghostscript: ' + ($gs | ForEach-Object { $_.FullName }) -join ', ')
 
       # Тесты собираются СВОЕЙ разрядностью: иначе обе ветки матрицы гоняли один и тот же
       # 64-битный exe и ветки IntPtr.Size == 4 не проверялись.
