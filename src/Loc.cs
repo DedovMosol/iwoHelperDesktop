@@ -505,7 +505,17 @@ namespace ExcelMerger
             A("settings.confirm.clearHistory.body",
                 "Список путей будет удалён. Сами файлы останутся на месте.",
                 "The list of paths will be deleted. The files themselves stay where they are.");
+            A("settings.btn.historyShow", "Показать историю", "Show the history");
             A("settings.section.stats", "Статистика", "Statistics");
+            // history.* — окно списка операций
+            A("history.title", "История операций", "Operation history");
+            A("history.col.when", "Когда", "When");
+            A("history.col.what", "Что сделано", "What was done");
+            A("history.col.path", "Результат", "Result");
+            A("history.err.gone.title", "Файла больше нет", "The file is gone");
+            A("history.err.gone.body",
+                "По этому пути ничего не найдено — файл переместили или удалили:\n{0}",
+                "Nothing was found at this path — the file was moved or deleted:\n{0}");
             // hist.op.* — названия операций в истории. Хранится КЛЮЧ, а не подпись: подпись
             // зависит от языка, и записанная по-русски осталась бы русской после переключения.
             A("hist.op.excel", "Свод Excel", "Excel digest");

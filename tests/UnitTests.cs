@@ -323,6 +323,7 @@ namespace ExcelMerger.Tests
             Run("История: кольцо хранит последние записи", TestHistoryTrim);
             Run("История: автоочистка убирает старое, не трогая свежее", TestHistoryKeepRecent);
             Run("История (живое): запись, счётчик, очистка и выключение", TestSettingsHistoryLive);
+            Run("История (живое): окно списка — свежее сверху, подписи из каталога", TestHistoryWindowLive);
             Run("Обновления: окно показывается один раз, сторож отпускает", TestUpdateWindowShownOnce);
             Run("Обновления: настройки не затираются устаревшим Save", TestUpdatePrefsNotClobbered);
             Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
@@ -332,7 +333,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 300;
+            const int MinTests = 301;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -2934,7 +2935,7 @@ namespace ExcelMerger.Tests
                     {
                         new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back),
                         new OcrForm(back), new PdfOpsForm(back), new StartForm(),
-                        new AboutForm(), new StatsForm(), new SettingsForm()
+                        new AboutForm(), new StatsForm(), new SettingsForm(), new HistoryForm()
                     };
                 }
                 catch (Exception ex) { offenders.Add("ctor: " + ex.Message); return; }
@@ -5566,6 +5567,66 @@ namespace ExcelMerger.Tests
             AssertTrue(offenders.Count == 0, "история в настройках: " + string.Join(" | ", offenders.ToArray()));
         }
 
+        /// <summary>
+        /// Окно истории на настоящих контролах: записи показаны СВЕЖИМИ СВЕРХУ, в колонке
+        /// «что сделано» стоит подпись на текущем языке, а не хранимый ключ, и кнопки открытия
+        /// погашены, пока ничего не выбрано. Ключ вместо подписи — самая вероятная ошибка
+        /// здесь: в файле лежит именно он, и показать его целиком ничего не стоит.
+        /// </summary>
+        private static void TestHistoryWindowLive()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_histwin_", delegate
+            {
+                try
+                {
+                    OperationHistory.Clear();
+                    OperationHistory.SetEnabled(true);
+                    OperationHistory.Record("hist.op.merge", @"C:\первая\раньше.pdf");
+                    OperationHistory.Record("hist.op.excel", @"C:\вторая\позже.xlsx");
+
+                    using (var f = new HistoryForm())
+                    {
+                        f.Show();
+                        System.Windows.Forms.ListView list = null;
+                        foreach (System.Windows.Forms.Control c in f.Controls)
+                            if (c is System.Windows.Forms.ListView)
+                                list = (System.Windows.Forms.ListView)c;
+                        if (list == null)
+                        {
+                            offenders.Add("список не собрался");
+                        }
+                        else
+                        {
+                            if (list.Items.Count != 2)
+                                offenders.Add("строк в списке: " + list.Items.Count + ", ожидалось 2");
+                            else
+                            {
+                                if (list.Items[0].SubItems[2].Text.IndexOf("позже", StringComparison.Ordinal) < 0)
+                                    offenders.Add("сверху не самая свежая запись");
+                                string what = list.Items[0].SubItems[1].Text;
+                                if (what == "hist.op.excel")
+                                    offenders.Add("в колонке показан КЛЮЧ, а не подпись");
+                                if (what != Loc.T("hist.op.excel"))
+                                    offenders.Add("подпись операции не из каталога: " + what);
+                            }
+                            // Ничего не выбрано — открывать нечего.
+                            list.SelectedItems.Clear();
+                            foreach (System.Windows.Forms.Control c in f.Controls)
+                            {
+                                var b = c as RoundedButton;
+                                if (b != null && b.Text == Loc.T("excel.link.openFile") && b.Enabled)
+                                    offenders.Add("кнопка «Открыть файл» доступна без выбора");
+                            }
+                        }
+                        f.Close();
+                    }
+                }
+                catch (Exception ex) { offenders.Add("не собралось: " + Root(ex).Message); }
+            });
+            AssertTrue(offenders.Count == 0, "окно истории: " + string.Join(" | ", offenders.ToArray()));
+        }
+
         private static AccentCheckBox FindCheck(System.Windows.Forms.Form f)
         {
             foreach (System.Windows.Forms.Control c in f.Controls)
@@ -5690,7 +5751,7 @@ namespace ExcelMerger.Tests
             var types = new[]
             {
                 typeof(AboutForm), typeof(StatsForm), typeof(MetadataForm),
-                typeof(MessageForm), typeof(NumberPromptDialog), typeof(SettingsForm)
+                typeof(MessageForm), typeof(NumberPromptDialog), typeof(SettingsForm), typeof(HistoryForm)
             };
             var forms = new List<System.Windows.Forms.Form>();
             foreach (Type t in types)
