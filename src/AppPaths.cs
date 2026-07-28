@@ -42,6 +42,12 @@ namespace ExcelMerger
             get { return Path.Combine(Root, "stats.txt"); }
         }
 
+        /// <summary>История операций — рядом со статистикой и по тем же правилам.</summary>
+        public static string HistoryFile
+        {
+            get { return Path.Combine(Root, "history.txt"); }
+        }
+
         /// <summary>
         /// Язык, выбранный в установщике (см. <see cref="SetupLanguage"/>). Отдельный файл, а не
         /// строка в settings.txt: установщик пишет в системной кодировке, а приложение читает
