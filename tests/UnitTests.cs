@@ -152,6 +152,8 @@ namespace ExcelMerger.Tests
             Run("WindowPlacement.Attach (живой): окно запоминает и восстанавливает место", TestWindowPlacementAttachLive);
             Run("Merge (живой): отмена бросает и не создаёт файл", TestCancelMergeLive);
             Run("SplitEveryN (живой): отмена бросает и удаляет частичные файлы", TestCancelSplitLive);
+            Run("ToImages (живой): отмена бросает и удаляет уже сохранённые картинки", TestCancelExportImagesLive);
+            Run("Прочие операции (живое окно): «Отмена» показывается и поднимает токен", TestOpsCancelWiringLive);
             Run("PdfPageGrid.BuildKeySet: ключи набора без дублей, null -> пусто", TestGridBuildKeySet);
             Run("PdfPageGrid.StaleKeys: вытесняются только отсутствующие в keep", TestGridStaleKeys);
             Run("PdfPageGrid.LowerBound: бинарный поиск по монотонному предикату", TestLowerBound);
@@ -277,6 +279,7 @@ namespace ExcelMerger.Tests
             Run("Loc.T: отсутствующий ключ возвращается как есть, null не роняет", TestLocMissingKey);
             Run("PdfCompression.LevelLabels: три подписи, переводы, а не ключи (оба языка)", TestCompressionLevelLabels);
             Run("Cancellation.ThrowIf: null молчит, поднятый флаг бросает", TestCancellationThrowIf);
+            Run("Cancellation.NoPartialOutput: отмена удаляет созданное, ошибка — нет", TestNoPartialOutput);
             Run("WindowPlacement.BestWorkArea: экран по наибольшему пересечению, фолбэк без него", TestBestWorkArea);
             Run("XyCut.OrderTree: этажи и колонки деревом, AvailRight по соседней колонке", TestXyCutOrderTreeShape);
             Run("Ui.OnUi: null/без хэндла/разрушенное окно — false без исключения", TestOnUiGuard);
@@ -333,7 +336,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 301;
+            const int MinTests = 304;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -4951,6 +4954,127 @@ namespace ExcelMerger.Tests
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
 
+        /// <summary>
+        /// Тот же инвариант для сохранения страниц картинками: этот экспорт пишет ОТДЕЛЬНЫЙ
+        /// файл на каждую страницу, поэтому одного «бросило исключение» мало — папка обязана
+        /// остаться пустой. Прогон БЕЗ отмены здесь не для полноты: без него «файлов 0»
+        /// зеленело бы и на сломанном коде (например, если бы рендер не создавал вообще
+        /// ничего), то есть тест не мог бы упасть по той причине, ради которой написан.
+        /// </summary>
+        private static void TestCancelExportImagesLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_ce_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = MakePagesPdf(dir, 3);
+                var pages = new List<int> { 0, 1, 2 };
+
+                string whole = Path.Combine(dir, "whole");
+                PdfExportService.ToImages(src, pages, whole, NameTemplate.Default, ImageExportFormat.Png, 96);
+                AssertEqual(3, Directory.GetFiles(whole).Length, "без отмены сохраняется файл на страницу");
+
+                // Отмена ПОСЛЕ первой картинки: первый pre-check пропускает, второй — отменяет.
+                string part = Path.Combine(dir, "part");
+                int calls = 0;
+                Func<bool> cancel = delegate { return calls++ >= 1; };
+                bool threw = false;
+                try
+                {
+                    PdfExportService.ToImages(src, pages, part, NameTemplate.Default,
+                        ImageExportFormat.Png, 96, null, cancel);
+                }
+                catch (OperationCanceledException) { threw = true; }
+                AssertTrue(threw, "отмена экспорта бросает OperationCanceledException");
+                AssertEqual(0, Directory.GetFiles(part).Length, "сохранённые картинки удалены при отмене (осталось 0)");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>
+        /// «Прочие операции» с доступом к прологу и эпилогу операции: сама форма начинает их
+        /// изнутри своих кнопок, за диалогами выбора папки и формата, а для проверки проводки
+        /// отмены нужен вход без диалогов и без настоящей работы.
+        /// </summary>
+        private sealed class OpsCancelProbe : PdfOpsForm
+        {
+            public OpsCancelProbe() : base(delegate { }) { }
+            public void Begin(int units) { BeginOperation(Loc.T("ops.status.exporting"), units); }
+            public void End() { EndOperation(); }
+            public bool Canceled { get { return CancelToken()(); } }
+        }
+
+        /// <summary>
+        /// Проводка отмены в «Прочих операциях» (живое окно). Удаление частичного результата
+        /// в сервисе бессмысленно, если окно не предложит отмену, а у этого окна ветка показа
+        /// СВОЯ: единственной кнопки действия у него нет, и «Отмена» живёт в отдельном углу
+        /// (RegisterCancelArea) — то есть проверенная на других инструментах подмена кнопки
+        /// здесь ничего не доказывает. Порог берём у самого приложения, а не литералом.
+        /// </summary>
+        private static void TestOpsCancelWiringLive()
+        {
+            var offenders = new List<string>();
+            int enough = 1;
+            while (!PdfToolFormBase.ShouldOfferCancel(enough) && enough < 1000)
+                enough++;
+            InIsolatedSettings("iwo_opscancel_", delegate
+            {
+                try
+                {
+                    using (var f = new OpsCancelProbe())
+                    {
+                        f.Show();
+                        if (FindVisibleButton(f, Loc.T("common.cancel")) != null)
+                            offenders.Add("«Отмена» видна до начала операции");
+
+                        f.Begin(enough - 1); // короче порога — отмену не предлагаем
+                        if (FindVisibleButton(f, Loc.T("common.cancel")) != null)
+                            offenders.Add("«Отмена» показана для операции короче порога");
+                        f.End();
+
+                        f.Begin(enough);
+                        System.Windows.Forms.Button cancel = FindVisibleButton(f, Loc.T("common.cancel"));
+                        if (cancel == null)
+                        {
+                            offenders.Add("«Отмена» не показана на операции от порога");
+                        }
+                        else
+                        {
+                            if (f.Canceled)
+                                offenders.Add("токен отмены поднят ещё до нажатия");
+                            cancel.PerformClick();
+                            if (!f.Canceled)
+                                offenders.Add("нажатие «Отмены» не поднимает токен для сервиса");
+                            if (cancel.Enabled)
+                                offenders.Add("нажатая «Отмена» осталась доступной (повторные нажатия)");
+                        }
+                        f.End();
+                        if (FindVisibleButton(f, Loc.T("common.cancel")) != null ||
+                            FindVisibleButton(f, Loc.T("common.canceling")) != null)
+                            offenders.Add("«Отмена» осталась на экране после операции");
+                        f.Close();
+                    }
+                }
+                catch (Exception ex) { offenders.Add("не собралось: " + Root(ex).Message); }
+            });
+            AssertTrue(offenders.Count == 0, "проводка отмены: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Видимая кнопка с такой подписью (вглубь по дереву контролов) или null.</summary>
+        private static System.Windows.Forms.Button FindVisibleButton(System.Windows.Forms.Control root, string text)
+        {
+            foreach (System.Windows.Forms.Control c in root.Controls)
+            {
+                var b = c as System.Windows.Forms.Button;
+                if (b != null && b.Visible && b.Text == text)
+                    return b;
+                System.Windows.Forms.Button deeper = FindVisibleButton(c, text);
+                if (deeper != null)
+                    return deeper;
+            }
+            return null;
+        }
+
         // ---------- 1.17.4 ----------
 
         /// <summary>
@@ -5106,6 +5230,64 @@ namespace ExcelMerger.Tests
             try { Cancellation.ThrowIf(delegate { return true; }); }
             catch (OperationCanceledException) { thrown = true; }
             AssertTrue(thrown, "поднятый флаг бросает OperationCanceledException");
+        }
+
+        /// <summary>
+        /// Вторая половина того же договора: сервис, пишущий файл на каждую единицу работы, при
+        /// отмене не оставляет частичного результата. Здесь же закреплено и обратное решение —
+        /// ОШИБКА созданное не удаляет: то, что успело записаться до сбоя, остаётся, как было
+        /// до появления обёртки (иначе половина разбиения молча исчезала бы из-за одного
+        /// неверного диапазона).
+        /// </summary>
+        private static void TestNoPartialOutput()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_np_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                Func<string, string> make = delegate(string name)
+                {
+                    string p = Path.Combine(dir, name);
+                    File.WriteAllText(p, "x");
+                    return p;
+                };
+
+                List<string> done = Cancellation.NoPartialOutput(delegate(List<string> created)
+                {
+                    created.Add(make("ok1.txt"));
+                    created.Add(make("ok2.txt"));
+                });
+                AssertEqual(2, done.Count, "без отмены возвращаются все созданные пути");
+                AssertTrue(File.Exists(done[0]) && File.Exists(done[1]), "без отмены файлы остаются");
+
+                bool canceled = false;
+                try
+                {
+                    Cancellation.NoPartialOutput(delegate(List<string> created)
+                    {
+                        created.Add(make("part1.txt"));
+                        created.Add(make("part2.txt"));
+                        throw new OperationCanceledException();
+                    });
+                }
+                catch (OperationCanceledException) { canceled = true; }
+                AssertTrue(canceled, "отмена уходит наверх, а не проглатывается");
+                AssertEqual(0, Directory.GetFiles(dir, "part*.txt").Length, "созданное до отмены удалено");
+
+                bool failed = false;
+                try
+                {
+                    Cancellation.NoPartialOutput(delegate(List<string> created)
+                    {
+                        created.Add(make("err1.txt"));
+                        throw new MergeException("сбой");
+                    });
+                }
+                catch (MergeException) { failed = true; }
+                AssertTrue(failed, "ошибка уходит наверх");
+                AssertEqual(1, Directory.GetFiles(dir, "err*.txt").Length, "ошибка созданное НЕ удаляет");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
         }
 
         /// <summary>

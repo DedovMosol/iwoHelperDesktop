@@ -61,13 +61,6 @@ namespace ExcelMerger
             return SplitBookmarksCore(sourcePath, outDir, baseName, progress, rotations, cancelled, template);
         }
 
-        /// <summary>Удалить файлы, созданные до отмены (best-effort — сбой удаления не важен).</summary>
-        private static void DeleteQuietly(IEnumerable<string> paths)
-        {
-            foreach (string p in paths)
-                try { if (File.Exists(p)) File.Delete(p); } catch { }
-        }
-
         /// <summary>Поворот страницы pageIndex из карты (вне карты — 0). Единая реализация — <see cref="PageRotation.At"/>.</summary>
         internal static int RotationAt(IList<int> rotations, int pageIndex)
         {
@@ -78,10 +71,9 @@ namespace ExcelMerger
         private static List<string> SplitRangesCore(string sourcePath, IList<PageRange> ranges, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled, string template)
         {
             DateTime startedAt = DateTime.Now; // одно время на весь прогон: [TIMESTAMP] у частей совпадает
-            var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
             {
-                try
+                return Cancellation.NoPartialOutput(delegate(List<string> created)
                 {
                     foreach (PageRange r in ranges)
                     {
@@ -96,22 +88,19 @@ namespace ExcelMerger
                         if (progress != null)
                             progress(created.Count, ranges.Count);
                     }
-                }
-                catch (OperationCanceledException) { DeleteQuietly(created); throw; }
+                });
             }
-            return created;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<string> SplitEveryNCore(string sourcePath, int n, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled, string template)
         {
             DateTime startedAt = DateTime.Now; // одно время на весь прогон: [TIMESTAMP] у частей совпадает
-            var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
             {
                 List<PageRange> chunks = PageRanges.EveryN(source.PageCount, n);
                 int part = 1;
-                try
+                return Cancellation.NoPartialOutput(delegate(List<string> created)
                 {
                     foreach (PageRange r in chunks)
                     {
@@ -125,17 +114,14 @@ namespace ExcelMerger
                         if (progress != null)
                             progress(created.Count, chunks.Count);
                     }
-                }
-                catch (OperationCanceledException) { DeleteQuietly(created); throw; }
+                });
             }
-            return created;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<string> SplitBookmarksCore(string sourcePath, string outDir, string baseName, Action<int, int> progress, IList<int> rotations, Func<bool> cancelled, string template)
         {
             DateTime startedAt = DateTime.Now; // одно время на весь прогон: [TIMESTAMP] у частей совпадает
-            var created = new List<string>();
             using (PdfDocument source = OpenSource(sourcePath))
             {
                 // Индекс страницы по её объекту (ObjectID надёжнее ссылочного равенства обёрток).
@@ -156,7 +142,7 @@ namespace ExcelMerger
                     throw new MergeException(Loc.T("err.split.noBookmarks"));
                 marks.Sort(delegate(KeyValuePair<int, string> a, KeyValuePair<int, string> b) { return a.Key.CompareTo(b.Key); });
 
-                try
+                return Cancellation.NoPartialOutput(delegate(List<string> created)
                 {
                     for (int m = 0; m < marks.Count; m++)
                     {
@@ -174,10 +160,8 @@ namespace ExcelMerger
                         if (progress != null)
                             progress(created.Count, marks.Count);
                     }
-                }
-                catch (OperationCanceledException) { DeleteQuietly(created); throw; }
+                });
             }
-            return created;
         }
 
         private static void WriteRange(PdfDocument source, PageRange r, string path, IList<int> rotations)

@@ -44,6 +44,12 @@ versions follow [SemVer](https://semver.org/).
   back; the answer saved after that was the old one.
 - **A failed Ghostscript install passed for a successful one** in CI: the package manager
   returns zero when it has installed nothing.
+- **Cancelling “Save pages as images” left the images already written** in the folder,
+  which broke the promise every other tool keeps — a cancelled operation leaves nothing
+  behind. Tools that produce a single file save it at the very end, and splitting deleted
+  the parts it had produced, but this export writes one file per page and kept them. It
+  deletes them now, and the rule moved into one shared place, so the next tool that writes
+  file by file cannot quietly forget it.
 
 ## [1.17.9] — 2026-07-27
 
