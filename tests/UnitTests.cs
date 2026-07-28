@@ -318,6 +318,8 @@ namespace ExcelMerger.Tests
             Run("Руководство: проверка вшитости умеет отвечать «нет»", TestUserManualPackedDetectsAbsence);
             Run("Руководство: распаковывается рядом с настройками, под своим именем", TestUserManualPath);
             Run("Обновления: решение показывать уведомление при запуске", TestShouldNotifyUpdate);
+            Run("Обновления: версия из двух чисел не роняет показ", TestVersionDisplay);
+            Run("Обновления: окно показывается один раз, сторож отпускает", TestUpdateWindowShownOnce);
             Run("Обновления: настройки не затираются устаревшим Save", TestUpdatePrefsNotClobbered);
             Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
 
@@ -325,7 +327,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 293;
+            const int MinTests = 295;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -937,6 +939,48 @@ namespace ExcelMerger.Tests
             AssertTrue(UpdateChecker.ShouldNotify(next, current, "мусор"), "непонятная пропущенная не глушит проверку");
             AssertTrue(UpdateChecker.ShouldNotify(next, current, ""), "пустая пропущенная не глушит проверку");
             AssertTrue(!UpdateChecker.ShouldNotify(next, current, "v1.18.0"), "пропущенная с «v» разбирается так же");
+        }
+
+        /// <summary>
+        /// Версия для показа не должна ронять программу. Version.ToString(3) БРОСАЕТ на
+        /// версии из двух чисел, а тег приходит с GitHub — то есть снаружи. На пути проверки
+        /// при запуске это был бы отчёт о сбое сразу после открытия программы, у всех разом
+        /// и без их участия: тег «v1.18» поставить никто не мешает.
+        /// </summary>
+        private static void TestVersionDisplay()
+        {
+            AssertEqual("1.18.0", UpdateChecker.Display(new Version(1, 18, 0)), "три числа — как есть");
+            AssertEqual("1.18", UpdateChecker.Display(new Version(1, 18)), "два числа не роняют показ");
+            AssertEqual("1.18.0", UpdateChecker.Display(new Version(1, 18, 0, 7)), "четвёртое число не показываем");
+            AssertEqual("", UpdateChecker.Display(null), "null — пустая строка, не исключение");
+            // Сквозной случай: тег с GitHub из двух чисел проходит весь путь без исключения.
+            AssertEqual("1.18", UpdateChecker.Display(UpdateChecker.ParseTag("v1.18")), "тег «v1.18» показывается целиком");
+        }
+
+        /// <summary>
+        /// Окно об обновлении в любой момент одно. Проверка при запуске и проверка по кнопке —
+        /// два независимых воркера, и нажатие кнопки в первые десять секунд после запуска дало
+        /// бы два одинаковых сообщения, одно поверх другого. Проверяем и обратное: сторож
+        /// обязан отпускать, иначе первое же окно закрыло бы уведомления до перезапуска.
+        /// </summary>
+        private static void TestUpdateWindowShownOnce()
+        {
+            int shown = 0;
+            UpdateUi.ShowOnce(delegate
+            {
+                shown++;
+                UpdateUi.ShowOnce(delegate { shown++; }); // как второй воркер во время показа
+            });
+            AssertEqual(1, shown, "вложенный показ отсечён");
+
+            UpdateUi.ShowOnce(delegate { shown++; });
+            AssertEqual(2, shown, "после закрытия окна следующий показ проходит");
+
+            // Сорвавшийся показ не должен запирать сторож навсегда.
+            try { UpdateUi.ShowOnce(delegate { throw new InvalidOperationException("сбой показа"); }); }
+            catch (InvalidOperationException) { }
+            UpdateUi.ShowOnce(delegate { shown++; });
+            AssertEqual(3, shown, "исключение внутри показа отпускает сторож");
         }
 
         private static void TestShouldAutoClear()
@@ -5245,6 +5289,15 @@ namespace ExcelMerger.Tests
                             if (want > room)
                                 offenders.Add(lang + ": подпись «" + box.Text + "» просит " + want +
                                               " px, а колонка " + room);
+                            // Фокус обязан стоять НА КНОПКЕ: флажок добавлен раньше кнопок и
+                            // иначе забирает его первым, а пробел, которым диалог привычно
+                            // закрывают, вместо кнопки включал бы «больше не напоминать».
+                            // Утверждение положительное: проверка «не на флажке» зеленела бы
+                            // и тогда, когда фокус не достался никому, то есть не доказывала
+                            // бы ничего.
+                            if (!(f.ActiveControl is RoundedButton))
+                                offenders.Add(lang + ": фокус не на кнопке, а на " +
+                                              (f.ActiveControl == null ? "ничём" : f.ActiveControl.GetType().Name));
                             f.Close();
                         }
                     }

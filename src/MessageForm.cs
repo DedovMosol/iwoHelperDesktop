@@ -137,6 +137,7 @@ namespace ExcelMerger
 
                 AcceptButton = yes;
                 CancelButton = no;
+                FocusFirst(no);
             }
             else
             {
@@ -148,9 +149,23 @@ namespace ExcelMerger
 
                 AcceptButton = ok;
                 CancelButton = ok;
+                FocusFirst(ok);
             }
 
             ClientSize = new Size(W, btnY + BtnH + Pad);
+        }
+
+        /// <summary>
+        /// Отдать фокус кнопке, а не флажку. Флажок добавлен раньше кнопок, поэтому без
+        /// этого он первым в обходе Tab получал бы фокус при открытии — и пробел, которым
+        /// диалог привычно закрывают, вместо кнопки включал бы «больше не напоминать».
+        /// Без флажка порядок и так верный, и трогать его нельзя: у вопроса Да/Нет фокус
+        /// стоит на «Нет», и это осознанно — безопасный ответ по умолчанию.
+        /// </summary>
+        private void FocusFirst(Control button)
+        {
+            if (_option != null)
+                ActiveControl = button;
         }
 
         /// <summary>X кнопки: одна — по центру; две — по краям (0 слева, 1 справа). Чистая — под тест.</summary>
