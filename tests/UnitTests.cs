@@ -321,6 +321,8 @@ namespace ExcelMerger.Tests
             Run("Обновления: версия из двух чисел не роняет показ", TestVersionDisplay);
             Run("История: строка переживает запись и чтение, испорченная пропускается", TestHistoryEntryRoundTrip);
             Run("История: кольцо хранит последние записи", TestHistoryTrim);
+            Run("История: автоочистка убирает старое, не трогая свежее", TestHistoryKeepRecent);
+            Run("История (живое): запись, счётчик, очистка и выключение", TestSettingsHistoryLive);
             Run("Обновления: окно показывается один раз, сторож отпускает", TestUpdateWindowShownOnce);
             Run("Обновления: настройки не затираются устаревшим Save", TestUpdatePrefsNotClobbered);
             Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
@@ -330,7 +332,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 298;
+            const int MinTests = 300;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -1011,6 +1013,37 @@ namespace ExcelMerger.Tests
             AssertEqual("f" + (OperationHistory.MaxEntries + 24), cut[cut.Count - 1].Path, "самая новая на месте");
 
             AssertEqual(0, OperationHistory.Trim(null).Count, "null — пустой список, не исключение");
+        }
+
+        /// <summary>
+        /// Автоочистка истории — СКОЛЬЗЯЩАЯ ДАВНОСТЬ, а не «раз в N дней стереть всё».
+        /// Правило счётчиков сюда не переносится: счётчик копится от метки сброса, а список
+        /// состоит из разновозрастных записей, и «период прошёл — чистим всё» стёрло бы
+        /// сегодняшние операции из-за одной позавчерашней. Ровно эта ошибка и была допущена.
+        /// </summary>
+        private static void TestHistoryKeepRecent()
+        {
+            var now = new DateTime(2026, 7, 28, 12, 0, 0, DateTimeKind.Utc);
+            var all = new List<HistoryEntry>
+            {
+                new HistoryEntry { WhenUtc = now.AddDays(-30), Path = "старая" },
+                new HistoryEntry { WhenUtc = now.AddDays(-8), Path = "восьмидневная" },
+                new HistoryEntry { WhenUtc = now.AddHours(-2), Path = "сегодняшняя" }
+            };
+
+            AssertEqual(3, OperationHistory.KeepRecent(all, now, 0).Count, "период 0 — не убираем ничего");
+
+            List<HistoryEntry> week = OperationHistory.KeepRecent(all, now, 7);
+            AssertEqual(1, week.Count, "при недельной давности остаётся только свежая");
+            AssertEqual("сегодняшняя", week[0].Path, "СЕГОДНЯШНЯЯ ЗАПИСЬ НЕ СТИРАЕТСЯ из-за старой");
+
+            AssertEqual(2, OperationHistory.KeepRecent(all, now, 30).Count, "при 30 днях уходит только тридцатидневная");
+            AssertEqual(1, OperationHistory.KeepRecent(all, now, 1).Count, "при сутках остаётся только двухчасовая");
+            AssertEqual(0, OperationHistory.KeepRecent(null, now, 7).Count, "null — пустой список, не исключение");
+
+            // Ровно на границе периода запись уже старая: «хранить 7 дней» значит меньше семи.
+            var edge = new List<HistoryEntry> { new HistoryEntry { WhenUtc = now.AddDays(-7), Path = "граница" } };
+            AssertEqual(0, OperationHistory.KeepRecent(edge, now, 7).Count, "ровно семь дней — уже не хранится");
         }
 
         /// <summary>
@@ -5421,6 +5454,65 @@ namespace ExcelMerger.Tests
                 catch (Exception ex) { offenders.Add("не собралось: " + Root(ex).Message); }
             });
             AssertTrue(offenders.Count == 0, "настройки обновлений: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// История в «Настройках» на НАСТОЯЩИХ контролах: запись появляется, счётчик её
+        /// показывает, очистка опустошает, а выключение стирает накопленное. Последнее — не
+        /// украшение: оставить перечень путей тому, кто только что отказался от их хранения,
+        /// значит сделать не то, о чём просили.
+        /// </summary>
+        private static void TestSettingsHistoryLive()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_hist_", delegate
+            {
+                try
+                {
+                    OperationHistory.Record("hist.op.merge", @"C:\где-то\итог.pdf");
+                    OperationHistory.Record("hist.op.excel", @"C:\где-то\свод.xlsx");
+                    if (OperationHistory.Load().Entries.Count != 2)
+                        offenders.Add("операции не записались");
+
+                    using (var f = new SettingsForm())
+                    {
+                        f.Show();
+                        AccentCheckBox keep = null;
+                        foreach (System.Windows.Forms.Control c in f.Controls)
+                            if (c is AccentCheckBox && c.Text == Loc.T("settings.chk.history"))
+                                keep = (AccentCheckBox)c;
+                        if (keep == null)
+                        {
+                            offenders.Add("флажок истории не собрался");
+                        }
+                        else
+                        {
+                            if (!keep.Checked) offenders.Add("история должна быть включена по умолчанию");
+                            // Выключение стирает накопленное (и спрашивает — диалог тут не
+                            // показать, поэтому проверяем через само хранилище).
+                            OperationHistory.SetEnabled(false);
+                            OperationHistory.Data off = OperationHistory.Load();
+                            if (off.Entries.Count != 0)
+                                offenders.Add("выключение не стёрло накопленное");
+                            // Выключенная история молчит и файл не растит.
+                            OperationHistory.Record("hist.op.merge", @"C:\ещё\файл.pdf");
+                            if (OperationHistory.Load().Entries.Count != 0)
+                                offenders.Add("выключенная история всё равно записала операцию");
+                        }
+                        f.Close();
+                    }
+
+                    OperationHistory.SetEnabled(true);
+                    OperationHistory.Record("hist.op.split", @"C:\папка частей");
+                    if (OperationHistory.Load().Entries.Count != 1)
+                        offenders.Add("после включения запись не пошла");
+                    OperationHistory.Clear();
+                    if (OperationHistory.Load().Entries.Count != 0)
+                        offenders.Add("очистка не опустошила историю");
+                }
+                catch (Exception ex) { offenders.Add("не собралось: " + Root(ex).Message); }
+            });
+            AssertTrue(offenders.Count == 0, "история в настройках: " + string.Join(" | ", offenders.ToArray()));
         }
 
         private static AccentCheckBox FindCheck(System.Windows.Forms.Form f)

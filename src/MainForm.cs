@@ -1034,6 +1034,7 @@ namespace ExcelMerger
 
             if (_isFreshRun)
                 UsageStats.RecordExcelDigest(); // успешный новый свод (дослияние не считаем)
+            OperationHistory.Record("hist.op.excel", result.OutputPath);
 
             _progress.Value = _progress.Maximum;
             string text;

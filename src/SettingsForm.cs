@@ -33,8 +33,13 @@ namespace ExcelMerger
         /// <summary>Имя кнопки «снова напоминать» — по нему её находит проверка.</summary>
         internal const string UnskipName = "unskip";
 
+        private static readonly int[] AutoDays = { 0, 1, 7, 30 }; // индекс списка -> дни (как в статистике)
+
         private readonly AccentCheckBox _checkOnStart;
         private readonly RoundedButton _unskip;
+        private readonly AccentCheckBox _keepHistory;
+        private readonly ComboBox _historyAuto;
+        private readonly Label _historyCount;
         private ToolTip _tips;
         private bool _loading;
 
@@ -82,9 +87,34 @@ namespace ExcelMerger
             _unskip.Name = UnskipName; // чтобы проверка находила кнопку по имени, а не по пустой подписи
             _unskip.Click += OnUnskip;
 
-            // ---------- статистика ----------
-            y = Section(Loc.T("settings.section.stats"), _unskip.Bottom + GroupGap).Bottom + Gap;
-            RoundedButton stats = AddButton(Loc.T("settings.btn.stats"), Pad, y);
+            // ---------- история и статистика ----------
+            y = Section(Loc.T("settings.section.history"), _unskip.Bottom + GroupGap).Bottom + Gap;
+
+            _keepHistory = new AccentCheckBox();
+            _keepHistory.Text = Loc.T("settings.chk.history");
+            Controls.Add(_keepHistory);
+            Size hw = _keepHistory.GetPreferredSize(Size.Empty);
+            _keepHistory.SetBounds(Pad, y, Math.Min(hw.Width, width - 2 * Pad), hw.Height);
+            _keepHistory.CheckedChanged += OnKeepHistoryChanged;
+
+            Ui.Label(this, Loc.T("settings.lbl.historyAuto"), Pad, _keepHistory.Bottom + 14, Font, Theme.TextPrimary);
+            _historyAuto = new ComboBox();
+            _historyAuto.DropDownStyle = ComboBoxStyle.DropDownList;
+            _historyAuto.Items.AddRange(new object[]
+            {
+                Loc.T("stats.auto.off"), Loc.T("stats.auto.daily"),
+                Loc.T("stats.auto.7days"), Loc.T("stats.auto.30days")
+            });
+            Controls.Add(_historyAuto);
+            _historyAuto.SetBounds(width - Pad - 180, _keepHistory.Bottom + 10, 180, 27);
+            _historyAuto.SelectedIndexChanged += OnHistoryAutoChanged;
+
+            _historyCount = Ui.Label(this, "", Pad, _historyAuto.Bottom + 14, Font, Theme.TextMuted);
+
+            RoundedButton clearHistory = AddButton(Loc.T("settings.btn.historyClear"), Pad, _historyCount.Bottom + Gap);
+            clearHistory.Click += OnClearHistory;
+
+            RoundedButton stats = AddButton(Loc.T("settings.btn.stats"), Pad, clearHistory.Bottom + Gap);
             stats.Click += delegate { using (var f = new StatsForm()) f.ShowDialog(this); };
 
             var close = new RoundedButton(true);
@@ -99,6 +129,7 @@ namespace ExcelMerger
 
             _tips = new ToolTip();
             _tips.SetToolTip(_checkOnStart, Loc.T("settings.tip.updateOnStart"));
+            _tips.SetToolTip(_keepHistory, Loc.T("settings.tip.history"));
 
             LoadAndShow();
         }
@@ -158,6 +189,54 @@ namespace ExcelMerger
             _unskip.Visible = skipped;
             if (skipped)
                 SetButtonText(_unskip, string.Format(Loc.T("settings.btn.unskip"), s.SkippedVersion));
+
+            OperationHistory.Data h = OperationHistory.Load();
+            _loading = true;
+            _keepHistory.Checked = h.Enabled;
+            int index = Array.IndexOf(AutoDays, h.AutoClearDays);
+            _historyAuto.SelectedIndex = index >= 0 ? index : 0;
+            _loading = false;
+            _historyAuto.Enabled = h.Enabled; // выключенной истории нечего чистить по расписанию
+            _historyCount.Text = h.Entries.Count == 0
+                ? Loc.T("settings.history.empty")
+                : string.Format(Loc.T("settings.history.count"), h.Entries.Count);
+        }
+
+        private void OnKeepHistoryChanged(object sender, EventArgs e)
+        {
+            if (_loading)
+                return;
+            // Выключение стирает накопленное — так решено в хранилище. Спрашиваем прямо, а не
+            // молча: человек мог не ожидать, что снятие флажка удалит уже собранный список.
+            if (!_keepHistory.Checked && OperationHistory.Load().Entries.Count > 0 &&
+                !Dialogs.ConfirmWarning(this, Loc.T("settings.title"),
+                    Loc.T("settings.confirm.clearHistory.title"), Loc.T("settings.confirm.clearHistory.body")))
+            {
+                _loading = true;
+                _keepHistory.Checked = true; // отказался — возвращаем флажок, ничего не трогаем
+                _loading = false;
+                return;
+            }
+            OperationHistory.SetEnabled(_keepHistory.Checked);
+            LoadAndShow();
+        }
+
+        private void OnHistoryAutoChanged(object sender, EventArgs e)
+        {
+            if (_loading)
+                return;
+            OperationHistory.SetAutoClear(AutoDays[_historyAuto.SelectedIndex]);
+            LoadAndShow(); // применённая давность могла убрать часть записей
+        }
+
+        private void OnClearHistory(object sender, EventArgs e)
+        {
+            if (Dialogs.ConfirmWarning(this, Loc.T("settings.title"),
+                    Loc.T("settings.confirm.clearHistory.title"), Loc.T("settings.confirm.clearHistory.body")))
+            {
+                OperationHistory.Clear();
+                LoadAndShow();
+            }
         }
 
         private void OnCheckOnStartChanged(object sender, EventArgs e)

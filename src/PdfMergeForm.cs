@@ -249,6 +249,7 @@ namespace ExcelMerger
             if (!FinishOperation(error, Loc.T("pdf.status.saveFailed"), Loc.T("pdf.err.saveFailed")))
                 return; // отмена или ошибка — статус и диалог уже показаны базой
             UsageStats.RecordPdfMerge();
+            OperationHistory.Record("hist.op.merge", outputPath);
             _lastResult = outputPath; // теперь есть что отдать в «Прочие операции»
             if (compressed)
                 UsageStats.RecordPdfCompress();
