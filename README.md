@@ -90,7 +90,7 @@ Six actions over one document, each writing a **new** file — the source is nev
 - **Portable** — a single `iwoHelperDesktop-1.17.9.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
 - The x64 and x86 packages are functionally identical — take **x64** unless your Windows is 32‑bit.
 
-> Requirements: Windows 8.1 / 10 / 11 with .NET Framework 4.8 — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split and Compression** need neither Excel nor Word.
+> Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split and Compression** need neither Excel nor Word.
 
 ## 🖥️ Usage
 
