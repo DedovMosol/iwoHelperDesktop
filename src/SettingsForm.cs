@@ -111,7 +111,10 @@ namespace ExcelMerger
 
             _historyCount = Ui.Label(this, "", Pad, _historyAuto.Bottom + 14, Font, Theme.TextMuted);
 
-            RoundedButton clearHistory = AddButton(Loc.T("settings.btn.historyClear"), Pad, _historyCount.Bottom + Gap);
+            RoundedButton showHistory = AddButton(Loc.T("settings.btn.historyShow"), Pad, _historyCount.Bottom + Gap);
+            showHistory.Click += delegate { using (var f = new HistoryForm()) f.ShowDialog(this); };
+
+            RoundedButton clearHistory = AddButton(Loc.T("settings.btn.historyClear"), Pad, showHistory.Bottom + Gap);
             clearHistory.Click += OnClearHistory;
 
             RoundedButton stats = AddButton(Loc.T("settings.btn.stats"), Pad, clearHistory.Bottom + Gap);
