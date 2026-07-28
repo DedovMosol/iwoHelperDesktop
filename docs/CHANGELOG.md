@@ -3,6 +3,48 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Settings.** A window for what belongs to the whole program rather than to an open
+  document. The start screen's bottom row leads to it, and so does every tool's ☰ menu.
+  The zoom level and the compression level deliberately stay in the tools: they are
+  changed while working, and moving them here would mean walking there and back for
+  every file. Language stays on the globe and in the menu for the same reason — a third
+  door is a third place to remember, and switching the language rebuilds the windows.
+- **A check for a newer version at startup.** It runs in the background, so nothing waits
+  for the network, and it is silent about everything except news: no connection, no
+  answer, or “you have the latest” all pass without a word, because nobody asked the
+  question. When there is a newer version the notice carries a **“Don't remind me about
+  this version”** box — it records the version, not a plain “never”, so the next release
+  is still announced. The check can be switched off in Settings.
+- **A history of operations.** What was made, when, and where it went — **paths and names
+  only, never a copy of a file**. The last 200 entries are kept, older ones can be dropped
+  by age, the list can be cleared with one button, and the whole thing can be switched off
+  — switching it off clears what has been collected. Opening a result checks it is still
+  there first, because the path may have gone stale.
+
+### Changed
+- **The download links live in one place.** Four large buttons at the top of the README
+  repeated the Download section word for word, and both rows were wider than the README
+  column on a desktop, so they wrapped and the wrapped tail was centred — which is what
+  “the links go vertical” looks like. Measured and fixed: no row now outruns the column.
+- **The user guide builds its own contents page.** It used to ship with an empty one and a
+  line asking the reader to press Ctrl+A and F9.
+
+### Fixed
+- **A release tagged with two numbers would have crashed the startup check** — and with it
+  the app, at launch, for everyone at once. Versions are formatted through one function now.
+- **Two update windows could stack** if the button was pressed within the ten seconds the
+  request may take. One window at a time.
+- **The tick box took the keyboard focus**, so the space bar — how a dialog is usually
+  dismissed — switched on “don't remind me” instead of pressing a button.
+- **A confirmed “switch the history off” did nothing.** While the confirmation was on
+  screen the window lost and regained the focus, re-read the settings, and put the tick
+  back; the answer saved after that was the old one.
+- **A failed Ghostscript install passed for a successful one** in CI: the package manager
+  returns zero when it has installed nothing.
+
 ## [1.17.9] — 2026-07-27
 
 ### Added
