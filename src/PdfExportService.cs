@@ -66,6 +66,10 @@ namespace ExcelMerger
         ///
         /// Рендерер создаётся и освобождается ВНУТРИ вызова, на одном потоке: он держит
         /// открытые документы WinRT, и трогать их с другого потока нельзя.
+        ///
+        /// Здесь файл создаётся на КАЖДУЮ страницу, поэтому отмена — не только исключение:
+        /// уже сохранённые картинки удаляются (<see cref="Cancellation.NoPartialOutput"/>),
+        /// иначе «Отменено» оставляло бы в папке половину экспорта.
         /// </summary>
         public static List<string> ToImages(string sourcePath, IList<int> pageIndexes, string outDir,
             string template, ImageExportFormat format, int dpi,
@@ -84,39 +88,40 @@ namespace ExcelMerger
             catch { sizes = new List<PdfPageInfo>(); }
             string baseName = Path.GetFileNameWithoutExtension(sourcePath);
             DateTime startedAt = DateTime.Now;
-            var written = new List<string>();
 
             using (var renderer = new PdfThumbnailRenderer())
             {
-                for (int i = 0; i < pageIndexes.Count; i++)
+                return Cancellation.NoPartialOutput(delegate(List<string> written)
                 {
-                    Cancellation.ThrowIf(cancelled);
-                    int pageIndex = pageIndexes[i];
-                    var values = new NameValues
+                    for (int i = 0; i < pageIndexes.Count; i++)
                     {
-                        BaseName = baseName,
-                        FileNumber = i + 1,
-                        TotalFiles = pageIndexes.Count,
-                        CurrentPage = pageIndex + 1,
-                        Timestamp = startedAt
-                    };
-                    string path = OutputFile.Unique(outDir,
-                        NameTemplate.Apply(template, values), Extension(format));
+                        Cancellation.ThrowIf(cancelled);
+                        int pageIndex = pageIndexes[i];
+                        var values = new NameValues
+                        {
+                            BaseName = baseName,
+                            FileNumber = i + 1,
+                            TotalFiles = pageIndexes.Count,
+                            CurrentPage = pageIndex + 1,
+                            Timestamp = startedAt
+                        };
+                        string path = OutputFile.Unique(outDir,
+                            NameTemplate.Apply(template, values), Extension(format));
 
-                    double widthPt = pageIndex >= 0 && pageIndex < sizes.Count && sizes[pageIndex].WidthPt > 0
-                        ? sizes[pageIndex].WidthPt : DefaultWidthPt;
-                    using (Bitmap bmp = renderer.Render(sourcePath, pageIndex, PixelWidth(widthPt, dpi)))
-                    {
-                        if (bmp == null)
-                            throw new MergeException(string.Format(Loc.T("err.export.pageFailed"), pageIndex + 1));
-                        Save(bmp, path, format);
+                        double widthPt = pageIndex >= 0 && pageIndex < sizes.Count && sizes[pageIndex].WidthPt > 0
+                            ? sizes[pageIndex].WidthPt : DefaultWidthPt;
+                        using (Bitmap bmp = renderer.Render(sourcePath, pageIndex, PixelWidth(widthPt, dpi)))
+                        {
+                            if (bmp == null)
+                                throw new MergeException(string.Format(Loc.T("err.export.pageFailed"), pageIndex + 1));
+                            Save(bmp, path, format);
+                        }
+                        written.Add(path);
+                        if (progress != null)
+                            progress(i + 1, pageIndexes.Count);
                     }
-                    written.Add(path);
-                    if (progress != null)
-                        progress(i + 1, pageIndexes.Count);
-                }
+                });
             }
-            return written;
         }
 
         /// <summary>
