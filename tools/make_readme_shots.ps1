@@ -22,9 +22,13 @@ $outDir = Join-Path $root 'docs\screenshots'
 # cannot be written to.
 $work = 'C:\Users\Public\Documents\Reports'
 try {
+    # A full disk fails at write time, not at create time, so ask before trusting it.
+    $free = (Get-PSDrive -Name ([IO.Path]::GetPathRoot($work).Substring(0, 1))).Free
+    if ($free -lt 50MB) { throw 'no room' }
     if (Test-Path $work) { Remove-Item $work -Recurse -Force }
     [void](New-Item -ItemType Directory -Path $work -Force)
 } catch {
+    Write-Host 'Public Documents unavailable, falling back to the temp folder'
     $work = Join-Path $env:TEMP 'iwo_readme_shots'
     if (Test-Path $work) { Remove-Item $work -Recurse -Force }
 }

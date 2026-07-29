@@ -282,7 +282,7 @@ namespace ExcelMerger.Tests
             Run("Loc.T: отсутствующий ключ возвращается как есть, null не роняет", TestLocMissingKey);
             Run("PdfCompression.LevelLabels: три подписи, переводы, а не ключи (оба языка)", TestCompressionLevelLabels);
             Run("Cancellation.ThrowIf: null молчит, поднятый флаг бросает", TestCancellationThrowIf);
-            Run("Cancellation.NoPartialOutput: отмена удаляет созданное, ошибка — нет", TestNoPartialOutput);
+            Run("Cancellation.NoPartialOutput: и отмена, и сбой удаляют созданное", TestNoPartialOutput);
             Run("WindowPlacement.BestWorkArea: экран по наибольшему пересечению, фолбэк без него", TestBestWorkArea);
             Run("XyCut.OrderTree: этажи и колонки деревом, AvailRight по соседней колонке", TestXyCutOrderTreeShape);
             Run("Ui.OnUi: null/без хэндла/разрушенное окно — false без исключения", TestOnUiGuard);
@@ -374,12 +374,14 @@ namespace ExcelMerger.Tests
             Run("Палитра: значок каждого инструмента отличим от соседних", TestGlyphColoursDistinct);
             Run("Разметка PDF: строки одного блока не рвутся, разных — рвутся", TestStructureBlocksGroup);
             Run("PPTX: у каждой строки абзаца свой отступ от края рамки", TestPptxPerLineIndent);
+            Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
+            Run("Страницы без текста названы в результате", TestConvertDoneStatus);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 343;
+            const int MinTests = 345;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -4699,6 +4701,57 @@ namespace ExcelMerger.Tests
                 "третья — на свои 20 pt");
         }
 
+
+        /// <summary>
+        /// «Нет места на диске» без указания диска — половина ответа: результат пишется в одну
+        /// папку, временные файлы — в другую, на другом диске, и переполниться может любой.
+        /// </summary>
+        private static void TestDiskFullMessage()
+        {
+            var full = new IOException("There is not enough space on the disk.");
+            SetHResult(full, unchecked((int)0x80070070));
+            AssertTrue(DiskSpace.IsFull(full), "код 0x70 — это нехватка места");
+            AssertTrue(DiskSpace.IsFull(new IOException("обёртка", full)), "причина ищется и во вложенных");
+            AssertTrue(!DiskSpace.IsFull(new IOException("файл занят")), "обычная ошибка ввода-вывода — не про место");
+            AssertTrue(!DiskSpace.IsFull(new InvalidOperationException()), "и не всякое исключение вообще");
+
+            string path = Path.Combine(Path.GetTempPath(), "iwo_disk.pdf");
+            string message = DiskSpace.Describe(full, path);
+            string root = Path.GetPathRoot(Path.GetFullPath(path));
+            AssertTrue(message.Contains(root), "в сообщении назван диск: " + message);
+            AssertTrue(message != full.Message, "сообщение системы дополнено, а не повторено");
+            AssertEqual("файл занят", DiskSpace.Describe(new IOException("файл занят"), path),
+                "прочие ошибки передаются как есть");
+            AssertTrue(DiskSpace.FreeMegabytes(path) >= 0, "остаток на своём же диске измеряется");
+        }
+
+        /// <summary>HResult у Exception доступен на запись только защищённо — ставим отражением.</summary>
+        private static void SetHResult(Exception ex, int value)
+        {
+            typeof(Exception).GetProperty("HResult",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Public).SetValue(ex, value, null);
+        }
+
+
+        /// <summary>
+        /// Смешанный документ — часть слайдов «напечатана» картинкой целиком. Страница в
+        /// результате есть, а текста на ней нет, и без объяснения это выглядит как поломка
+        /// перевода. Скан целиком отклоняется заранее, смешанный документ через тот заслон
+        /// проходит — значит сказать должен результат.
+        /// </summary>
+        private static void TestConvertDoneStatus()
+        {
+            const string fmt = "Готово: страниц {0}.";
+            AssertEqual("Готово: страниц 13.",
+                PdfConvertFormBase.DoneStatus(new ConvertResult { Pages = 13, PagesWithText = 13 }, fmt),
+                "текст нашёлся везде — лишнего не говорим");
+            string mixed = PdfConvertFormBase.DoneStatus(new ConvertResult { Pages = 13, PagesWithText = 6 }, fmt);
+            AssertTrue(mixed.StartsWith("Готово: страниц 13."), "результат по-прежнему успешный");
+            AssertTrue(mixed.Contains("7"), "названо число страниц без текста: " + mixed);
+            AssertTrue(mixed.Length > fmt.Length + 6, "объяснение добавлено, а не только цифра");
+        }
+
         private static void TestPptxBackground()
         {
             byte[] png = PptxTinyPng();
@@ -6404,6 +6457,8 @@ namespace ExcelMerger.Tests
                 AssertTrue(canceled, "отмена уходит наверх, а не проглатывается");
                 AssertEqual(0, Directory.GetFiles(dir, "part*.txt").Length, "созданное до отмены удалено");
 
+                // Сбой убирает за собой ровно так же, как отмена: из папки с семью частями от
+                // сорока не видно, что она неполная, — половина набора выглядит как набор.
                 bool failed = false;
                 try
                 {
@@ -6415,7 +6470,21 @@ namespace ExcelMerger.Tests
                 }
                 catch (MergeException) { failed = true; }
                 AssertTrue(failed, "ошибка уходит наверх");
-                AssertEqual(1, Directory.GetFiles(dir, "err*.txt").Length, "ошибка созданное НЕ удаляет");
+                AssertEqual(0, Directory.GetFiles(dir, "err*.txt").Length, "после сбоя частей не остаётся");
+
+                // Нехватка памяти — единственное исключение: там уже не до уборки.
+                bool oom = false;
+                try
+                {
+                    Cancellation.NoPartialOutput(delegate(List<string> created)
+                    {
+                        created.Add(make("oom1.txt"));
+                        throw new OutOfMemoryException();
+                    });
+                }
+                catch (OutOfMemoryException) { oom = true; }
+                AssertTrue(oom, "нехватка памяти уходит наверх нетронутой");
+                AssertEqual(1, Directory.GetFiles(dir, "oom*.txt").Length, "при нехватке памяти уборку не затеваем");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
