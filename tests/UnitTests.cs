@@ -335,6 +335,8 @@ namespace ExcelMerger.Tests
             Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
             Run("Настройки (живое): три действия истории — в ряд и без обрезки подписей", TestSettingsHistoryRowLive);
             Run("Хаб (живое): значки настроек и справки доступны с клавиатуры и диктору", TestHubIconButtonsLive);
+            Run("Крупный системный шрифт: окна и меню живут своим шрифтом", TestSystemFontIgnoredLive);
+            Run("Масштаб (живое): двойной клик по полю процентов возвращает 100%", TestZoomDoubleClickResetsLive);
             Run("Настройки (живое): флажок пишется, «снова напоминать» появляется по делу", TestSettingsUpdateControlsLive);
 
             Run("XmlText: экранируются & < > и кавычка", TestXmlEscape);
@@ -371,7 +373,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 335;
+            const int MinTests = 337;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -6405,6 +6407,128 @@ namespace ExcelMerger.Tests
                     }
             });
             AssertTrue(offenders.Count == 0, "раскладка диалогов: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Двойной клик по полю процентов возвращает масштаб к 100%. Раньше этот жест штатно
+        /// ВЫДЕЛЯЛ число, и выделение принимали за «скопировалось в буфер»: жест выглядел
+        /// сработавшим, не делая ничего. Проверяем на настоящем окне и через внутреннее поле
+        /// ввода — события мыши получает именно оно, а не сам NumericUpDown.
+        /// </summary>
+        private static void TestZoomDoubleClickResetsLive()
+        {
+            var offenders = new List<string>();
+            RunSta(delegate
+            {
+                using (var form = new OcrForm())
+                {
+                    IntPtr handle = form.Handle;
+                    if (handle == IntPtr.Zero) { offenders.Add("окно не создалось"); return; }
+                    System.Windows.Forms.NumericUpDown input = null;
+                    foreach (System.Windows.Forms.Control c in form.Controls)
+                    {
+                        input = c as System.Windows.Forms.NumericUpDown;
+                        if (input != null) break;
+                    }
+                    if (input == null) { offenders.Add("поля процентов нет"); return; }
+
+                    // Значение заведомо допустимое и ЗАВЕДОМО не 100%: границы масштаба
+                    // заданы ThumbZoom, и литерал вроде 50 может оказаться вне диапазона.
+                    input.Value = input.Maximum;
+                    System.Windows.Forms.Control inner = null;
+                    foreach (System.Windows.Forms.Control c in input.Controls)
+                        if (c is System.Windows.Forms.TextBox) { inner = c; break; }
+                    if (inner == null) { offenders.Add("внутреннего поля ввода нет"); return; }
+
+                    // Двойной клик приходит внутреннему полю — поднимаем событие именно у него.
+                    System.Reflection.MethodInfo raise = typeof(System.Windows.Forms.Control).GetMethod(
+                        "OnDoubleClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    if (raise == null) { offenders.Add("не добраться до OnDoubleClick"); return; }
+                    raise.Invoke(inner, new object[] { EventArgs.Empty });
+
+                    if (input.Value != 100)
+                        offenders.Add("после двойного клика масштаб " + input.Value + "%, а должен быть 100%");
+
+                    // А вот двойной щелчок по СТРЕЛКАМ сбрасывать не должен: это два шага
+                    // масштаба подряд, а не просьба вернуть 100%.
+                    System.Windows.Forms.Control buttons = null;
+                    foreach (System.Windows.Forms.Control c in input.Controls)
+                        if (!(c is System.Windows.Forms.TextBox)) { buttons = c; break; }
+                    if (buttons != null)
+                    {
+                        input.Value = input.Maximum;
+                        raise.Invoke(buttons, new object[] { EventArgs.Empty });
+                        if (input.Value != input.Maximum)
+                            offenders.Add("двойной щелчок по стрелкам сбросил масштаб, а не должен");
+                    }
+                }
+            });
+            AssertTrue(offenders.Count == 0, "сброс масштаба: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Размер шрифта, выбранный в системе («размер текста» в специальных возможностях),
+        /// не должен доставать до нашей раскладки: все окна задают шрифт явно, а полоса меню
+        /// имеет фиксированную высоту, и системным шрифтом её подписи обрезало бы снизу.
+        /// Проверяем оба конца: окна и все их контролы живут разрешёнными шрифтами, а меню —
+        /// шрифтом приложения, и его подписи помещаются в высоту полосы.
+        /// </summary>
+        private static void TestSystemFontIgnoredLive()
+        {
+            var offenders = new List<string>();
+            // Символьные шрифты законны: ими рисуются глифы значков и стрелок.
+            var allowed = new List<string> { "Segoe UI", "Segoe MDL2 Assets", "Segoe UI Symbol", "Segoe UI Emoji" };
+            RunSta(delegate
+            {
+                var windows = new List<System.Windows.Forms.Form>
+                {
+                    new StartForm(), new SettingsForm(), new AboutForm(), new StatsForm()
+                };
+                try
+                {
+                    foreach (System.Windows.Forms.Form form in windows)
+                    {
+                        IntPtr handle = form.Handle;
+                        if (handle == IntPtr.Zero) { offenders.Add(form.GetType().Name + ": окно не создалось"); continue; }
+                        if (Math.Abs(form.Font.SizeInPoints - 9.75f) > 0.01f)
+                            offenders.Add(form.GetType().Name + ": шрифт окна " + form.Font.SizeInPoints + " pt");
+                        WalkFonts(form, form.GetType().Name, allowed, offenders);
+                    }
+                }
+                finally
+                {
+                    foreach (System.Windows.Forms.Form form in windows)
+                        try { form.Dispose(); } catch { }
+                }
+
+                // Полоса меню: свой шрифт и подписи, помещающиеся в её фиксированную высоту.
+                using (var owner = new System.Windows.Forms.Form())
+                {
+                    System.Windows.Forms.MenuStrip menu = HelpMenu.Create(owner, delegate { });
+                    if (Math.Abs(menu.Font.SizeInPoints - 9.75f) > 0.01f)
+                        offenders.Add("полоса меню: шрифт " + menu.Font.SizeInPoints + " pt (системный?)");
+                    foreach (System.Windows.Forms.ToolStripItem item in menu.Items)
+                    {
+                        int need = System.Windows.Forms.TextRenderer.MeasureText(item.Text, menu.Font).Height;
+                        if (need > HelpMenu.Height - 6)
+                            offenders.Add("пункт «" + item.Text + "» не помещается в полосу: нужно " + need);
+                    }
+                    menu.Dispose();
+                }
+            });
+            AssertTrue(offenders.Count == 0, "системный шрифт: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Обойти дерево контролов и собрать те, чей шрифт не из разрешённых семейств.</summary>
+        private static void WalkFonts(System.Windows.Forms.Control root, string where,
+            List<string> allowed, List<string> offenders)
+        {
+            foreach (System.Windows.Forms.Control c in root.Controls)
+            {
+                if (c.Font != null && !allowed.Contains(c.Font.FontFamily.Name))
+                    offenders.Add(where + ": " + c.GetType().Name + " шрифтом «" + c.Font.FontFamily.Name + "»");
+                WalkFonts(c, where, allowed, offenders);
+            }
         }
 
         /// <summary>Выполнить действие на STA-потоке: окна WinForms другого не терпят.</summary>

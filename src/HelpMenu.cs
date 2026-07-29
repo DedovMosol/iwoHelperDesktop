@@ -14,9 +14,20 @@ namespace ExcelMerger
     {
         public const int Height = 28;
 
+        /// <summary>
+        /// Меню рисуются шрифтом ПРИЛОЖЕНИЯ, а не системным шрифтом меню. Причина простая:
+        /// полоса меню имеет фиксированную высоту (<see cref="Height"/>, её масштабирует DPI),
+        /// а системный размер шрифта задаётся ОТДЕЛЬНОЙ настройкой Windows — «размер текста» в
+        /// специальных возможностях. С крупным системным шрифтом подписи в полосе обрезались
+        /// бы снизу, и это единственное место, где системный шрифт вообще доставал до нашей
+        /// раскладки: все окна свой шрифт задают явно.
+        /// </summary>
+        private static Font AppFont { get { return Ui.Font(9.75f); } }
+
         public static MenuStrip Create(Form owner, Action showHowTo, params ToolStripMenuItem[] extras)
         {
             var menu = new MenuStrip();
+            menu.Font = AppFont; // не системный шрифт меню — см. AppFont
             menu.AutoSize = false;
             menu.Height = Height;
             menu.Dock = DockStyle.Top;
@@ -63,6 +74,7 @@ namespace ExcelMerger
         internal static ContextMenuStrip LanguageContextMenu()
         {
             var menu = new ContextMenuStrip();
+            menu.Font = AppFont; // как и полоса меню — своим шрифтом
             menu.Items.Add(LangItem(Loc.T("menu.lang.ru"), Lang.Ru));
             menu.Items.Add(LangItem(Loc.T("menu.lang.en"), Lang.En));
             return menu;
