@@ -18,11 +18,12 @@ versions follow [SemVer](https://semver.org/).
   **without its text layer**, because on a normal slide that is most of the picture, and a
   text-only conversion would leave a handful of labels on white. Without Ghostscript the
   deck degrades to text only, silently and by design.
-  A source line becomes its own text box. A slide has no way to re-flow text — another engine
-  breaks lines by its own metrics — while underlines, frames and rules arrive with the
-  background and stay where they were, so a re-flowed paragraph would drift out from under
-  them. Keeping the lines apart is what holds the text in place; the cost is that a long
-  paragraph is edited line by line.
+  A paragraph becomes one text box, and the lines inside it keep their own positions rather
+  than being re-flowed: a slide has no way to re-flow text faithfully — another engine breaks
+  lines by its own metrics — while underlines, frames and rules arrive with the background
+  and stay where they were, so a re-flowed paragraph would drift out from under them. Where
+  the file carries document structure, the boundaries of those paragraphs are read from it
+  instead of being guessed from the gaps between lines.
   Slide size follows the pages (a 16:9 deck stays 16:9, an A4 document becomes A4 slides);
   a presentation has one slide size, so mixed input takes the most common one and scales the
   rest to fit and centres them. The window is the one already known from PDF → Word — the
