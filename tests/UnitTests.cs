@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
+using System.Text;
+using System.Xml.Linq;
 using ExcelMerger;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
@@ -75,7 +78,7 @@ namespace ExcelMerger.Tests
             Run("PdfPageOrder: добавление и границы MoveUp/MoveDown", TestPdfOrderMoves);
             Run("PdfPageOrder: перенос drag&drop в обе стороны", TestPdfOrderDragMove);
             Run("PdfPageOrder: удаление набора строк + Clear", TestPdfOrderRemove);
-            Run("PdfToWordService.Assemble: сборка страниц из нескольких PDF, границы", TestAssemble);
+            Run("PdfPageExtraction.Assemble: сборка страниц из нескольких PDF, границы", TestAssemble);
             Run("NoteText: период, счётчики, файл свода", TestNoteBasics);
             Run("NoteText: таблица пропущенных", TestNoteSkippedTable);
             Run("NoteText: без пропусков — «замечания отсутствуют»", TestNoteClean);
@@ -130,7 +133,7 @@ namespace ExcelMerger.Tests
             Run("PageRotation: MapPoint/MapBox по углам, Inverse, At, свап размеров", TestPageRotationMap);
             Run("PageRotation.RotatePage: слова, линии H<->V, картинки (рамки+пиксели)", TestPageRotationRotatePage);
             Run("PdfTextExtract.ApplyUnderscoreHeights: прочерк растёт, слово не трогается", TestUnderscoreHeights);
-            Run("PdfToWordService.BuildRotations: первый экземпляр решает, рост карты, null", TestBuildRotations);
+            Run("PdfPageExtraction.BuildRotations: первый экземпляр решает, рост карты, null", TestBuildRotations);
             Run("PDF->Word (живой): боковой текст выправляется поворотом страницы", TestExtractRotationLive);
             Run("PdfDrop.ExtractPaths: фильтр .pdf, несуществующие, пустой дроп", TestPdfDropExtract);
             Run("PdfPageGrid.DropInsertIndex: позиция дропа по метке/в конец", TestDropInsertIndex);
@@ -191,7 +194,7 @@ namespace ExcelMerger.Tests
             Run("WindowPlacement: сериализация границ окна и отбраковка мусора", TestWindowBoundsRoundTrip);
             Run("WindowPlacement.ClampToWorkingArea: край/вне экрана/мин/макс/мультимонитор", TestClampToWorkingArea);
             Run("OcrLayout: гигантский зазор внутри строки рвёт её на зоны (в ячейке — нет)", TestOcrWideGapSplit);
-            Run("WordDocxWriter.CoalesceRowBands: блоки одной строки — в полосу", TestCoalesceRowBands);
+            Run("PageBlocks.CoalesceRowBands: блоки одной строки — в полосу", TestCoalesceRowBands);
             Run("WordDocxWriter.AnchorIndents: красная строка по факту / позиция колонки", TestAnchorIndents);
             Run("OcrLayout: дефис лат+кириллица на переносе сохраняется", TestOcrHyphenMixedKept);
             Run("PdfTextExtract: слово под низкой наложенной картинкой скрывается", TestCoveredByLowImage);
@@ -218,7 +221,7 @@ namespace ExcelMerger.Tests
             Run("TableDetector: рамка 1x1 без внутренних линий -> не таблица", TestTableSingleBox);
             Run("TableDetector: слова вне таблицы остаются в потоке", TestTableWordsOutside);
             Run("TableDetector: нет линий -> нет таблиц, все слова в потоке", TestTableNoLines);
-            Run("PdfToWordService: страница-таблица считается текстовой (не «скан»)", TestHasExtractableContent);
+            Run("PdfPageExtraction: страница-таблица считается текстовой (не «скан»)", TestHasExtractableContent);
             Run("UnderlineDetector: линия под словом -> подчёркнуто", TestUnderlineMarks);
             Run("UnderlineDetector: далёкая/короткая линия -> не подчёркнуто", TestUnderlineIgnores);
             Run("UnderlineDetector: линия во всю ширину (разделитель) -> не подчёркнуто", TestUnderlineWideRule);
@@ -226,7 +229,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: одноколоночный текст не делится (сайдбар не срабатывает)", TestNoSidebarSingleColumn);
             Run("SetMargins: поля по словам И картинкам; нижнее — с капом", TestMarginsWithImages);
             Run("ColumnConfineIndents: правая колонка -> левый отступ; левая -> правый; полная ширина -> нет", TestColumnConfine);
-            Run("WordDocxWriter.HasCyrillic: кириллица / латиница / пусто", TestHasCyrillic);
+            Run("FontResolver.HasCyrillic: кириллица / латиница / пусто", TestHasCyrillic);
             Run("GridDetector: широкий одиночный ряд -> ColSpan во всю ширину", TestGridColSpan);
             Run("GridDetector: увеличенный зазор между группами -> интервал после строки", TestGridRowSpacing);
             Run("TableDetector: прочерк кусками (коллинеарные) -> LoneLines, не таблица", TestLoneCollinearRule);
@@ -247,8 +250,8 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: двухколоночная шапка — абзацы колонок не смешаны, левая раньше", TestOcrTwoColumnsSeparated);
             Run("OcrLayout: ячейка таблицы (splitColumns=false) — «метка … число» одной строкой", TestOcrCellNoColumns);
             Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
-            Run("WordDocxWriter.OrderedItems: колонки -> side-by-side полоса (левая|правая), нижний одиночный", TestOrderedItemsColumns);
-            Run("WordDocxWriter.OrderedItems: внутри листа — строки сверху вниз, бок о бок слева направо", TestOrderedItemsWithinLeaf);
+            Run("PageBlocks.OrderedItems: колонки -> side-by-side полоса (левая|правая), нижний одиночный", TestOrderedItemsColumns);
+            Run("PageBlocks.OrderedItems: внутри листа — строки сверху вниз, бок о бок слева направо", TestOrderedItemsWithinLeaf);
             Run("WordDocxWriter.BandColumnWidths: границы ячеек по середине зазора колонок", TestBandColumnWidths);
             Run("WordDocxWriter: центрированное изображение (логотип) -> по центру, врезка/штамп -> нет", TestImageCentered);
             Run("PageRasterizer: рамка PDF (Y-вверх) -> пиксельный кроп, кламп по краю", TestCropRect);
@@ -332,11 +335,40 @@ namespace ExcelMerger.Tests
             Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
             Run("Настройки (живое): флажок пишется, «снова напоминать» появляется по делу", TestSettingsUpdateControlsLive);
 
+            Run("XmlText: экранируются & < > и кавычка", TestXmlEscape);
+            Run("XmlText: очистка — управляющие, непарные суррогаты, перевод строки", TestXmlSanitize);
+            Run("PptxGeometry: пункты → EMU, знак координаты и неотрицательный размер", TestPptxEmu);
+            Run("PptxGeometry: кегль в сотых пункта и пределы разметки", TestPptxHundredths);
+            Run("PptxGeometry: размер слайда — самый частый размер страницы", TestPptxSlideSize);
+            Run("PptxGeometry: страница другого размера вписывается и центрируется", TestPptxFit);
+            Run("PptxGeometry: ось Y переворачивается от высоты страницы", TestPptxFlipY);
+            Run("OoxmlPackage: [Content_Types].xml первой записью, Override со слэшем", TestOoxmlContentTypes);
+            Run("OoxmlPackage: имя части — ASCII, без ведущего слэша, без дублей", TestOoxmlPartNames);
+            Run("PPTX: пакет самосогласован — части, связи, отсутствие BOM", TestPptxPackageConsistency);
+            Run("PPTX: валидатор Open XML не находит ошибок в собранном файле", TestPptxValidator);
+            Run("PPTX: валидатор — зависимость ТОЛЬКО тестов, в src его нет", TestPptxValidatorNotInApp);
+            Run("PPTX: абзац — надпись с нулевыми полями, без автоподбора и заливки", TestPptxTextBox);
+            Run("PPTX: формат рана — кегль, начертание, цвет, шрифт и порядок элементов", TestPptxRunProps);
+            Run("PPTX: выравнивание и литеральный маркер списка", TestPptxAlignAndBullet);
+            Run("PPTX: пустой абзац фигуры не создаёт", TestPptxEmptyParagraph);
+            Run("PPTX: запас ширины надписи не выходит за край страницы", TestPptxWidthSlack);
+            Run("PPTX: одна картинка на трёх слайдах — одна часть, три связи", TestPptxMediaDedup);
+            Run("PPTX: гиперссылка — связь наружу, повтор адреса не плодит связей", TestPptxHyperlink);
+            Run("PPTX: слайд с содержимым проходит валидатор", TestPptxValidatorWithContent);
+            Run("PPTX: прочерк-заполнитель на слайд не переносится", TestPptxFillerRule);
+            Run("Разбор для слайда: далеко разнесённые строки — разные блоки", TestSlideGapBreak);
+            Run("PPTX: однострочная надпись не переносится, многострочная переносится", TestPptxSingleLine);
+            Run("PPTX: поправка на подъёмную часть строки", TestPptxAscentGap);
+            Run("PPTX: подложка — фон слайда, а при вписывании — закреплённая картинка", TestPptxBackground);
+            Run("PPTX: разрешение подложек падает с ростом числа страниц", TestPptxBackgroundDpi);
+            Run("PPTX: объединение ячеек — пролёты у владельца, пометки у накрытых", TestPptxMergeGrid);
+            Run("PPTX: таблица — сетка колонок, полные строки, границы по источнику", TestPptxTable);
+
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 304;
+            const int MinTests = 332;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -1546,7 +1578,7 @@ namespace ExcelMerger.Tests
                 new PdfPageRef { SourcePath = "A.pdf", PageIndex = 1 },
                 new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0 }
             };
-            List<PdfPageText> r = PdfToWordService.Assemble(bysource, order);
+            List<PdfPageText> r = PdfPageExtraction.Assemble(bysource, order);
             AssertEqual(3, r.Count, "собраны все 3 страницы из двух файлов");
             AssertTrue(ReferenceEquals(r[0], bysource["B.pdf"][0]), "первая — стр.0 из B");
             AssertTrue(ReferenceEquals(r[1], bysource["A.pdf"][1]), "вторая — стр.1 из A");
@@ -1559,7 +1591,7 @@ namespace ExcelMerger.Tests
                 new PdfPageRef { SourcePath = "A.pdf", PageIndex = -1 },
                 new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0 }
             };
-            List<PdfPageText> rb = PdfToWordService.Assemble(bysource, bad);
+            List<PdfPageText> rb = PdfPageExtraction.Assemble(bysource, bad);
             AssertEqual(1, rb.Count, "остаётся только валидная ссылка");
             AssertTrue(ReferenceEquals(rb[0], bysource["A.pdf"][0]), "валидная — A стр.0");
         }
@@ -2123,17 +2155,17 @@ namespace ExcelMerger.Tests
                 "Times New Roman", "Calibri Light", "Liberation Serif"
             };
             // Установленный шрифт — оставить как есть (в т.ч. без учёта регистра) для латиницы.
-            AssertEqual("Calibri Light", WordDocxWriter.ResolveFontName("Calibri Light", "text", installed, "Times New Roman"), "установленный сохранён");
-            AssertEqual("times new roman", WordDocxWriter.ResolveFontName("times new roman", "текст", installed, "Times New Roman"), "регистр при поиске не важен");
+            AssertEqual("Calibri Light", FontResolver.ResolveFontName("Calibri Light", "text", installed, "Times New Roman"), "установленный сохранён");
+            AssertEqual("times new roman", FontResolver.ResolveFontName("times new roman", "текст", installed, "Times New Roman"), "регистр при поиске не важен");
             // НЕустановленный (напр. PT Astra Serif) -> fallback, иначе Word уводит кириллицу в eastAsia -> разрядка.
-            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("PT Astra Serif", "текст", installed, "Times New Roman"), "неустановленный -> fallback");
+            AssertEqual("Times New Roman", FontResolver.ResolveFontName("PT Astra Serif", "текст", installed, "Times New Roman"), "неустановленный -> fallback");
             // УСТАНОВЛЕННЫЙ, но не Word-родной (Liberation Serif): кириллице — fallback (Word
             // ставит hint=eastAsia и разжижает буквы CJK-выключкой), латинице — оставить.
-            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("Liberation Serif", "Пример", installed, "Times New Roman"), "кириллица вне сейф-листа -> fallback");
-            AssertEqual("Liberation Serif", WordDocxWriter.ResolveFontName("Liberation Serif", "latin only", installed, "Times New Roman"), "латиница может остаться");
-            AssertEqual("Calibri Light", WordDocxWriter.ResolveFontName("Calibri Light", "кириллица", installed, "Times New Roman"), "сейф-лист держит кириллицу");
-            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName(null, "т", installed, "Times New Roman"), "null -> fallback");
-            AssertEqual("Times New Roman", WordDocxWriter.ResolveFontName("X", "т", null, "Times New Roman"), "нет списка -> fallback");
+            AssertEqual("Times New Roman", FontResolver.ResolveFontName("Liberation Serif", "Пример", installed, "Times New Roman"), "кириллица вне сейф-листа -> fallback");
+            AssertEqual("Liberation Serif", FontResolver.ResolveFontName("Liberation Serif", "latin only", installed, "Times New Roman"), "латиница может остаться");
+            AssertEqual("Calibri Light", FontResolver.ResolveFontName("Calibri Light", "кириллица", installed, "Times New Roman"), "сейф-лист держит кириллицу");
+            AssertEqual("Times New Roman", FontResolver.ResolveFontName(null, "т", installed, "Times New Roman"), "null -> fallback");
+            AssertEqual("Times New Roman", FontResolver.ResolveFontName("X", "т", null, "Times New Roman"), "нет списка -> fallback");
         }
 
         private static void TestProgressPercent()
@@ -2479,19 +2511,19 @@ namespace ExcelMerger.Tests
         {
             // Межблочные интервалы: типичный зазор — нижняя медиана положительных; интервал —
             // лишек сверх типичного с порогом (6 pt) и капом (120 pt).
-            var items = new List<WordDocxWriter.PageItem>
+            var items = new List<PageBlocks.PageItem>
             {
-                new WordDocxWriter.PageItem { Top = 100, Bottom = 90 },
-                new WordDocxWriter.PageItem { Top = 83, Bottom = 70 },   // зазор 7
-                new WordDocxWriter.PageItem { Top = 63, Bottom = 50 },   // зазор 7
-                new WordDocxWriter.PageItem { Top = 20, Bottom = 10 }    // зазор 30
+                new PageBlocks.PageItem { Top = 100, Bottom = 90 },
+                new PageBlocks.PageItem { Top = 83, Bottom = 70 },   // зазор 7
+                new PageBlocks.PageItem { Top = 63, Bottom = 50 },   // зазор 7
+                new PageBlocks.PageItem { Top = 20, Bottom = 10 }    // зазор 30
             };
-            AssertEqual(7.0, WordDocxWriter.TypicalItemGap(items), "типичный зазор — медиана {7,7,30}");
-            AssertEqual(0.0, WordDocxWriter.ExtraGapPt(10, 7), "лишек 3 меньше порога — без интервала");
-            AssertEqual(23.0, WordDocxWriter.ExtraGapPt(30, 7), "лишек 23 — интервал 23 pt");
+            AssertEqual(7.0, PageBlocks.TypicalItemGap(items), "типичный зазор — медиана {7,7,30}");
+            AssertEqual(0.0, PageBlocks.ExtraGapPt(10, 7), "лишек 3 меньше порога — без интервала");
+            AssertEqual(23.0, PageBlocks.ExtraGapPt(30, 7), "лишек 23 — интервал 23 pt");
             // Кап 400: пропускает нижний блок у нижнего края почти пустой страницы,
             // а от переливов страхует демпфер FitSpacingToPages.
-            AssertEqual(400.0, WordDocxWriter.ExtraGapPt(900, 7), "кап 400 pt");
+            AssertEqual(400.0, PageBlocks.ExtraGapPt(900, 7), "кап 400 pt");
         }
 
         private static void TestWindowBoundsRoundTrip()
@@ -2570,9 +2602,9 @@ namespace ExcelMerger.Tests
         {
             // Два одиночных абзаца одной «строки» с широким каналом — side-by-side полоса;
             // абзац строкой ниже полосой не становится.
-            WordDocxWriter.PageItem P(double left, double right, double top, double bottom)
+            PageBlocks.PageItem P(double left, double right, double top, double bottom)
             {
-                var b = new WordDocxWriter.Block
+                var b = new PageBlocks.Block
                 {
                     Paragraph = new OcrParagraph(),
                     Left = left,
@@ -2580,15 +2612,15 @@ namespace ExcelMerger.Tests
                     Top = top,
                     Bottom = bottom
                 };
-                return new WordDocxWriter.PageItem { Single = b, Top = top, Bottom = bottom };
+                return new PageBlocks.PageItem { Single = b, Top = top, Bottom = bottom };
             }
-            var items = new List<WordDocxWriter.PageItem>
+            var items = new List<PageBlocks.PageItem>
             {
                 P(0, 100, 100, 90),    // левая зона строки
                 P(200, 300, 99, 89),   // правая зона той же строки (канал 100)
                 P(0, 300, 70, 60)      // следующая строка — отдельно
             };
-            List<WordDocxWriter.PageItem> result = WordDocxWriter.CoalesceRowBands(items);
+            List<PageBlocks.PageItem> result = PageBlocks.CoalesceRowBands(items);
             AssertEqual(2, result.Count, "полоса + одиночный");
             AssertTrue(result[0].IsBand && result[0].Columns.Count == 2, "первая пара — полоса 1×2");
             AssertEqual(200.0, result[0].ColLeft[1], "левый край правой колонки");
@@ -3271,10 +3303,10 @@ namespace ExcelMerger.Tests
 
         private static void TestHasCyrillic()
         {
-            AssertTrue(WordDocxWriter.HasCyrillic("Текст"), "кириллица");
-            AssertTrue(WordDocxWriter.HasCyrillic("mix Текст 2"), "смешанное — есть кириллица");
-            AssertTrue(!WordDocxWriter.HasCyrillic("Latin 123 %"), "латиница — нет");
-            AssertTrue(!WordDocxWriter.HasCyrillic(""), "пусто — нет");
+            AssertTrue(FontResolver.HasCyrillic("Текст"), "кириллица");
+            AssertTrue(FontResolver.HasCyrillic("mix Текст 2"), "смешанное — есть кириллица");
+            AssertTrue(!FontResolver.HasCyrillic("Latin 123 %"), "латиница — нет");
+            AssertTrue(!FontResolver.HasCyrillic(""), "пусто — нет");
         }
 
         private static void TestGridColSpan()
@@ -3673,10 +3705,10 @@ namespace ExcelMerger.Tests
             return p;
         }
 
-        private static string ColText(List<WordDocxWriter.Block> col)
+        private static string ColText(List<PageBlocks.Block> col)
         {
             var t = new List<string>();
-            foreach (WordDocxWriter.Block b in col) t.Add(b.Paragraph != null ? b.Paragraph.Text : "<img>");
+            foreach (PageBlocks.Block b in col) t.Add(b.Paragraph != null ? b.Paragraph.Text : "<img>");
             return string.Join(",", t);
         }
 
@@ -3691,7 +3723,7 @@ namespace ExcelMerger.Tests
             page.Paragraphs.Add(Para("L2", 100, 590, 180, 50));
             page.Paragraphs.Add(Para("R2", 340, 580, 200, 50));
             page.Paragraphs.Add(Para("F", 100, 500, 440, 40)); // этаж ниже (зазор 580-540=40)
-            List<WordDocxWriter.PageItem> items = WordDocxWriter.OrderedItems(page);
+            List<PageBlocks.PageItem> items = PageBlocks.OrderedItems(page);
             AssertEqual(2, items.Count, "полоса + нижний блок");
             AssertTrue(items[0].IsBand, "первый элемент — side-by-side полоса");
             AssertEqual(2, items[0].Columns.Count, "две колонки в полосе");
@@ -3719,9 +3751,9 @@ namespace ExcelMerger.Tests
         {
             // Колонки [100..280] и [340..540] на текстовой области 84..567: граница = середина
             // зазора (280+340)/2=310; ширины ячеек = 310-84 и 567-310.
-            var band = new WordDocxWriter.PageItem
+            var band = new PageBlocks.PageItem
             {
-                Columns = new List<List<WordDocxWriter.Block>> { new List<WordDocxWriter.Block>(), new List<WordDocxWriter.Block>() },
+                Columns = new List<List<PageBlocks.Block>> { new List<PageBlocks.Block>(), new List<PageBlocks.Block>() },
                 ColLeft = new double[] { 100, 340 },
                 ColRight = new double[] { 280, 540 }
             };
@@ -3740,9 +3772,9 @@ namespace ExcelMerger.Tests
             page.Paragraphs.Add(Para("lower", 10, 580, 200, 8));  // 580..588 (не перекрыты по вертикали)
             page.Paragraphs.Add(Para("right", 232, 450, 100, 100)); // левый край 232
             page.Paragraphs.Add(Para("left", 20, 450, 200, 100));   // правый край 220, зазор 12 < порога колонки
-            List<WordDocxWriter.PageItem> items = WordDocxWriter.OrderedItems(page);
+            List<PageBlocks.PageItem> items = PageBlocks.OrderedItems(page);
             var order = new List<string>();
-            foreach (WordDocxWriter.PageItem it in items)
+            foreach (PageBlocks.PageItem it in items)
             {
                 AssertTrue(!it.IsBand, "узкий зазор — не полоса, всё одиночными блоками");
                 order.Add(it.Single.Paragraph.Text);
@@ -3768,11 +3800,11 @@ namespace ExcelMerger.Tests
         private static void TestHasExtractableContent()
         {
             // Пустая страница — нет текста.
-            AssertTrue(!PdfToWordService.HasExtractableContent(new PdfPageText()), "пустая страница — нет текста");
+            AssertTrue(!PdfPageExtraction.HasExtractableContent(new PdfPageText()), "пустая страница — нет текста");
             // Только абзац — есть текст.
             var withPar = new PdfPageText();
             withPar.Paragraphs.Add(new OcrParagraph());
-            AssertTrue(PdfToWordService.HasExtractableContent(withPar), "абзац — есть текст");
+            AssertTrue(PdfPageExtraction.HasExtractableContent(withPar), "абзац — есть текст");
             // Только таблица с текстом в ячейке — есть текст (иначе ложный «скан»).
             var withTable = new PdfPageText();
             var cell = new OcrTableCell();
@@ -3782,7 +3814,805 @@ namespace ExcelMerger.Tests
             var table = new OcrTable();
             table.Rows.Add(row);
             withTable.Tables.Add(table);
-            AssertTrue(PdfToWordService.HasExtractableContent(withTable), "таблица с текстом — есть текст");
+            AssertTrue(PdfPageExtraction.HasExtractableContent(withTable), "таблица с текстом — есть текст");
+        }
+
+        // ---------- PDF → PowerPoint ----------
+
+        /// <summary>Страница-заготовка нужного размера (содержимое добавляют сами тесты).</summary>
+        private static PdfPageText PptxPage(double widthPt, double heightPt)
+        {
+            return new PdfPageText { WidthPt = widthPt, HeightPt = heightPt };
+        }
+
+        private static void TestXmlEscape()
+        {
+            AssertEqual("a &amp; b", XmlText.Escape("a & b"), "амперсанд");
+            AssertEqual("&lt;tag&gt;", XmlText.Escape("<tag>"), "угловые скобки");
+            AssertEqual("&quot;q&quot;", XmlText.Escape("\"q\""), "кавычка (ею же пишутся значения атрибутов)");
+            AssertEqual("", XmlText.Escape(null), "null — пустая строка, а не падение");
+            AssertEqual("a=1&amp;b=2", XmlText.Encode("a=1&b=2"), "адрес ссылки: & обязан экранироваться");
+        }
+
+        private static void TestXmlSanitize()
+        {
+            AssertEqual("ab", XmlText.Sanitize("a\0b"), "нулевой символ снят");
+            AssertEqual("ab", XmlText.Sanitize("a\u001Bb"), "управляющий символ снят");
+            AssertEqual("a\tb", XmlText.Sanitize("a\tb"), "табуляция допустима в XML");
+            AssertEqual("a b", XmlText.Sanitize("a\nb"), "перевод строки → пробел");
+            AssertEqual("a b", XmlText.Sanitize("a\rb"), "возврат каретки → пробел");
+            AssertEqual("ab", XmlText.Sanitize("a\uD83Db"), "непарная верхняя половина суррогата снята");
+            AssertEqual("ab", XmlText.Sanitize("a\uDE00b"), "непарная нижняя половина суррогата снята");
+            AssertEqual("a\uD83D\uDE00b", XmlText.Sanitize("a\uD83D\uDE00b"), "корректная пара сохранена целиком");
+            AssertEqual("ab", XmlText.Sanitize("a\uFFFEb"), "«не символ» U+FFFE снят");
+        }
+
+        private static void TestPptxEmu()
+        {
+            AssertEqual(914400L, PptxGeometry.Emu(72), "72 pt — дюйм — 914400 EMU");
+            AssertEqual(12700L, PptxGeometry.Emu(1), "пункт — 12700 EMU");
+            AssertEqual(-12700L, PptxGeometry.Emu(-1), "координата сохраняет знак");
+            AssertEqual(0L, PptxGeometry.EmuSize(-5), "отрицательного размера не бывает");
+            AssertEqual(0L, PptxGeometry.Emu(double.NaN), "мусор — ноль, а не исключение");
+            AssertEqual(13L, PptxGeometry.Emu(0.001), "округление к ближайшему");
+        }
+
+        private static void TestPptxHundredths()
+        {
+            AssertEqual(1200, PptxGeometry.Hundredths(12), "12 pt — 1200 сотых");
+            AssertEqual(1050, PptxGeometry.Hundredths(10.5), "дробный кегль");
+            AssertEqual(100, PptxGeometry.Hundredths(0.2), "ниже предела разметки — 1 pt");
+            AssertEqual(400000, PptxGeometry.Hundredths(9000), "выше предела разметки — 4000 pt");
+            // Кегль, УМЕНЬШЕННЫЙ вписыванием, обязан стать меньше, а не «отскочить» к умолчанию.
+            SlideFit fit = PptxGeometry.Fit(1200, 675, 960, 540);
+            AssertEqual(480, fit.FontHundredths(6), "6 pt при масштабе 0,8 — это 4,8 pt");
+        }
+
+        private static void TestPptxSlideSize()
+        {
+            double w, h;
+            PptxGeometry.SlideSizePt(new List<PdfPageText>
+            {
+                PptxPage(960, 540), PptxPage(595, 842), PptxPage(960, 540), PptxPage(960, 540)
+            }, out w, out h);
+            AssertEqual(960.0, w, "ширина — по самому частому размеру страницы");
+            AssertEqual(540.0, h, "высота — по самому частому размеру страницы");
+
+            PptxGeometry.SlideSizePt(new List<PdfPageText>(), out w, out h);
+            AssertEqual(595.0, w, "пустой набор — лист A4");
+
+            PptxGeometry.SlideSizePt(new List<PdfPageText> { PptxPage(720, 540), PptxPage(960, 540) }, out w, out h);
+            AssertEqual(720.0, w, "при равенстве побеждает встретившийся раньше");
+
+            PptxGeometry.SlideSizePt(new List<PdfPageText> { PptxPage(99999, 540) }, out w, out h);
+            AssertEqual(PptxGeometry.MaxSlidePt, w, "размер сверх предела PowerPoint обрезан");
+        }
+
+        private static void TestPptxFit()
+        {
+            SlideFit same = PptxGeometry.Fit(960, 540, 960, 540);
+            AssertEqual(1.0, same.Scale, "размер совпал — масштаб 1");
+            AssertEqual(0L, same.X(0), "совпал — и сдвига нет");
+
+            SlideFit noise = PptxGeometry.Fit(960.0001, 540, 960, 540);
+            AssertEqual(1.0, noise.Scale, "разница в тысячные — тот же размер, а не повод масштабировать");
+
+            // Книжная A4 на широком слайде: вписывается по высоте, центрируется по ширине.
+            SlideFit fit = PptxGeometry.Fit(595, 842, 960, 540);
+            AssertTrue(Math.Abs(fit.Scale - 540.0 / 842.0) < 1e-9, "масштаб по меньшей стороне");
+            double scaledW = 595 * fit.Scale;
+            AssertEqual(PptxGeometry.Emu((960 - scaledW) / 2), fit.X(0), "левый край — по центру слайда");
+            AssertEqual(0L, fit.Y(842), "верх страницы совпал с верхом слайда");
+        }
+
+        private static void TestPptxFlipY()
+        {
+            SlideFit fit = PptxGeometry.Fit(600, 800, 600, 800);
+            AssertEqual(0L, fit.Y(800), "верх страницы (ось PDF вверх) — ноль сверху слайда");
+            AssertEqual(PptxGeometry.Emu(100), fit.Y(700), "на 100 pt ниже верха");
+            AssertEqual(PptxGeometry.Emu(800), fit.Y(0), "низ страницы");
+            AssertEqual(PptxGeometry.Emu(20), fit.Size(20), "длина без масштаба не меняется");
+        }
+
+        private static void TestOoxmlContentTypes()
+        {
+            var pkg = new OoxmlPackage();
+            pkg.AddXml("_rels/.rels", "<a/>");
+            pkg.AddXml("ppt/presentation.xml", "<a/>", PptxParts.CtPresentation);
+            pkg.AddBinary("ppt/media/image1.png", new byte[] { 1, 2, 3 }, PptxParts.CtPng);
+
+            string types = pkg.BuildContentTypes();
+            AssertTrue(types.Contains("<Default Extension=\"png\" ContentType=\"image/png\"/>"),
+                "картинки покрыты правилом по расширению — одной строкой на сотню файлов");
+            AssertTrue(types.Contains("<Default Extension=\"rels\""), "связи — тоже правилом");
+            AssertTrue(types.Contains("<Override PartName=\"/ppt/presentation.xml\""),
+                "поимённый тип пишется С ведущим слэшем");
+            AssertTrue(!types.Contains("PartName=\"ppt/"), "без слэша — та самая ошибка «файл повреждён»");
+
+            using (var ms = new MemoryStream(pkg.ToArray()))
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+            {
+                AssertEqual("[Content_Types].xml", zip.Entries[0].FullName, "типы содержимого — ПЕРВОЙ записью архива");
+                AssertEqual(4, zip.Entries.Count, "три части плюс типы содержимого");
+            }
+        }
+
+        private static void TestOoxmlPartNames()
+        {
+            var pkg = new OoxmlPackage();
+            AssertThrowsAny("ведущий слэш в имени части", delegate { pkg.AddXml("/ppt/a.xml", "<a/>"); });
+            AssertThrowsAny("обратный слэш в имени части", delegate { pkg.AddXml("ppt\\a.xml", "<a/>"); });
+            AssertThrowsAny("не-ASCII в имени части", delegate { pkg.AddXml("ppt/слайд.xml", "<a/>"); });
+            AssertThrowsAny("пустой сегмент в имени части", delegate { pkg.AddXml("ppt//a.xml", "<a/>"); });
+            pkg.AddXml("ppt/a.xml", "<a/>");
+            AssertThrowsAny("дубль имени части", delegate { pkg.AddXml("ppt/a.xml", "<a/>"); });
+            AssertThrowsAny("двоичная часть без типа содержимого", delegate { pkg.AddBinary("ppt/media/i.png", new byte[1], null); });
+            // Правило по расширению одно на весь пакет: второй тип для «png» выразить нечем.
+            pkg.AddBinary("ppt/media/i1.png", new byte[1], PptxParts.CtPng);
+            AssertThrowsAny("одно расширение — два разных типа", delegate { pkg.AddBinary("ppt/media/i2.png", new byte[1], "image/jpeg"); });
+        }
+
+        private static void TestPptxPackageConsistency()
+        {
+            OoxmlPackage pkg = PptxWriter.BuildPackage(
+                new List<PdfPageText> { PptxPage(960, 540), PptxPage(960, 540) },
+                new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+            var failures = new List<string>();
+            AssertOoxmlSelfConsistent(pkg.ToArray(), failures);
+            AssertTrue(failures.Count == 0, "пакет несогласован: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        /// <summary>
+        /// Самопроверка пакета Open XML — та, которую читатель формата делает молча, а при
+        /// провале говорит только «файл повреждён»: типы содержимого покрывают каждую часть,
+        /// каждая связь ведёт в существующую часть, каждая ссылка r:id объявлена в связях
+        /// СВОЕЙ части, XML-части без BOM. Ошибки собираются списком — чтобы видеть все сразу.
+        /// </summary>
+        private static void AssertOoxmlSelfConsistent(byte[] package, List<string> failures)
+        {
+            using (var ms = new MemoryStream(package))
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+            {
+                if (zip.Entries.Count == 0 || zip.Entries[0].FullName != "[Content_Types].xml")
+                    failures.Add("[Content_Types].xml не первой записью");
+
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var bytes = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+                foreach (ZipArchiveEntry e in zip.Entries)
+                {
+                    names.Add(e.FullName);
+                    using (Stream s = e.Open())
+                    using (var buf = new MemoryStream())
+                    {
+                        s.CopyTo(buf);
+                        bytes[e.FullName] = buf.ToArray();
+                    }
+                }
+
+                // 1. XML-части — без метки порядка байтов: читатель ждёт «<» первым байтом.
+                foreach (KeyValuePair<string, byte[]> kv in bytes)
+                    if ((kv.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                        || kv.Key.EndsWith(".rels", StringComparison.OrdinalIgnoreCase))
+                        && (kv.Value.Length < 1 || kv.Value[0] != (byte)'<'))
+                        failures.Add("BOM или мусор в начале: " + kv.Key);
+
+                // 2. Каждая часть описана: правилом по расширению или поимённо.
+                XDocument types = XDocument.Parse(Encoding.UTF8.GetString(bytes["[Content_Types].xml"]));
+                XNamespace ct = "http://schemas.openxmlformats.org/package/2006/content-types";
+                var defaults = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var overrides = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (XElement d in types.Root.Elements(ct + "Default"))
+                    defaults.Add((string)d.Attribute("Extension"));
+                foreach (XElement o in types.Root.Elements(ct + "Override"))
+                {
+                    string part = (string)o.Attribute("PartName");
+                    if (part == null || !part.StartsWith("/", StringComparison.Ordinal))
+                        failures.Add("Override без ведущего слэша: " + part);
+                    else if (!names.Contains(part.Substring(1)))
+                        failures.Add("Override указывает на несуществующую часть: " + part);
+                    if (part != null)
+                        overrides.Add(part.TrimStart('/'));
+                }
+                foreach (string name in names)
+                {
+                    if (name == "[Content_Types].xml" || overrides.Contains(name))
+                        continue;
+                    int dot = name.LastIndexOf('.');
+                    string ext = dot >= 0 ? name.Substring(dot + 1) : string.Empty;
+                    if (!defaults.Contains(ext))
+                        failures.Add("часть без типа содержимого: " + name);
+                }
+
+                // 3. Связи ведут в существующие части, ссылки r:id объявлены в связях своей части.
+                XNamespace rel = "http://schemas.openxmlformats.org/package/2006/relationships";
+                XNamespace rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+                foreach (string name in new List<string>(names))
+                {
+                    if (!name.EndsWith(".rels", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    XDocument rels = XDocument.Parse(Encoding.UTF8.GetString(bytes[name]));
+                    var declared = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (XElement r in rels.Root.Elements(rel + "Relationship"))
+                    {
+                        declared.Add((string)r.Attribute("Id"));
+                        if ((string)r.Attribute("TargetMode") == "External")
+                            continue;
+                        string target = ResolveRelTarget(name, (string)r.Attribute("Target"));
+                        if (!names.Contains(target))
+                            failures.Add("связь ведёт в никуда: " + name + " → " + target);
+                    }
+                    string owner = OwnerOfRels(name);
+                    if (owner.Length == 0 || !bytes.ContainsKey(owner))
+                        continue; // корневые связи пакета части-владельца не имеют
+                    XDocument doc = XDocument.Parse(Encoding.UTF8.GetString(bytes[owner]));
+                    foreach (XElement el in doc.Descendants())
+                        foreach (XAttribute a in el.Attributes())
+                            if (a.Name.Namespace == rNs && !declared.Contains(a.Value))
+                                failures.Add("ссылка " + a.Value + " в " + owner + " не объявлена в связях");
+                }
+            }
+        }
+
+        /// <summary>«ppt/slideMasters/_rels/slideMaster1.xml.rels» + «../theme/theme1.xml» → «ppt/theme/theme1.xml».</summary>
+        private static string ResolveRelTarget(string relsPart, string target)
+        {
+            if (string.IsNullOrEmpty(target))
+                return string.Empty;
+            if (target.StartsWith("/", StringComparison.Ordinal))
+                return target.Substring(1);
+            int marker = relsPart.LastIndexOf("_rels/", StringComparison.Ordinal);
+            string baseDir = marker <= 0 ? string.Empty : relsPart.Substring(0, marker);
+            var parts = new List<string>((baseDir + target).Split('/'));
+            var stack = new List<string>();
+            foreach (string p in parts)
+            {
+                if (p.Length == 0 || p == ".")
+                    continue;
+                if (p == ".." && stack.Count > 0)
+                    stack.RemoveAt(stack.Count - 1);
+                else if (p != "..")
+                    stack.Add(p);
+            }
+            return string.Join("/", stack.ToArray());
+        }
+
+        /// <summary>Часть-владелец файла связей: «ppt/_rels/presentation.xml.rels» → «ppt/presentation.xml».</summary>
+        private static string OwnerOfRels(string relsPart)
+        {
+            int marker = relsPart.LastIndexOf("_rels/", StringComparison.Ordinal);
+            if (marker < 0)
+                return string.Empty;
+            string dir = relsPart.Substring(0, marker);
+            string file = relsPart.Substring(marker + "_rels/".Length);
+            if (!file.EndsWith(".rels", StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
+            file = file.Substring(0, file.Length - ".rels".Length);
+            return file.Length == 0 ? string.Empty : dir + file;
+        }
+
+        /// <summary>Абзац-заготовка: один ран с заданным текстом в заданной рамке.</summary>
+        private static OcrParagraph PptxPar(string text, double leftPt, double topPt, double rightPt, double bottomPt,
+            double fontPt = 12)
+        {
+            var p = new OcrParagraph
+            {
+                LeftPt = leftPt, TopPt = topPt, RightPt = rightPt, BottomPt = bottomPt,
+                Alignment = OcrAlignment.Left
+            };
+            p.Runs.Add(new OcrRun { Text = text, FontSizePt = fontPt });
+            return p;
+        }
+
+        /// <summary>Первый элемент выборки или null: тесты читают разметку без LINQ.</summary>
+        private static XElement PptxFirst(IEnumerable<XElement> items)
+        {
+            foreach (XElement e in items)
+                return e;
+            return null;
+        }
+
+        /// <summary>Весь видимый текст слайда — склейка узлов a:t по порядку.</summary>
+        private static string PptxAllText(XDocument slide)
+        {
+            var sb = new StringBuilder();
+            foreach (XElement t in slide.Descendants(PptxA + "t"))
+                sb.Append(t.Value);
+            return sb.ToString();
+        }
+
+        /// <summary>XML одного слайда собранного пакета (1-based номер).</summary>
+        private static XDocument PptxSlideXml(OoxmlPackage package, int slideNumber)
+        {
+            using (var ms = new MemoryStream(package.ToArray()))
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+            using (Stream s = zip.GetEntry("ppt/slides/slide" + slideNumber + ".xml").Open())
+            using (var reader = new StreamReader(s, Encoding.UTF8))
+                return XDocument.Parse(reader.ReadToEnd());
+        }
+
+        private static readonly XNamespace PptxA = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        private static readonly XNamespace PptxP = "http://schemas.openxmlformats.org/presentationml/2006/main";
+        private static readonly XNamespace PptxR = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        private static readonly DateTime PptxStamp = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+
+        private static void TestPptxTextBox()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            page.Paragraphs.Add(PptxPar("Привет", 100, 700, 300, 680, 14));
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+
+            List<XElement> shapes = new List<XElement>(slide.Descendants(PptxP + "sp"));
+            AssertEqual(1, shapes.Count, "один абзац — одна надпись");
+
+            XElement off = PptxFirst(shapes[0].Descendants(PptxA + "off"));
+            AssertEqual(PptxGeometry.Emu(100).ToString(), (string)off.Attribute("x"), "левый край — из рамки абзаца");
+            // Рамка поднята на подъёмную часть строки: PowerPoint ставит буквы не вплотную к
+            // верхнему краю надписи, и без поправки текст сел бы ниже, чем стоял в источнике.
+            AssertEqual(PptxGeometry.Emu(100 - PptxWriter.AscentGapPt(14)).ToString(), (string)off.Attribute("y"),
+                "верх = высота страницы − верх абзаца − подъёмная часть строки");
+
+            XElement bodyPr = PptxFirst(shapes[0].Descendants(PptxA + "bodyPr"));
+            AssertEqual("0", (string)bodyPr.Attribute("lIns"), "нулевое поле слева — иначе текст уезжает");
+            AssertEqual("0", (string)bodyPr.Attribute("tIns"), "нулевое поле сверху");
+            AssertTrue(bodyPr.Element(PptxA + "noAutofit") != null, "автоподбор кегля выключен");
+            AssertTrue(PptxFirst(shapes[0].Descendants(PptxA + "noFill")) != null, "надпись без заливки");
+            AssertEqual("Привет", PptxAllText(slide), "текст на месте");
+        }
+
+        private static void TestPptxRunProps()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            var par = new OcrParagraph { LeftPt = 10, TopPt = 700, RightPt = 500, BottomPt = 680 };
+            par.Runs.Add(new OcrRun
+            {
+                Text = "Жирный", FontSizePt = 13.5, Bold = true, Italic = true, Underline = true,
+                ColorArgb = 0xD32F2F, FontName = "Arial", Super = true
+            });
+            page.Paragraphs.Add(par);
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+
+            XElement rPr = PptxFirst(slide.Descendants(PptxA + "rPr"));
+            AssertEqual("1350", (string)rPr.Attribute("sz"), "кегль в сотых пункта");
+            AssertEqual("1", (string)rPr.Attribute("b"), "полужирный");
+            AssertEqual("1", (string)rPr.Attribute("i"), "курсив");
+            AssertEqual("sng", (string)rPr.Attribute("u"), "подчёркивание");
+            AssertEqual("30000", (string)rPr.Attribute("baseline"), "надстрочный");
+            AssertEqual("ru-RU", (string)rPr.Attribute("lang"), "кириллице — свой язык");
+            AssertEqual("D32F2F", (string)PptxFirst(rPr.Descendants(PptxA + "srgbClr")).Attribute("val"), "цвет");
+
+            // Порядок детей задан схемой: заливка, шрифты, ссылка. Проверяем именно порядок.
+            var order = new List<string>();
+            foreach (XElement child in rPr.Elements())
+                order.Add(child.Name.LocalName);
+            AssertTrue(order.IndexOf("solidFill") < order.IndexOf("latin"), "заливка раньше шрифта");
+            AssertTrue(order.IndexOf("latin") < order.IndexOf("ea") && order.IndexOf("ea") < order.IndexOf("cs"),
+                "latin → ea → cs");
+        }
+
+        private static void TestPptxAlignAndBullet()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            OcrParagraph centered = PptxPar("По центру", 10, 700, 500, 680);
+            centered.Alignment = OcrAlignment.Center;
+            OcrParagraph item = PptxPar("1. Пункт", 10, 650, 500, 630);
+            item.ListKind = ListKind.Numbered;
+            item.ListNumber = 1;
+            item.ListContentStart = 3;
+            page.Paragraphs.Add(centered);
+            page.Paragraphs.Add(item);
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+
+            var aligns = new List<string>();
+            foreach (XElement pPr in slide.Descendants(PptxA + "pPr"))
+                aligns.Add((string)pPr.Attribute("algn"));
+            AssertTrue(aligns.Contains("ctr"), "центрирование перенесено");
+            AssertTrue(aligns.Contains("l"), "выравнивание влево перенесено");
+
+            AssertTrue(PptxFirst(slide.Descendants(PptxA + "buNone")) != null,
+                "родной маркер отключён — иначе нумерация в каждой надписи начнётся заново");
+            string all = PptxAllText(slide);
+            AssertTrue(all.Contains("1. Пункт"), "маркер остаётся текстом, номер не теряется");
+        }
+
+        private static void TestPptxEmptyParagraph()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            page.Paragraphs.Add(PptxPar("   ", 10, 700, 500, 680));
+            page.Paragraphs.Add(PptxPar("", 10, 650, 500, 630));
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+            AssertTrue(PptxFirst(slide.Descendants(PptxP + "sp")) == null,
+                "из пробелов фигура не делается — пустые рамки мешают править слайд");
+        }
+
+        private static void TestPptxWidthSlack()
+        {
+            AssertEqual(104.0, PptxWriter.SlackWidthPt(0, 100, 600), "запас 4% от ширины");
+            AssertEqual(12.0, PptxWriter.SlackWidthPt(0, 10, 600), "короткой строке — минимум 2 pt");
+            AssertEqual(100.0, PptxWriter.SlackWidthPt(500, 100, 600), "запас не выходит за край страницы");
+            AssertTrue(PptxWriter.SlackWidthPt(100, 0, 600) > 0, "вырожденная ширина — до правого края");
+        }
+
+        private static void TestPptxMediaDedup()
+        {
+            byte[] png = PptxTinyPng();
+            var pages = new List<PdfPageText>();
+            for (int i = 0; i < 3; i++)
+            {
+                PdfPageText page = PptxPage(600, 800);
+                page.Images.Add(new OcrImage { Png = png, LeftPt = 10, TopPt = 700, WidthPt = 50, HeightPt = 40 });
+                pages.Add(page);
+            }
+            OoxmlPackage package = PptxWriter.BuildPackage(pages, PptxStamp);
+            byte[] bytes = package.ToArray();
+
+            int mediaParts = 0;
+            using (var ms = new MemoryStream(bytes))
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+                foreach (ZipArchiveEntry e in zip.Entries)
+                    if (e.FullName.StartsWith("ppt/media/", StringComparison.OrdinalIgnoreCase))
+                        mediaParts++;
+            AssertEqual(1, mediaParts, "одинаковые байты кладутся в пакет один раз");
+
+            for (int i = 1; i <= 3; i++)
+            {
+                XDocument slide = PptxSlideXml(package, i);
+                AssertTrue(PptxFirst(slide.Descendants(PptxA + "blip")) != null, "картинка на слайде " + i);
+            }
+            var failures = new List<string>();
+            AssertOoxmlSelfConsistent(bytes, failures);
+            AssertTrue(failures.Count == 0, "пакет с картинками согласован: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        private static void TestPptxHyperlink()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            var par = new OcrParagraph { LeftPt = 10, TopPt = 700, RightPt = 500, BottomPt = 680 };
+            par.Runs.Add(new OcrRun { Text = "первый", FontSizePt = 12, Uri = "https://example.org/a?b=1&c=2" });
+            par.Runs.Add(new OcrRun { Text = "второй", FontSizePt = 12, Uri = "https://example.org/a?b=1&c=2" });
+            page.Paragraphs.Add(par);
+            OoxmlPackage package = PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp);
+            byte[] bytes = package.ToArray();
+
+            string rels;
+            using (var ms = new MemoryStream(bytes))
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+            using (Stream s = zip.GetEntry("ppt/slides/_rels/slide1.xml.rels").Open())
+            using (var reader = new StreamReader(s, Encoding.UTF8))
+                rels = reader.ReadToEnd();
+
+            AssertTrue(rels.Contains("TargetMode=\"External\""), "внешняя ссылка помечена как внешняя");
+            AssertTrue(rels.Contains("b=1&amp;c=2"), "амперсанд в адресе экранирован — иначе файл не откроется");
+            int hyperlinks = 0, at = 0;
+            while ((at = rels.IndexOf("/hyperlink", at, StringComparison.Ordinal) + 1) > 0)
+                hyperlinks++;
+            AssertEqual(1, hyperlinks, "два рана с одним адресом — одна связь");
+
+            XDocument slide = PptxSlideXml(package, 1);
+            var ids = new List<string>();
+            foreach (XElement click in slide.Descendants(PptxA + "hlinkClick"))
+                ids.Add((string)click.Attribute(PptxR + "id"));
+            AssertEqual(2, ids.Count, "ссылка стоит у обоих ранов");
+            AssertEqual(ids[0], ids[1], "и указывает на одну связь");
+
+            var failures = new List<string>();
+            AssertOoxmlSelfConsistent(bytes, failures);
+            AssertTrue(failures.Count == 0, "пакет со ссылкой согласован: " + string.Join(" | ", failures.ToArray()));
+        }
+
+        private static void TestPptxFillerRule()
+        {
+            AssertTrue(PptxWriter.IsFillerRule("____"), "линия, ставшая словом из подчёркиваний");
+            AssertTrue(PptxWriter.IsFillerRule("____ ____"), "две линии в одном ране — тоже заполнитель");
+            AssertTrue(!PptxWriter.IsFillerRule("_x_"), "подчёркивания вокруг текста — не заполнитель");
+            AssertTrue(!PptxWriter.IsFillerRule("_"), "одиночное подчёркивание — не линия");
+            AssertTrue(!PptxWriter.IsFillerRule(""), "пустая строка — не заполнитель");
+            AssertTrue(!PptxWriter.IsFillerRule("   "), "пробелы — не заполнитель");
+
+            PdfPageText page = PptxPage(600, 800);
+            page.Paragraphs.Add(PptxPar("__________", 40, 700, 300, 692)); // линия сетки диаграммы
+            var mixed = new OcrParagraph { LeftPt = 40, TopPt = 650, RightPt = 300, BottomPt = 640 };
+            mixed.Runs.Add(new OcrRun { Text = "12,3", FontSizePt = 10 });
+            mixed.Runs.Add(new OcrRun { Text = "______", FontSizePt = 10 });
+            page.Paragraphs.Add(mixed);
+
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+            AssertEqual(1, new List<XElement>(slide.Descendants(PptxP + "sp")).Count,
+                "абзац из одних прочерков фигуры не даёт");
+            AssertEqual("12,3", PptxAllText(slide), "в смешанном абзаце остаётся только текст");
+        }
+
+        /// <summary>Таблица rows×cols из пустых ячеек в заданной рамке.</summary>
+        private static OcrTable PptxTable(int rows, int cols, double leftPt, double topPt, double rightPt, double bottomPt)
+        {
+            var table = new OcrTable
+            {
+                LeftPt = leftPt, TopPt = topPt, RightPt = rightPt, BottomPt = bottomPt
+            };
+            double colWidth = (rightPt - leftPt) / cols;
+            for (int c = 0; c < cols; c++)
+                table.ColumnWidthsPt.Add(colWidth);
+            for (int r = 0; r < rows; r++)
+            {
+                var row = new OcrTableRow();
+                for (int c = 0; c < cols; c++)
+                    row.Cells.Add(new OcrTableCell());
+                table.Rows.Add(row);
+            }
+            return table;
+        }
+
+        private static void TestSlideGapBreak()
+        {
+            OcrLayout.Line first = OcrLine("Заголовок", 60, 500, 300, 480);
+            OcrLayout.Line near = OcrLine("подзаголовок", 60, 470, 300, 455);
+            OcrLayout.Line far = OcrLine("текст ниже", 60, 300, 300, 285);
+
+            AssertTrue(!OcrLayout.SlideGapBreak(PageLayoutMode.Document, first, far, 12),
+                "у документа абсолютного порога нет — там зазор сравнивается с типичным");
+            AssertTrue(!OcrLayout.SlideGapBreak(PageLayoutMode.Slide, first, near, 12),
+                "соседние строки блока остаются одним абзацем");
+            AssertTrue(OcrLayout.SlideGapBreak(PageLayoutMode.Slide, first, far, 12),
+                "строки, разнесённые на треть слайда, — разные блоки");
+            AssertTrue(!OcrLayout.SlideGapBreak(PageLayoutMode.Slide, first, far, 0),
+                "кегль неизвестен — не гадаем");
+        }
+
+        /// <summary>Строка разбора из одного слова в заданной рамке.</summary>
+        private static OcrLayout.Line OcrLine(string text, double left, double top, double right, double bottom)
+        {
+            var line = new OcrLayout.Line();
+            line.Words.Add(new PdfWord
+            {
+                Text = text, Left = left, Right = right, Top = top, Bottom = bottom, FontSizePt = 12
+            });
+            line.MidY = (top + bottom) / 2;
+            return line;
+        }
+
+        private static void TestPptxSingleLine()
+        {
+            AssertTrue(PptxWriter.IsSingleLine(12, 12), "высота в кегль — одна строка");
+            AssertTrue(PptxWriter.IsSingleLine(18, 12), "полтора кегля — всё ещё одна строка");
+            AssertTrue(!PptxWriter.IsSingleLine(30, 12), "две с половиной — уже абзац");
+            AssertTrue(PptxWriter.IsSingleLine(0, 12), "вырожденная рамка — не многострочная");
+
+            PdfPageText page = PptxPage(600, 800);
+            page.Paragraphs.Add(PptxPar("короткая", 40, 700, 120, 690, 10));      // одна строка
+            // Высокая рамка = абзац, который в источнике занимал несколько строк.
+            page.Paragraphs.Add(PptxPar("многострочный абзац", 40, 600, 500, 540, 10));
+
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+            var wraps = new List<string>();
+            foreach (XElement bodyPr in slide.Descendants(PptxA + "bodyPr"))
+                wraps.Add((string)bodyPr.Attribute("wrap"));
+            AssertTrue(wraps.Contains("none"), "однострочная — без переноса (иначе слово уедет вниз)");
+            AssertTrue(wraps.Contains("square"), "многострочная — с переносом по своей ширине");
+        }
+
+        private static void TestPptxAscentGap()
+        {
+            // Значение измерено настоящим PowerPoint (см. PptxWriter.AscentGapFactor): без
+            // поправки текст садится ниже, чем стоял, и линовка подложки пересекает буквы.
+            AssertEqual(2.9, Math.Round(PptxWriter.AscentGapPt(10), 6), "десятый кегль");
+            AssertEqual(6.96, Math.Round(PptxWriter.AscentGapPt(24), 6), "двадцать четвёртый");
+            AssertEqual(PptxWriter.AscentGapPt(FontResolver.DefaultFontSize), PptxWriter.AscentGapPt(0),
+                "неизвестный кегль — как у кегля по умолчанию");
+        }
+
+        private static void TestPptxBackground()
+        {
+            byte[] png = PptxTinyPng();
+            var backgrounds = new List<Background>
+            {
+                new Background { Data = png, IsJpeg = false },
+                new Background { Data = png, IsJpeg = false }
+            };
+            var pages = new List<PdfPageText> { PptxPage(960, 540), PptxPage(595, 842) };
+            pages[0].Paragraphs.Add(PptxPar("текст", 40, 500, 300, 480));
+            pages[1].Paragraphs.Add(PptxPar("текст", 40, 800, 300, 780));
+
+            OoxmlPackage package = PptxWriter.BuildPackage(pages, PptxStamp, null, null, backgrounds);
+            XDocument first = PptxSlideXml(package, 1);
+            AssertTrue(PptxFirst(first.Descendants(PptxP + "bg")) != null,
+                "страница размером со слайд — подложка становится фоном (её нельзя сдвинуть)");
+
+            XDocument second = PptxSlideXml(package, 2);
+            AssertTrue(PptxFirst(second.Descendants(PptxP + "bg")) == null,
+                "вписанная страница фоном быть не может — фон растянулся бы на весь слайд");
+            XElement locks = PptxFirst(second.Descendants(PptxA + "picLocks"));
+            AssertTrue(locks != null && (string)locks.Attribute("noMove") == "1"
+                && (string)locks.Attribute("noSelect") == "1", "подложка-картинка закреплена");
+
+            byte[] bytes = package.ToArray();
+            int media = 0;
+            using (var ms = new MemoryStream(bytes))
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+                foreach (ZipArchiveEntry e in zip.Entries)
+                    if (e.FullName.StartsWith("ppt/media/", StringComparison.OrdinalIgnoreCase))
+                        media++;
+            AssertEqual(1, media, "одинаковые подложки кладутся один раз");
+
+            var failures = new List<string>();
+            AssertOoxmlSelfConsistent(bytes, failures);
+            AssertTrue(failures.Count == 0, "пакет с подложками согласован: " + string.Join(" | ", failures.ToArray()));
+            AssertPptxValid(pages);
+        }
+
+        private static void TestPptxBackgroundDpi()
+        {
+            AssertEqual(150, PageBackgrounds.Dpi(1), "короткой колоде — подробная подложка");
+            AssertEqual(150, PageBackgrounds.Dpi(50), "граница пятидесяти страниц");
+            AssertEqual(120, PageBackgrounds.Dpi(51), "дальше подробность снижается");
+            AssertEqual(120, PageBackgrounds.Dpi(150), "полторы сотни страниц");
+            AssertEqual(96, PageBackgrounds.Dpi(151), "и всё, что больше — иначе файл раздуется");
+        }
+
+        private static void TestPptxMergeGrid()
+        {
+            // Владелец (1,1) накрывает 2×2: справа, снизу и по диагонали.
+            OcrTable table = PptxTable(3, 3, 0, 100, 300, 0);
+            table.Rows[1].Cells[1].ColSpan = 2;
+            table.Rows[1].Cells[1].RowSpan = 2;
+            table.Rows[1].Cells[2].Covered = true;
+            table.Rows[2].Cells[1].Covered = true;
+            table.Rows[2].Cells[2].Covered = true;
+
+            PptxWriter.CellMerge[,] grid = PptxWriter.MergeGrid(table);
+            AssertEqual(2, grid[1, 1].GridSpan, "владелец объявляет пролёт по колонкам");
+            AssertEqual(2, grid[1, 1].RowSpan, "владелец объявляет пролёт по строкам");
+            AssertTrue(!grid[1, 1].HMerge && !grid[1, 1].VMerge, "владелец не помечен накрытым");
+
+            AssertTrue(grid[1, 2].HMerge, "правая ячейка полосы накрыта слева");
+            AssertEqual(1, grid[1, 2].GridSpan, "и не повторяет пролёт по колонкам");
+            AssertEqual(2, grid[1, 2].RowSpan, "но несёт пролёт по строкам своей полосы");
+
+            AssertTrue(grid[2, 1].VMerge, "нижняя ячейка накрыта сверху");
+            AssertEqual(2, grid[2, 1].GridSpan, "и несёт пролёт по колонкам");
+            AssertEqual(1, grid[2, 1].RowSpan, "не повторяя пролёт по строкам");
+
+            AssertTrue(grid[2, 2].HMerge && grid[2, 2].VMerge, "диагональная накрыта с обеих сторон");
+
+            AssertTrue(!grid[0, 0].HMerge && grid[0, 0].GridSpan == 1, "нетронутая ячейка — без объединения");
+        }
+
+        private static void TestPptxTable()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            OcrTable table = PptxTable(2, 3, 50, 700, 350, 640);
+            table.Rows[0].Cells[0].Paragraphs.Add(PptxPar("Ячейка", 50, 700, 150, 690));
+            page.Tables.Add(table);
+
+            OoxmlPackage package = PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp);
+            XDocument slide = PptxSlideXml(package, 1);
+
+            AssertTrue(PptxFirst(slide.Descendants(PptxA + "tbl")) != null, "таблица переносится таблицей, а не надписями");
+            AssertEqual(3, new List<XElement>(slide.Descendants(PptxA + "gridCol")).Count, "три колонки в сетке");
+            var rows = new List<XElement>(slide.Descendants(PptxA + "tr"));
+            AssertEqual(2, rows.Count, "две строки");
+            foreach (XElement row in rows)
+                AssertEqual(3, new List<XElement>(row.Elements(PptxA + "tc")).Count,
+                    "в строке ровно столько ячеек, сколько колонок — иначе файл «повреждён»");
+            foreach (XElement tr in rows)
+                AssertTrue((string)tr.Attribute("h") != null, "высота строки обязательна по схеме");
+            AssertTrue(PptxAllText(slide).Contains("Ячейка"), "текст ячейки на месте");
+            AssertTrue(PptxFirst(slide.Descendants(PptxA + "lnL")) != null, "у таблицы по линовке есть границы");
+
+            // Сетка, восстановленная без линовки, границ получать не должна.
+            PdfPageText page2 = PptxPage(600, 800);
+            OcrTable borderless = PptxTable(1, 2, 50, 700, 350, 680);
+            borderless.Borderless = true;
+            page2.Tables.Add(borderless);
+            XDocument slide2 = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page2 }, PptxStamp), 1);
+            XElement lnL = PptxFirst(slide2.Descendants(PptxA + "lnL"));
+            AssertTrue(lnL != null && lnL.Element(PptxA + "noFill") != null,
+                "безлиновочная сетка рисуется без границ — иначе на слайде появится таблица, которой не было");
+
+            AssertPptxValid(new List<PdfPageText> { page, page2 });
+        }
+
+        private static void TestPptxValidatorWithContent()
+        {
+            PdfPageText page = PptxPage(960, 540);
+            OcrParagraph title = PptxPar("Заголовок", 40, 500, 900, 470, 28);
+            title.Alignment = OcrAlignment.Center;
+            page.Paragraphs.Add(title);
+            OcrParagraph item = PptxPar("• пункт списка", 60, 440, 900, 420);
+            item.ListKind = ListKind.Bulleted;
+            page.Paragraphs.Add(item);
+            var linked = new OcrParagraph { LeftPt = 60, TopPt = 400, RightPt = 900, BottomPt = 380 };
+            linked.Runs.Add(new OcrRun { Text = "ссылка", FontSizePt = 12, Uri = "https://example.org/x?y=1&z=2" });
+            linked.Runs.Add(new OcrRun { Text = " и цвет", FontSizePt = 12, ColorArgb = 0x00A0FF, Bold = true });
+            page.Paragraphs.Add(linked);
+            page.Images.Add(new OcrImage { Png = PptxTinyPng(), LeftPt = 700, TopPt = 520, WidthPt = 60, HeightPt = 40 });
+
+            AssertPptxValid(new List<PdfPageText> { page });
+        }
+
+        /// <summary>Крошечный настоящий PNG (1×1) — картинка для тестов, а не набор байтов.</summary>
+        private static byte[] PptxTinyPng()
+        {
+            using (var bmp = new System.Drawing.Bitmap(1, 1))
+            using (var ms = new MemoryStream())
+            {
+                bmp.SetPixel(0, 0, System.Drawing.Color.Red);
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                return ms.ToArray();
+            }
+        }
+
+        /// <summary>Собрать .pptx во временный файл и проверить официальным валидатором Open XML.</summary>
+        private static void AssertPptxValid(IList<PdfPageText> pages)
+        {
+            string path = Path.Combine(Path.GetTempPath(), "iwo_pptx_" + Guid.NewGuid().ToString("N") + ".pptx");
+            try
+            {
+                PptxWriter.Write(pages, path, PptxStamp);
+                var problems = new List<string>();
+                using (var doc = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false))
+                {
+                    var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(
+                        DocumentFormat.OpenXml.FileFormatVersions.Office2013);
+                    foreach (DocumentFormat.OpenXml.Validation.ValidationErrorInfo info in validator.Validate(doc))
+                    {
+                        problems.Add(info.Description + " @ " + (info.Path == null ? "?" : info.Path.XPath));
+                        if (problems.Count >= 5)
+                            break;
+                    }
+                }
+                AssertTrue(problems.Count == 0, "валидатор нашёл: " + string.Join(" | ", problems.ToArray()));
+            }
+            finally
+            {
+                try { File.Delete(path); } catch { }
+            }
+        }
+
+        private static void TestPptxValidator()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "iwo_pptx_" + Guid.NewGuid().ToString("N") + ".pptx");
+            try
+            {
+                PptxWriter.Write(new List<PdfPageText> { PptxPage(960, 540) }, path,
+                    new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+                var problems = new List<string>();
+                using (var doc = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false))
+                {
+                    var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(
+                        DocumentFormat.OpenXml.FileFormatVersions.Office2013);
+                    foreach (DocumentFormat.OpenXml.Validation.ValidationErrorInfo info in validator.Validate(doc))
+                    {
+                        problems.Add(info.Description + " @ " + (info.Path == null ? "?" : info.Path.XPath));
+                        if (problems.Count >= 5)
+                            break;
+                    }
+                }
+                AssertTrue(problems.Count == 0, "валидатор нашёл: " + string.Join(" | ", problems.ToArray()));
+            }
+            finally
+            {
+                try { File.Delete(path); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Валидатор — снаряжение тестов, а не приложения: попади он в src, один exe вырос бы
+        /// на 8,6 МБ ради проверки, которая в бою не нужна. Стережём обе двери: исходники и
+        /// файл проекта приложения.
+        /// </summary>
+        private static void TestPptxValidatorNotInApp()
+        {
+            string dir = SourceDir();
+            AssertTrue(dir != null, "каталог src не найден рядом с тестами");
+            var offenders = new List<string>();
+            foreach (string file in Directory.GetFiles(dir, "*.cs"))
+                if (File.ReadAllText(file).IndexOf("DocumentFormat.OpenXml", StringComparison.OrdinalIgnoreCase) >= 0)
+                    offenders.Add(Path.GetFileName(file));
+            AssertTrue(offenders.Count == 0, "валидатор просочился в приложение: " + string.Join(", ", offenders.ToArray()));
+
+            string csproj = Path.Combine(Path.GetDirectoryName(dir), "iwoHelperDesktop.csproj");
+            AssertTrue(File.Exists(csproj), "файл проекта приложения найден");
+            AssertTrue(File.ReadAllText(csproj).IndexOf("DocumentFormat.OpenXml", StringComparison.OrdinalIgnoreCase) < 0,
+                "в проекте приложения ссылки на валидатор нет");
         }
 
         private static void Run(string name, Action test)
@@ -4271,7 +5101,7 @@ namespace ExcelMerger.Tests
 
         private static void TestBuildRotations()
         {
-            AssertTrue(PdfToWordService.BuildRotations(new List<PdfPageRef>()) == null, "пусто — null");
+            AssertTrue(PdfPageExtraction.BuildRotations(new List<PdfPageRef>()) == null, "пусто — null");
             var order = new List<PdfPageRef>
             {
                 new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0 },                  // первый экземпляр: без поворота
@@ -4279,13 +5109,13 @@ namespace ExcelMerger.Tests
                 new PdfPageRef { SourcePath = "a.pdf", PageIndex = 2, Rotation = 180 },  // регистр пути не важен
                 new PdfPageRef { SourcePath = "B.pdf", PageIndex = 1, Rotation = 270 }
             };
-            var maps = PdfToWordService.BuildRotations(order);
+            var maps = PdfPageExtraction.BuildRotations(order);
             AssertTrue(maps != null, "карта построена");
             AssertTrue(maps.ContainsKey("A.pdf"), "источник A");
             AssertEqual(0, PageRotation.At(maps["A.pdf"], 0), "первый экземпляр (без поворота) решил");
             AssertEqual(180, PageRotation.At(maps["A.pdf"], 2), "страница 3 источника A");
             AssertEqual(270, PageRotation.At(maps["B.pdf"], 1), "источник B");
-            AssertTrue(PdfToWordService.BuildRotations(
+            AssertTrue(PdfPageExtraction.BuildRotations(
                 new List<PdfPageRef> { new PdfPageRef { SourcePath = "x.pdf", PageIndex = 5 } }) == null,
                 "нет ненулевых поворотов — null");
         }
@@ -6494,8 +7324,8 @@ namespace ExcelMerger.Tests
                         if (hub.Level != HubLevel.Pdf)
                             failures.Add("раздел не сохранился: " + hub.Level);
                         int cards = VisibleCards(hub);
-                        if (cards != 4)
-                            failures.Add("в разделе PDF карточек " + cards + ", а должно быть 4");
+                        if (cards != 5)
+                            failures.Add("в разделе PDF карточек " + cards + ", а должно быть 5");
                         if (!hub.Visible)
                             failures.Add("главный экран не показан");
                     }
@@ -6530,7 +7360,7 @@ namespace ExcelMerger.Tests
 
                     ClickCard(FirstVisibleCard(hub)); // карточка «PDF»
                     Check(hub.Level == HubLevel.Pdf, "клик по разделу PDF открыл его", failures);
-                    Check(VisibleCards(hub) == 4, "в разделе PDF четыре инструмента", failures);
+                    Check(VisibleCards(hub) == 5, "в разделе PDF пять инструментов", failures);
                     Check(BackButton(hub).Visible, "в разделе есть «Назад»", failures);
 
                     BackButton(hub).PerformClick();
@@ -6599,12 +7429,14 @@ namespace ExcelMerger.Tests
                     if (hub == null) { failures.Add("хаба нет"); return; }
                     var expected = new List<Type>
                     {
-                        typeof(PdfMergeForm), typeof(PdfSplitForm), typeof(OcrForm), typeof(PdfOpsForm)
+                        // Порядок — как в сетке хаба: верхний ряд операций, нижний — переводы.
+                        typeof(PdfMergeForm), typeof(PdfSplitForm), typeof(PdfOpsForm),
+                        typeof(OcrForm), typeof(PptxForm)
                     };
                     hub.ShowLevel(HubLevel.Pdf);
                     var cards = new List<ChoiceCard>();
                     CollectCards(hub, cards);
-                    if (cards.Count != 4) { failures.Add("карточек в разделе PDF: " + cards.Count); return; }
+                    if (cards.Count != 5) { failures.Add("карточек в разделе PDF: " + cards.Count); return; }
                     for (int i = 0; i < cards.Count; i++)
                     {
                         ClickCard(cards[i]);

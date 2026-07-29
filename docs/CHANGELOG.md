@@ -6,6 +6,28 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **PDF → PowerPoint.** A sixth tool: the pages of a born-digital PDF become slides whose
+  text is real, editable text — not a picture of text. **PowerPoint is not needed**: the
+  `.pptx` is assembled by the app itself, so the tool works exactly where Office is not
+  installed, and its result can be checked automatically instead of by eye.
+  Each slide is two layers. The text is placed as ordinary text boxes where it was, with
+  font, size, weight, colour, underline, super/subscript and hyperlinks; tables become real
+  slide tables with their merged cells; identical images are stored once and photos are
+  repacked, so a deck of fifty slides does not turn into tens of megabytes. Everything that
+  is not text — background, frames, charts, vector logos — arrives as the page rendered
+  **without its text layer**, because on a normal slide that is most of the picture, and a
+  text-only conversion would leave a handful of labels on white. Without Ghostscript the
+  deck degrades to text only, silently and by design.
+  A source line becomes its own text box. A slide has no way to re-flow text — another engine
+  breaks lines by its own metrics — while underlines, frames and rules arrive with the
+  background and stay where they were, so a re-flowed paragraph would drift out from under
+  them. Keeping the lines apart is what holds the text in place; the cost is that a long
+  paragraph is edited line by line.
+  Slide size follows the pages (a 16:9 deck stays 16:9, an A4 document becomes A4 slides);
+  a presentation has one slide size, so mixed input takes the most common one and scales the
+  rest to fit and centres them. The window is the one already known from PDF → Word — the
+  same grid, ordering, preview, rotation and cancellation — because both are the same job
+  with a different destination, and that window now exists once instead of twice.
 - **Settings.** A window for what belongs to the whole program rather than to an open
   document. The start screen's bottom row leads to it, and so does every tool's ☰ menu.
   The zoom level and the compression level deliberately stay in the tools: they are

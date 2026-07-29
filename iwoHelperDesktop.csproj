@@ -45,6 +45,10 @@
   <ItemGroup>
     <!-- dynamic (позднее связывание COM Excel/Word) -->
     <Reference Include="Microsoft.CSharp" />
+    <!-- ZipArchive для сборки .pptx (формат — это ZIP с XML). Сборка входит в состав
+         .NET Framework, но в неявный набор ссылок SDK для net48 не попадает: без явной
+         строки ниже компилятор её не видит. Ничего не ставится и не вшивается. -->
+    <Reference Include="System.IO.Compression" />
   </ItemGroup>
 
   <ItemGroup>

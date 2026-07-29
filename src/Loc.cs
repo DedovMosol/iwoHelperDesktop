@@ -156,6 +156,10 @@ namespace ExcelMerger
             A("hub.ocr.desc",
                 "Извлечь текст цифрового PDF (сохранённого из Word и т.п.) в редактируемый Word (.docx). Поддержка отсканированных документов в настоящее время недоступна.",
                 "Extract the text of a born‑digital PDF (saved from Word, etc.) into an editable Word (.docx). Scanned documents are not supported yet.");
+            A("hub.pptx.name", "PDF → PowerPoint", "PDF → PowerPoint");
+            A("hub.pptx.desc",
+                "Перенести страницы цифрового PDF в презентацию (.pptx): текст остаётся текстом и правится, остальное ложится подложкой слайда.",
+                "Turn the pages of a born‑digital PDF into a presentation (.pptx): the text stays editable text, everything else becomes the slide background.");
             A("hub.ops.name", "Прочие операции", "More operations");
             A("hub.ops.desc",
                 "Сжать документ, сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
@@ -458,6 +462,9 @@ namespace ExcelMerger
             A("err.ocr.extractFailed",
                 "Не удалось извлечь текст из «{0}»: файл повреждён, зашифрован или без прав на извлечение. ({1})",
                 "Could not extract text from “{0}”: the file is corrupt, encrypted, or extraction is not allowed. ({1})");
+            A("err.pptx.writeFailed",
+                "Не удалось сохранить «{0}»: файл открыт в другой программе или нет прав на запись. ({1})",
+                "Could not save “{0}”: the file is open in another program or there is no write permission. ({1})");
 
             // crash.* — последний рубеж обработки ошибок (CrashReport)
             A("crash.title", "Непредвиденная ошибка", "Unexpected error");
@@ -523,6 +530,7 @@ namespace ExcelMerger
             A("hist.op.extract", "Извлечение страниц", "Page extraction");
             A("hist.op.split", "Разделение PDF", "PDF split");
             A("hist.op.pdftoword", "PDF → Word", "PDF → Word");
+            A("hist.op.pdftopptx", "PDF → PowerPoint", "PDF → PowerPoint");
             A("settings.btn.stats", "Показать статистику", "Show statistics");
 
             // gs.* — предупреждение об отсутствии Ghostscript
@@ -593,6 +601,7 @@ namespace ExcelMerger
             A("stats.row.everyN", "Разбиение: каждые N страниц", "Split: every N pages");
             A("stats.row.bookmarks", "Разбиение по закладкам", "Split by bookmarks");
             A("stats.row.pdftoword", "Конвертации PDF → Word", "PDF → Word conversions");
+            A("stats.row.pdftopptx", "Конвертации PDF → PowerPoint", "PDF → PowerPoint conversions");
             A("stats.row.compress", "Сжатия PDF (файлов)", "PDF compressions (files)");
             A("stats.total", "Всего операций: {0}", "Total operations: {0}");
             A("stats.autoClear", "Автоочистка:", "Auto‑clear:");
@@ -793,8 +802,81 @@ namespace ExcelMerger
             A("ocr.status.failed", "Не выполнено.", "Failed.");
             A("ocr.status.done", "✓ Готово: страниц {0} → Word (.docx).", "✓ Done: {0} pages → Word (.docx).");
             A("ocr.err.convertFailed", "Конвертация не выполнена", "Conversion failed");
-            A("ocr.docxFilter", "Документ Word (*.docx)|*.docx", "Word document (*.docx)|*.docx");
+            A("ocr.filter", "Документ Word (*.docx)|*.docx", "Word document (*.docx)|*.docx");
             A("ocr.defaultMerged", "Объединённый.docx", "Merged.docx");
+            // pptx.* — инструмент «PDF → PowerPoint» (PptxForm). Схема ключей та же, что у ocr.*
+            A("pptx.header.subtitle",
+                "Перенос страниц документов формата *.pdf в слайды с редактируемым текстом.",
+                "Turn *.pdf pages into slides with editable text.");
+            A("pptx.btn.open", "Добавить PDF…", "Add PDF…");
+            A("pptx.tip.open", "Можно выбрать несколько файлов или перетащить их в окно программы",
+                "Pick several files, or drag them onto the program window");
+            A("pptx.btn.convert", "Конвертировать в PowerPoint…", "Convert to PowerPoint…");
+            A("pptx.tip.convert", "Перенести страницы в слайды с редактируемым текстом",
+                "Turn the pages into slides with editable text");
+            // Короче, чем у «PDF → Word»: кнопка действия здесь шире (длиннее подпись),
+            // и полная фраза обрезалась бы многоточием.
+            A("pptx.status.addPdf", "Добавьте цифровые PDF — кнопкой или перетаскиванием.",
+                "Add born‑digital PDFs — with the button or by dragging.");
+            A("pptx.status.pageCount", "Страниц к переводу: {0}.", "Pages to convert: {0}.");
+            A("pptx.grid.empty", "Перетащите цифровые PDF сюда\nили нажмите «Добавить PDF…»",
+                "Drop born‑digital PDFs here\nor click “Add PDF…”");
+            A("pptx.status.converting", "Конвертация в PowerPoint…", "Converting to PowerPoint…");
+            A("pptx.status.convertingPage", "Конвертация: страница {0} из {1}…", "Converting: page {0} of {1}…");
+            A("pptx.status.failed", "Не выполнено.", "Failed.");
+            A("pptx.status.done", "✓ Готово: страниц {0} → PowerPoint (.pptx).", "✓ Done: {0} pages → PowerPoint (.pptx).");
+            A("pptx.err.convertFailed", "Конвертация не выполнена", "Conversion failed");
+            A("pptx.filter", "Презентация PowerPoint (*.pptx)|*.pptx", "PowerPoint presentation (*.pptx)|*.pptx");
+            A("pptx.defaultMerged", "Объединённая.pptx", "Merged.pptx");
+            A("pptx.help.body",
+                "1. Добавьте один или несколько PDF — кнопкой «Добавить PDF…» (можно выбрать сразу " +
+                "несколько) или перетащите их в окно программы. Страницы всех файлов показываются одной сеткой.\n" +
+                "2. При необходимости измените порядок страниц: перетащите миниатюру или выделите " +
+                "её и нажмите «◀ Влево»/«Вправо ▶» (Alt+←/→). Лишние страницы уберите из вывода " +
+                "кнопкой «Удалить» (Delete). В презентацию попадут страницы в показанном порядке — " +
+                "по слайду на страницу.\n" +
+                "3. Нажмите «Конвертировать в PowerPoint…» и укажите имя .pptx.\n\n" +
+                "PowerPoint для конвертации НЕ нужен — файл собирается самой программой.\n\n" +
+                "Каждый слайд состоит из двух слоёв. Текст переносится настоящими надписями: " +
+                "его можно править, искать и копировать, у него сохраняются шрифт, размер, " +
+                "начертание, цвет, подчёркивание и гиперссылки; таблицы становятся таблицами " +
+                "слайда. Всё остальное — фон, рамки, диаграммы, векторные логотипы — переносится " +
+                "подложкой страницы, поэтому слайд выглядит как исходник.\n\n" +
+                "Текущие ограничения перевода в PowerPoint:\n" +
+                "• Отсканированные документы (страницы-изображения без текстового слоя) не " +
+                "поддерживаются — появится сообщение, файл не пострадает.\n" +
+                "• Подложка страницы рисуется через Ghostscript. Если он не установлен, слайды " +
+                "получатся из одного текста, без фона и диаграмм.\n" +
+                "• Размер слайда в презентации один на все слайды: он берётся по самому частому " +
+                "размеру страницы, а страницы другого размера вписываются целиком и центрируются.\n" +
+                "• Строка исходника переносится отдельной надписью, поэтому длинный абзац может " +
+                "оказаться разбит на несколько надписей — так сохраняется положение текста.\n" +
+                "• Если шрифт из PDF не установлен в системе, текст оформляется шрифтом " +
+                "Times New Roman — ширина строки может немного отличаться от оригинала.",
+                "1. Add one or several PDFs — with “Add PDF…” (you can pick several at once) or by " +
+                "dragging them onto the program window. Pages of all files are shown in a single grid.\n" +
+                "2. Reorder pages if needed: drag a thumbnail, or select it and click " +
+                "“◀ Left”/“Right ▶” (Alt+←/→). Remove pages you do not need with “Remove” (Delete). " +
+                "The presentation gets the pages in the order shown — one slide per page.\n" +
+                "3. Click “Convert to PowerPoint…” and choose the .pptx name.\n\n" +
+                "PowerPoint is NOT required — the file is built by the program itself.\n\n" +
+                "Every slide has two layers. The text is placed as real text boxes: it stays " +
+                "editable, searchable and copyable, and keeps its font, size, weight, colour, " +
+                "underline and hyperlinks; tables become slide tables. Everything else — " +
+                "background, frames, charts, vector logos — is carried over as the page " +
+                "background, so the slide looks like the original.\n\n" +
+                "Current limitations:\n" +
+                "• Scanned documents (image-only pages without a text layer) are not supported — " +
+                "you get a clear message and the file is left intact.\n" +
+                "• The page background is rendered with Ghostscript. Without it the slides are " +
+                "text only, with no background or charts.\n" +
+                "• A presentation has ONE slide size: it is taken from the most common page size, " +
+                "and pages of other sizes are scaled to fit and centred.\n" +
+                "• A source line becomes its own text box, so a long paragraph may end up split " +
+                "across several boxes — that is what keeps the text where it was.\n" +
+                "• If a font from the PDF is not installed, the text is written in Times New Roman — " +
+                "line widths may differ slightly from the original.");
+
             A("ocr.help.body",
                 "1. Добавьте один или несколько PDF — кнопкой «Добавить PDF…» (можно выбрать сразу " +
                 "несколько) или перетащите их в окно программы. Страницы всех файлов показываются одной сеткой.\n" +

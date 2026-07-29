@@ -13,7 +13,7 @@ namespace ExcelMerger
         private static readonly int[] AutoDays = { 0, 1, 7, 30 }; // индекс combo -> дни
 
         private Label _since;
-        private Label _excel, _merge, _extract, _ranges, _everyN, _bookmarks, _pdftoword, _compress, _total;
+        private Label _excel, _merge, _extract, _ranges, _everyN, _bookmarks, _pdftoword, _pdftopptx, _compress, _total;
         private ComboBox _cmbAuto;
         private ToolTip _tips;
         private bool _loading;
@@ -21,7 +21,7 @@ namespace ExcelMerger
         public StatsForm()
         {
             Ui.InitDialog(this, Loc.T("menu.stats"));
-            ClientSize = new Size(440, 444);
+            ClientSize = new Size(440, 470);
             WindowChrome.Enable(this, Theme.HubBlue);
 
             Ui.AccentBar(this, 0, Theme.HubBlue);
@@ -35,14 +35,15 @@ namespace ExcelMerger
             _everyN = Row(Loc.T("stats.row.everyN"), 196);
             _bookmarks = Row(Loc.T("stats.row.bookmarks"), 222);
             _pdftoword = Row(Loc.T("stats.row.pdftoword"), 248);
-            _compress = Row(Loc.T("stats.row.compress"), 274);
-            _total = Ui.Label(this, "", 24, 306, Ui.Font(10.5f, FontStyle.Bold), Theme.TextPrimary);
+            _pdftopptx = Row(Loc.T("stats.row.pdftopptx"), 274);
+            _compress = Row(Loc.T("stats.row.compress"), 300);
+            _total = Ui.Label(this, "", 24, 332, Ui.Font(10.5f, FontStyle.Bold), Theme.TextPrimary);
 
-            Ui.Label(this, Loc.T("stats.autoClear"), 24, 352, Font, Theme.TextPrimary);
+            Ui.Label(this, Loc.T("stats.autoClear"), 24, 378, Font, Theme.TextPrimary);
             _cmbAuto = new ComboBox();
             _cmbAuto.DropDownStyle = ComboBoxStyle.DropDownList;
             _cmbAuto.Items.AddRange(new object[] { Loc.T("stats.auto.off"), Loc.T("stats.auto.daily"), Loc.T("stats.auto.7days"), Loc.T("stats.auto.30days") });
-            _cmbAuto.SetBounds(120, 349, 180, 27);
+            _cmbAuto.SetBounds(120, 375, 180, 27);
             _cmbAuto.SelectedIndexChanged += OnAutoChanged;
             Controls.Add(_cmbAuto);
             _tips = new ToolTip();
@@ -92,6 +93,7 @@ namespace ExcelMerger
             _everyN.Text = s.PdfSplitEveryN.ToString();
             _bookmarks.Text = s.PdfSplitBookmarks.ToString();
             _pdftoword.Text = s.PdfToWord.ToString();
+            _pdftopptx.Text = s.PdfToPptx.ToString();
             _compress.Text = s.PdfCompressions.ToString();
             _total.Text = string.Format(Loc.T("stats.total"), s.Total);
             _cmbAuto.SelectedIndex = Array.IndexOf(AutoDays, s.AutoClearDays) >= 0 ? Array.IndexOf(AutoDays, s.AutoClearDays) : 0;

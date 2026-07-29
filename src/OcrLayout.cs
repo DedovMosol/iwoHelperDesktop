@@ -163,6 +163,15 @@ namespace ExcelMerger
         // выше сеточного SegmentGapEmFactor — обычный текст и «метка … значение» не рвутся.
         // Только для потока страницы: в ячейке таблицы (splitColumns=false) строка едина.
         private const double WideIntraGapEmFactor = 6.0;
+        // Тот же разрез для СЛАЙДА — порог в пять раз меньше. У документа строка едина, и рвать
+        // её можно только по гигантскому зазору; на слайде «строка» — это чаще всего россыпь
+        // независимых подписей (значения над столбиками, месяцы под осью, проценты у точек),
+        // и склеенные в один абзац они теряют свои координаты: подписи выстраиваются вплотную
+        // друг к другу и уезжают от того, что подписывают. Порог выбран по замеру реальных
+        // колод: межсловные зазоры внутри фразы там не превышают доли кегля, а между соседними
+        // подписями начинаются примерно с одного кегля. Пишущий по координатам ставит каждый
+        // кусок на своё место, поэтому «лишний» разрез не портит вид — он его сохраняет.
+        private const double SlideIntraGapEmFactor = 1.2;
         // Порог пустой полосы этажа — от ТИПИЧНОГО просвета между рамками соседних строк
         // (не от шага базовых линий: при разнородных кеглях шапки и тела связь «шаг − высота»
         // рассыпается, и порог задирается выше зазоров между зонами шапки — у письма зоны
@@ -202,7 +211,13 @@ namespace ExcelMerger
         /// </summary>
         public static OcrPageLayout Analyze(IList<PdfWord> words)
         {
-            return Analyze(words, true);
+            return Analyze(words, true, PageLayoutMode.Document);
+        }
+
+        /// <summary>Разбор для заданного вывода: см. <see cref="PageLayoutMode"/>.</summary>
+        public static OcrPageLayout Analyze(IList<PdfWord> words, PageLayoutMode mode)
+        {
+            return Analyze(words, true, mode);
         }
 
         /// <summary>
@@ -213,6 +228,11 @@ namespace ExcelMerger
         /// разрезы) остаются — они совпадают с разрывами абзацев и безвредны.
         /// </summary>
         internal static OcrPageLayout Analyze(IList<PdfWord> words, bool splitColumns)
+        {
+            return Analyze(words, splitColumns, PageLayoutMode.Document);
+        }
+
+        internal static OcrPageLayout Analyze(IList<PdfWord> words, bool splitColumns, PageLayoutMode mode)
         {
             var result = new OcrPageLayout();
             if (words == null || words.Count == 0)
@@ -256,7 +276,7 @@ namespace ExcelMerger
                 foreach (int tag in leaf.Tags)
                     regionWords.Add(words[tag]);
                 AnalyzeRegion(ToLines(regionWords), leaf.ColumnLeft, leaf.ColumnRight, leaf.AvailRight,
-                    splitColumns, result.Paragraphs, stats);
+                    splitColumns, result.Paragraphs, stats, mode);
             }
             result.FirstLineIndentPt = stats.DocumentIndent();
             return result;
@@ -299,7 +319,7 @@ namespace ExcelMerger
         /// (красную строку решает Analyze по всем блокам страницы).
         /// </summary>
         private static void AnalyzeRegion(List<Line> lines, double colLeft, double colRight, double availRight,
-            bool splitColumns, List<OcrParagraph> paragraphs, IndentStats stats)
+            bool splitColumns, List<OcrParagraph> paragraphs, IndentStats stats, PageLayoutMode mode)
         {
             if (lines.Count == 0)
                 return;
@@ -348,7 +368,8 @@ namespace ExcelMerger
             {
                 if (i > 0)
                 {
-                    bool gapBreak = lines[i - 1].MidY - lines[i].MidY > gapThreshold;
+                    bool gapBreak = lines[i - 1].MidY - lines[i].MidY > gapThreshold
+                        || SlideGapBreak(mode, lines[i - 1], lines[i], em);
                     bool centeredBreak = centered[i] || centered[i - 1]; // центрированная строка — своим абзацем
                     bool indentBreak = lines[i].Left - bodyLeft > indentTol;
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
@@ -366,6 +387,24 @@ namespace ExcelMerger
             }
             groups.Add(current);
             groupCentered.Add(centered[lines.Count - 1]);
+
+            // Россыпь подписей (значения над столбиками, месяцы под осью) — это ОДНА строка,
+            // которую на слайде надо разложить по своим рамкам, иначе подписи слипаются и
+            // уезжают от того, что подписывают. Но делать это ДО группировки нельзя: связный
+            // абзац из многих строк тоже содержит широкие зазоры (вокруг ссылок, после
+            // выключки), и разрезанный по ним он перевёрстывается кусками и налезает сам на
+            // себя. Поэтому режем только группы ИЗ ОДНОЙ строки — у сплошного текста таких нет.
+            if (mode == PageLayoutMode.Slide)
+            {
+                // Слайд ставит надписи по координатам, и перевёрстывать текст ему нечем: чужой
+                // движок ломает строки по СВОИМ метрикам, и абзац из тринадцати строк выходит
+                // из одиннадцати — а подчёркивания, рамки и линовка приходят подложкой и
+                // остаются на СВОИХ местах, начиная пересекать буквы. Поэтому строка источника
+                // = отдельная надпись: тогда каждая стоит там, где стояла, и ничего не едет.
+                // Цена — абзац правится построчно; за это платим осознанно, см. справку окна.
+                ExplodeToLines(groups, groupCentered);
+                SplitSingleLineGroups(groups, groupCentered, em);
+            }
 
             // Абзацы: раны с форматом + выравнивание; сбор отступов первых строк (исключая центрирование).
             double maxIndent = MaxIndentFraction * width;
@@ -905,6 +944,83 @@ namespace ExcelMerger
         /// Порог зазора для разрыва абзаца: типичный межстрочный зазор × коэффициент.
         /// Типичный — нижняя медиана зазоров (обычные строки плотнее абзацных разрывов).
         /// </summary>
+        /// <summary>Разложить каждую группу на отдельные строки (для вывода по координатам).</summary>
+        private static void ExplodeToLines(List<List<Line>> groups, List<bool> centered)
+        {
+            for (int gi = groups.Count - 1; gi >= 0; gi--)
+            {
+                List<Line> g = groups[gi];
+                if (g.Count < 2)
+                    continue;
+                bool wasCentered = centered[gi];
+                groups.RemoveAt(gi);
+                centered.RemoveAt(gi);
+                for (int li = g.Count - 1; li >= 0; li--)
+                {
+                    groups.Insert(gi, new List<Line> { g[li] });
+                    centered.Insert(gi, wasCentered);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Разложить однострочные группы на куски по внутренним зазорам (порог
+        /// <see cref="SlideIntraGapEmFactor"/> кегля). Многострочные группы не трогаются —
+        /// это связный текст. Меняет списки на месте: групп становится больше.
+        /// </summary>
+        private static void SplitSingleLineGroups(List<List<Line>> groups, List<bool> centered, double em)
+        {
+            if (em <= 0)
+                return;
+            double gapTol = SlideIntraGapEmFactor * em;
+            for (int gi = groups.Count - 1; gi >= 0; gi--)
+            {
+                List<Line> g = groups[gi];
+                if (g.Count != 1)
+                    continue;
+                Line line = g[0];
+                var parts = new List<Line>();
+                int from = 0;
+                for (int wi = 1; wi < line.Words.Count; wi++)
+                {
+                    if (line.Words[wi].Left - line.Words[wi - 1].Right < gapTol)
+                        continue;
+                    parts.Add(Slice(line, from, wi));
+                    from = wi;
+                }
+                if (parts.Count == 0)
+                    continue; // зазоров нет — группа остаётся как была
+                parts.Add(Slice(line, from, line.Words.Count));
+
+                bool wasCentered = centered[gi];
+                groups.RemoveAt(gi);
+                centered.RemoveAt(gi);
+                for (int pi = parts.Count - 1; pi >= 0; pi--)
+                {
+                    groups.Insert(gi, new List<Line> { parts[pi] });
+                    // Кусок строки центрируется в СВОЕЙ рамке, а не в колонке: рамка обнимает
+                    // сам текст, и «центр» сдвинул бы его на запас ширины.
+                    centered.Insert(gi, false);
+                }
+            }
+        }
+
+        // Разрыв абзаца по АБСОЛЮТНОМУ зазору — только для слайдов. Обычный порог сравнивает
+        // зазор с типичным по странице, и это верно для документа, но у слайда строк мало: на
+        // двух строках «типичный» зазор РАВЕН единственному, и заголовок с подзаголовком,
+        // разнесённые на треть слайда, оказываются одним абзацем. Дальше их пришлось бы
+        // изображать чудовищным межстрочным интервалом, и текст всё равно уехал бы.
+        // Порог — в долях кегля: пустая строка между блоками даёт зазор около двух кеглей.
+        private const double SlideParagraphGapEmFactor = 2.0;
+
+        /// <summary>Разошлись ли строки настолько, что на слайде это уже разные блоки. Чистая — под тест.</summary>
+        internal static bool SlideGapBreak(PageLayoutMode mode, Line previous, Line current, double em)
+        {
+            if (mode != PageLayoutMode.Slide || em <= 0)
+                return false;
+            return previous.Bottom - current.Top > SlideParagraphGapEmFactor * em;
+        }
+
         private static double ParagraphThreshold(List<Line> lines)
         {
             if (lines.Count < 2)

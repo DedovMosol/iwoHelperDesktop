@@ -31,7 +31,11 @@ namespace ExcelMerger
     public class StartForm : Form
     {
         private const string AppTitle = "iwo Helper Desktop";
-        private const int CardW = 240, WideW = 498, CardH = 250, Row1 = 96, Row2 = 364, Col2 = 282, Pad = 24;
+        // Раздел PDF — пять инструментов сеткой 3×2. Третий РЯД не поместился бы: окно и так
+        // почти во всю высоту экрана 1366×768, а третья КОЛОНКА помещается свободно —
+        // экраны шире, чем выше. Карточки при этом остаются полноразмерными.
+        private const int CardW = 240, WideW = 756, CardH = 250, Row1 = 96, Row2 = 364;
+        private const int Col2 = 282, Col3 = 540, Pad = 24;
         private const int HeaderH = 78, BottomRowY = 632, BottomRowH = 36;
 
         private readonly ShellContext _context;
@@ -67,7 +71,7 @@ namespace ExcelMerger
             KeyPreview = true; // Esc — назад из раздела
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(546, 692);
+            ClientSize = new Size(804, 692);
             WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11
 
             BuildHeader();
@@ -145,6 +149,7 @@ namespace ExcelMerger
 
             // Раздел PDF: четыре инструмента сеткой 2×2.
             Func<Action, Form> ocrFactory = delegate(Action back) { return new OcrForm(back); };
+            Func<Action, Form> pptxFactory = delegate(Action back) { return new PptxForm(back); };
             Func<Action, Form> opsFactory = delegate(Action back) { return new PdfOpsForm(back); };
             // Мост в «Прочие операции»: им пользуются и «Разделение» (открытый документ), и
             // «Объединение» (собранный файл). Фабрику окна знает стартовый экран — он же и
@@ -162,14 +167,17 @@ namespace ExcelMerger
             Func<Action, Form> mergeFactory = delegate(Action back) { return new PdfMergeForm(back, openOps); };
             Func<Action, Form> splitFactory = delegate(Action back) { return new PdfSplitForm(back, openOps); };
 
+            // Верхний ряд — операции НАД страницами, нижний — переводы в другой формат.
             _firstPdf = AddTool(_levelPdf, CardGlyph.Pdf, "pdf", "hub.pdf.name", "hub.pdf.desc",
                 mergeFactory, Pad, Row1, CardW);
             AddTool(_levelPdf, CardGlyph.PdfSplit, "split", "hub.split.name", "hub.split.desc",
                 splitFactory, Col2, Row1, CardW);
+            AddTool(_levelPdf, CardGlyph.Tools, "ops", "hub.ops.name", "hub.ops.desc",
+                opsFactory, Col3, Row1, CardW);
             AddTool(_levelPdf, CardGlyph.Ocr, "ocr", "hub.ocr.name", "hub.ocr.desc",
                 ocrFactory, Pad, Row2, CardW);
-            AddTool(_levelPdf, CardGlyph.Tools, "ops", "hub.ops.name", "hub.ops.desc",
-                opsFactory, Col2, Row2, CardW);
+            AddTool(_levelPdf, CardGlyph.Pptx, "pptx", "hub.pptx.name", "hub.pptx.desc",
+                pptxFactory, Col2, Row2, CardW);
 
             // Иной функционал: пока один инструмент, место под следующие размечено той же
             // сеткой, что и в разделе PDF.

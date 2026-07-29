@@ -96,6 +96,12 @@ jobs:
           $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--pdftextcheck' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "pdftextcheck exit=$($p.ExitCode)"; exit 1 }
 
+      - name: Проверка сборки .pptx своими силами (PDF → PowerPoint, без Office)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--pptxcheck' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Host "pptxcheck exit=$($p.ExitCode)"; exit 1 }
+
       # Код 2 = рендер не состоялся: проверять было нечего, и это ТОЖЕ отказ шага —
       # иначе защита от ERROR_USER_MAPPED_FILE могла бы пропасть при зелёном CI.
       - name: Чистый выход после рендера миниатюр (WinRT)

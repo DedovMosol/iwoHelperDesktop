@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -17,6 +18,7 @@ namespace ExcelMerger
     {
         private const int Dpi = 200;             // чётко для штрих-кода и мелкой графики
         private const int RenderTimeoutMs = 60000;
+        private const int RangeTimeoutMs = 300000; // диапазон страниц — один запуск на весь файл
 
         /// <summary>
         /// Отрендерить страницу (1-based) в Bitmap через Ghostscript. null — GS недоступен или
@@ -30,7 +32,8 @@ namespace ExcelMerger
             try
             {
                 string stderr;
-                int exit = Ghostscript.Run(BuildArgs(pdfPath, pageNumber, outPng), RenderTimeoutMs, out stderr);
+                int exit = Ghostscript.Run(BuildArgs(pdfPath, pageNumber, pageNumber, Dpi, outPng, false),
+                    RenderTimeoutMs, out stderr);
                 if (exit != 0 || !File.Exists(outPng))
                     return null;
                 using (var fs = File.OpenRead(outPng))
@@ -92,12 +95,48 @@ namespace ExcelMerger
             return new Rectangle(x, y, w, h);
         }
 
-        private static string BuildArgs(string input, int pageNumber, string output)
+        /// <summary>
+        /// Отрендерить диапазон страниц БЕЗ ТЕКСТА — подложку для слайдов: остаётся всё, что
+        /// текстом не является (фон, рамки, диаграммы, логотипы), а сам текст ляжет поверх
+        /// редактируемыми надписями. Файлы называются bg-0001.png и далее ПО ПОРЯДКУ
+        /// отрисованных страниц (Ghostscript нумерует вывод с единицы независимо от того, с
+        /// какой страницы начали, — проверено), поэтому вызывающий сопоставляет их сам.
+        /// Возвращает пути к созданным файлам по порядку; пустой список — не получилось.
+        /// </summary>
+        public static List<string> RenderPagesWithoutText(string pdfPath, int firstPage, int lastPage, int dpi, string outDir)
+        {
+            var result = new List<string>();
+            if (!Ghostscript.Available || string.IsNullOrEmpty(pdfPath) || firstPage < 1 || lastPage < firstPage)
+                return result;
+            try
+            {
+                Directory.CreateDirectory(outDir);
+                string pattern = Path.Combine(outDir, "bg-%04d.png");
+                string stderr;
+                int exit = Ghostscript.Run(BuildArgs(pdfPath, firstPage, lastPage, dpi, pattern, true),
+                    RangeTimeoutMs, out stderr);
+                if (exit != 0)
+                    return result;
+                for (int i = 1; i <= lastPage - firstPage + 1; i++)
+                {
+                    string file = Path.Combine(outDir, "bg-" + i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + ".png");
+                    if (!File.Exists(file))
+                        break; // движок оборвался на середине — берём то, что успел
+                    result.Add(file);
+                }
+            }
+            catch { result.Clear(); }
+            return result;
+        }
+
+        private static string BuildArgs(string input, int firstPage, int lastPage, int dpi, string output, bool withoutText)
         {
             var sb = new StringBuilder();
             sb.Append("-q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=png16m");
-            sb.Append(" -r").Append(Dpi);
-            sb.Append(" -dFirstPage=").Append(pageNumber).Append(" -dLastPage=").Append(pageNumber);
+            if (withoutText)
+                sb.Append(" -dFILTERTEXT"); // текст не рисуем: он придёт надписями поверх
+            sb.Append(" -r").Append(dpi);
+            sb.Append(" -dFirstPage=").Append(firstPage).Append(" -dLastPage=").Append(lastPage);
             string root = Ghostscript.BundledRoot; // вшитый GS — явные -I на его lib/Resource
             if (!string.IsNullOrEmpty(root))
             {
