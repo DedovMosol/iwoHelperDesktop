@@ -166,7 +166,29 @@ namespace ExcelMerger
                 _zoom.Value = width; // → ValueChanged → ScheduleZoom + SyncZoomInput (под guard)
         }
 
-        /// <summary>Сбросить масштаб к 100% (Ctrl+0, двойной клик по «%»).</summary>
+        /// <summary>
+        /// Подписать обработчик двойного клика на контрол и на его ПОЛЕ ВВОДА. Составные
+        /// контролы (NumericUpDown) отдают события мыши вложенному полю, и подписка только на
+        /// внешний контрол молча не сработала бы. Кнопки-стрелки НЕ подписываем: быстрый
+        /// двойной щелчок по стрелке — это два шага масштаба, а не просьба сбросить его.
+        /// Возвращает число подписок — по нему проверка видит, что поле не забыто.
+        /// </summary>
+        internal static int WireDoubleClick(Control control, EventHandler handler)
+        {
+            if (control == null || handler == null)
+                return 0;
+            control.DoubleClick += handler;
+            int count = 1;
+            foreach (Control child in control.Controls)
+                if (child is TextBoxBase)
+                {
+                    child.DoubleClick += handler;
+                    count++;
+                }
+            return count;
+        }
+
+        /// <summary>Сбросить масштаб к 100% (Ctrl+0, двойной клик по полю «%» и по самой подписи).</summary>
         private void ResetZoom()
         {
             if (_zoom != null)
@@ -410,6 +432,12 @@ namespace ExcelMerger
             _zoomPct.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _zoomPct.Cursor = Cursors.Hand;                    // рука на «%»: видно, что кликабельно (сброс)
             _zoomPct.DoubleClick += delegate { ResetZoom(); }; // двойной клик по «%» → 100%
+            // Двойной клик по САМОМУ полю — тот же сброс. Штатно он выделял бы число, и это
+            // выделение люди принимают за «скопировалось в буфер»: жест выглядит сработавшим,
+            // хотя не делает ничего. Один и тот же жест на поле и на «%» рядом обязан значить
+            // одно и то же, поэтому подписываем обработчик и полю, и его внутренним контролам
+            // (у NumericUpDown события мыши получает вложенное поле ввода, а не он сам).
+            WireDoubleClick(_zoomInput, delegate { ResetZoom(); });
 
             _zoomTimer = new System.Windows.Forms.Timer();
             _zoomTimer.Interval = 60; // троттлинг пересборки плиток при перетаскивании регулятора

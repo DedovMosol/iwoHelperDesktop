@@ -54,12 +54,26 @@ versions follow [SemVer](https://semver.org/).
   the heading is centred, so the window is a screenful shorter; the paragraph explaining the
   update check is justified to both margins, because a ragged right edge is far more visible
   in a narrow window than in a page-wide text.
+- **A large system font no longer reaches our layout.** Every window sets its own font, but
+  menus did not: a menu strip has a fixed height and drew its items with the system menu
+  font, so the “text size” accessibility setting could clip the captions from below. Menus
+  now use the application font like everything else — the one place where that setting could
+  still reach the layout.
+- **A double-click on the zoom percentage resets it to 100 %**, the same as a double-click on
+  the “%” next to it and the same as Ctrl+0. It used to select the number instead, and a
+  selection that appears out of nowhere reads as “copied to the clipboard” — a gesture that
+  looks like it worked while doing nothing. A double-click on the spinner arrows still means
+  two steps of zoom, not a reset.
 - **The window header is vertically centred.** The title and its subtitle were pinned to the
   bottom edge of the coloured band, leaving empty colour above them — which read as a header
   that had slipped down. The block now stands in the middle of the band, and the language
   globe and “Back” follow it, because they are aligned to the text and not to a literal.
 - **The README badges sit on one line again.** Each was on its own source line, and GitHub
   renders that as a break — the row of badges came out as a column.
+- **The README contents carry the same icons as the sections** they point to, and the banner
+  says what the app does now — the tagline is redrawn by `tools/set_banner_tagline.ps1`,
+  which restores the background under the line by interpolating the untouched rows around it
+  instead of guessing the gradient, and shrinks the font until the line fits.
 - **The download links live in one place.** Four large buttons at the top of the README
   repeated the Download section word for word, and both rows were wider than the README
   column on a desktop, so they wrapped and the wrapped tail was centred — which is what

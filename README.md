@@ -12,7 +12,7 @@
 
 </div>
 
-**Contents** — [Features](#-features) · [Screenshots](#-screenshots) · [Download](#️-download) · [Usage](#️-usage) · [Build from source](#️-build-from-source)
+**Contents** — 🚀 [Features](#-features) · 📸 [Screenshots](#-screenshots) · ⬇️ [Download](#️-download) · 🖥️ [Usage](#️-usage)<br>🛠️ [Build from source](#️-build-from-source) · 🧩 [Built with](#-built-with) · 🔒 [Privacy](#-privacy) · ⚖️ [License](#️-license)
 
 ## What is iwo Helper Desktop?
 
@@ -81,7 +81,7 @@ Six actions over one document, each writing a **new** file — the source is nev
 |:--:|:--:|
 | <img src="docs/screenshots/hub.png" width="400" alt="Start screen"><br>**Start screen** — pick a section, then a tool | <img src="docs/screenshots/excel.png" width="400" alt="Merge Excel"><br>**Merge Excel** |
 | <img src="docs/screenshots/pdf-merge.png" width="400" alt="PDF Merge"><br>**PDF Merge** — thumbnails & compression | <img src="docs/screenshots/pdf-split.png" width="400" alt="PDF Split"><br>**PDF Split** — modes & compression |
-| <img src="docs/screenshots/pdf-word.png" width="400" alt="PDF to Word"><br>**PDF → Word** — text & tables into an editable `.docx` | |
+| <img src="docs/screenshots/pdf-word.png" width="400" alt="PDF to Word"><br>**PDF → Word** — text & tables into an editable `.docx` | <img src="docs/screenshots/pdf-pptx.png" width="400" alt="PDF to PowerPoint"><br>**PDF → PowerPoint** — pages into slides with editable text |
 
 ## ⬇️ Download
 

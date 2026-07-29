@@ -173,8 +173,8 @@ namespace ExcelMerger
             A("common.homeTip", "Открыть экран выбора инструмента", "Open the tool chooser");
             A("common.zoom", "Масштаб:", "Zoom:");
             A("common.tip.zoom", "Масштаб миниатюр (также Ctrl+колесо мыши)", "Thumbnail zoom (also Ctrl+mouse wheel)");
-            A("common.tip.zoomInput", "Масштаб в процентах (Ctrl+0 или двойной клик по «%» — 100%)",
-                "Zoom percentage (Ctrl+0 or double-click “%” for 100%)");
+            A("common.tip.zoomInput", "Масштаб в процентах (Ctrl+0 или двойной клик — 100%)",
+                "Zoom percentage (Ctrl+0 or a double-click for 100%)");
             A("common.busy", "Дождитесь завершения…", "Wait for it to finish…");
             A("common.err.openFailed", "Не удалось открыть", "Could not open");
             A("common.err.browser", "Не удалось открыть браузер", "Could not open the browser");
