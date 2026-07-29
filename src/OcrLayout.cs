@@ -153,6 +153,12 @@ namespace ExcelMerger
         private const double CenterInsetEmFactor = 0.5;
         private const double CenterMinInsetFraction = 0.02;
         private const double CenterBalanceFraction = 0.08;
+        // Зазоры центрированной строки должны быть соизмеримы ОТНОСИТЕЛЬНО друг друга, а не
+        // только по абсолютной разнице: доля ширины прощает разницу тем охотнее, чем шире
+        // колонка, и на A4 под неё попадала красная строка, чуть не дотянувшая до правого поля
+        // (слева 35 pt, справа 14) — абзац разрывался надвое, а его первая строка ещё и
+        // центрировалась. Половина — запас вдвое: настоящий титул сбит с оси куда меньше.
+        private const double CenterBalanceRatio = 0.5;
         private const double IndentMatchTolPt = 2.5;
         private const double IndentClusterWidthPt = 3.0;
         private const int MinIndentSupport = 3;
@@ -861,7 +867,12 @@ namespace ExcelMerger
         {
             double minInset = Math.Max(CenterInsetEmFactor * em, CenterMinInsetFraction * width);
             double balance = CenterBalanceFraction * width;
-            return leftGap > minInset && rightGap > minInset && Math.Abs(leftGap - rightGap) <= balance;
+            if (leftGap <= minInset || rightGap <= minInset)
+                return false;
+            if (Math.Abs(leftGap - rightGap) > balance)
+                return false;
+            double smaller = Math.Min(leftGap, rightGap), larger = Math.Max(leftGap, rightGap);
+            return smaller >= CenterBalanceRatio * larger;
         }
 
         /// <summary>

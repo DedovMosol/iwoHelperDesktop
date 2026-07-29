@@ -75,7 +75,7 @@ namespace ExcelMerger
             }
             catch (Exception ex) when (MergeException.ShouldWrap(ex))
             {
-                throw new MergeException(string.Format(Loc.T("err.pdf.saveFailed"), ex.Message));
+                throw new MergeException(string.Format(Loc.T("err.pdf.saveFailed"), DiskSpace.Describe(ex, outputPath)));
             }
         }
     }

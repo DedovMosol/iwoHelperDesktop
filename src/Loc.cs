@@ -442,6 +442,9 @@ namespace ExcelMerger
             A("err.disk.fullFree", "на диске {0} закончилось место (свободно {1} МБ)",
                 "the disk {0} is out of space ({1} MB free)");
             A("err.disk.full", "на диске {0} закончилось место", "the disk {0} is out of space");
+            A("err.disk.lowFree", " (на диске {0} свободно {1} МБ — возможно, дело в этом)",
+                " (the disk {0} has {1} MB free — this may be the reason)");
+            A("err.export.saveFailed", "Не удалось сохранить «{0}»: {1}", "Could not save “{0}”: {1}");
             A("err.ranges.empty", "Укажите диапазоны страниц, например: 1-3, 5, 8-", "Enter page ranges, for example: 1-3, 5, 8-");
             A("err.ranges.outside", "Диапазон «{0}» вне 1–{1}.", "Range “{0}” is outside 1–{1}.");
             A("err.ranges.badPage", "Не понял номер страницы в «{0}».", "Could not read a page number in “{0}”.");

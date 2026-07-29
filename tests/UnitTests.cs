@@ -376,12 +376,14 @@ namespace ExcelMerger.Tests
             Run("PPTX: у каждой строки абзаца свой отступ от края рамки", TestPptxPerLineIndent);
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
+            Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("В исходниках нет управляющих символов", TestNoControlCharactersInSources);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 345;
+            const int MinTests = 347;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -2328,6 +2330,12 @@ namespace ExcelMerger.Tests
             AssertTrue(!OcrLayout.IsCentered(200, 0, 16, 453), "правое выравнивание — не центр");
             // Несимметричная (левый много больше правого) — не центр, даже если оба > порога.
             AssertTrue(!OcrLayout.IsCentered(120, 20, 16, 453), "асимметрия — не центр");
+            // Красная строка, чуть НЕ ДОТЯНУВШАЯ до правого поля. Абсолютная разница зазоров
+            // (21 pt) укладывалась в долю ширины A4, и абзац разрывался надвое, а его первая
+            // строка ещё и центрировалась. Соизмеримость зазоров это ловит: 14 против 35.
+            AssertTrue(!OcrLayout.IsCentered(35, 14, 16, 339), "красная строка в двух пунктах от поля — не центр");
+            // А настоящий титул, сбитый с оси, центром остаётся: зазоры соизмеримы.
+            AssertTrue(OcrLayout.IsCentered(40, 70, 16, 453), "титул сбит с оси, но зазоры соизмеримы");
         }
 
         private static void TestOcrCenteredBlock()
@@ -4750,6 +4758,137 @@ namespace ExcelMerger.Tests
             AssertTrue(mixed.StartsWith("Готово: страниц 13."), "результат по-прежнему успешный");
             AssertTrue(mixed.Contains("7"), "названо число страниц без текста: " + mixed);
             AssertTrue(mixed.Length > fmt.Length + 6, "объяснение добавлено, а не только цифра");
+        }
+
+
+        /// <summary>
+        /// Отмена на фазе СЖАТИЯ. Сорок частей — сорок запусков Ghostscript, дольше самой
+        /// нарезки; раньше на этой фазе кнопку «Отмена» убирали, считая точкой невозврата момент
+        /// записи файлов. Раз остановка убирает за собой, невозврата нет. Проверяем через
+        /// настоящее окно: тут важна не арифметика, а то, что кнопка на месте и нажатие доходит.
+        /// </summary>
+        private static void TestSplitCancelDuringCompressionLive()
+        {
+            var offenders = new List<string>();
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_splitcancel_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = MakePagesPdf(dir, 8);
+                string outDir = Path.Combine(dir, "out");
+                Directory.CreateDirectory(outDir);
+
+                RunSta(delegate
+                {
+                    using (var form = new PdfSplitForm())
+                    {
+                        IntPtr handle = form.Handle;
+                        if (handle == IntPtr.Zero) { offenders.Add("окно не создалось"); return; }
+                        form.Show();
+                        Pump(form, 400);
+
+                        // Работа уже ЗАВЕРШЕНА к моменту вызова: проверяем именно фазу сжатия —
+                        // отмену, нажатую после того, как файлы записаны.
+                        var files = new List<string>();
+                        for (int i = 0; i < 4; i++)
+                        {
+                            string part = Path.Combine(outDir, "part" + i + ".pdf");
+                            File.Copy(src, part, true);
+                            files.Add(part);
+                        }
+                        System.Reflection.MethodInfo run = typeof(PdfSplitForm).GetMethod("RunSplit",
+                            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                        if (run == null) { offenders.Add("RunSplit не найден"); return; }
+
+                        // Нажимаем «Отмена» до старта: предикат читается перед КАЖДОЙ частью,
+                        // поэтому не сжата будет ни одна, а папка останется пустой.
+                        System.Reflection.FieldInfo flag = typeof(PdfToolFormBase).GetField("_cancelRequested",
+                            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                        if (flag == null) { offenders.Add("флага отмены нет"); return; }
+                        Func<Action<int, int>, List<string>> work = delegate(Action<int, int> pr)
+                        {
+                            flag.SetValue(form, true); // «Отмена» нажата ровно на границе фаз
+                            return files;
+                        };
+                        run.Invoke(form, new object[] { work, CompressionLevel.Small,
+                            outDir, true, (Action)delegate { }, 8 });
+                        Pump(form, 4000);
+
+                        string[] left = Directory.GetFiles(outDir);
+                        if (left.Length != 0)
+                            offenders.Add("после отмены на сжатии осталось файлов: " + left.Length);
+                    }
+                });
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+            AssertTrue(offenders.Count == 0, "отмена на сжатии: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Прокачать очередь сообщений окна — фоновая работа возвращается через неё.</summary>
+        private static void Pump(System.Windows.Forms.Form form, int ms)
+        {
+            for (int i = 0; i < ms; i += 30)
+            {
+                System.Windows.Forms.Application.DoEvents();
+                System.Threading.Thread.Sleep(30);
+            }
+        }
+
+
+        /// <summary>
+        /// В исходниках не должно быть управляющих символов, кроме табуляции и перевода строки.
+        /// Повод не выдуманный: в пути к проверке PPTX внутри полного прогона однажды оказалась
+        /// ВЕРТИКАЛЬНАЯ ТАБУЛЯЦИЯ вместо « обратной косой с «v» » — путь перестал существовать, и этот шаг пирамиды
+        /// не выполнялся вовсе, молча. Такой символ не виден ни в редакторе, ни в обзоре правок,
+        /// поэтому ловить его должен тест, а не глаз.
+        /// </summary>
+        private static void TestNoControlCharactersInSources()
+        {
+            string root = RepoRoot();
+            if (root == null) { AssertTrue(true, "исходники рядом не найдены — пропускаем"); return; }
+            var offenders = new List<string>();
+            string[] folders = { "src", "tests", "tools", "docs" };
+            string[] extensions = { ".cs", ".ps1", ".py", ".md", ".cmd", ".yml", ".iss" };
+            foreach (string folder in folders)
+            {
+                string dir = Path.Combine(root, folder);
+                if (!Directory.Exists(dir)) continue;
+                foreach (string file in Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories))
+                {
+                    if (file.IndexOf(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar,
+                            StringComparison.OrdinalIgnoreCase) >= 0
+                        || file.IndexOf(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar,
+                            StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+                    bool wanted = false;
+                    foreach (string ext in extensions)
+                        if (file.EndsWith(ext, StringComparison.OrdinalIgnoreCase)) { wanted = true; break; }
+                    if (!wanted) continue;
+                    string text = File.ReadAllText(file);
+                    for (int i = 0; i < text.Length; i++)
+                    {
+                        char c = text[i];
+                        if (c >= ' ' || c == (char)9 || c == (char)13 || c == (char)10) continue;
+                        offenders.Add(Path.GetFileName(file) + ": U+" + ((int)c).ToString("X4"));
+                        break;
+                    }
+                }
+            }
+            AssertTrue(offenders.Count == 0, "управляющие символы в исходниках: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Корень репозитория относительно собранного теста; null — не нашли.</summary>
+        private static string RepoRoot()
+        {
+            string dir = AppDomain.CurrentDomain.BaseDirectory;
+            for (int up = 0; up < 6 && dir != null; up++)
+            {
+                if (Directory.Exists(Path.Combine(dir, "src")) && Directory.Exists(Path.Combine(dir, "tests")))
+                    return dir;
+                DirectoryInfo parent = Directory.GetParent(dir);
+                dir = parent == null ? null : parent.FullName;
+            }
+            return null;
         }
 
         private static void TestPptxBackground()

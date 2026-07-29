@@ -3,7 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.18.0] — 2026-07-29
 
 ### Added
 - **PDF → PowerPoint.** A sixth tool: the pages of a born-digital PDF become slides whose
@@ -82,6 +82,28 @@ versions follow [SemVer](https://semver.org/).
   line asking the reader to press Ctrl+A and F9.
 
 ### Fixed
+- **Cancelling during compression did nothing.** Splitting a document runs in two phases,
+  and the second one — compressing each part with Ghostscript — is the longer of them:
+  forty parts are forty separate runs. The Cancel button was withdrawn at the start of it,
+  on the grounds that the files were already written and there was no way back. Now that a
+  stopped job cleans up after itself there is a way back, so the button stays and the work
+  stops between parts. The one thing not interrupted is a single Ghostscript run: killing
+  another process halfway leaves its temporary file behind, which is worse than waiting out
+  one part. Merging still has no cancel there, and that is right — it compresses a single
+  file, so there is nothing to stop between.
+- **“Not enough space” now names the disk everywhere it can happen**, not only in the three
+  places it was first added: the Excel digest, saving pages as images, editing document
+  properties, saving through Word and the text export. Some of those report a failed write
+  in their own words — GDI+ answers every one of them with “a generic error occurred” — so
+  when the error itself is silent about space and the drive turns out to be nearly empty,
+  the message keeps what the system said and appends how much is left. A guess is marked
+  as a guess; only the system's own verdict is stated as fact.
+- **A paragraph beginning with an indent could be mistaken for a centred line** and torn out
+  into a paragraph of its own — centred, at that. A centred line was recognised by its two
+  margins differing by no more than a share of the column width, and on a wide page that
+  share is large enough to cover a first line that stops a couple of points short of the
+  right margin. The two margins must now also be comparable *to each other*; a title knocked
+  off the axis still passes, a first-line indent no longer does.
 - **A cancelled or failed split left the files it had already written.** Cancelling had
   cleaned up for a while; failing had not, on the reasoning that half a result is better
   than none. It is not: a folder holding seven parts of forty does not look incomplete —

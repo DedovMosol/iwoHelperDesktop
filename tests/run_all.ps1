@@ -108,7 +108,7 @@ Step 'Born-digital PDF -> Word (PdfPig + OcrLayout + WordDocxWriter)' {
 }
 
 Step 'Born-digital PDF -> PowerPoint (свой писатель OOXML, без Office)' {
-    powershell -NoProfile -File "$PSScriptRooterify_pdfpptx.ps1"
+    powershell -NoProfile -File "$PSScriptRoot\verify_pdfpptx.ps1"
     if ($LASTEXITCODE) { exit 1 }
 }
 
