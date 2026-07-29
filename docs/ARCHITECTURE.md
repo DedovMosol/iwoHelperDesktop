@@ -30,7 +30,7 @@ read or change the code. For **what the app does** (features, downloads, usage) 
 
 ## Bird's-eye view
 
-iwo Helper Desktop is a single Windows Forms executable that hosts **five independent
+iwo Helper Desktop is a single Windows Forms executable that hosts **six independent
 offline tools** behind one start screen with two sections (PDF and everything else):
 
 1. **Merge Excel** — merges sheets of every workbook in a folder into one digest (Excel COM).
@@ -38,7 +38,10 @@ offline tools** behind one start screen with two sections (PDF and everything el
 3. **PDF Split** — extracts pages / splits by ranges, every N, or bookmarks (PdfSharp).
 4. **PDF → Word** — rebuilds a born-digital PDF into an editable `.docx`
    (PdfPig extraction → own layout analysis → Word COM writing).
-5. **More operations** — six actions over one document: compress, grayscale, repair, pages to
+5. **PDF → PowerPoint** — turns the pages of a born-digital PDF into a `.pptx` whose text is
+   real, editable text (same extraction, own OOXML writer, no PowerPoint required); everything
+   that is not text arrives as the page background rendered without its text layer.
+6. **More operations** — six actions over one document: compress, grayscale, repair, pages to
    images, text to `.txt`, document properties. Each writes a **new** file.
 
 Cross-cutting services: optional **PDF compression** (Ghostscript as a child process),
@@ -234,6 +237,24 @@ Ghostscript compression that follows runs past the point of no return and is not
 | `GridDetector.cs` | Unruled label/value grids (receipt-style forms) → borderless tables with kept row spacing. |
 | `StampDetector.cs`, `ListMarker.cs`, `UnderlineDetector.cs`, `GlyphDedup.cs`, `FontNames.cs`, `MathUtil.cs`, `OcrTable.cs`, `PdfLine.cs` | Focused helpers: stamp region, list-marker recognition, underline mapping, glyph dedup, font-name normalization, medians, table/line models. |
 | `WordDocxWriter.cs` | Writes the `.docx` through Word COM: a section per PDF page (size, orientation, margins), zeroed Normal style, `OrderTree`-driven side-by-side bands and `CoalesceRowBands` as borderless tables, native Word lists (start value set on the document's own list template), fonts normalized with an installed-font fallback to Times New Roman (keeps Cyrillic off the East-Asian justification path), source vertical rhythm with a `FitSpacingToPages` pagination guard. |
+
+### PDF → PowerPoint pipeline
+
+Everything up to `PdfPageText` is the pipeline above — the parse layer knows nothing about
+the output format. The `.pptx` differs only in what happens after it.
+
+| File | Responsibility |
+|---|---|
+| `PptxForm.cs` | Tool window — a 40-line specification on top of `PdfConvertFormBase`. |
+| `PdfConvertFormBase.cs` | The window shared by both converters (grid, ordering, printing, progress with cancel, error wording, history and counters). What differs between the tools lives in `ConvertToolSpec`: catalog prefix, colour, extension, STA requirement, the convert delegate. |
+| `PdfPageExtraction.cs` | The first half of any “PDF → document” conversion, shared with the Word path: unique sources, scan gate, rotations, per-source extraction, assembly in shown order. |
+| `PdfToPptxService.cs` | Orchestrator: parse (in `PageLayoutMode.Slide`) → page backgrounds → write, progress split three ways, result written to a temp file and moved last so a cancel leaves nothing behind. No COM, so no STA thread. |
+| `PageLayoutMode.cs` | What the parser does differently for a flow output and for an absolutely-positioned one. For a slide: **every source line becomes its own paragraph** (a slide cannot re-flow text — another engine breaks lines by its own metrics, while underlines and rules arrive in the background and stay where they were, so they would start crossing the letters); a single-line row is further split at wide gaps (a row of chart labels must not collapse into one box); lone ruling lines do **not** become `____` placeholders (a flow writer has no other way to draw a line, a slide gets the real one); a text-drawn stamp is **not** flattened into an image (its text must stay text). |
+| `PageBackgrounds.cs` | Page rendered **without its text** (`-dFILTERTEXT`, one Ghostscript run per source file): DPI by page count, blank pages dropped, user rotation applied, media budget. Missing Ghostscript degrades silently to a text-only deck. |
+| `PptxWriter.cs` | Model → slides: paragraph → text box (zero insets, autofit off, no wrap, box raised by the ascent gap so the letters land where they were — the factor is measured against real PowerPoint), run → `a:r` (size, weight, colour, font, super/sub, hyperlink), table → `a:tbl` with merge flags, background → slide background (or a locked picture when the page had to be scaled to fit). Embedded images are placed **only when the page has no background**: the background is the page without its text, so it already contains them — drawing them twice would double the file and make “delete the picture” a lie. |
+| `PptxGeometry.cs` | Units and axes: points → EMU, Y flipped from page height, slide size by the most common page size, `SlideFit` scaling and centring for pages that differ from it. |
+| `PptxParts.cs`, `OoxmlPackage.cs`, `XmlText.cs` | The format itself: constant parts (theme, master, blank layout), relationship files, and the OPC packaging rules — content types first in the archive, part names without a leading slash inside it and with one in `[Content_Types].xml`, UTF-8 without BOM. `XmlText` strips what XML cannot carry (control characters, unpaired surrogates) before escaping. |
+| `RasterUtil.cs` | Shared raster checks: “is this image blank” and “PNG or JPEG, whichever is smaller” (transparency detected by content, not by pixel format — otherwise nothing is ever recompressed). |
 
 > Naming note: the `Ocr*` files predate the feature's final shape — the tool handles
 > **born-digital** PDFs, no OCR happens today. The orchestrator comment marks where a
@@ -533,6 +554,8 @@ needs Office gets a `verify` script.
 | Two explicit arch builds (x64 + x86), no AnyCPU | Each package bundles a Ghostscript of its bitness and states what it is, deliberate builds beat `Prefer32Bit` surprises. |
 | Late-bound COM, no interop assemblies | Builds without Office, version-independent, one exe. |
 | Word writes the `.docx` (COM), not an OOXML library | Native list numbering, spacing and font substitution, fewer dependencies, the file behaves as if typed in Word. |
+| …but the `.pptx` is written **directly as OOXML**, without PowerPoint | The reasons above are about flow layout — numbering, spacing, font substitution — and a slide has none of them: every shape carries its own rectangle, so there is nothing for PowerPoint to lay out. Meanwhile the tool is used exactly when Office is not at hand, and an own writer is the only one that can be checked in CI (the result is unzipped and parsed; the schema validator runs in the test project only). |
+| A slide is two layers: page-without-text + real text boxes | Text alone would drop everything a text model cannot hold — backgrounds, frames, charts, vector logos — which on a typical slide is most of the picture. Rendering the whole page as an image would keep the look and lose the point (editable text). Ghostscript can render a page with the text filtered out, so both halves survive; without Ghostscript the deck degrades to text only. |
 | Managed deps embedded as resources | Single-file distribution without ILMerge, resolver also kills binding-redirect pain. |
 | WinRT for thumbnails, loaded from memory | In-box rasterizer (no native deps), memory loading avoids the user-mapped-file lock on shown files. |
 | Ghostscript as a child process | Acrobat-grade downsampling, AGPL stays outside the MIT process boundary, graceful absence. |

@@ -14,6 +14,8 @@ namespace ExcelMerger
         Pdf,
         PdfSplit,
         Ocr,
+        /// <summary>«PDF → PowerPoint» — буква «P» на оранжевом листе.</summary>
+        Pptx,
         /// <summary>«Прочие операции» с PDF — ползунки настроек на красном листе.</summary>
         Tools,
         /// <summary>Раздел «Иной функционал» — плитка приложений на синем листе.</summary>
@@ -231,6 +233,7 @@ namespace ExcelMerger
             Color main, fold;
             if (excel) { main = Theme.Accent; fold = Theme.AccentPressed; }
             else if (_glyph == CardGlyph.Ocr) { main = Theme.WordViolet; fold = Theme.WordVioletDark; }
+            else if (_glyph == CardGlyph.Pptx) { main = Theme.PowerPointOrange; fold = Theme.PowerPointOrangeDark; }
             else if (_glyph == CardGlyph.Other) { main = Theme.HubBlue; fold = Theme.HubBlueDark; }
             else { main = PdfRed; fold = PdfFold; }
 
@@ -313,6 +316,18 @@ namespace ExcelMerger
                         for (int col = 0; col < 2; col++)
                             g.FillRectangle(brush, start.X + col * (side + gap),
                                 start.Y + row * (side + gap), side, side);
+                }
+            }
+            else if (_glyph == CardGlyph.Pptx)
+            {
+                // Буква «P» (PowerPoint) — перенос страниц в слайды с настоящим текстом.
+                using (var pen = new Pen(Color.White, 1.8f * s))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    pen.LineJoin = LineJoin.Round;
+                    DrawPolyline(g, pen, p, new[] { new[] { 9f, 19f }, new[] { 9f, 11f }, new[] { 13f, 11f },
+                        new[] { 14.8f, 12.8f }, new[] { 13f, 14.6f }, new[] { 9f, 14.6f } });
                 }
             }
             else if (_glyph == CardGlyph.Ocr)

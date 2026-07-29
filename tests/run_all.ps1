@@ -10,6 +10,7 @@ $exe = Join-Path $root 'dist\iwoHelperDesktop.exe'
 # suite is not derailed by a pre-existing session on a developer machine.
 $baselineExcel = @(Get-Process EXCEL   -ErrorAction SilentlyContinue).Id
 $baselineWord  = @(Get-Process WINWORD -ErrorAction SilentlyContinue).Id
+$baselinePpt   = @(Get-Process POWERPNT -ErrorAction SilentlyContinue).Id
 
 function Invoke-Exe([string]$argLine) {
     # GUI-subsystem process: without -Wait, PowerShell would not wait for the exit code.
@@ -106,12 +107,19 @@ Step 'Born-digital PDF -> Word (PdfPig + OcrLayout + WordDocxWriter)' {
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Born-digital PDF -> PowerPoint (свой писатель OOXML, без Office)' {
+    powershell -NoProfile -File "$PSScriptRooterify_pdfpptx.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
 Step 'Zombie Excel/Word processes' {
     Start-Sleep -Seconds 3
     $newExcel = @(Get-Process EXCEL   -ErrorAction SilentlyContinue | Where-Object { $baselineExcel -notcontains $_.Id })
     $newWord  = @(Get-Process WINWORD -ErrorAction SilentlyContinue | Where-Object { $baselineWord  -notcontains $_.Id })
+    $newPpt   = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | Where-Object { $baselinePpt   -notcontains $_.Id })
     if ($newExcel.Count) { Write-Host "ZOMBIE EXCEL ($($newExcel.Count))"; exit 1 }
     if ($newWord.Count)  { Write-Host "ZOMBIE WORD ($($newWord.Count))";  exit 1 }
+    if ($newPpt.Count)   { Write-Host "ZOMBIE POWERPOINT ($($newPpt.Count))"; exit 1 }
 }
 
 Write-Host 'ALL TESTS PASSED'

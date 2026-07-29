@@ -56,6 +56,18 @@ Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print
 - **Multi‑file** — add several PDFs at once (drop onto the grid to insert at a spot), reorder / cut / copy / paste / rotate / preview pages across the whole set, then convert to one document. A long conversion can be **cancelled** with no `.docx` left behind.
 - **Limits** — scanned documents aren't supported yet (a clear message is shown instantly and the file is untouched).
 </details>
+### 📊 PDF → PowerPoint
+Turn the pages of one or **several born‑digital** PDFs into a single `.pptx` — one slide per page — where the **text stays real text**: editable, searchable, copyable. **PowerPoint is not required**: the file is built by the app itself.
+
+<details><summary><b>How the two layers work, and what carries over</b></summary>
+
+- **Two layers per slide.** The text arrives as ordinary text boxes placed where it was, with font, size, weight, colour, underline, super/subscript and hyperlinks. Everything that is *not* text — background, frames, charts, vector logos — arrives as the page rendered **without its text layer**, so the slide looks like the source instead of a handful of labels on white.
+- **Tables** become real slide tables (column widths, merged cells, borders — or no borders for a grid that had none), so they can still be edited row by row.
+- **Slide size** follows the pages: a 16:9 deck stays 16:9, an A4 document becomes A4 slides. A presentation has one slide size, so when pages differ, the most common size wins and the others are scaled to fit and centred.
+- **Images** are placed where they were, identical ones stored once, and photos repacked to keep the file small.
+- **Multi‑file** — the same grid as PDF → Word: add several PDFs, reorder, rotate, preview, remove, then convert to one deck. A long conversion can be **cancelled** with no `.pptx` left behind.
+- **Limits** — scanned documents aren't supported yet (a clear message, the file untouched). Without Ghostscript the slides come out text‑only, with no background. A source line becomes its own text box, which is what keeps the text in place.
+</details>
 ### 🛠️ More operations
 Six actions over one document, each writing a **new** file — the source is never modified: **compress**, convert **to grayscale**, **repair** a damaged file (it picks the file itself — a broken document cannot be opened into a grid), save **pages as images** (PNG or JPEG at 96–600 dpi, the selection or all of them), extract the **text to a `.txt`** (tables kept as tab‑separated cells), and edit the **document properties** (title, author, subject, keywords — an empty field clears the property, which is how the author's name is removed before sending). **Merge and Split hand a document straight over** — Split the one it has open, Merge the file it has just built.
 
@@ -88,7 +100,7 @@ Six actions over one document, each writing a **new** file — the source is nev
 - **Portable** — a single `iwoHelperDesktop-1.17.9.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
 - The x64 and x86 packages are functionally identical — take **x64** unless your Windows is 32‑bit.
 
-> Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split and Compression** need neither Excel nor Word.
+> Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split, Compression and PDF → PowerPoint** need no Office at all.
 
 ## 🖥️ Usage
 

@@ -19,6 +19,10 @@ namespace ExcelMerger
         public static readonly Color WordViolet = Color.FromArgb(91, 79, 191);    // #5B4FBF
         public static readonly Color WordVioletDark = Color.FromArgb(62, 52, 140);// #3E348C
 
+        // «PDF → PowerPoint» — фирменный оранжево-красный, чтобы инструменты различались с одного взгляда
+        public static readonly Color PowerPointOrange = Color.FromArgb(196, 62, 28);     // #C43E1C
+        public static readonly Color PowerPointOrangeDark = Color.FromArgb(150, 45, 20); // #962D14
+
         public static readonly Color TextPrimary = Color.FromArgb(45, 45, 45);
         public static readonly Color TextMuted = Color.FromArgb(115, 115, 115);
 
