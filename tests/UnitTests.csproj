@@ -58,8 +58,15 @@
     <Reference Include="System.Memory">
       <HintPath>..\build\pdfpig\System.Memory.dll</HintPath>
     </Reference>
+    <!-- ZipArchive (сборка .pptx в src\OoxmlPackage.cs) — см. пояснение в iwoHelperDesktop.csproj -->
+    <Reference Include="System.IO.Compression" />
     <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.19041.1" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <!-- ТОЛЬКО ДЛЯ ТЕСТОВ: официальный валидатор Open XML. Проверяет собранный .pptx по схеме
+         и ловит то, на что PowerPoint отвечает лишь «файл повреждён» без подробностей.
+         В приложение НЕ входит: iwoHelperDesktop.csproj этой ссылки не имеет, и отдельный
+         тест следит, чтобы имя пакета не всплыло в src\. -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
   </ItemGroup>
 
 </Project>

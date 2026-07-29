@@ -11,10 +11,9 @@ namespace ExcelMerger
     }
 
     /// <summary>
-    /// Оркестрация «цифровой PDF → Word»: извлечение текстового слоя (PdfPig) и запись
-    /// .docx (Word COM). Без UI; вызывать в STA-потоке (требование Word COM). PDF без
-    /// извлекаемого текста (скан) отсекается понятной ошибкой — распознавание сканов
-    /// (OCR) появится позже; это единая точка, где позже добавится ветвь «скан → OCR».
+    /// Оркестрация «цифровой PDF → Word»: разбор страниц (общий слой
+    /// <see cref="PdfPageExtraction"/>) и запись .docx (Word COM). Без UI; вызывать в
+    /// STA-потоке (требование Word COM).
     /// </summary>
     public static class PdfToWordService
     {
@@ -23,73 +22,21 @@ namespace ExcelMerger
         /// в один .docx в заданном порядке. Скан без текстового слоя, битый/зашифрованный файл
         /// или занятый выход — <see cref="MergeException"/>. order — страницы (источник + индекс
         /// с нуля) в нужном порядке; страницы могут идти из разных файлов. progress — «сделано/всего»
-        /// единиц работы (извлечение источников — первая половина шкалы, запись — вторая); может быть null.
+        /// единиц работы (разбор — первая половина шкалы, запись — вторая); может быть null.
         /// onCommitting — вызывается один раз перед сохранением .docx (точка невозврата: Word наполнен,
         /// дальше отмена уже не сработает); может быть null.
         /// </summary>
         public static ConvertResult Convert(IList<PdfPageRef> order, string outputPath, Action<int, int> progress = null,
             Func<bool> cancelled = null, Action onCommitting = null)
         {
-            if (order == null || order.Count == 0)
-                throw new MergeException(Loc.T("err.ocr.noPages"));
-
-            // Уникальные источники в порядке первого появления (каждый извлекаем ОДИН раз).
-            var sources = new List<string>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (PdfPageRef r in order)
-                if (r != null && r.SourcePath != null && seen.Add(r.SourcePath))
-                    sources.Add(r.SourcePath);
-
-            int writeUnits = order.Count;    // страниц к записи — вторая половина шкалы прогресса
-            int totalSources = sources.Count;
-
-            // Быстрая проба: если НИ В ОДНОМ источнике нет текста — «скан» отклоняется сразу,
-            // без дорогого извлечения (полностраничные растры скана не декодируются вовсе).
-            // Смешанный ввод (текст + скан-файл или скан-страницы) идёт полным путём: страницы
-            // без текста переносятся полностраничными картинками, как и раньше.
-            bool anyText = false;
-            foreach (string src in sources)
-                if (PdfTextExtract.AnyPageHasText(src))
-                {
-                    anyText = true;
-                    break;
-                }
-            if (!anyText)
-                throw new MergeException(Loc.T("err.ocr.scanned"));
-
-            // Повороты страниц из сетки: карта по источнику (индекс страницы → градусы).
-            // Дубли одной страницы делят ОДНО извлечение — поворот берётся у первого
-            // экземпляра в порядке (устройство кэша ниже, второй дубль наследует).
-            Dictionary<string, int[]> rotationsBySource = BuildRotations(order);
-
-            // Извлечь текст каждого источника (весь файл); кэш по пути. Прогресс извлечения —
-            // первая половина шкалы, по долям источников (внутри источника — по его страницам).
-            var bySource = new Dictionary<string, List<PdfPageText>>(StringComparer.OrdinalIgnoreCase);
-            for (int si = 0; si < totalSources; si++)
+            int writeUnits = order == null ? 0 : order.Count; // страниц к записи — вторая половина шкалы
+            Action<int, int> extractCb = progress == null ? null : (Action<int, int>)delegate(int d, int t)
             {
-                string src = sources[si];
-                int idx = si;
-                Action<int, int> extractCb = progress == null ? null : (Action<int, int>)delegate(int d, int t)
-                {
-                    double frac = t > 0 ? (double)d / t : 1.0;
-                    double overall = totalSources > 0 ? (idx + frac) / totalSources : 1.0;
-                    progress((int)(overall * writeUnits), 2 * writeUnits);
-                };
-                int[] rotations = null;
-                if (rotationsBySource != null)
-                    rotationsBySource.TryGetValue(src, out rotations);
-                bySource[src] = PdfTextExtract.Extract(src, extractCb, rotations, cancelled);
-            }
+                progress(d, 2 * t); // разбор — первая половина шкалы
+            };
 
-            List<PdfPageText> pages = Assemble(bySource, order);
-
-            int withText = 0;
-            foreach (PdfPageText page in pages)
-                if (HasExtractableContent(page))
-                    withText++;
-
-            if (withText == 0)
-                throw new MergeException(Loc.T("err.ocr.scanned"));
+            int withText;
+            List<PdfPageText> pages = PdfPageExtraction.Load(order, extractCb, cancelled, out withText);
 
             Action<int, int> writeCb = progress == null ? null : (Action<int, int>)delegate(int d, int t)
             {
@@ -98,70 +45,6 @@ namespace ExcelMerger
             };
             WordDocxWriter.Write(pages, outputPath, writeCb, cancelled, onCommitting);
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
-        }
-
-        /// <summary>Есть ли на странице извлекаемый текст: абзацы вне таблиц ИЛИ текст в ячейках таблиц.</summary>
-        internal static bool HasExtractableContent(PdfPageText page)
-        {
-            if (page.Paragraphs != null && page.Paragraphs.Count > 0)
-                return true;
-            if (page.Tables != null)
-                foreach (OcrTable table in page.Tables)
-                    foreach (OcrTableRow row in table.Rows)
-                        foreach (OcrTableCell cell in row.Cells)
-                            if (cell.Paragraphs != null && cell.Paragraphs.Count > 0)
-                                return true;
-            return false;
-        }
-
-        /// <summary>
-        /// Карта поворотов по источникам из ссылок порядка: SourcePath → массив по индексу
-        /// страницы (градусы по часовой). Первый экземпляр страницы в порядке решает (в том
-        /// числе решает «без поворота»); null — поворотов нет вовсе. Чистая — под тест.
-        /// </summary>
-        internal static Dictionary<string, int[]> BuildRotations(IList<PdfPageRef> order)
-        {
-            Dictionary<string, int[]> result = null;
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // «src|idx»: первый экземпляр решает
-            foreach (PdfPageRef r in order)
-            {
-                if (r == null || r.SourcePath == null || r.PageIndex < 0)
-                    continue;
-                if (!seen.Add(r.SourcePath.ToLowerInvariant() + "|" + r.PageIndex))
-                    continue;
-                if (r.Rotation == 0)
-                    continue;
-                if (result == null)
-                    result = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
-                int[] map;
-                if (!result.TryGetValue(r.SourcePath, out map) || map.Length <= r.PageIndex)
-                {
-                    var grown = new int[r.PageIndex + 1];
-                    if (map != null)
-                        Array.Copy(map, grown, map.Length);
-                    result[r.SourcePath] = map = grown;
-                }
-                map[r.PageIndex] = r.Rotation;
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// Собрать страницы в заданном порядке из извлечённых по источникам (SourcePath → страницы).
-        /// Каждая ссылка order берёт страницу своего файла по индексу; несуществующие источник/индекс
-        /// пропускаются (защита). Страницы могут чередоваться из разных файлов. Чистая — под тест.
-        /// </summary>
-        internal static List<PdfPageText> Assemble(Dictionary<string, List<PdfPageText>> bySource, IList<PdfPageRef> order)
-        {
-            var result = new List<PdfPageText>(order.Count);
-            foreach (PdfPageRef r in order)
-            {
-                List<PdfPageText> src;
-                if (r != null && r.SourcePath != null && bySource.TryGetValue(r.SourcePath, out src)
-                    && r.PageIndex >= 0 && r.PageIndex < src.Count)
-                    result.Add(src[r.PageIndex]);
-            }
-            return result;
         }
     }
 }

@@ -28,6 +28,8 @@ namespace ExcelMerger
                 return RunPdfCheck();
             if (args.Length >= 1 && string.Equals(args[0], "--pdftextcheck", StringComparison.OrdinalIgnoreCase))
                 return RunPdfTextCheck();
+            if (args.Length >= 1 && string.Equals(args[0], "--pptxcheck", StringComparison.OrdinalIgnoreCase))
+                return RunPptxCheck();
             if (args.Length >= 1 && string.Equals(args[0], "--thumbcheck", StringComparison.OrdinalIgnoreCase))
                 return RunThumbCheck();
             if (args.Length >= 1 && string.Equals(args[0], "--gscheck", StringComparison.OrdinalIgnoreCase))
@@ -166,6 +168,12 @@ namespace ExcelMerger
                     if (handle == IntPtr.Zero)
                         return 3;
                 }
+                using (var pptx = new PptxForm(noop))
+                {
+                    IntPtr handle = pptx.Handle;
+                    if (handle == IntPtr.Zero)
+                        return 3;
+                }
                 using (var ops = new PdfOpsForm(noop))
                 {
                     IntPtr handle = ops.Handle;
@@ -241,6 +249,55 @@ namespace ExcelMerger
             finally
             {
                 try { File.Delete(pdf); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Сквозная проверка «PDF → PowerPoint» без Office: пишем PDF с известным текстом,
+        /// прогоняем конвертацию и убеждаемся, что в собранном .pptx есть слайд и этот текст.
+        /// Разбирается ZIP-ом — ровно так же, как это сделает читатель формата.
+        /// </summary>
+        private static int RunPptxCheck()
+        {
+            AttachConsole(-1);
+            EmbeddedAssemblies.Ensure();
+            string pdf = Path.Combine(Path.GetTempPath(), "pptxchk_" + Guid.NewGuid().ToString("N") + ".pdf");
+            string pptx = Path.ChangeExtension(pdf, ".pptx");
+            try
+            {
+                WriteTextPdf(pdf);
+                var order = new List<PdfPageRef> { new PdfPageRef { SourcePath = pdf, PageIndex = 0 } };
+                ConvertResult result = PdfToPptxService.Convert(order, pptx);
+                string slide = ReadZipEntry(pptx, "ppt/slides/slide1.xml");
+                bool ok = result.Pages == 1 && slide != null
+                    && slide.Contains("Hello world") && slide.Contains("Привет");
+                WriteConsole(ok ? "PPTXCHECK OK"
+                    : "PPTXCHECK FAIL: pages=" + result.Pages + " slide=" + (slide == null ? "нет" : slide.Length.ToString()));
+                return ok ? 0 : 1;
+            }
+            catch (Exception ex)
+            {
+                WriteConsole("PPTXCHECK FAIL: " + ex.GetType().Name + " — " + ex.Message);
+                return 1;
+            }
+            finally
+            {
+                try { File.Delete(pdf); } catch { }
+                try { File.Delete(pptx); } catch { }
+            }
+        }
+
+        /// <summary>Текст части ZIP-архива (UTF-8) или null, если её нет.</summary>
+        private static string ReadZipEntry(string archive, string entryName)
+        {
+            using (var zip = System.IO.Compression.ZipFile.OpenRead(archive))
+            {
+                System.IO.Compression.ZipArchiveEntry entry = zip.GetEntry(entryName);
+                if (entry == null)
+                    return null;
+                using (Stream s = entry.Open())
+                using (var reader = new StreamReader(s, System.Text.Encoding.UTF8))
+                    return reader.ReadToEnd();
             }
         }
 

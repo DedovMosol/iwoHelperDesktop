@@ -61,10 +61,10 @@ namespace ExcelMerger
         /// файл или запрет извлечения — <see cref="MergeException"/> с понятным сообщением.
         /// </summary>
         public static List<PdfPageText> Extract(string path, Action<int, int> progress = null, IList<int> rotations = null,
-            Func<bool> cancelled = null)
+            Func<bool> cancelled = null, PageLayoutMode mode = PageLayoutMode.Document)
         {
             EmbeddedAssemblies.Ensure();
-            return ExtractCore(path, progress, rotations, cancelled);
+            return ExtractCore(path, progress, rotations, cancelled, mode);
         }
 
         /// <summary>
@@ -97,7 +97,7 @@ namespace ExcelMerger
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<PdfPageText> ExtractCore(string path, Action<int, int> progress, IList<int> rotations,
-            Func<bool> cancelled)
+            Func<bool> cancelled, PageLayoutMode mode)
         {
             try
             {
@@ -203,18 +203,25 @@ namespace ExcelMerger
                         ApplyUnderscoreHeights(words);
                         // Текстовый штамп → переносим картинкой (рендер-кроп), а его слова убираем
                         // из потока (иначе штамп задвоится: картинка + те же строки текстом).
-                        OcrImage stampImage = ExtractTextStamp(words, page, path, rotation, pageW, pageH);
+                        // Печать, нарисованную ТЕКСТОМ, потоковый вывод переносит картинкой: в
+                        // строку её иначе не поставить. Слайду это не нужно и вредно — текст
+                        // печати должен остаться текстом, а её кольцо и линии придут подложкой.
+                        OcrImage stampImage = mode == PageLayoutMode.Document
+                            ? ExtractTextStamp(words, page, path, rotation, pageW, pageH)
+                            : null;
                         // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
                         TableDetectResult det = TableDetector.Detect(lines, words, pageW, pageH);
                         HashSet<PdfLine> underlines = UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке
                         // Одиночные линии, не ставшие ни таблицей, ни подчёркиванием, — прочерки
                         // полей («______ №»): переносим текстом-заполнителем, иначе строка
                         // полей теряет прочерки и разваливается.
-                        AddRuleWords(det.RemainingWords, det.LoneLines, underlines);
+                        // Линии-заполнители нужны только потоковому выводу: см. PageLayoutMode.
+                        if (mode == PageLayoutMode.Document)
+                            AddRuleWords(det.RemainingWords, det.LoneLines, underlines);
                         // Сетки без линовки (чеки, формы «метка … значение») — таблицей без границ.
                         GridDetectResult grids = GridDetector.Detect(det.RemainingWords);
                         det.Tables.AddRange(grids.Tables);
-                        OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(grids.RemainingWords);
+                        OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(grids.RemainingWords, mode);
                         var pt = new PdfPageText
                         {
                             PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
@@ -467,7 +474,7 @@ namespace ExcelMerger
                         // Декодер не справился (null) или выдал одноцветный мусор (напр. штрих-код
                         // чёрным ящиком) — фолбэк: рендерим страницу Ghostscript-ом и вырезаем картинку
                         // по её рамке. Так переносится любая картинка, как она выглядит.
-                        if (png == null || png.Length == 0 || IsSolidColor(png))
+                        if (png == null || png.Length == 0 || RasterUtil.IsSolidColor(png))
                         {
                             if (!rasterTried)
                             {
@@ -476,11 +483,11 @@ namespace ExcelMerger
                             }
                             byte[] cropped = PageRasterizer.CropRegion(pageRaster, page.Width, page.Height,
                                 b.Left, b.Top, b.Width, b.Height);
-                            if (cropped != null && !IsSolidColor(cropped))
+                            if (cropped != null && !RasterUtil.IsSolidColor(cropped))
                                 png = cropped;
                             else if (masked && (png == null || png.Length == 0))
                                 png = EncodePng(img); // нет Ghostscript — маскированную берём как есть (может быть чёрный фон), лучше чем терять
-                            if (png == null || png.Length == 0 || IsSolidColor(png))
+                            if (png == null || png.Length == 0 || RasterUtil.IsSolidColor(png))
                                 continue; // и фолбэк не помог (нет GS / область пустая) — пропускаем
                         }
 
@@ -614,33 +621,6 @@ namespace ExcelMerger
                 }
             }
             catch { return null; } // сырьё не декодируется в растр — пропускаем картинку
-        }
-
-        /// <summary>
-        /// Одноцветный ли растр (все опрошенные пиксели одного цвета). Признак сбоя декодера
-        /// PDF-картинки (напр. штрих-код выходит сплошным чёрным прямоугольником) — такое
-        /// изображение бессмысленно, его лучше не переносить. Сбой чтения — не считаем одноцветным.
-        /// </summary>
-        private static bool IsSolidColor(byte[] png)
-        {
-            try
-            {
-                using (var ms = new MemoryStream(png))
-                using (var bmp = new System.Drawing.Bitmap(ms))
-                {
-                    int w = bmp.Width, h = bmp.Height;
-                    if (w < 2 || h < 2)
-                        return true; // 1-пиксельный растр смысла не несёт — считаем вырожденным
-                    int stepX = Math.Max(1, w / 16), stepY = Math.Max(1, h / 16);
-                    int first = bmp.GetPixel(0, 0).ToArgb();
-                    for (int y = 0; y < h; y += stepY)
-                        for (int x = 0; x < w; x += stepX)
-                            if (bmp.GetPixel(x, y).ToArgb() != first)
-                                return false; // нашёлся другой цвет — не одноцветный
-                    return true;
-                }
-            }
-            catch { return false; } // не декодировали — не считаем одноцветным (пусть проходит)
         }
 
         // Классификация отрезка как линовки: отклонение от оси (pt) и минимальная длина.
