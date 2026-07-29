@@ -109,7 +109,7 @@ namespace ExcelMerger
             // вправо и по центру, а описание читается заметно ровнее выключенным по ширине.
             // Выделять и копировать текст по-прежнему можно — это тот же TextBoxBase.
             if (paragraph)
-                return JustifiedParagraph(text, x, y, width);
+                return JustifiedText.Paragraph(this, text, x, y, width, Theme.TextPrimary);
             var tb = new TextBox();
             tb.Multiline = false;
             tb.WordWrap = false;
@@ -124,101 +124,6 @@ namespace ExcelMerger
             tb.SetBounds(x, y, width, 20);
             Controls.Add(tb);
             return tb;
-        }
-
-        /// <summary>
-        /// Абзац, выключенный ПО ШИРИНЕ. WinForms такого выравнивания не предлагает ни у
-        /// TextBox, ни у RichTextBox (в перечислении только лево/право/центр), поэтому
-        /// выставляем его формату абзаца напрямую сообщением EM_SETPARAFORMAT — это штатный
-        /// способ, которым пользуется и сам элемент для остальных выравниваний.
-        /// </summary>
-        private RichTextBox JustifiedParagraph(string text, int x, int y, int width)
-        {
-            var rtb = new RichTextBox();
-            rtb.Multiline = true;
-            rtb.WordWrap = true;
-            rtb.ScrollBars = RichTextBoxScrollBars.None;
-            rtb.BorderStyle = BorderStyle.None;
-            rtb.BackColor = Color.White;
-            rtb.ForeColor = Theme.TextPrimary;
-            rtb.Font = Font;
-            rtb.TabStop = false;
-            rtb.ReadOnly = true;
-            rtb.Text = text;
-            rtb.SetBounds(x, y, width, ParagraphHeight(text, width));
-            // Формат абзаца хранится в самом окне элемента, а WinForms окно пересоздаёт (смена
-            // родителя, пересборка интерфейса) — поэтому ставим выключку на КАЖДОЕ создание
-            // хэндла, иначе разовая установка в конструкторе однажды потерялась бы.
-            rtb.HandleCreated += delegate { Justify(rtb); };
-            Controls.Add(rtb);
-            return rtb;
-        }
-
-        private const int WmUser = 0x0400;
-        private const int EmGetParaFormat = WmUser + 61;
-        private const int EmSetParaFormat = WmUser + 71;
-        private const int PfmAlignment = 0x00000008;
-        private const short PfaJustify = 4;  // выключка по ширине
-
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        private struct ParaFormat2
-        {
-            public int cbSize, dwMask;
-            public short wNumbering, wReserved;
-            public int dxStartIndent, dxRightIndent, dxOffset;
-            public short wAlignment, cTabCount;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 32)]
-            public int[] rgxTabs;
-            public int dySpaceBefore, dySpaceAfter, dyLineSpacing;
-            public short sStyle;
-            public byte bLineSpacingRule, bOutlineLevel;
-            public short wShadingWeight, wShadingStyle;
-            public short wNumberingStart, wNumberingStyle, wNumberingTab, wBorderSpace, wBorderWidth, wBorders;
-        }
-
-        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref ParaFormat2 lParam);
-
-        /// <summary>Выключить весь текст по ширине. Сбой не критичен — останется обычная выключка влево.</summary>
-        private static void Justify(RichTextBox rtb)
-        {
-            try
-            {
-                var fmt = new ParaFormat2();
-                fmt.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(ParaFormat2));
-                fmt.dwMask = PfmAlignment;
-                fmt.wAlignment = PfaJustify;
-                fmt.rgxTabs = new int[32];
-                // Сообщение действует на абзацы ВЫДЕЛЕНИЯ (wParam обязан быть нулём), поэтому
-                // выделяем всё, применяем и снимаем выделение — на экране это не мелькает.
-                rtb.SelectAll();
-                SendMessage(rtb.Handle, EmSetParaFormat, IntPtr.Zero, ref fmt);
-                rtb.Select(0, 0);
-            }
-            catch { } // выключка — оформление, а не работа: не получилось, текст всё равно читается
-        }
-
-        /// <summary>Выключен ли абзац по ширине (спрашиваем сам элемент). Нужно тесту раскладки.</summary>
-        internal static bool IsJustified(RichTextBox rtb)
-        {
-            var fmt = new ParaFormat2();
-            fmt.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(ParaFormat2));
-            fmt.rgxTabs = new int[32];
-            SendMessage(rtb.Handle, EmGetParaFormat, IntPtr.Zero, ref fmt);
-            return (fmt.dwMask & PfmAlignment) != 0 && fmt.wAlignment == PfaJustify;
-        }
-
-        /// <summary>
-        /// Высота абзаца под заданную ширину. Меряем чуть более узкой строкой и добавляем запас:
-        /// TextBox переносит слова по своей внутренней ширине, которая на пару пикселей меньше
-        /// заданной, и без запаса последняя строка обрезалась бы.
-        /// </summary>
-        private int ParagraphHeight(string text, int width)
-        {
-            const int Inset = 4; // внутренние поля TextBox с обеих сторон
-            Size measured = TextRenderer.MeasureText(text, Font,
-                new Size(Math.Max(width - Inset, 1), int.MaxValue), TextFormatFlags.WordBreak);
-            return measured.Height + Inset;
         }
 
     }

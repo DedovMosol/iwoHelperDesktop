@@ -333,6 +333,8 @@ namespace ExcelMerger.Tests
             Run("Обновления: окно показывается один раз, сторож отпускает", TestUpdateWindowShownOnce);
             Run("Обновления: настройки не затираются устаревшим Save", TestUpdatePrefsNotClobbered);
             Run("Обновления: подпись флажка помещается в диалог на обоих языках", TestUpdateSkipCaptionFits);
+            Run("Настройки (живое): три действия истории — в ряд и без обрезки подписей", TestSettingsHistoryRowLive);
+            Run("Хаб (живое): значки настроек и справки доступны с клавиатуры и диктору", TestHubIconButtonsLive);
             Run("Настройки (живое): флажок пишется, «снова напоминать» появляется по делу", TestSettingsUpdateControlsLive);
 
             Run("XmlText: экранируются & < > и кавычка", TestXmlEscape);
@@ -358,6 +360,7 @@ namespace ExcelMerger.Tests
             Run("PPTX: прочерк-заполнитель на слайд не переносится", TestPptxFillerRule);
             Run("Разбор для слайда: далеко разнесённые строки — разные блоки", TestSlideGapBreak);
             Run("PPTX: однострочная надпись не переносится, многострочная переносится", TestPptxSingleLine);
+            Run("PPTX: многострочный абзац — ОДНА надпись со строками на своих местах", TestPptxParagraphKeptWhole);
             Run("PPTX: поправка на подъёмную часть строки", TestPptxAscentGap);
             Run("PPTX: подложка — фон слайда, а при вписывании — закреплённая картинка", TestPptxBackground);
             Run("PPTX: разрешение подложек падает с ростом числа страниц", TestPptxBackgroundDpi);
@@ -368,7 +371,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 332;
+            const int MinTests = 335;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -1384,7 +1387,7 @@ namespace ExcelMerger.Tests
                         // Спрашиваем сам элемент, иначе откат к левому краю прошёл бы незаметно.
                         var rich = box as System.Windows.Forms.RichTextBox;
                         if (rich == null) { failure = "описание не RichTextBox — выключка по ширине невозможна"; return; }
-                        if (!AboutForm.IsJustified(rich)) { failure = "описание не выключено по ширине"; return; }
+                        if (!JustifiedText.IsJustified(rich)) { failure = "описание не выключено по ширине"; return; }
 
                         // Высота поля считается по замеру текста, поэтому проверяем НЕ формулу,
                         // а факт: спрашиваем у самого поля, где легла последняя строка после
@@ -4389,6 +4392,44 @@ namespace ExcelMerger.Tests
             AssertTrue(wraps.Contains("square"), "многострочная — с переносом по своей ширине");
         }
 
+        private static void TestPptxParagraphKeptWhole()
+        {
+            // Абзац из трёх строк с НЕРАВНОМЕРНЫМ шагом: 20 pt между первой и второй, 30 —
+            // между второй и третьей (между смысловыми частями отступ больше).
+            PdfPageText page = PptxPage(600, 800);
+            var par = new OcrParagraph
+            {
+                LeftPt = 60, TopPt = 700, RightPt = 500, BottomPt = 640,
+                Alignment = OcrAlignment.Left, LineCount = 3
+            };
+            par.LineTopsPt.Add(700);
+            par.LineTopsPt.Add(680);
+            par.LineTopsPt.Add(650);
+            par.MinLeftPt = 40; // вторая и третья строки левее первой — красная строка
+            par.Runs.Add(new OcrRun { Text = "первая", FontSizePt = 12 });
+            par.Runs.Add(new OcrRun { Text = "вторая", FontSizePt = 12, StartsLine = true });
+            par.Runs.Add(new OcrRun { Text = "третья", FontSizePt = 12, StartsLine = true });
+            page.Paragraphs.Add(par);
+
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+            var shapes = new List<XElement>(slide.Descendants(PptxP + "sp"));
+            AssertEqual(1, shapes.Count, "абзац остаётся ОДНОЙ надписью — иначе его не выделить целиком");
+
+            var paras = new List<XElement>(shapes[0].Descendants(PptxA + "p"));
+            AssertEqual(3, paras.Count, "строка источника = свой абзац разметки (у каждой свой шаг)");
+
+            var pitches = new List<string>();
+            foreach (XElement spc in slide.Descendants(PptxA + "spcPts"))
+                pitches.Add((string)spc.Attribute("val"));
+            AssertTrue(pitches.Contains("2000"), "шаг 20 pt перенесён");
+            AssertTrue(pitches.Contains("3000"), "увеличенный шаг 30 pt тоже — иначе низ абзаца уедет вверх");
+
+            XElement pPr = PptxFirst(shapes[0].Descendants(PptxA + "pPr"));
+            AssertEqual(PptxGeometry.Emu(20).ToString(), (string)pPr.Attribute("indent"),
+                "красная строка — отступом первой строки, а не сдвигом всей рамки");
+            AssertEqual("перваявтораятретья", PptxAllText(slide), "текст на месте и в порядке");
+        }
+
         private static void TestPptxAscentGap()
         {
             // Значение измерено настоящим PowerPoint (см. PptxWriter.AscentGapFactor): без
@@ -4397,6 +4438,9 @@ namespace ExcelMerger.Tests
             AssertEqual(6.96, Math.Round(PptxWriter.AscentGapPt(24), 6), "двадцать четвёртый");
             AssertEqual(PptxWriter.AscentGapPt(FontResolver.DefaultFontSize), PptxWriter.AscentGapPt(0),
                 "неизвестный кегль — как у кегля по умолчанию");
+            // Многострочный абзац: первую строку читатель отсчитывает от ШАГА, а не от кегля.
+            AssertEqual(9.6, Math.Round(PptxWriter.AscentGapPt(20, 30), 6), "шаг 30 при кегле 20");
+            AssertEqual(0.0, PptxWriter.AscentGapPt(20, 5), "шаг меньше строки — поправка нулевая, а не отрицательная");
         }
 
         private static void TestPptxBackground()
@@ -6363,6 +6407,91 @@ namespace ExcelMerger.Tests
             AssertTrue(offenders.Count == 0, "раскладка диалогов: " + string.Join(" | ", offenders.ToArray()));
         }
 
+        /// <summary>Выполнить действие на STA-потоке: окна WinForms другого не терпят.</summary>
+        private static void RunSta(Action action)
+        {
+            Exception error = null;
+            var th = new System.Threading.Thread(delegate()
+            {
+                try { action(); }
+                catch (Exception ex) { error = ex; }
+            });
+            th.SetApartmentState(System.Threading.ApartmentState.STA);
+            th.IsBackground = true;
+            th.Start();
+            th.Join();
+            if (error != null)
+                throw new Exception(error.GetType().Name + ": " + error.Message);
+        }
+
+        /// <summary>
+        /// Три действия истории стоят В РЯД и подписи в них ПОМЕЩАЮТСЯ. Обрезанная подпись
+        /// здесь опаснее обычного: «Очистить историю» — необратимое действие, и от соседей
+        /// оно должно отличаться словами, а не догадкой.
+        /// </summary>
+        private static void TestSettingsHistoryRowLive()
+        {
+            var offenders = new List<string>();
+            RunSta(delegate
+            {
+                using (var f = new SettingsForm())
+                {
+                    IntPtr handle = f.Handle; // создать окно и разложить контролы
+                    if (handle == IntPtr.Zero) { offenders.Add("окно не создалось"); return; }
+                    var row = new List<RoundedButton>();
+                    foreach (System.Windows.Forms.Control c in f.Controls)
+                    {
+                        var b = c as RoundedButton;
+                        if (b == null) continue;
+                        if (b.Text == Loc.T("settings.btn.historyShow")
+                            || b.Text == Loc.T("settings.btn.historyClear")
+                            || b.Text == Loc.T("settings.btn.stats"))
+                            row.Add(b);
+                    }
+                    if (row.Count != 3) { offenders.Add("кнопок истории: " + row.Count); return; }
+                    foreach (RoundedButton b in row)
+                    {
+                        if (b.Top != row[0].Top)
+                            offenders.Add("«" + b.Text + "» не в одном ряду с остальными");
+                        int room = b.Width - 2 * RoundedButton.TextPadFor(b.Width);
+                        int need = System.Windows.Forms.TextRenderer.MeasureText(b.Text, b.Font).Width;
+                        if (need > room)
+                            offenders.Add("«" + b.Text + "» не помещается: нужно " + need + ", есть " + room);
+                        if (b.Right > f.ClientSize.Width)
+                            offenders.Add("«" + b.Text + "» вылезает за край окна");
+                    }
+                }
+            });
+            AssertTrue(offenders.Count == 0, "ряд действий истории: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Значки нижнего ряда хаба (шестерня и справка) остались ДОСТУПНЫ: у кнопки без
+        /// подписи это единственный способ узнать, что она делает — и для экранного диктора,
+        /// и для человека, который наводит мышь.
+        /// </summary>
+        private static void TestHubIconButtonsLive()
+        {
+            var offenders = new List<string>();
+            RunSta(delegate
+            {
+                using (var hub = new StartForm())
+                {
+                    IntPtr handle = hub.Handle;
+                    if (handle == IntPtr.Zero) { offenders.Add("хаб не создался"); return; }
+                    var named = new List<string>();
+                    foreach (System.Windows.Forms.Control c in hub.Controls)
+                        if (c.AccessibleName != null && c.AccessibleName.Length > 0 && c.TabStop)
+                            named.Add(c.AccessibleName);
+                    if (!named.Contains(Loc.T("settings.title")))
+                        offenders.Add("у шестерни нет имени для диктора");
+                    if (!named.Contains(Loc.T("hub.about")))
+                        offenders.Add("у справки нет имени для диктора");
+                }
+            });
+            AssertTrue(offenders.Count == 0, "значки нижнего ряда: " + string.Join(" | ", offenders.ToArray()));
+        }
+
         /// <summary>
         /// Окно «Настройки» на НАСТОЯЩИХ контролах: флажок показывает то, что на диске, его
         /// переключение сразу пишется, а кнопка «снова напоминать» есть ровно тогда, когда
@@ -7006,6 +7135,11 @@ namespace ExcelMerger.Tests
                 AssertTrue(titleY >= 0, "заголовок не выше шапки" + at);
                 AssertTrue(titleY + titleH <= subtitleY, "заголовок не наезжает на подпись" + at);
                 AssertTrue(subtitleY + subtitleH <= band, "подпись не свисает из шапки" + at);
+                // Блок стоит ПО ЦЕНТРУ полосы: сверху и снизу остаётся поровну (в пределах
+                // округления на нечётной высоте). Прижатый к низу блок оставлял пустую синеву.
+                int above = titleY, below = band - (subtitleY + subtitleH);
+                AssertTrue(Math.Abs(above - below) <= 1,
+                    "текст по центру полосы" + at + " (сверху " + above + ", снизу " + below + ")");
 
                 // Глобус языка выравнивается по центру текстового блока: он обязан оказаться
                 // внутри блока и целиком внутри шапки на любом масштабе, иначе иконка снова
@@ -7017,6 +7151,12 @@ namespace ExcelMerger.Tests
                 int iconTop = center - iconH / 2;
                 AssertTrue(iconTop >= 0 && iconTop + iconH <= band,
                     "иконка по этому центру целиком внутри шапки" + at + " (top=" + iconTop + ", h=" + iconH + ")");
+
+                // Шапка без подписи: центрируется ОДИН заголовок, пустая строка места не занимает.
+                int soloTitleY, soloSubY;
+                HeaderBand.TextRows(band, titleH, 0, out soloTitleY, out soloSubY);
+                AssertTrue(Math.Abs(soloTitleY - (band - titleH) / 2) <= 1,
+                    "без подписи по центру стоит сам заголовок" + at);
             }
         }
 

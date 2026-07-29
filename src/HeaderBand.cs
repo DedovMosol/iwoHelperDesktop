@@ -98,7 +98,7 @@ namespace ExcelMerger
 
             // Высоты строк — РЕАЛЬНЫЕ высоты шрифтов: они заданы в пунктах и растут вместе с
             // масштабом экрана, поэтому фиксированные прямоугольники срезали бы низ букв.
-            int titleH = TitleFont.Height, subtitleH = Font.Height;
+            int titleH = TitleFont.Height, subtitleH = _subtitle.Length > 0 ? Font.Height : 0;
             int titleY, subtitleY;
             TextRows(Height, titleH, subtitleH, out titleY, out subtitleY);
             TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis |
@@ -143,20 +143,26 @@ namespace ExcelMerger
             }
         }
 
-        private const int BottomPad = 8; // просвет между подписью и нижней гранью шапки
         private const int RowGap = 2;    // просвет между заголовком и подписью
 
         /// <summary>
-        /// Вертикальная раскладка шапки: подпись прижата к низу, заголовок стоит над ней.
-        /// Высоты строк приходят снаружи, потому что это РЕАЛЬНЫЕ высоты шрифтов — они
-        /// заданы в пунктах и растут с масштабом экрана. Фиксированные прямоугольники
-        /// (было 26 и 20) на 125% и выше срезали низ заголовка. Чистая — под тест.
+        /// Вертикальная раскладка шапки: блок «заголовок + подпись» стоит ПО ЦЕНТРУ полосы.
+        /// Раньше он был прижат к низу, и над ним оставалась пустая синева — на глаз шапка
+        /// выглядела съехавшей. Высоты строк приходят снаружи, потому что это РЕАЛЬНЫЕ высоты
+        /// шрифтов: они заданы в пунктах и растут с масштабом экрана, а фиксированные
+        /// прямоугольники (было 26 и 20) на 125% и выше срезали низ заголовка.
+        /// subtitleHeight = 0 означает «подписи нет» — тогда центрируется один заголовок.
+        /// Чистая — под тест.
         /// </summary>
         internal static void TextRows(int bandHeight, int titleHeight, int subtitleHeight,
             out int titleY, out int subtitleY)
         {
-            subtitleY = bandHeight - BottomPad - subtitleHeight;
-            titleY = subtitleY - RowGap - titleHeight;
+            int gap = subtitleHeight > 0 ? RowGap : 0;
+            int blockHeight = titleHeight + gap + subtitleHeight;
+            titleY = (bandHeight - blockHeight) / 2;
+            if (titleY < 0)
+                titleY = 0; // полоса ниже текста — верх важнее низа, иначе срежется заголовок
+            subtitleY = titleY + titleHeight + gap;
         }
 
         /// <summary>
