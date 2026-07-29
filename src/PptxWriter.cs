@@ -36,6 +36,9 @@ namespace ExcelMerger
         private const double WidthSlackFraction = 0.04;
         private const double WidthSlackMinPt = 2;
 
+        /// <summary>Отступ первой строки меньше этого — шум измерения, а не красная строка.</summary>
+        private const double MinIndentPt = 1.5;
+
         /// <summary>Высота вырожденной рамки: строка кегля N занимает примерно столько.</summary>
         private const double LineHeightFactor = 1.25;
 
@@ -54,6 +57,12 @@ namespace ExcelMerger
         /// пункта против прежних четырёх-восьми.
         /// </summary>
         private const double AscentGapFactor = 0.29;
+
+        /// <summary>
+        /// Сколько от шага строк приходится на саму строку (в долях кегля) — остаток и есть
+        /// зазор над буквами. Измерено вместе с <see cref="AscentGapFactor"/>.
+        /// </summary>
+        private const double BaselineDropFactor = 1.02;
 
         /// <summary>
         /// Во сколько кеглей укладывается ОДНА строка. Всё, что выше, — многострочный абзац.
@@ -306,12 +315,17 @@ namespace ExcelMerger
 
             private void AppendParagraph(OcrParagraph paragraph)
             {
-                string body = Runs(paragraph);
-                if (body.Length == 0)
+                List<string> lines = LineBodies(paragraph);
+                if (lines.Count == 0)
                     return; // пустой абзац фигуры не заслуживает: пустая рамка мешает править слайд
 
-                double leftPt = paragraph.LeftPt;
-                double widthPt = paragraph.RightPt - paragraph.LeftPt;
+                // Левый край рамки — по самой левой строке абзаца, а не по первой: у абзаца с
+                // красной строкой первая строка начинается правее, и рамка по ней сдвинула бы
+                // все остальные. Сама красная строка возвращается отступом первой строки.
+                double leftPt = paragraph.MinLeftPt > 0 && paragraph.MinLeftPt < paragraph.LeftPt
+                    ? paragraph.MinLeftPt : paragraph.LeftPt;
+                double firstIndentPt = paragraph.LeftPt - leftPt;
+                double widthPt = paragraph.RightPt - leftPt;
                 double heightPt = paragraph.TopPt - paragraph.BottomPt;
                 double fontPt = FirstFontSizePt(paragraph);
                 // Абзац, занимавший в источнике ОДНУ строку, переноситься не должен: он уже
@@ -325,11 +339,11 @@ namespace ExcelMerger
                     heightPt = fontPt * LineHeightFactor; // вырожденная рамка — строка своего кегля
                 // Рамку поднимаем на подъёмную часть строки и на неё же увеличиваем — иначе
                 // текст сядет ниже, чем стоял в источнике (см. AscentGapFactor).
-                double ascentGap = AscentGapPt(fontPt);
+                double ascentGap = AscentGapPt(fontPt, LinePitchPt(paragraph, 0));
                 double boxTopPt = paragraph.TopPt + ascentGap;
                 heightPt += ascentGap;
 
-                var sb = new StringBuilder(body.Length + 512);
+                var sb = new StringBuilder(1024);
                 sb.Append("<p:sp><p:nvSpPr><p:cNvPr id=\"").Append(PptxParts.Num(_shapeId))
                   .Append("\" name=\"TextBox ").Append(PptxParts.Num(_shapeId)).Append("\"/>");
                 sb.Append("<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>");
@@ -345,7 +359,10 @@ namespace ExcelMerger
                 // У однострочной надписи рамка обнимает сам текст, поэтому её левый край и есть
                 // точное место строки — выравнивание здесь только сдвинуло бы её на запас ширины.
                 OcrAlignment align = singleLine ? OcrAlignment.Left : paragraph.Alignment;
-                sb.Append("<a:p>").Append(ParagraphProps(paragraph, align)).Append(body).Append("</a:p>");
+                for (int i = 0; i < lines.Count; i++)
+                    sb.Append("<a:p>")
+                      .Append(ParagraphProps(paragraph, align, i == 0 ? firstIndentPt : 0, LinePitchPt(paragraph, i)))
+                      .Append(lines[i]).Append("</a:p>");
                 sb.Append("</p:txBody></p:sp>");
                 _shapes.Append(sb);
                 _shapeId++;
@@ -358,10 +375,13 @@ namespace ExcelMerger
             /// стали бы «1.». Литеральный маркер сохраняет и вид, и номер.
             /// </summary>
             /// <summary>
-            /// Свойства абзаца. Межстрочный интервал не задаём вовсе: строка источника — это
-            /// отдельная надпись, и внутри неё второй строки не бывает (см. PageLayoutMode).
+            /// Свойства абзаца: выравнивание, отступ первой строки и ТОЧНЫЙ шаг строк из
+            /// источника. Шаг задаётся в пунктах, а не процентами: перевёрстки внутри надписи
+            /// нет (строки разделены явными переводами), и строки обязаны встать ровно с тем
+            /// шагом, с каким стояли, иначе низ абзаца уедет от того, что под ним нарисовано.
             /// </summary>
-            private static string ParagraphProps(OcrParagraph paragraph, OcrAlignment alignment)
+            private static string ParagraphProps(OcrParagraph paragraph, OcrAlignment alignment,
+                double firstIndentPt, double lineSpacingPt)
             {
                 string align;
                 switch (alignment)
@@ -370,8 +390,75 @@ namespace ExcelMerger
                     case OcrAlignment.Justify: align = "just"; break;
                     default: align = "l"; break;
                 }
-                string bullet = paragraph.ListKind == ListKind.None ? string.Empty : "<a:buNone/>";
-                return "<a:pPr algn=\"" + align + "\">" + bullet + "</a:pPr>";
+                var sb = new StringBuilder(128);
+                sb.Append("<a:pPr");
+                if (firstIndentPt > MinIndentPt)
+                    sb.Append(" marL=\"0\" indent=\"").Append(PptxParts.Num(PptxGeometry.Emu(firstIndentPt))).Append('"');
+                sb.Append(" algn=\"").Append(align).Append("\">");
+                // Порядок детей задан схемой: межстрочный интервал раньше маркера.
+                if (lineSpacingPt > 0)
+                    sb.Append("<a:lnSpc><a:spcPts val=\"")
+                      .Append(PptxParts.Num((int)Math.Round(lineSpacingPt * 100))).Append("\"/></a:lnSpc>");
+                if (paragraph.ListKind != ListKind.None)
+                    sb.Append("<a:buNone/>");
+                sb.Append("</a:pPr>");
+                return sb.ToString();
+            }
+
+            /// <summary>
+            /// Шаг для строки по её номеру: расстояние от верха предыдущей строки источника.
+            /// У первой строки своего расстояния нет — берём шаг второй, потому что именно он
+            /// задаёт, где внутри рамки окажется первая строка. 0 — строка одна.
+            /// </summary>
+            private static double LinePitchPt(OcrParagraph paragraph, int index)
+            {
+                List<double> tops = paragraph.LineTopsPt;
+                if (tops == null || tops.Count < 2)
+                    return 0;
+                int i = index > 0 ? index : 1;
+                if (i >= tops.Count)
+                    return 0;
+                double pitch = tops[i - 1] - tops[i];
+                return pitch > 0 ? pitch : 0;
+            }
+
+            /// <summary>
+            /// Разметка ранов, разложенная ПО СТРОКАМ источника: каждая строка получит свой
+            /// абзац разметки со своим шагом. Строки без видимого текста пропускаются.
+            /// </summary>
+            private List<string> LineBodies(OcrParagraph paragraph)
+            {
+                var result = new List<string>();
+                if (paragraph.Runs == null || paragraph.Runs.Count == 0)
+                    return result;
+                var sb = new StringBuilder(256);
+                bool anyVisible = false;
+                foreach (OcrRun run in paragraph.Runs)
+                {
+                    if (run.StartsLine && sb.Length > 0)
+                    {
+                        result.Add(anyVisible ? sb.ToString() : string.Empty);
+                        sb.Length = 0;
+                        anyVisible = false;
+                    }
+                    if (IsFillerRule(run.Text))
+                        continue;
+                    string text = XmlText.Sanitize(run.Text);
+                    if (text.Length == 0)
+                        continue;
+                    if (text.Trim().Length > 0)
+                        anyVisible = true;
+                    sb.Append("<a:r>").Append(RunProps(run, text)).Append("<a:t>")
+                      .Append(XmlText.Escape(text)).Append("</a:t></a:r>");
+                }
+                result.Add(anyVisible ? sb.ToString() : string.Empty);
+                // Пустые строки в конце убираем, внутри — оставляем: они держат вертикальный ритм.
+                while (result.Count > 0 && result[result.Count - 1].Length == 0)
+                    result.RemoveAt(result.Count - 1);
+                bool any = false;
+                foreach (string line in result)
+                    if (line.Length > 0) { any = true; break; }
+                return any ? result : new List<string>();
             }
 
             private string Runs(OcrParagraph paragraph)
@@ -389,6 +476,10 @@ namespace ExcelMerger
                         continue;
                     if (text.Trim().Length > 0)
                         anyVisible = true;
+                    // Перевод строки источника — явным разрывом: перевёрстывать текст на слайде
+                    // нечем, а строка обязана начаться там же, где начиналась.
+                    if (run.StartsLine && sb.Length > 0)
+                        sb.Append("<a:br/>");
                     sb.Append("<a:r>").Append(RunProps(run, text)).Append("<a:t>")
                       .Append(XmlText.Escape(text)).Append("</a:t></a:r>");
                 }
@@ -541,7 +632,9 @@ namespace ExcelMerger
                         OcrAlignment align = paragraph.Alignment == OcrAlignment.Justify
                             ? OcrAlignment.Left
                             : paragraph.Alignment;
-                        sb.Append("<a:p>").Append(ParagraphProps(paragraph, align)).Append(body).Append("</a:p>");
+                        // В ячейке ни красной строки, ни своего шага строк не воспроизводим:
+                        // высоту строки задаёт сама таблица.
+                        sb.Append("<a:p>").Append(ParagraphProps(paragraph, align, 0, 0)).Append(body).Append("</a:p>");
                     }
                 if (sb.Length == 0)
                     sb.Append("<a:p/>");
@@ -643,10 +736,27 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Подъёмная часть строки в пунктах (см. <see cref="AscentGapFactor"/>). Чистая — под тест.</summary>
-        internal static double AscentGapPt(double fontPt)
+        /// <summary>
+        /// На сколько поднять рамку, чтобы буквы встали туда, где стояли в источнике.
+        ///
+        /// Случая два, и считаются они по-разному. Когда абзац МНОГОСТРОЧНЫЙ, шаг строк задан
+        /// точно (в пунктах), и первую строку читатель отсчитывает ОТ ШАГА, а не от кегля:
+        /// низ первой строки лежит на её базовой линии, поднятой на шаг. Когда строка ОДНА,
+        /// шага нет, и высоту строки читатель берёт из метрик шрифта.
+        ///
+        /// Оба коэффициента измерены прогоном через настоящий PowerPoint (одна строка и три
+        /// строки с известным шагом, сравнение по первому пикселю чернил): одиночная строка
+        /// дала 0,29 кегля, многострочная — «шаг минус 1,02 кегля» с остаточной ошибкой
+        /// меньше трети пункта на Arial 12/24 и Times 18. Чистая — под тест.
+        /// </summary>
+        internal static double AscentGapPt(double fontPt, double linePitchPt = 0)
         {
             double font = fontPt > 0 ? fontPt : FontResolver.DefaultFontSize;
+            if (linePitchPt > 0)
+            {
+                double gap = linePitchPt - BaselineDropFactor * font;
+                return gap > 0 ? gap : 0;
+            }
             return AscentGapFactor * font;
         }
 

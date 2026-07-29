@@ -33,6 +33,10 @@ namespace ExcelMerger
     public class OcrRun
     {
         public string Text;
+        // Ран начинает НОВУЮ строку источника. Потоковому выводу это не нужно — он ломает
+        // строки сам; выводу по координатам нужно: перевёрстывать он не умеет, и строки в
+        // надписи разделяются явным переводом, чтобы встать там же, где стояли.
+        public bool StartsLine;
         public double FontSizePt; // 0 — неизвестно, писать кеглем по умолчанию
         public bool Bold;
         public bool Italic;
@@ -58,6 +62,14 @@ namespace ExcelMerger
         // ≈ рамке страницы — отступы не применяются. 0 — колонка не размечена (обычный текст).
         public double BlockLeftPt;
         public double BlockRightPt;
+
+        // Геометрия строк абзаца — для вывода по координатам (потоковому не нужна).
+        public int LineCount;        // сколько строк занимал абзац в источнике
+        public double MinLeftPt;     // самый левый край среди строк (LeftPt — край ПЕРВОЙ строки)
+        // Верх КАЖДОЙ строки (pt, ось вверх). Именно каждой, а не общий шаг: внутри абзаца
+        // интервал бывает неравномерным (увеличенный отступ между смысловыми частями), и
+        // единственным шагом его не выразить — всё, что ниже увеличенного промежутка, уезжает.
+        public List<double> LineTopsPt = new List<double>();
 
         // Список: вид маркера в начале абзаца и номер (для нумерованного). None — обычный абзац.
         // ListContentStart — индекс в Text, с которого идёт содержимое (маркер снимается при записи —
@@ -396,13 +408,9 @@ namespace ExcelMerger
             // себя. Поэтому режем только группы ИЗ ОДНОЙ строки — у сплошного текста таких нет.
             if (mode == PageLayoutMode.Slide)
             {
-                // Слайд ставит надписи по координатам, и перевёрстывать текст ему нечем: чужой
-                // движок ломает строки по СВОИМ метрикам, и абзац из тринадцати строк выходит
-                // из одиннадцати — а подчёркивания, рамки и линовка приходят подложкой и
-                // остаются на СВОИХ местах, начиная пересекать буквы. Поэтому строка источника
-                // = отдельная надпись: тогда каждая стоит там, где стояла, и ничего не едет.
-                // Цена — абзац правится построчно; за это платим осознанно, см. справку окна.
-                ExplodeToLines(groups, groupCentered);
+                // Строка-россыпь подписей раскладывается по своим рамкам; связный абзац
+                // остаётся ЦЕЛЫМ и правится целиком — переводы строк внутри него писатель
+                // поставит явно, не полагаясь на чужую перевёрстку.
                 SplitSingleLineGroups(groups, groupCentered, em);
             }
 
@@ -417,9 +425,19 @@ namespace ExcelMerger
                     if (ln.Right > right) right = ln.Right;
                     if (ln.Bottom < bottom) bottom = ln.Bottom;
                 }
+                double minLeft = double.MaxValue;
+                var lineTops = new List<double>(g.Count);
+                for (int li = 0; li < g.Count; li++)
+                {
+                    if (g[li].Left < minLeft) minLeft = g[li].Left;
+                    lineTops.Add(g[li].Top);
+                }
                 var para = new OcrParagraph
                 {
-                    Runs = BuildRuns(g),
+                    Runs = BuildRuns(g, mode),
+                    LineCount = g.Count,
+                    MinLeftPt = minLeft,
+                    LineTopsPt = lineTops,
                     // Центрированность решена на уровне прогона; иначе — выключка или левый край.
                     Alignment = groupCentered[gi] ? OcrAlignment.Center : DetectAlignment(g, bodyRight, em),
                     TopPt = g[0].Top,
@@ -533,8 +551,13 @@ namespace ExcelMerger
         /// см. BuildRuns), а при смене формата (кегль/жирный/курсив/цвет) начинается новый ран —
         /// формат сохраняется пословно, а не на весь абзац.
         /// </summary>
-        private static List<OcrRun> BuildRuns(List<Line> group)
+        private static List<OcrRun> BuildRuns(List<Line> group, PageLayoutMode mode)
         {
+            // Вывод по координатам сохраняет переводы строк источника: он не перевёрстывает
+            // текст, поэтому строки не склеиваются пробелом и перенос по дефису не снимается —
+            // строка обязана выглядеть ровно так, как её нарисовали.
+            bool keepLineBreaks = mode == PageLayoutMode.Slide;
+            var lineStart = new List<bool>();
             // 1) Плоский список слов в порядке чтения: текст (с возможным снятием дефиса-переноса),
             //    слово-источник формата и признак пробела перед словом.
             var texts = new List<string>();
@@ -549,6 +572,10 @@ namespace ExcelMerger
                     bool space;
                     if (texts.Count == 0)
                         space = false;
+                    else if (wi == 0 && keepLineBreaks)
+                    {
+                        space = false; // перевод строки поставит писатель
+                    }
                     else if (wi == 0) // первое слово новой строки — перенос
                     {
                         int last = texts.Count - 1;
@@ -572,6 +599,7 @@ namespace ExcelMerger
                     texts.Add(text);
                     fmts.Add(ws[wi]);
                     spaceBefore.Add(space);
+                    lineStart.Add(keepLineBreaks && wi == 0 && li > 0);
                 }
             }
 
@@ -581,7 +609,7 @@ namespace ExcelMerger
             PdfWord runFmt = null;
             for (int i = 0; i < texts.Count; i++)
             {
-                if (runs.Count > 0 && runFmt != null && SameFormat(runFmt, fmts[i]))
+                if (runs.Count > 0 && runFmt != null && SameFormat(runFmt, fmts[i]) && !lineStart[i])
                 {
                     runs[runs.Count - 1].Text += (spaceBefore[i] ? " " : "") + texts[i];
                 }
@@ -600,7 +628,8 @@ namespace ExcelMerger
                         Super = fmts[i].Super,
                         Sub = fmts[i].Sub,
                         Underline = fmts[i].Underline,
-                        Uri = fmts[i].Uri
+                        Uri = fmts[i].Uri,
+                        StartsLine = lineStart[i]
                     });
                     runFmt = fmts[i];
                 }
@@ -944,25 +973,6 @@ namespace ExcelMerger
         /// Порог зазора для разрыва абзаца: типичный межстрочный зазор × коэффициент.
         /// Типичный — нижняя медиана зазоров (обычные строки плотнее абзацных разрывов).
         /// </summary>
-        /// <summary>Разложить каждую группу на отдельные строки (для вывода по координатам).</summary>
-        private static void ExplodeToLines(List<List<Line>> groups, List<bool> centered)
-        {
-            for (int gi = groups.Count - 1; gi >= 0; gi--)
-            {
-                List<Line> g = groups[gi];
-                if (g.Count < 2)
-                    continue;
-                bool wasCentered = centered[gi];
-                groups.RemoveAt(gi);
-                centered.RemoveAt(gi);
-                for (int li = g.Count - 1; li >= 0; li--)
-                {
-                    groups.Insert(gi, new List<Line> { g[li] });
-                    centered.Insert(gi, wasCentered);
-                }
-            }
-        }
-
         /// <summary>
         /// Разложить однострочные группы на куски по внутренним зазорам (порог
         /// <see cref="SlideIntraGapEmFactor"/> кегля). Многострочные группы не трогаются —
