@@ -23,8 +23,8 @@ namespace ExcelMerger
             {
                 Prefix = "pptx",
                 NameKey = "hub.pptx.name",
-                Theme = ExcelMerger.Theme.PowerPointOrange,
-                ThemeDark = ExcelMerger.Theme.PowerPointOrangeDark,
+                Theme = ExcelMerger.Theme.PowerPointBand,
+                ThemeDark = ExcelMerger.Theme.PowerPointBandDark,
                 Extension = ".pptx",
                 RequiresSta = false, // ни COM, ни WinRT — обычный фоновый поток
                 HistoryKey = "hist.op.pdftopptx",

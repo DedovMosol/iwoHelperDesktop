@@ -125,6 +125,16 @@ namespace ExcelMerger
                     word.Bottom = b;
                     word.Right = r;
                     word.Top = t;
+                    // Базовая линия — ТОЧКА, а не сторона рамки: у боковой строки она вертикальна,
+                    // и «нижний край рамки» после разворота указал бы не туда. Поворачиваем как
+                    // точку — в выправленном пространстве её Y и есть базовая линия строки.
+                    if (word.BaselineXPt != 0 || word.BaselineYPt != 0)
+                    {
+                        double bx, by;
+                        MapPoint(word.BaselineXPt, word.BaselineYPt, rotation, w, h, out bx, out by);
+                        word.BaselineXPt = bx;
+                        word.BaselineYPt = by;
+                    }
                 }
 
             if (lines != null)

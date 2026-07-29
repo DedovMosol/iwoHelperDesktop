@@ -12,6 +12,14 @@ namespace ExcelMerger
         public double Right;
         public double Bottom;
         public double Top;
+        // Начало БАЗОВОЙ ЛИНИИ слова. Рамка слова — это чернила: у строки без прописных и без
+        // выносных элементов её верх лежит на высоте строчных, то есть примерно на треть кегля
+        // ниже, чем у соседней строки, начатой с заглавной. Ставить текст на слайд по верху
+        // чернил из-за этого нельзя, а базовая линия от набора букв не зависит. Храним точкой,
+        // а не одной координатой: до выправления поворота базовая линия боковой строки
+        // вертикальна, и осмысленной становится только после PageRotation.RotatePage.
+        public double BaselineXPt;
+        public double BaselineYPt;
         public double FontSizePt; // кегль (pt); 0 — неизвестно
         public bool Bold;
         public bool Italic;
@@ -70,6 +78,10 @@ namespace ExcelMerger
         // интервал бывает неравномерным (увеличенный отступ между смысловыми частями), и
         // единственным шагом его не выразить — всё, что ниже увеличенного промежутка, уезжает.
         public List<double> LineTopsPt = new List<double>();
+        // Базовая линия КАЖДОЙ строки (pt, ось вверх) — та же нумерация, что и у LineTopsPt.
+        // Именно по ней абзац ставится на слайд: см. PdfWord.BaselineYPt. Пустой список —
+        // строки собраны не из букв (линовка, прочерки), тогда остаётся верх чернил.
+        public List<double> LineBaselinesPt = new List<double>();
 
         // Список: вид маркера в начале абзаца и номер (для нумерованного). None — обычный абзац.
         // ListContentStart — индекс в Text, с которого идёт содержимое (маркер снимается при записи —
@@ -427,17 +439,28 @@ namespace ExcelMerger
                 }
                 double minLeft = double.MaxValue;
                 var lineTops = new List<double>(g.Count);
+                var lineBaselines = new List<double>(g.Count);
+                bool allBaselines = true;
                 for (int li = 0; li < g.Count; li++)
                 {
                     if (g[li].Left < minLeft) minLeft = g[li].Left;
                     lineTops.Add(g[li].Top);
+                    double baseline = g[li].BaselinePt;
+                    if (baseline == 0) allBaselines = false;
+                    lineBaselines.Add(baseline);
                 }
+                // Либо базовые линии есть у ВСЕХ строк абзаца, либо не берём ни одной: смесь
+                // базовых линий и верхов чернил дала бы шаг строк, посчитанный между разными
+                // ориентирами, — а это ошибка больше той, ради которой всё и затевалось.
+                if (!allBaselines)
+                    lineBaselines.Clear();
                 var para = new OcrParagraph
                 {
                     Runs = BuildRuns(g, mode),
                     LineCount = g.Count,
                     MinLeftPt = minLeft,
                     LineTopsPt = lineTops,
+                    LineBaselinesPt = lineBaselines,
                     // Центрированность решена на уровне прогона; иначе — выключка или левый край.
                     Alignment = groupCentered[gi] ? OcrAlignment.Center : DetectAlignment(g, bodyRight, em),
                     TopPt = g[0].Top,
@@ -893,6 +916,26 @@ namespace ExcelMerger
                     for (int i = 0; i < Words.Count; i++)
                         if (Words[i].Bottom < b) b = Words[i].Bottom;
                     return b;
+                }
+            }
+
+            /// <summary>
+            /// Базовая линия строки — МЕДИАНА базовых линий слов. Не среднее и не крайнее:
+            /// над- и подстрочные знаки стоят на своих линиях, и одно такое слово увело бы и
+            /// среднее, и минимум, а медиана остаётся на линии основного текста. 0 — ни у
+            /// одного слова базовой линии нет (строка собрана не из букв).
+            /// </summary>
+            public double BaselinePt
+            {
+                get
+                {
+                    var values = new List<double>(Words.Count);
+                    for (int i = 0; i < Words.Count; i++)
+                        if (Words[i].BaselineYPt != 0) values.Add(Words[i].BaselineYPt);
+                    if (values.Count == 0)
+                        return 0;
+                    values.Sort();
+                    return values[values.Count / 2];
                 }
             }
         }
