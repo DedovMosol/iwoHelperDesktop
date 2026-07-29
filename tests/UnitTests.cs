@@ -372,12 +372,14 @@ namespace ExcelMerger.Tests
             Run("PPTX: шаг строк — по базовым линиям, а не по верху чернил", TestPptxPitchFromBaselines);
             Run("Разбор: базовая линия слова — медиана по буквам, поворот её переносит", TestWordBaseline);
             Run("Палитра: значок каждого инструмента отличим от соседних", TestGlyphColoursDistinct);
+            Run("Разметка PDF: строки одного блока не рвутся, разных — рвутся", TestStructureBlocksGroup);
+            Run("PPTX: у каждой строки абзаца свой отступ от края рамки", TestPptxPerLineIndent);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 341;
+            const int MinTests = 343;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -4456,11 +4458,9 @@ namespace ExcelMerger.Tests
             AssertEqual(23.76, Math.Round(PptxWriter.FirstBaselineDropPt(24), 6), "двадцать четвёртый");
             AssertEqual(PptxWriter.FirstBaselineDropPt(FontResolver.DefaultFontSize), PptxWriter.FirstBaselineDropPt(0),
                 "неизвестный кегль — как у кегля по умолчанию");
-            // Многострочный абзац: первую строку читатель отсчитывает от ШАГА, а не от кегля.
-            AssertEqual(23.6, Math.Round(PptxWriter.FirstBaselineDropPt(20, 30), 6), "шаг 30 при кегле 20");
-            AssertEqual(Math.Round(PptxWriter.FirstBaselineDropPt(20), 6),
-                Math.Round(PptxWriter.FirstBaselineDropPt(20, 5), 6),
-                "шаг меньше строки — откат к метрикам шрифта, а не рамка выше самой строки");
+            // Место ПЕРВОЙ строки от шага не зависит: точный шаг ей не задаётся вовсе, иначе
+            // при щедром интерлиньяже абзац садится ниже своего места на треть кегля.
+            AssertEqual(19.8, Math.Round(PptxWriter.FirstBaselineDropPt(20), 6), "кегль 20 — и только он");
 
             // Строка ИЗ ОДНИХ СТРОЧНЫХ букв стоит там же, где строка с заглавной: место берётся
             // от базовой линии, а верх чернил у них разный. Это и был дефект — абзац без
@@ -4528,13 +4528,15 @@ namespace ExcelMerger.Tests
             page.Paragraphs.Add(par);
 
             XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
-            foreach (XElement spc in slide.Descendants(PptxA + "spcPts"))
+            var spacings = new List<XElement>(slide.Descendants(PptxA + "spcPts"));
+            AssertEqual(2, spacings.Count, "шаг задан ВТОРОЙ и третьей строкам, а первой — нет");
+            foreach (XElement spc in spacings)
                 AssertEqual("2000", (string)spc.Attribute("val"),
                     "шаг ровный: чернила второй строки ниже, а базовая линия — на своём месте");
 
             var shapes = new List<XElement>(slide.Descendants(PptxP + "sp"));
             XElement off = PptxFirst(shapes[0].Descendants(PptxA + "off"));
-            double boxTop = 692 + PptxWriter.FirstBaselineDropPt(12, 20);
+            double boxTop = 692 + PptxWriter.FirstBaselineDropPt(12);
             AssertEqual(PptxGeometry.Emu(800 - boxTop).ToString(), (string)off.Attribute("y"),
                 "верх рамки отсчитан от базовой линии первой строки");
         }
@@ -4608,6 +4610,93 @@ namespace ExcelMerger.Tests
         private static double Brightness(System.Drawing.Color c)
         {
             return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+        }
+
+
+        /// <summary>
+        /// Размеченный PDF несёт готовые границы абзацев, и спорить с ними зазорами не нужно:
+        /// строки ОДНОГО блока остаются одним абзацем, даже когда между ними отбивка, по которой
+        /// геометрия разорвала бы. Обратного разметка не делает никогда — блок на строку (её
+        /// пишут и такую) не должен дробить сильнее прежнего. И геометрия сохраняет право вето:
+        /// строки, разнесённые на полстраницы, разные абзацы при любом номере.
+        /// </summary>
+        private static void TestStructureBlocksGroup()
+        {
+            // Красная строка у третьей строки: без разметки это граница абзаца.
+            AssertEqual(2, ParagraphsOf(-1, -1, -1, -1), "без разметки красная строка делит абзац — как и раньше");
+            AssertEqual(1, ParagraphsOf(7, 7, 7, 7), "один блок разметки — один абзац, отступ не в счёт");
+            AssertEqual(2, ParagraphsOf(7, 7, 8, 8), "разные блоки — разные абзацы");
+            AssertEqual(ParagraphsOf(-1, -1, -1, -1), ParagraphsOf(1, 2, 3, 4),
+                "блок на строку разрывов НЕ добавляет: результат тот же, что и вовсе без разметки");
+
+            // Вето геометрии — чистое условие, проверяем его напрямую: до трёх кеглей разметка
+            // разрыв снимает, дальше решает расстояние.
+            OcrLayout.Line a = OcrLine("первая", 0, 200, 60, 190);
+            OcrLayout.Line near = OcrLine("вторая", 0, 176, 60, 166);
+            OcrLayout.Line far = OcrLine("третья", 0, 140, 60, 130);
+            a.Words[0].BlockId = near.Words[0].BlockId = far.Words[0].BlockId = 5;
+            AssertTrue(OcrLayout.SameBlock(a, near, 10), "24 pt при кегле 10 — тот же блок");
+            AssertTrue(!OcrLayout.SameBlock(a, far, 10),
+                "60 pt при кегле 10 — геометрия главнее: разметка описывает логику, а не место");
+            far.Words[0].BlockId = 6;
+            AssertTrue(!OcrLayout.SameBlock(a, far, 10), "разные номера — и подавно не один блок");
+
+            // Куски ОДНОЙ физической строки (широкий зазор внутри строки) тоже несут общий
+            // номер. Слить их значит поставить друг под друга то, что стояло в строку.
+            OcrLayout.Line beside = OcrLine("рядом", 300, 200, 360, 190);
+            beside.Words[0].BlockId = 5;
+            AssertTrue(!OcrLayout.SameBlock(a, beside, 10), "куски одной строки стоят рядом, а не одна под другой");
+        }
+
+        /// <summary>Четыре строки, у третьей красная строка; номера блоков задаются по порядку.</summary>
+        private static int ParagraphsOf(int a, int b, int c, int d)
+        {
+            var words = new List<PdfWord>
+            {
+                W("первая", 0, 200, 60, 10),
+                W("вторая", 0, 188, 60, 10),
+                W("третья", 15, 176, 45, 10), // красная строка — сигнал нового абзаца
+                W("четвёртая", 0, 164, 60, 10)
+            };
+            int[] ids = { a, b, c, d };
+            for (int i = 0; i < words.Count; i++)
+                words[i].BlockId = ids[i];
+            return OcrLayout.Analyze(words).Paragraphs.Count;
+        }
+
+        /// <summary>
+        /// На слайде место строки задаёт её собственный отступ, а не выключка: рамка одна на
+        /// весь абзац, её ширина известна с точностью до запаса на чужие метрики, и «по центру»
+        /// ставило бы строку в середину этой неточной рамки. Именно так центрированный
+        /// заголовок внутри абзаца уезжал в сторону.
+        /// </summary>
+        private static void TestPptxPerLineIndent()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            var par = new OcrParagraph
+            {
+                LeftPt = 100, TopPt = 700, RightPt = 400, BottomPt = 660,
+                Alignment = OcrAlignment.Center, LineCount = 3, MinLeftPt = 100
+            };
+            par.LineTopsPt.Add(700); par.LineTopsPt.Add(680); par.LineTopsPt.Add(660);
+            par.LineBaselinesPt.Add(692); par.LineBaselinesPt.Add(672); par.LineBaselinesPt.Add(652);
+            par.LineLeftsPt.Add(100); par.LineLeftsPt.Add(140); par.LineLeftsPt.Add(120);
+            par.Runs.Add(new OcrRun { Text = "первая", FontSizePt = 12 });
+            par.Runs.Add(new OcrRun { Text = "вторая", FontSizePt = 12, StartsLine = true });
+            par.Runs.Add(new OcrRun { Text = "третья", FontSizePt = 12, StartsLine = true });
+            page.Paragraphs.Add(par);
+
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+            var props = new List<XElement>(slide.Descendants(PptxA + "pPr"));
+            AssertEqual(3, props.Count, "у каждой строки свои свойства абзаца");
+            foreach (XElement p in props)
+                AssertEqual("l", (string)p.Attribute("algn"),
+                    "выключки нет: место задаёт отступ, а не середина неточной рамки");
+            AssertEqual(null, (string)props[0].Attribute("indent"), "первая строка стоит у края рамки");
+            AssertEqual(PptxGeometry.Emu(40).ToString(), (string)props[1].Attribute("indent"),
+                "вторая строка отодвинута на свои 40 pt");
+            AssertEqual(PptxGeometry.Emu(20).ToString(), (string)props[2].Attribute("indent"),
+                "третья — на свои 20 pt");
         }
 
         private static void TestPptxBackground()

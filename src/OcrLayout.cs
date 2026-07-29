@@ -20,6 +20,11 @@ namespace ExcelMerger
         // вертикальна, и осмысленной становится только после PageRotation.RotatePage.
         public double BaselineXPt;
         public double BaselineYPt;
+        // Блок РАЗМЕТКИ документа, которому принадлежит слово, или -1. Размеченный PDF
+        // (ISO 32000, раздел 14.7 — его пишут Word, PowerPoint и Acrobat) несёт готовое
+        // деление на абзацы, и угадывать границы по зазорам там, где автор их уже указал,
+        // значит спорить с источником. Номер сквозной в пределах страницы. См. StructureBlocks.
+        public int BlockId = -1;
         public double FontSizePt; // кегль (pt); 0 — неизвестно
         public bool Bold;
         public bool Italic;
@@ -82,6 +87,11 @@ namespace ExcelMerger
         // Именно по ней абзац ставится на слайд: см. PdfWord.BaselineYPt. Пустой список —
         // строки собраны не из букв (линовка, прочерки), тогда остаётся верх чернил.
         public List<double> LineBaselinesPt = new List<double>();
+        // Левый край КАЖДОЙ строки (pt) — та же нумерация. Вывод по координатам ставит абзац
+        // одной рамкой, и без этого все строки, кроме первой, начинались бы от левого края
+        // рамки: висячий отступ, выключенный по центру заголовок внутри абзаца и вторая
+        // строка пункта списка уезжали бы влево.
+        public List<double> LineLeftsPt = new List<double>();
 
         // Список: вид маркера в начале абзаца и номер (для нумерованного). None — обычный абзац.
         // ListContentStart — индекс в Text, с которого идёт содержимое (маркер снимается при записи —
@@ -400,6 +410,12 @@ namespace ExcelMerger
                     bool listBreak = StartsWithListMarker(lines[i]);
                     bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft,
                         Math.Max(availRight, bodyRight), em);
+                    // Автор уже сказал, где кончается абзац: две строки ОДНОГО блока разметки
+                    // рвать нечем. Разметка только СНИМАЕТ разрывы и никогда не добавляет своих —
+                    // тогда файл с разметкой «блок на строку» (её пишут и такую) просто не даёт
+                    // ни одного снятия, а не начинает дробить сильнее прежнего.
+                    if (SameBlock(lines[i - 1], lines[i], em))
+                        gapBreak = centeredBreak = indentBreak = shortBreak = listBreak = hardBreak = false;
                     if (gapBreak || centeredBreak || indentBreak || shortBreak || listBreak || hardBreak)
                     {
                         groups.Add(current);
@@ -439,12 +455,14 @@ namespace ExcelMerger
                 }
                 double minLeft = double.MaxValue;
                 var lineTops = new List<double>(g.Count);
+                var lineLefts = new List<double>(g.Count);
                 var lineBaselines = new List<double>(g.Count);
                 bool allBaselines = true;
                 for (int li = 0; li < g.Count; li++)
                 {
                     if (g[li].Left < minLeft) minLeft = g[li].Left;
                     lineTops.Add(g[li].Top);
+                    lineLefts.Add(g[li].Left);
                     double baseline = g[li].BaselinePt;
                     if (baseline == 0) allBaselines = false;
                     lineBaselines.Add(baseline);
@@ -460,6 +478,7 @@ namespace ExcelMerger
                     LineCount = g.Count,
                     MinLeftPt = minLeft,
                     LineTopsPt = lineTops,
+                    LineLeftsPt = lineLefts,
                     LineBaselinesPt = lineBaselines,
                     // Центрированность решена на уровне прогона; иначе — выключка или левый край.
                     Alignment = groupCentered[gi] ? OcrAlignment.Center : DetectAlignment(g, bodyRight, em),
@@ -920,6 +939,30 @@ namespace ExcelMerger
             }
 
             /// <summary>
+            /// Блок разметки строки — тот, которому принадлежит больше всего её БУКВ (длина
+            /// слова здесь и есть вес: строка, где одно короткое слово пришло из соседнего
+            /// блока, всё равно принадлежит своему). -1 — разметки нет.
+            /// </summary>
+            public int BlockId
+            {
+                get
+                {
+                    int best = -1, bestWeight = 0;
+                    for (int i = 0; i < Words.Count; i++)
+                    {
+                        int id = Words[i].BlockId;
+                        if (id < 0) continue;
+                        int weight = 0;
+                        for (int j = 0; j < Words.Count; j++)
+                            if (Words[j].BlockId == id)
+                                weight += Words[j].Text == null ? 1 : Words[j].Text.Length;
+                        if (weight > bestWeight) { bestWeight = weight; best = id; }
+                    }
+                    return best;
+                }
+            }
+
+            /// <summary>
             /// Базовая линия строки — МЕДИАНА базовых линий слов. Не среднее и не крайнее:
             /// над- и подстрочные знаки стоят на своих линиях, и одно такое слово увело бы и
             /// среднее, и минимум, а медиана остаётся на линии основного текста. 0 — ни у
@@ -938,6 +981,36 @@ namespace ExcelMerger
                     return values[values.Count / 2];
                 }
             }
+        }
+
+        /// <summary>
+        /// Насколько далеко друг от друга могут стоять строки, чтобы разметка ещё имела право
+        /// снять разрыв, — в кеглях. Разметка описывает логику, а не расположение: если между
+        /// строками одного номера зияет полстраницы, значит либо номер повторно использован,
+        /// либо между ними стоит что-то ещё, и геометрия здесь главнее.
+        /// </summary>
+        private const double BlockGapLimit = 3.0;
+
+        /// <summary>
+        /// Ниже этого шага (в кеглях) «строки» стоят не одна под другой, а РЯДОМ: широкие зазоры
+        /// внутри физической строки режут её на куски, и у кусков общий номер блока. Слить их в
+        /// абзац значит поставить друг под друга то, что стояло в строку, — слово уезжает на
+        /// свою строку с огромным отступом, а соседнее прячется под ним.
+        /// </summary>
+        private const double BlockStepMin = 0.5;
+
+        /// <summary>
+        /// Обе строки — один и тот же блок разметки документа, и вторая стоит ПОД первой на
+        /// разумном расстоянии. Только тогда разметке позволено снять разрыв абзаца, который
+        /// насчитала геометрия.
+        /// </summary>
+        internal static bool SameBlock(Line previous, Line next, double em)
+        {
+            int id = previous.BlockId;
+            if (id < 0 || next.BlockId != id)
+                return false;
+            double gap = previous.MidY - next.MidY;
+            return gap >= BlockStepMin * em && gap <= BlockGapLimit * em;
         }
 
         /// <summary>
@@ -1031,6 +1104,10 @@ namespace ExcelMerger
                 List<Line> g = groups[gi];
                 if (g.Count != 1)
                     continue;
+                // Разметку здесь НЕ спрашиваем, и это проверено на корпусе: широкие зазоры
+                // внутри строки чаще всего оставила ВЫКЛЮЧКА, а куски строки, разложенные по
+                // своим рамкам, — единственный способ её воспроизвести. Запрет резать строку
+                // внутри одного блока стоил ровно этого: выключенные строки съезжали влево.
                 Line line = g[0];
                 var parts = new List<Line>();
                 int from = 0;

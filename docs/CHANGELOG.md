@@ -82,6 +82,23 @@ versions follow [SemVer](https://semver.org/).
   line asking the reader to press Ctrl+A and F9.
 
 ### Fixed
+- **A paragraph was often broken into separate pieces.** Where the source paragraph ends was
+  being guessed from the gaps between lines, and a guess is wrong often enough to be
+  noticed. It usually does not have to be guessed at all: a PDF written by Word, PowerPoint
+  or Acrobat carries the **document structure** with it — the standard has said so since
+  2008 — and in it the author has already marked where one paragraph ends and the next
+  begins. That mark is now read and believed. On a thirty-slide deck it takes the count of
+  separate text boxes from 417 down to 277, which is exactly the number of paragraphs the
+  file itself declares.
+  The structure may only ever **remove** a break, never add one. A file that marks every
+  line separately — they exist — therefore changes nothing at all instead of fragmenting
+  further, and geometry keeps a veto: lines that turn out to be far apart, or side by side
+  rather than one under the other, stay separate whatever the marking says. Both vetoes
+  were put there by measurement, after the first version of this had merged two halves of
+  one line into a column.
+  Text marked as decoration is deliberately **not** dropped, though the standard invites it:
+  on real files that mark turns out to be set on visible text — a third of a slide in one
+  case, and not a single one of those letters was a duplicate of something drawn elsewhere.
 - **A paragraph without capital letters sat a line too high on the slide.** Text was placed
   by the top of its ink, and that top is where the tallest letter starts: a line beginning
   with a capital reaches higher than one made of lower-case letters alone. The same
@@ -93,6 +110,17 @@ versions follow [SemVer](https://semver.org/).
   rotation, and the measured constants are the same numbers restated against it — a line
   starting with a capital lands exactly where it did before. Measured over a thirty-slide
   document and thirteen more decks of 584 slides: no page came out worse.
+- **The first line of a paragraph sat too low when the line spacing was generous.** The place
+  of the first line was computed from the spacing between lines, and those are two different
+  things: a spacing of one and a half describes the distance from one line to the next, not
+  where the first one starts. The first line is now given no exact spacing at all, so its
+  place comes from the font metrics — which is the case the constant was measured on.
+- **Every line of a paragraph now carries its own indent** instead of only the first. One
+  paragraph is one text box, so a line that started further right — a hanging indent, a
+  centred line inside a block — was being pulled to the box edge. Centring is reproduced by
+  the indent rather than by the aligner for the same reason: the box width is known only to
+  within the slack allowed for another engine's metrics, and centring inside an inexact box
+  is an inexact place.
 - **A space between two differently formatted words was lost**, so “bold word” followed by
   a plain one read as one long word. A run ends where the formatting changes, which is
   precisely mid-sentence, and the space at that seam was being trimmed by the XML reader.
