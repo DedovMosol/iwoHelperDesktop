@@ -58,8 +58,12 @@ namespace ExcelMerger
             return created;
         }
 
-        /// <summary>Удалить файлы, созданные до отмены (best-effort — сбой удаления не важен).</summary>
-        private static void DeleteQuietly(IEnumerable<string> paths)
+        /// <summary>
+        /// Удалить файлы, созданные до остановки (best-effort — сбой удаления не важен).
+        /// Открыт наружу: отменить можно и ПОСЛЕ того, как работа вернула список файлов, —
+        /// сжатие идёт отдельной фазой и длится дольше самой нарезки.
+        /// </summary>
+        public static void DeleteQuietly(IEnumerable<string> paths)
         {
             foreach (string path in paths)
                 try { if (File.Exists(path)) File.Delete(path); } catch { }

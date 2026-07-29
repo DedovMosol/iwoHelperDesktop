@@ -76,6 +76,31 @@ $docx2 = Join-Path $PSScriptRoot 'out\extracted_indent.docx'
 Remove-Item $docx2 -Force -ErrorAction SilentlyContinue
 [void][ExcelMerger.PdfToWordService]::Convert((New-PageOrder $pdf2), $docx2, $null)
 
+# 2d) ОДИН абзац в шесть строк: равный шаг, общий левый край, никаких отступов и широких
+#     зазоров. Разделить его не на чем — и в .docx он обязан приехать одним абзацем.
+#     Это мера ДРОБЛЕНИЯ для пути в Word: у пути в презентации она попиксельная, а здесь
+#     достаточно счёта, потому что правильный ответ ровно один.
+$pdfFrag = Join-Path $PSScriptRoot 'out\wordsrc_onepara.pdf'
+Remove-Item $pdfFrag -Force -ErrorAction SilentlyContinue
+$docF = New-Object PdfSharp.Pdf.PdfDocument
+$pF = $docF.AddPage(); $pF.Width = 595; $pF.Height = 842
+$gF = [PdfSharp.Drawing.XGraphics]::FromPdfPage($pF)
+$fF = New-Object PdfSharp.Drawing.XFont('Times New Roman', 12)
+$bkF = [PdfSharp.Drawing.XBrushes]::Black
+$stepF = $gF.MeasureString('словоо ', $fF).Width
+for ($row = 0; $row -lt 6; $row++) {
+    $x = 70.0
+    for ($k = 0; $k -lt 9; $k++) {
+        $gF.DrawString('словоо', $fF, $bkF, (New-Object PdfSharp.Drawing.XPoint($x, (80.0 + $row * 18.0))))
+        $x += $stepF
+    }
+}
+$gF.Dispose(); $docF.Save($pdfFrag); $docF.Dispose()
+
+$docxFrag = Join-Path $PSScriptRoot 'out\extracted_onepara.docx'
+Remove-Item $docxFrag -Force -ErrorAction SilentlyContinue
+[void][ExcelMerger.PdfToWordService]::Convert((New-PageOrder $pdfFrag), $docxFrag, $null)
+
 # 2c) Центрированная строка + пословный формат: красное слово и полужирное слово среди обычных.
 $pdf3 = Join-Path $PSScriptRoot 'out\wordsrc_fmt.pdf'
 Remove-Item $pdf3 -Force -ErrorAction SilentlyContinue
@@ -184,7 +209,10 @@ try {
         if ($fi -gt $maxIndent) { $maxIndent = $fi }
         if (($par.Range.Font.Italic -ne 0) -and ([math]::Round([double]$par.Range.Font.Size) -eq 16)) { $anyItalic16 = $true }
     }
-    if ($nonEmpty -lt 2) { $fails += "отступный документ дал абзацев: $nonEmpty (ожидалось >=2)" }
+    # РОВНО два, а не «хотя бы два»: нижняя граница ловит слипание абзацев в один, но
+    # молчит про обратную беду — когда один абзац приезжает четырьмя кусками. Дробление
+    # заметно только точным числом.
+    if ($nonEmpty -ne 2) { $fails += "отступный документ дал абзацев: $nonEmpty (ожидалось ровно 2)" }
     if ($maxIndent -le 10) { $fails += "красная строка не применена (FirstLineIndent=$maxIndent pt)" }
     if (-not $anyItalic16) { $fails += 'курсив 16pt не перенесён в docx' }
     # Поля страницы унаследованы: исходник A4 (595) с полями 70.
@@ -208,6 +236,16 @@ try {
     if (-not $hasRed) { $fails += 'красный цвет (пословно) не перенесён в docx' }
     if (-not $hasBold) { $fails += 'полужирный (пословно) не перенесён в docx' }
     $wdoc3.Close($false)
+
+    # Дробление: шесть строк одного абзаца обязаны остаться ОДНИМ абзацем.
+    $wdocF = $word.Documents.Open($docxFrag, $false, $true)
+    $paraF = 0
+    foreach ($par in $wdocF.Paragraphs) {
+        if ((($par.Range.Text).Trim()).Length -gt 0) { $paraF++ }
+    }
+    Write-Host ("дробление: абзацев в docx = " + $paraF + " на 1 абзац источника (6 строк)")
+    if ($paraF -ne 1) { $fails += "сплошной абзац из 6 строк разбит на $paraF абзацев" }
+    $wdocF.Close($false)
 
     # Изображение вставлено в .docx.
     $wdoc4 = $word.Documents.Open($docx4, $false, $true)

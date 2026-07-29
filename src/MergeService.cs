@@ -543,7 +543,7 @@ namespace ExcelMerger
                 }
                 catch (Exception ex)
                 {
-                    throw new MergeException(string.Format(Loc.T("err.merge.saveFailed"), ShortMessage(ex)));
+                    throw new MergeException(string.Format(Loc.T("err.merge.saveFailed"), DiskSpace.Describe(ex, outputPath)));
                 }
 
                 return final;

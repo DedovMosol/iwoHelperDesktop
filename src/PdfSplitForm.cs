@@ -427,6 +427,7 @@ namespace ExcelMerger
         /// </summary>
         private void RunSplit(Func<Action<int, int>, List<string>> work, CompressionLevel level, string openTarget, bool openAsFolder, Action record, int workUnits)
         {
+            Func<bool> cancel = CancelToken();
             // Счётчик «страница N из M» для разделения не показываем — единица работы здесь «часть».
             BeginOperation(openAsFolder ? Loc.T("split.status.splitting") : Loc.T("split.status.extracting"), workUnits);
             Action<int, int> onProgress = UiProgress();
@@ -441,19 +442,26 @@ namespace ExcelMerger
                     // Две фазы в одну шкалу 2×частей: разбиение (0..P) и сжатие (P..2P).
                     List<string> files = work(delegate(int done, int total) { onProgress(done, 2 * total); });
                     count = files.Count;
-                    // Файлы записаны — точка невозврата: сжатие (Ghostscript) не прерываем, поэтому
-                    // снимаем предложение отмены, чтобы кнопка не «зависала» на «Отмена…».
+                    // Сжатие — самая ДОЛГАЯ фаза: сорок частей это сорок запусков Ghostscript,
+                    // дольше самой нарезки. Раньше отмену здесь снимали, считая точкой невозврата
+                    // момент записи файлов; но раз остановка и так убирает за собой, невозврата
+                    // нет — прерываемся между частями и удаляем всё, что успели сделать. Отдельный
+                    // запуск Ghostscript не рвём: убить чужой процесс на полпути значит оставить
+                    // после него временный файл, и это хуже, чем подождать одну часть.
                     // Статус называет фазу: полоса на второй половине шкалы двигается по файлам,
                     // но по одной части она стоит, и без подписи это выглядело бы зависанием.
                     bool willCompress = level != CompressionLevel.None;
-                    OnUi(delegate
-                    {
-                        StopOfferingCancel();
-                        if (willCompress)
-                            SetStatus(Loc.T("common.status.compressing"), Theme.TextMuted);
-                    });
+                    if (willCompress)
+                        OnUi(delegate { SetStatus(Loc.T("common.status.compressing"), Theme.TextMuted); });
+                    else
+                        OnUi(delegate { StopOfferingCancel(); });
                     for (int i = 0; i < files.Count; i++)
                     {
+                        if (cancel())
+                        {
+                            Cancellation.DeleteQuietly(files);
+                            throw new OperationCanceledException();
+                        }
                         if (PdfCompression.Compress(files[i], level))
                             compressed++;
                         onProgress(files.Count + i + 1, 2 * files.Count);
