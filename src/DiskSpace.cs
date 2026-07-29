@@ -17,6 +17,14 @@ namespace ExcelMerger
         private const int DiskFull = unchecked((int)0x80070070);
         private const int HandleDiskFull = unchecked((int)0x80070027);
 
+        /// <summary>
+        /// Ниже этого остатка (МБ) диск считаем переполненным, даже если ошибка о месте молчит.
+        /// Молчат многие: GDI+ на любую неудачу записи отвечает «в GDI+ произошла общая ошибка»,
+        /// COM Word — своим кодом. Сказать «свободно 3 МБ» рядом с такой ошибкой полезнее, чем
+        /// не сказать ничего: даже если причина окажется другой, названное число проверяемо.
+        /// </summary>
+        private const long LowSpaceMb = 16;
+
         /// <summary>Эта ошибка — про нехватку места? Чистая — под тест.</summary>
         public static bool IsFull(Exception ex)
         {
@@ -46,22 +54,29 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Сообщение об ошибке записи: при нехватке места — с диском и остатком, иначе —
-        /// исходное. path — куда писали (его диск и называем).
+        /// Сообщение об ошибке записи, дополненное диском. path — куда писали.
+        ///
+        /// Два разных утверждения, и смешивать их нельзя. Если о нехватке места сказала САМА
+        /// система — заменяем её сообщение своим, с диском и остатком: диск она не называет, а
+        /// это половина ответа. Если система сказала что-то другое, но на диске почти ничего не
+        /// осталось, — исходное сообщение сохраняем и лишь добавляем к нему остаток: причина
+        /// может быть и другой, выдавать догадку за факт нельзя.
         /// </summary>
         public static string Describe(Exception ex, string path)
         {
-            if (!IsFull(ex))
-                return ex.Message;
-            long free = FreeMegabytes(path);
             string root;
             try { root = Path.GetPathRoot(Path.GetFullPath(path)); }
             catch { root = null; }
             if (string.IsNullOrEmpty(root))
                 return ex.Message;
-            return free >= 0
-                ? string.Format(Loc.T("err.disk.fullFree"), root, free)
-                : string.Format(Loc.T("err.disk.full"), root);
+            long free = FreeMegabytes(path);
+            if (IsFull(ex))
+                return free >= 0
+                    ? string.Format(Loc.T("err.disk.fullFree"), root, free)
+                    : string.Format(Loc.T("err.disk.full"), root);
+            if (free >= 0 && free < LowSpaceMb)
+                return ex.Message + string.Format(Loc.T("err.disk.lowFree"), root, free);
+            return ex.Message;
         }
     }
 }

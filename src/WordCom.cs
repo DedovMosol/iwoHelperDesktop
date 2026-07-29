@@ -52,7 +52,7 @@ namespace ExcelMerger
                 }
                 catch (Exception ex)
                 {
-                    throw new MergeException(string.Format(Loc.T("err.word.saveFailed"), Path.GetFileName(path), ex.Message));
+                    throw new MergeException(string.Format(Loc.T("err.word.saveFailed"), Path.GetFileName(path), DiskSpace.Describe(ex, path)));
                 }
             }
             finally

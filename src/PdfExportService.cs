@@ -114,7 +114,17 @@ namespace ExcelMerger
                         {
                             if (bmp == null)
                                 throw new MergeException(string.Format(Loc.T("err.export.pageFailed"), pageIndex + 1));
-                            Save(bmp, path, format);
+                            try
+                            {
+                                Save(bmp, path, format);
+                            }
+                            catch (Exception ex) when (MergeException.ShouldWrap(ex))
+                            {
+                                // GDI+ на любую неудачу записи отвечает «произошла общая ошибка»,
+                                // поэтому диск здесь особенно нужен: см. DiskSpace.Describe.
+                                throw new MergeException(string.Format(Loc.T("err.export.saveFailed"),
+                                    Path.GetFileName(path), DiskSpace.Describe(ex, path)));
+                            }
                         }
                         written.Add(path);
                         if (progress != null)
@@ -137,7 +147,15 @@ namespace ExcelMerger
             List<PdfPageText> pages = PdfTextExtract.Extract(sourcePath, progress, null, cancelled);
             Cancellation.ThrowIf(cancelled);
             string text = PlainText.Document(pages).Replace("\n", Environment.NewLine);
-            File.WriteAllText(outPath, text, System.Text.Encoding.UTF8);
+            try
+            {
+                File.WriteAllText(outPath, text, System.Text.Encoding.UTF8);
+            }
+            catch (Exception ex) when (MergeException.ShouldWrap(ex))
+            {
+                throw new MergeException(string.Format(Loc.T("err.export.saveFailed"),
+                    Path.GetFileName(outPath), DiskSpace.Describe(ex, outPath)));
+            }
             return outPath;
         }
 
