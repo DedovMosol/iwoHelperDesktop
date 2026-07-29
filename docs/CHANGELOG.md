@@ -47,6 +47,19 @@ versions follow [SemVer](https://semver.org/).
   there first, because the path may have gone stale.
 
 ### Changed
+- **The start screen's bottom row is two icons.** “Settings” and “About” were two wide
+  captions occupying a third of the row for actions taken once in a while; they are now a
+  gear and a circled question mark, with the wording kept in the tooltip and in the name a
+  screen reader announces. Inside Settings the three history actions moved into one row and
+  the heading is centred, so the window is a screenful shorter; the paragraph explaining the
+  update check is justified to both margins, because a ragged right edge is far more visible
+  in a narrow window than in a page-wide text.
+- **The window header is vertically centred.** The title and its subtitle were pinned to the
+  bottom edge of the coloured band, leaving empty colour above them — which read as a header
+  that had slipped down. The block now stands in the middle of the band, and the language
+  globe and “Back” follow it, because they are aligned to the text and not to a literal.
+- **The README badges sit on one line again.** Each was on its own source line, and GitHub
+  renders that as a break — the row of badges came out as a column.
 - **The download links live in one place.** Four large buttons at the top of the README
   repeated the Download section word for word, and both rows were wider than the README
   column on a desktop, so they wrapped and the wrapped tail was centred — which is what

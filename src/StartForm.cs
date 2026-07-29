@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Text;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -40,6 +41,7 @@ namespace ExcelMerger
 
         private readonly ShellContext _context;
         private ToolTip _langTip;           // подсказка кнопки-глобуса (компонент — освобождаем вручную)
+        private ToolTip _bottomTip;         // подсказка значка настроек в нижнем ряду
         private ContextMenuStrip _langMenu; // меню выбора языка (одно на окно; окно пересоздаётся при смене языка)
         private HeaderBand _header;
         private Button _back;
@@ -111,7 +113,10 @@ namespace ExcelMerger
 
             // Выбор языка — белый глиф-глобус в правом верхнем углу шапки (на синем, без рамки).
             _langMenu = HelpMenu.LanguageContextMenu(); // одно меню на жизнь окна
-            var globe = new GlyphButton("", 15f, "Segoe MDL2 Assets"); // U+E774 — «глобус»
+            // Запасной рисунок — флаг текущего языка: если шрифта глифов нет, кнопка всё равно
+            // должна говорить, что она про язык (общий кэш на процесс — не освобождать).
+            var globe = new GlyphButton("", 15f, "Segoe MDL2 Assets",
+                delegate { return Flags.For(Loc.Current); }); // U+E774 — «глобус»
             globe.ForeColor = Color.White;
             globe.AccessibleName = Loc.T("lang.tooltip"); // с клавиатуры и для экранного диктора
             // Y задаёт сама шапка (AlignToText): глобус встаёт по центру пары «заголовок +
@@ -299,17 +304,27 @@ namespace ExcelMerger
             // Проверка обновлений уехала ВНУТРЬ настроек: с 1.18.0 она идёт при запуске сама,
             // и ручная кнопка из первого ряда превратилась в редкое действие. Заодно рядом с
             // ней встал её собственный выключатель — раньше его негде было показать.
-            var settings = new RoundedButton(false);
-            settings.Text = Loc.T("settings.title");
-            settings.SetBounds(Pad, BottomRowY, 224, BottomRowH);
+            // «Настройки» — значком-шестернёй, а не подписью: значок понятен без чтения и не
+            // занимает четверть нижнего ряда. Подпись остаётся в подсказке и в имени для
+            // экранного диктора — узнаваемость значка не должна быть единственной опорой.
+            var settings = new GlyphButton("", 17f, "Segoe MDL2 Assets"); // U+E713 — «шестерня»
+            settings.ForeColor = Theme.TextPrimary;
+            settings.AccessibleName = Loc.T("settings.title");
+            settings.SetBounds(Pad, BottomRowY, BottomRowH, BottomRowH);
             settings.Click += delegate { using (var f = new SettingsForm()) f.ShowDialog(this); };
             Controls.Add(settings);
+            _bottomTip = new ToolTip();
+            _bottomTip.SetToolTip(settings, Loc.T("settings.title"));
 
-            var about = new RoundedButton(false);
-            about.Text = Loc.T("hub.about");
-            about.SetBounds(ClientSize.Width - Pad - 168, BottomRowY, 168, BottomRowH);
+            // «О программе» — знаком вопроса, парно к шестерне настроек: два служебных
+            // действия нижнего ряда выглядят одинаково и не спорят с карточками инструментов.
+            var about = new GlyphButton("", 17f, "Segoe MDL2 Assets"); // U+E9CE — «вопрос в круге»
+            about.ForeColor = Theme.TextPrimary;
+            about.AccessibleName = Loc.T("hub.about");
+            about.SetBounds(ClientSize.Width - Pad - BottomRowH, BottomRowY, BottomRowH, BottomRowH);
             about.Click += delegate { using (var f = new AboutForm()) f.ShowDialog(this); };
             Controls.Add(about);
+            _bottomTip.SetToolTip(about, Loc.T("hub.about"));
         }
 
         /// <summary>Esc возвращает из раздела на главный экран (как «Назад»).</summary>
@@ -341,6 +356,7 @@ namespace ExcelMerger
             if (disposing)
             {
                 if (_langTip != null) _langTip.Dispose();
+                if (_bottomTip != null) _bottomTip.Dispose();
                 if (_langMenu != null) _langMenu.Dispose();
             }
             base.Dispose(disposing);
@@ -364,8 +380,11 @@ namespace ExcelMerger
         {
             private readonly bool _glyphFontPresent;
 
-            public GlyphButton(string glyph, float size, string family)
+            private readonly Func<Image> _fallback;
+
+            public GlyphButton(string glyph, float size, string family, Func<Image> fallback = null)
             {
+                _fallback = fallback;
                 SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint |
                          ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
                 BackColor = Color.Transparent;
@@ -378,15 +397,26 @@ namespace ExcelMerger
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                if (_glyphFontPresent)
+                Image fallback = _glyphFontPresent || _fallback == null ? null : _fallback();
+                if (fallback != null)
                 {
-                    TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, ForeColor,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                    e.Graphics.DrawImage(fallback, (Width - fallback.Width) / 2, (Height - fallback.Height) / 2);
                 }
                 else
                 {
-                    Image flag = Flags.For(Loc.Current); // общий кэш на процесс — не освобождать
-                    e.Graphics.DrawImage(flag, (Width - flag.Width) / 2, (Height - flag.Height) / 2);
+                    // Рисуем СЕРЫМ сглаживанием, а не субпиксельным: у мелкого глифа на светлом
+                    // фоне цветная кайма видна как грязь по краям — значок выглядит цветным,
+                    // хотя он одноцветный.
+                    TextRenderingHint was = e.Graphics.TextRenderingHint;
+                    e.Graphics.TextRenderingHint = TextRenderingHint.AntiAlias;
+                    using (var brush = new SolidBrush(ForeColor))
+                    using (var format = new StringFormat())
+                    {
+                        format.Alignment = StringAlignment.Center;
+                        format.LineAlignment = StringAlignment.Center;
+                        e.Graphics.DrawString(Text, Font, brush, ClientRectangle, format);
+                    }
+                    e.Graphics.TextRenderingHint = was;
                 }
                 if (Focused) // видимый фокус: иначе с клавиатуры непонятно, где ты находишься
                     ControlPaint.DrawFocusRectangle(e.Graphics, ClientRectangle);

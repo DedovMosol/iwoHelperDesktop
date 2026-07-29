@@ -158,8 +158,8 @@ namespace ExcelMerger
                 "Extract the text of a born‑digital PDF (saved from Word, etc.) into an editable Word (.docx). Scanned documents are not supported yet.");
             A("hub.pptx.name", "PDF → PowerPoint", "PDF → PowerPoint");
             A("hub.pptx.desc",
-                "Перенести страницы цифрового PDF в презентацию (.pptx): текст остаётся текстом и правится, остальное ложится подложкой слайда.",
-                "Turn the pages of a born‑digital PDF into a presentation (.pptx): the text stays editable text, everything else becomes the slide background.");
+                "Перенести страницы цифрового PDF в презентацию *.pptx.",
+                "Turn the pages of a born‑digital PDF into a *.pptx presentation.");
             A("hub.ops.name", "Прочие операции", "More operations");
             A("hub.ops.desc",
                 "Сжать документ, сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
@@ -512,7 +512,10 @@ namespace ExcelMerger
             A("settings.confirm.clearHistory.body",
                 "Список путей будет удалён. Сами файлы останутся на месте.",
                 "The list of paths will be deleted. The files themselves stay where they are.");
-            A("settings.btn.historyShow", "Показать историю", "Show the history");
+            // Три действия истории стоят в ОДНОМ ряду, поэтому подписи короткие. Полная
+            // формулировка оставлена только у необратимого действия — там двусмысленность
+            // стоит дороже места.
+            A("settings.btn.historyShow", "История", "History");
             A("settings.section.stats", "Статистика", "Statistics");
             // history.* — окно списка операций
             A("history.title", "История операций", "Operation history");
@@ -531,7 +534,7 @@ namespace ExcelMerger
             A("hist.op.split", "Разделение PDF", "PDF split");
             A("hist.op.pdftoword", "PDF → Word", "PDF → Word");
             A("hist.op.pdftopptx", "PDF → PowerPoint", "PDF → PowerPoint");
-            A("settings.btn.stats", "Показать статистику", "Show statistics");
+            A("settings.btn.stats", "Статистика", "Statistics");
 
             // gs.* — предупреждение об отсутствии Ghostscript
             A("gs.title", "Сжатие недоступно", "Compression unavailable");
@@ -849,8 +852,8 @@ namespace ExcelMerger
                 "получатся из одного текста, без фона и диаграмм.\n" +
                 "• Размер слайда в презентации один на все слайды: он берётся по самому частому " +
                 "размеру страницы, а страницы другого размера вписываются целиком и центрируются.\n" +
-                "• Строка исходника переносится отдельной надписью, поэтому длинный абзац может " +
-                "оказаться разбит на несколько надписей — так сохраняется положение текста.\n" +
+                "• Абзац переносится ОДНОЙ надписью и правится целиком, но строки внутри него " +
+                "стоят там же, где стояли: перевёрстывать текст на слайде нечем, и правка длинной " + "строки не перетекает на следующую сама.\n" +
                 "• Если шрифт из PDF не установлен в системе, текст оформляется шрифтом " +
                 "Times New Roman — ширина строки может немного отличаться от оригинала.",
                 "1. Add one or several PDFs — with “Add PDF…” (you can pick several at once) or by " +
@@ -872,8 +875,8 @@ namespace ExcelMerger
                 "text only, with no background or charts.\n" +
                 "• A presentation has ONE slide size: it is taken from the most common page size, " +
                 "and pages of other sizes are scaled to fit and centred.\n" +
-                "• A source line becomes its own text box, so a long paragraph may end up split " +
-                "across several boxes — that is what keeps the text where it was.\n" +
+                "• A paragraph is one text box and is edited as a whole, but its lines stay where " +
+                "they were: a slide cannot re-flow text, so editing a long line does not push words " + "onto the next one by itself.\n" +
                 "• If a font from the PDF is not installed, the text is written in Times New Roman — " +
                 "line widths may differ slightly from the original.");
 

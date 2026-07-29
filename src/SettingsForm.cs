@@ -51,8 +51,13 @@ namespace ExcelMerger
             WindowChrome.Enable(this, Theme.HubBlue);
 
             Ui.AccentBar(this, 0, Theme.HubBlue);
+            // Заголовок по центру: окно узкое и без панели инструментов, и подпись у левого
+            // края выглядела приклеенной к рамке.
             Label title = Ui.Label(this, Loc.T("settings.title"), Pad, 22,
                 Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+            title.AutoSize = false;
+            title.TextAlign = ContentAlignment.MiddleCenter;
+            title.SetBounds(Pad, 22, width - 2 * Pad, title.PreferredHeight);
 
             // ---------- обновления ----------
             int y = title.Bottom + GroupGap;
@@ -65,10 +70,10 @@ namespace ExcelMerger
             _checkOnStart.SetBounds(Pad, y, Math.Min(want.Width, width - 2 * Pad), want.Height);
             _checkOnStart.CheckedChanged += OnCheckOnStartChanged;
 
-            Label hint = Ui.Label(this, Loc.T("settings.hint.updates"), Pad, _checkOnStart.Bottom + 6,
-                Font, Theme.TextMuted);
-            hint.MaximumSize = new Size(width - 2 * Pad, 0); // перенос по словам в пределах полосы
-            hint.AutoSize = true;
+            // Пояснение — выключкой ПО ШИРИНЕ: рваный правый край в узком окне бросается в
+            // глаза сильнее, чем в тексте на всю страницу (см. JustifiedText).
+            RichTextBox hint = JustifiedText.Paragraph(this, Loc.T("settings.hint.updates"),
+                Pad, _checkOnStart.Bottom + 6, width - 2 * Pad, Theme.TextMuted);
 
             RoundedButton checkNow = AddButton(Loc.T("settings.btn.checkNow"), Pad, hint.Bottom + Gap + 4);
             checkNow.Click += delegate
@@ -111,17 +116,21 @@ namespace ExcelMerger
 
             _historyCount = Ui.Label(this, "", Pad, _historyAuto.Bottom + 14, Font, Theme.TextMuted);
 
-            RoundedButton showHistory = AddButton(Loc.T("settings.btn.historyShow"), Pad, _historyCount.Bottom + Gap);
-            showHistory.Click += delegate { using (var f = new HistoryForm()) f.ShowDialog(this); };
-
-            RoundedButton clearHistory = AddButton(Loc.T("settings.btn.historyClear"), Pad, showHistory.Bottom + Gap);
-            clearHistory.Click += OnClearHistory;
-
-            RoundedButton stats = AddButton(Loc.T("settings.btn.stats"), Pad, clearHistory.Bottom + Gap);
-            stats.Click += delegate { using (var f = new StatsForm()) f.ShowDialog(this); };
+            // Три действия истории — ОДНИМ рядом в пределах той же полосы, что и текст выше:
+            // столбиком они занимали треть окна, а делают вещи одного порядка. Ширина делится
+            // поровну, подписи ужимаются шрифтом до тех пор, пока не поместятся (см. RowButtons).
+            RoundedButton[] row = RowButtons(new[]
+                {
+                    Loc.T("settings.btn.historyShow"),
+                    Loc.T("settings.btn.historyClear"),
+                    Loc.T("settings.btn.stats")
+                }, Pad, _historyCount.Bottom + Gap, width - 2 * Pad);
+            row[0].Click += delegate { using (var f = new HistoryForm()) f.ShowDialog(this); };
+            row[1].Click += OnClearHistory;
+            row[2].Click += delegate { using (var f = new StatsForm()) f.ShowDialog(this); };
 
             var close = new RoundedButton(true);
-            close.SetBounds(width - Pad - 100, stats.Bottom + GroupGap, 100, 36);
+            close.SetBounds(width - Pad - 100, row[0].Bottom + GroupGap, 100, 36);
             Controls.Add(close);
             close.Text = Loc.T("common.close");
             close.Click += delegate { Close(); };
@@ -156,6 +165,45 @@ namespace ExcelMerger
             Controls.Add(b); // шрифт наследуется от формы, до добавления мерить нечем
             SetButtonText(b, text);
             return b;
+        }
+
+        /// <summary>
+        /// Ряд кнопок равной ширины в пределах полосы: делим место поровну, а подпись, которая
+        /// не влезла, уменьшаем шрифтом — но не бесконечно, а до разумного предела. Обрезать
+        /// подпись многоточием нельзя: «Показать историю» и «Очистить историю» тогда выглядят
+        /// одинаково, а это разные и невосстановимые действия.
+        /// </summary>
+        private RoundedButton[] RowButtons(string[] captions, int x, int y, int totalWidth)
+        {
+            const int RowGap = 8;
+            int each = (totalWidth - RowGap * (captions.Length - 1)) / captions.Length;
+            var result = new RoundedButton[captions.Length];
+            for (int i = 0; i < captions.Length; i++)
+            {
+                var b = new RoundedButton(false);
+                b.SetBounds(x + i * (each + RowGap), y, each, BtnH);
+                Controls.Add(b); // шрифт наследуется от формы, до добавления мерить нечем
+                b.Text = captions[i];
+                // Ширину под подпись считаем ТЕМ ЖЕ отступом, каким кнопка рисует текст,
+                // иначе подпись «влезает» по расчёту и обрезается многоточием на экране.
+                b.Font = FitFont(captions[i], b.Font, each - 2 * RoundedButton.TextPadFor(each));
+                result[i] = b;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Шрифт, при котором подпись помещается в заданную ширину. Уменьшаем по половине
+        /// пункта и не ниже нижнего предела — дальше подпись становится нечитаемой, и лучше
+        /// уж пусть она чуть выйдет за край, чем превратится в мелкий шрифт.
+        /// </summary>
+        private static Font FitFont(string text, Font font, int maxWidth)
+        {
+            const float MinSize = 8f;
+            float size = font.Size;
+            while (size > MinSize && TextRenderer.MeasureText(text, Ui.Font(size, font.Style)).Width > maxWidth)
+                size -= 0.5f;
+            return Ui.Font(size, font.Style);
         }
 
         /// <summary>Задать подпись и подогнать ширину под неё (подпись меняется в LoadAndShow).</summary>
