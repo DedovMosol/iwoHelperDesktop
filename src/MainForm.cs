@@ -249,6 +249,7 @@ namespace ExcelMerger
             _list.DragDrop += OnFileDragDrop;
             _list.DragLeave += delegate { HideDropLine(); };
             _listMenu = new ContextMenuStrip();
+            _listMenu.Font = Ui.Font(9.75f); // шрифт приложения, а не системный (см. HelpMenu)
             var copyItem = new ToolStripMenuItem(Loc.T("common.copy"));
             copyItem.ShortcutKeyDisplayString = "Ctrl+C";
             copyItem.Click += delegate { CopySelectedRows(); };

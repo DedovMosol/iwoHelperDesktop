@@ -1447,6 +1447,7 @@ namespace ExcelMerger
         private void BuildContextMenu()
         {
             _menu = new ContextMenuStrip();
+            _menu.Font = Ui.Font(9.75f); // шрифт приложения, а не системный (см. HelpMenu)
             _miCut = AddMenuItem(Loc.T("grid.menu.cut"), "Ctrl+X", delegate { CutSelected(); });
             _miCopy = AddMenuItem(Loc.T("grid.menu.copy"), "Ctrl+C", delegate { CopySelected(); });
             _miPaste = AddMenuItem(Loc.T("grid.menu.paste"), "Ctrl+V", delegate { PasteClipboard(); });
