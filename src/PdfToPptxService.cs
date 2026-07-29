@@ -46,7 +46,7 @@ namespace ExcelMerger
             catch (Exception ex) when (MergeException.ShouldWrap(ex))
             {
                 throw new MergeException(string.Format(Loc.T("err.pptx.writeFailed"),
-                    Path.GetFileName(outputPath), ex.Message));
+                    Path.GetFileName(outputPath), DiskSpace.Describe(ex, outputPath)));
             }
             finally
             {

@@ -82,6 +82,20 @@ versions follow [SemVer](https://semver.org/).
   line asking the reader to press Ctrl+A and F9.
 
 ### Fixed
+- **A cancelled or failed split left the files it had already written.** Cancelling had
+  cleaned up for a while; failing had not, on the reasoning that half a result is better
+  than none. It is not: a folder holding seven parts of forty does not look incomplete —
+  half a set looks like a set, and it gets carried onward as one. Whatever stopped the
+  work, the work did not happen, so neither should the files. The one exception is running
+  out of memory, where tidying up is more dangerous than leaving things alone.
+- **“There is not enough space on the disk” now says which disk, and how much is left.**
+  The result goes to one folder and the temporary files to another, on a different drive,
+  and either can fill up; the system's own message names neither.
+- **A page whose text is part of the picture is now reported.** A document that is entirely
+  a scan is refused up front, but a mixed one — a few slides “printed” into the PDF as
+  images — passed that gate silently, and the empty pages in the result read as a broken
+  conversion rather than as a source with no text in it. The result now says how many pages
+  arrived without text and why only recognition can bring it back.
 - **A paragraph was often broken into separate pieces.** Where the source paragraph ends was
   being guessed from the gaps between lines, and a guess is wrong often enough to be
   noticed. It usually does not have to be guessed at all: a PDF written by Word, PowerPoint

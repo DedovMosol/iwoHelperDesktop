@@ -437,6 +437,11 @@ namespace ExcelMerger
             A("err.split.noBookmarks", "В файле нет закладок верхнего уровня — этот режим не применим.",
                 "The file has no top‑level bookmarks — this mode does not apply.");
             A("err.split.saveFailed", "Не удалось сохранить «{0}»: {1}", "Could not save “{0}”: {1}");
+            // Система сообщает, что места нет, но не говорит, ГДЕ: результат и временные файлы
+            // живут на разных дисках, и переполниться может любой. Называем диск и остаток.
+            A("err.disk.fullFree", "на диске {0} закончилось место (свободно {1} МБ)",
+                "the disk {0} is out of space ({1} MB free)");
+            A("err.disk.full", "на диске {0} закончилось место", "the disk {0} is out of space");
             A("err.ranges.empty", "Укажите диапазоны страниц, например: 1-3, 5, 8-", "Enter page ranges, for example: 1-3, 5, 8-");
             A("err.ranges.outside", "Диапазон «{0}» вне 1–{1}.", "Range “{0}” is outside 1–{1}.");
             A("err.ranges.badPage", "Не понял номер страницы в «{0}».", "Could not read a page number in “{0}”.");
@@ -804,6 +809,11 @@ namespace ExcelMerger
             A("ocr.status.convertingPage", "Конвертация: страница {0} из {1}…", "Converting: page {0} of {1}…");
             A("ocr.status.failed", "Не выполнено.", "Failed.");
             A("ocr.status.done", "✓ Готово: страниц {0} → Word (.docx).", "✓ Done: {0} pages → Word (.docx).");
+            // Смешанный документ: часть страниц — картинка целиком (слайд, «напечатанный» в PDF
+            // изображением). Молчать об этом нельзя: страница в результате есть, а текста на ней
+            // нет, и выглядит это как поломка перевода, а не как отсутствие текста в источнике.
+            A("convert.status.noTextPages", " Без текста осталось страниц: {0} — там он картинкой, и вернуть его может только распознавание.",
+                " {0} page(s) have no text: there it is part of the picture, and only recognition can bring it back.");
             A("ocr.err.convertFailed", "Конвертация не выполнена", "Conversion failed");
             A("ocr.filter", "Документ Word (*.docx)|*.docx", "Word document (*.docx)|*.docx");
             A("ocr.defaultMerged", "Объединённый.docx", "Merged.docx");

@@ -181,7 +181,8 @@ namespace ExcelMerger
                 }
                 catch (Exception ex) when (MergeException.ShouldWrap(ex))
                 {
-                    throw new MergeException(string.Format(Loc.T("err.split.saveFailed"), Path.GetFileName(path), ex.Message));
+                    throw new MergeException(string.Format(Loc.T("err.split.saveFailed"),
+                        Path.GetFileName(path), DiskSpace.Describe(ex, path)));
                 }
             }
         }

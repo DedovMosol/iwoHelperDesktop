@@ -181,8 +181,29 @@ namespace ExcelMerger
             if (_spec.RecordUsage != null)
                 _spec.RecordUsage();
             OperationHistory.Record(_spec.HistoryKey, outPath);
-            SetStatus(string.Format(_spec.Text("status.done"), result.Pages), Theme.OkGreen);
+            SetStatus(DoneStatus(result), Theme.OkGreen);
             Ui.OpenPath(outPath); // авто-открытие результата; молча, если нет ассоциации
+        }
+
+        /// <summary>
+        /// Строка результата. Если часть страниц пришла БЕЗ текста — говорим об этом прямо:
+        /// такая страница в презентации есть, но пустая, и без объяснения это выглядит как
+        /// поломка перевода, а не как отсутствие текста в источнике. Скан целиком мы отклоняем
+        /// заранее, а смешанный документ (несколько слайдов «напечатаны» картинкой) через этот
+        /// заслон проходит — и до сих пор проходил молча. Чистая — под тест.
+        /// </summary>
+        internal static string DoneStatus(ConvertResult result, string doneFormat)
+        {
+            string status = string.Format(doneFormat, result.Pages);
+            int without = result.Pages - result.PagesWithText;
+            if (without > 0)
+                status += string.Format(Loc.T("convert.status.noTextPages"), without);
+            return status;
+        }
+
+        private string DoneStatus(ConvertResult result)
+        {
+            return DoneStatus(result, _spec.Text("status.done"));
         }
 
         /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>
