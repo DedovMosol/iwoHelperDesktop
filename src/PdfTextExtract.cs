@@ -179,6 +179,8 @@ namespace ExcelMerger
                             // Виртуальная высота прочерков применяется ПОСЛЕ поворота страницы
                             // (ApplyUnderscoreHeights): рамка прочерка осмысленна в выправленном
                             // пространстве, а при 0° результат прежний.
+                            double baseX, baseY;
+                            BaselineOf(w.Letters, out baseX, out baseY);
                             words.Add(new PdfWord
                             {
                                 Text = text,
@@ -186,6 +188,8 @@ namespace ExcelMerger
                                 Right = bb.Right,
                                 Bottom = bb.Bottom,
                                 Top = bb.Top,
+                                BaselineXPt = baseX,
+                                BaselineYPt = baseY,
                                 FontSizePt = size,
                                 Bold = bold,
                                 Italic = italic,
@@ -414,6 +418,32 @@ namespace ExcelMerger
                 sb.Append(letters[k].Value);
             pseudoBold = GlyphDedup.LooksBold(keep.Count, dropped);
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Начало базовой линии слова — МЕДИАНА по буквам. Над- и подстрочные знаки стоят на
+        /// своих линиях, и одна такая буква увела бы и среднее, и крайнее значение, а медиана
+        /// остаётся на линии основного текста. Нули — букв нет (слово синтезировано).
+        /// </summary>
+        private static void BaselineOf(IReadOnlyList<UglyToad.PdfPig.Content.Letter> letters,
+            out double x, out double y)
+        {
+            x = 0;
+            y = 0;
+            if (letters == null || letters.Count == 0)
+                return;
+            var ys = new List<double>(letters.Count);
+            var xs = new List<double>(letters.Count);
+            for (int i = 0; i < letters.Count; i++)
+            {
+                UglyToad.PdfPig.Core.PdfPoint p = letters[i].StartBaseLine;
+                ys.Add(p.Y);
+                xs.Add(p.X);
+            }
+            ys.Sort();
+            xs.Sort();
+            y = ys[ys.Count / 2];
+            x = xs[xs.Count / 2];
         }
 
         /// <summary>

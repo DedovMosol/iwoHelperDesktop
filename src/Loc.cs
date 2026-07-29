@@ -133,8 +133,8 @@ namespace ExcelMerger
             A("hub.pending", "Выберите инструмент для файлов: {0}", "Choose a tool for {0} file(s)");
             A("hub.section.pdf.name", "PDF", "PDF");
             A("hub.section.pdf.desc",
-                "Объединение, разделение, PDF → Word и прочие операции: сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа.",
-                "Merge, split, PDF → Word and more operations: compression, images, text, grayscale, repair, editing the document properties.");
+                "Объединение, разделение, PDF → Word и PowerPoint и прочие операции: сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа.",
+                "Merge, split, PDF → Word and PowerPoint, and more operations: compression, images, text, grayscale, repair, editing the document properties.");
             A("hub.section.other.name", "Иной функционал", "Other tools");
             A("hub.section.other.desc", "Инструменты, не связанные с обработкой файлов расширения *.pdf.",
                 "Tools unrelated to processing *.pdf files.");

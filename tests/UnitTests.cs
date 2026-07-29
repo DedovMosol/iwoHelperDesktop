@@ -368,12 +368,16 @@ namespace ExcelMerger.Tests
             Run("PPTX: разрешение подложек падает с ростом числа страниц", TestPptxBackgroundDpi);
             Run("PPTX: объединение ячеек — пролёты у владельца, пометки у накрытых", TestPptxMergeGrid);
             Run("PPTX: таблица — сетка колонок, полные строки, границы по источнику", TestPptxTable);
+            Run("PPTX: пробел между ранами не теряется", TestPptxKeepsSpaces);
+            Run("PPTX: шаг строк — по базовым линиям, а не по верху чернил", TestPptxPitchFromBaselines);
+            Run("Разбор: базовая линия слова — медиана по буквам, поворот её переносит", TestWordBaseline);
+            Run("Палитра: значок каждого инструмента отличим от соседних", TestGlyphColoursDistinct);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 337;
+            const int MinTests = 341;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -4135,6 +4139,16 @@ namespace ExcelMerger.Tests
                 return XDocument.Parse(reader.ReadToEnd());
         }
 
+        /// <summary>Часть пакета как текст — для проверок самой разметки, а не разобранного XML.</summary>
+        private static string PptxPartText(OoxmlPackage package, string part)
+        {
+            using (var ms = new MemoryStream(package.ToArray()))
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+            using (Stream s = zip.GetEntry(part).Open())
+            using (var reader = new StreamReader(s, Encoding.UTF8))
+                return reader.ReadToEnd();
+        }
+
         private static readonly XNamespace PptxA = "http://schemas.openxmlformats.org/drawingml/2006/main";
         private static readonly XNamespace PptxP = "http://schemas.openxmlformats.org/presentationml/2006/main";
         private static readonly XNamespace PptxR = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -4143,7 +4157,8 @@ namespace ExcelMerger.Tests
         private static void TestPptxTextBox()
         {
             PdfPageText page = PptxPage(600, 800);
-            page.Paragraphs.Add(PptxPar("Привет", 100, 700, 300, 680, 14));
+            OcrParagraph par = PptxPar("Привет", 100, 700, 300, 680, 14);
+            page.Paragraphs.Add(par);
             XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
 
             List<XElement> shapes = new List<XElement>(slide.Descendants(PptxP + "sp"));
@@ -4151,10 +4166,11 @@ namespace ExcelMerger.Tests
 
             XElement off = PptxFirst(shapes[0].Descendants(PptxA + "off"));
             AssertEqual(PptxGeometry.Emu(100).ToString(), (string)off.Attribute("x"), "левый край — из рамки абзаца");
-            // Рамка поднята на подъёмную часть строки: PowerPoint ставит буквы не вплотную к
-            // верхнему краю надписи, и без поправки текст сел бы ниже, чем стоял в источнике.
-            AssertEqual(PptxGeometry.Emu(100 - PptxWriter.AscentGapPt(14)).ToString(), (string)off.Attribute("y"),
-                "верх = высота страницы − верх абзаца − подъёмная часть строки");
+            // Рамка поднята над базовой линией первой строки: PowerPoint ставит буквы не вплотную
+            // к верхнему краю надписи, и без поправки текст сел бы ниже, чем стоял в источнике.
+            double boxTop = PptxWriter.FirstBaselinePt(par, 14) + PptxWriter.FirstBaselineDropPt(14);
+            AssertEqual(PptxGeometry.Emu(800 - boxTop).ToString(), (string)off.Attribute("y"),
+                "верх = высота страницы − базовая линия первой строки − её место под верхом рамки");
 
             XElement bodyPr = PptxFirst(shapes[0].Descendants(PptxA + "bodyPr"));
             AssertEqual("0", (string)bodyPr.Attribute("lIns"), "нулевое поле слева — иначе текст уезжает");
@@ -4434,15 +4450,164 @@ namespace ExcelMerger.Tests
 
         private static void TestPptxAscentGap()
         {
-            // Значение измерено настоящим PowerPoint (см. PptxWriter.AscentGapFactor): без
+            // Значение измерено настоящим PowerPoint (см. PptxWriter.FirstBaselineFactor): без
             // поправки текст садится ниже, чем стоял, и линовка подложки пересекает буквы.
-            AssertEqual(2.9, Math.Round(PptxWriter.AscentGapPt(10), 6), "десятый кегль");
-            AssertEqual(6.96, Math.Round(PptxWriter.AscentGapPt(24), 6), "двадцать четвёртый");
-            AssertEqual(PptxWriter.AscentGapPt(FontResolver.DefaultFontSize), PptxWriter.AscentGapPt(0),
+            AssertEqual(9.9, Math.Round(PptxWriter.FirstBaselineDropPt(10), 6), "десятый кегль");
+            AssertEqual(23.76, Math.Round(PptxWriter.FirstBaselineDropPt(24), 6), "двадцать четвёртый");
+            AssertEqual(PptxWriter.FirstBaselineDropPt(FontResolver.DefaultFontSize), PptxWriter.FirstBaselineDropPt(0),
                 "неизвестный кегль — как у кегля по умолчанию");
             // Многострочный абзац: первую строку читатель отсчитывает от ШАГА, а не от кегля.
-            AssertEqual(9.6, Math.Round(PptxWriter.AscentGapPt(20, 30), 6), "шаг 30 при кегле 20");
-            AssertEqual(0.0, PptxWriter.AscentGapPt(20, 5), "шаг меньше строки — поправка нулевая, а не отрицательная");
+            AssertEqual(23.6, Math.Round(PptxWriter.FirstBaselineDropPt(20, 30), 6), "шаг 30 при кегле 20");
+            AssertEqual(Math.Round(PptxWriter.FirstBaselineDropPt(20), 6),
+                Math.Round(PptxWriter.FirstBaselineDropPt(20, 5), 6),
+                "шаг меньше строки — откат к метрикам шрифта, а не рамка выше самой строки");
+
+            // Строка ИЗ ОДНИХ СТРОЧНЫХ букв стоит там же, где строка с заглавной: место берётся
+            // от базовой линии, а верх чернил у них разный. Это и был дефект — абзац без
+            // заглавных всплывал над своим местом, и подчёркивание подложки резало его пополам.
+            var withCaps = new OcrParagraph { TopPt = 500, BottomPt = 480, LeftPt = 10, RightPt = 300 };
+            withCaps.LineBaselinesPt.Add(486);
+            var lowerOnly = new OcrParagraph { TopPt = 494, BottomPt = 480, LeftPt = 10, RightPt = 300 };
+            lowerOnly.LineBaselinesPt.Add(486);
+            AssertEqual(PptxWriter.FirstBaselinePt(withCaps, 20), PptxWriter.FirstBaselinePt(lowerOnly, 20),
+                "базовая линия одна — и место одно, каким бы ни был верх чернил");
+
+            // Базовой линии нет (линовка, прочерки) — прежний отсчёт от верха чернил.
+            var noBaseline = new OcrParagraph { TopPt = 500, BottomPt = 480, LeftPt = 10, RightPt = 300 };
+            AssertEqual(500 - 14.0, Math.Round(PptxWriter.FirstBaselinePt(noBaseline, 20), 6),
+                "запасной вариант — верх чернил минус высота прописных");
+        }
+
+
+        /// <summary>
+        /// Хвостовой пробел рана обязан пережить запись. Без xml:space="preserve" его снимает
+        /// уже разбор XML, и соседние слова слипаются: ран кончается там, где меняется формат,
+        /// а это ровно граница подчёркнутого куска посреди предложения.
+        /// </summary>
+        private static void TestPptxKeepsSpaces()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            var par = new OcrParagraph { LeftPt = 10, TopPt = 700, RightPt = 500, BottomPt = 680 };
+            par.Runs.Add(new OcrRun { Text = "первое ", FontSizePt = 12, Bold = true });
+            par.Runs.Add(new OcrRun { Text = "второе", FontSizePt = 12 });
+            page.Paragraphs.Add(par);
+
+            OoxmlPackage package = PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp);
+            XDocument slide = PptxSlideXml(package, 1);
+            AssertEqual("первое второе", PptxAllText(slide), "пробел на стыке ранов остался");
+
+            string xml = PptxPartText(package, "ppt/slides/slide1.xml");
+            AssertTrue(xml.Contains("<a:t xml:space=\"preserve\">"),
+                "у текста рана стоит xml:space=\"preserve\" — иначе крайние пробелы снимает разбор");
+        }
+
+        /// <summary>
+        /// Шаг строк и место абзаца считаются по БАЗОВЫМ линиям. Строка из одних строчных букв
+        /// начинается ниже строки с заглавной при той же базовой линии, и отсчёт от верха чернил
+        /// поднимал такую строку над своим местом — подчёркивание подложки резало её пополам.
+        /// </summary>
+        private static void TestPptxPitchFromBaselines()
+        {
+            PdfPageText page = PptxPage(600, 800);
+            var par = new OcrParagraph
+            {
+                LeftPt = 40, TopPt = 700, RightPt = 500, BottomPt = 660,
+                Alignment = OcrAlignment.Left, LineCount = 3, MinLeftPt = 40
+            };
+            // Верх чернил у второй строки на 4 pt ниже (в ней нет заглавных), базовые линии же
+            // идут ровным шагом 20 pt — по ним и должно получиться 20 pt между всеми строками.
+            par.LineTopsPt.Add(700);
+            par.LineTopsPt.Add(676);
+            par.LineTopsPt.Add(660);
+            par.LineBaselinesPt.Add(692);
+            par.LineBaselinesPt.Add(672);
+            par.LineBaselinesPt.Add(652);
+            par.Runs.Add(new OcrRun { Text = "Первая", FontSizePt = 12 });
+            par.Runs.Add(new OcrRun { Text = "вторая", FontSizePt = 12, StartsLine = true });
+            par.Runs.Add(new OcrRun { Text = "третья", FontSizePt = 12, StartsLine = true });
+            page.Paragraphs.Add(par);
+
+            XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
+            foreach (XElement spc in slide.Descendants(PptxA + "spcPts"))
+                AssertEqual("2000", (string)spc.Attribute("val"),
+                    "шаг ровный: чернила второй строки ниже, а базовая линия — на своём месте");
+
+            var shapes = new List<XElement>(slide.Descendants(PptxP + "sp"));
+            XElement off = PptxFirst(shapes[0].Descendants(PptxA + "off"));
+            double boxTop = 692 + PptxWriter.FirstBaselineDropPt(12, 20);
+            AssertEqual(PptxGeometry.Emu(800 - boxTop).ToString(), (string)off.Attribute("y"),
+                "верх рамки отсчитан от базовой линии первой строки");
+        }
+
+        /// <summary>
+        /// Базовая линия слова — медиана по буквам (надстрочный знак не должен её уводить),
+        /// и поворот страницы переносит её как ТОЧКУ: у боковой строки она вертикальна.
+        /// </summary>
+        private static void TestWordBaseline()
+        {
+            var line = new OcrLayout.Line();
+            line.Words.Add(new PdfWord { Text = "раз", Left = 10, Right = 40, Bottom = 100, Top = 112, BaselineYPt = 100 });
+            line.Words.Add(new PdfWord { Text = "два", Left = 45, Right = 75, Bottom = 100, Top = 112, BaselineYPt = 100 });
+            line.Words.Add(new PdfWord { Text = "1", Left = 76, Right = 80, Bottom = 108, Top = 116, BaselineYPt = 108 });
+            AssertEqual(100.0, line.BaselinePt, "надстрочный знак медиану не уводит");
+
+            var empty = new OcrLayout.Line();
+            empty.Words.Add(new PdfWord { Text = "___", Left = 0, Right = 30, Bottom = 50, Top = 52 });
+            AssertEqual(0.0, empty.BaselinePt, "букв нет — базовой линии нет, а не ноль по ошибке");
+
+            // Поворот на 90°: точка (x, y) страницы 600×800 переходит в (y, x) страницы 800×600.
+            var words = new List<PdfWord>
+            {
+                new PdfWord { Text = "бок", Left = 100, Right = 130, Bottom = 200, Top = 212,
+                    BaselineXPt = 100, BaselineYPt = 200 }
+            };
+            double w = 600, h = 800;
+            PageRotation.RotatePage(words, null, null, 90, ref w, ref h);
+            AssertTrue(words[0].BaselineXPt != 100 || words[0].BaselineYPt != 200,
+                "базовая линия повёрнута вместе со словом, а не осталась в старом пространстве");
+            AssertTrue(words[0].BaselineYPt >= words[0].Bottom - 0.001 && words[0].BaselineYPt <= words[0].Top + 0.001,
+                "после разворота базовая линия лежит внутри рамки слова");
+        }
+
+
+        /// <summary>
+        /// Значки инструментов различаются НЕ ТОЛЬКО рисунком внутри листа: карточки стоят
+        /// рядом, и первым читается цветовое пятно. Тёмный оранжево-красный PowerPoint рядом
+        /// с красным PDF выглядел «ещё одним красным» — цвета обязаны расходиться заметно.
+        /// Порог по сумме модулей каналов: 90 из 765 — примерно граница, на которой два пятна
+        /// перестают читаться как один цвет.
+        /// </summary>
+        private static void TestGlyphColoursDistinct()
+        {
+            var palette = new List<KeyValuePair<string, System.Drawing.Color>>
+            {
+                new KeyValuePair<string, System.Drawing.Color>("PDF", System.Drawing.Color.FromArgb(211, 47, 47)),
+                new KeyValuePair<string, System.Drawing.Color>("Excel", Theme.Accent),
+                new KeyValuePair<string, System.Drawing.Color>("Word", Theme.WordViolet),
+                new KeyValuePair<string, System.Drawing.Color>("PowerPoint", Theme.PowerPointOrange),
+                new KeyValuePair<string, System.Drawing.Color>("разделы", Theme.HubBlue)
+            };
+            var offenders = new List<string>();
+            for (int i = 0; i < palette.Count; i++)
+                for (int j = i + 1; j < palette.Count; j++)
+                {
+                    System.Drawing.Color a = palette[i].Value, b = palette[j].Value;
+                    int distance = Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
+                    if (distance < 90)
+                        offenders.Add(palette[i].Key + " и " + palette[j].Key + ": " + distance);
+                }
+            AssertTrue(offenders.Count == 0, "значки сливаются по цвету: " + string.Join(" | ", offenders.ToArray()));
+
+            // Полоса шапки инструмента — своя, ТЁМНАЯ: по ней идёт белый текст, и подпись под
+            // заголовком требует контраста, которого яркий оранжевый не даёт.
+            AssertTrue(Brightness(Theme.PowerPointBand) < Brightness(Theme.PowerPointOrange),
+                "полоса шапки темнее значка — иначе белая подпись на ней не читается");
+        }
+
+        /// <summary>Воспринимаемая яркость цвета (ITU-R BT.601) — для проверок контраста.</summary>
+        private static double Brightness(System.Drawing.Color c)
+        {
+            return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
         }
 
         private static void TestPptxBackground()
@@ -6604,13 +6769,38 @@ namespace ExcelMerger.Tests
                     IntPtr handle = hub.Handle;
                     if (handle == IntPtr.Zero) { offenders.Add("хаб не создался"); return; }
                     var named = new List<string>();
+                    var icons = new List<System.Windows.Forms.Control>();
                     foreach (System.Windows.Forms.Control c in hub.Controls)
                         if (c.AccessibleName != null && c.AccessibleName.Length > 0 && c.TabStop)
+                        {
                             named.Add(c.AccessibleName);
+                            if (c.AccessibleName == Loc.T("settings.title") || c.AccessibleName == Loc.T("hub.about"))
+                                icons.Add(c);
+                        }
                     if (!named.Contains(Loc.T("settings.title")))
                         offenders.Add("у шестерни нет имени для диктора");
                     if (!named.Contains(Loc.T("hub.about")))
                         offenders.Add("у справки нет имени для диктора");
+                    // Цвет и отклик на курсор. Два одинаково серых значка по краям белого ряда
+                    // сливались и с фоном, и между собой, а значок без рамки ничем не отвечал
+                    // на наведение — «нажимается ли это» выяснялось нажатием.
+                    if (icons.Count != 2)
+                        offenders.Add("значков нижнего ряда не два, а " + icons.Count);
+                    else
+                    {
+                        if (icons[0].ForeColor.ToArgb() == icons[1].ForeColor.ToArgb())
+                            offenders.Add("шестерня и справка одного цвета — их не различить");
+                        foreach (System.Windows.Forms.Control icon in icons)
+                        {
+                            if (icon.ForeColor.ToArgb() == Theme.TextPrimary.ToArgb())
+                                offenders.Add("значок цвета обычного текста — на белом он теряется");
+                            System.Reflection.FieldInfo fill = icon.GetType().GetField("HoverFill");
+                            if (fill == null) { offenders.Add("у значка нет подсветки при наведении"); continue; }
+                            var color = (System.Drawing.Color)fill.GetValue(icon);
+                            if (color.IsEmpty || color.A == 0)
+                                offenders.Add("подсветка значка прозрачна — наведение ничего не показывает");
+                        }
+                    }
                 }
             });
             AssertTrue(offenders.Count == 0, "значки нижнего ряда: " + string.Join(" | ", offenders.ToArray()));

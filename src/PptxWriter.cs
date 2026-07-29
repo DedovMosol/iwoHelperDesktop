@@ -15,7 +15,7 @@ namespace ExcelMerger
     /// вёрстки Word: интервалы, красную строку и выключку воспроизводить нечем и незачем — у
     /// каждой надписи есть своя рамка из PDF. Взамен появляется своя забота: рамка обязана быть
     /// чуть шире измеренной, иначе последнее слово перепрыгнет на вторую строку (см.
-    /// <see cref="WidthSlackPt"/>).
+    /// <see cref="SlackWidthPt"/>).
     /// </summary>
     internal static class PptxWriter
     {
@@ -43,26 +43,40 @@ namespace ExcelMerger
         private const double LineHeightFactor = 1.25;
 
         /// <summary>
-        /// Насколько верх БУКВ ниже верха рамки надписи, в долях кегля. PowerPoint отводит
-        /// строке место по метрикам шрифта и ставит буквы не вплотную к верхнему краю, а ниже
-        /// на подъёмную часть строки. Рамка же берётся у нас по ЧЕРНИЛАМ исходника, поэтому
-        /// без поправки текст на слайде садится ниже, чем стоял, — и подчёркивания с линовкой,
-        /// пришедшие подложкой, начинают пересекать буквы.
+        /// Насколько БАЗОВАЯ ЛИНИЯ первой строки ниже верха рамки надписи, в долях кегля.
+        /// PowerPoint отводит строке место по метрикам шрифта и ставит буквы не вплотную к
+        /// верхнему краю, а ниже на подъёмную часть строки — без поправки текст на слайде
+        /// садится ниже, чем стоял, и подчёркивания с линовкой, пришедшие подложкой, начинают
+        /// пересекать буквы.
         ///
-        /// Значение измерено: одна строка в известном месте прогонялась через настоящий
+        /// Измерялось так: одна строка в известном месте прогонялась через настоящий
         /// PowerPoint и сравнивалась с оригиналом по первому пикселю чернил — Arial 24 дал
-        /// 0,260 кегля, Arial 12 — 0,300, Times 24 — 0,330, Times 10 — 0,384, Calibri 18 —
-        /// 0,307. Точное значение зависит от шрифта (высота прописных к подъёму разная), и
-        /// одной константой его не выразить; взята середина, остаточная ошибка — меньше
-        /// пункта против прежних четырёх-восьми.
+        /// 0,260 кегля до ВЕРХА БУКВ, Arial 12 — 0,300, Times 24 — 0,330, Times 10 — 0,384,
+        /// Calibri 18 — 0,307. Здесь эти же числа пересчитаны на базовую линию (плюс высота
+        /// прописных, <see cref="CapHeightFactor"/>): для строки, начатой с заглавной, место
+        /// выходит ровно то же, а для строки из одних строчных — правильное, тогда как отсчёт
+        /// от верха чернил поднимал её на разницу высот прописных и строчных.
         /// </summary>
-        private const double AscentGapFactor = 0.29;
+        private const double FirstBaselineFactor = AscentGapFactor + CapHeightFactor;
 
         /// <summary>
-        /// Сколько от шага строк приходится на саму строку (в долях кегля) — остаток и есть
-        /// зазор над буквами. Измерено вместе с <see cref="AscentGapFactor"/>.
+        /// Сколько от шага строк приходится НИЖЕ базовой линии (в долях кегля): при точном
+        /// шаге L базовая линия строки оказывается на L − этой доли от верха её места.
         /// </summary>
-        private const double BaselineDropFactor = 1.02;
+        private const double DescentFactor = BaselineDropFactor - CapHeightFactor;
+
+        /// <summary>
+        /// Высота прописных букв в долях кегля — усреднённая по гарнитурам (Arial 0,716,
+        /// Times 0,662, Calibri 0,644). Ею связаны два ориентира: верх чернил строки, начатой
+        /// с заглавной, и её базовая линия. Нужна ровно для двух вещей — пересчёта измеренных
+        /// констант и запасного варианта, когда базовой линии у строки нет.
+        /// </summary>
+        private const double CapHeightFactor = 0.70;
+
+        // Исходные измеренные величины — отсчёт вёлся от ВЕРХА ЧЕРНИЛ. Оставлены, чтобы обе
+        // константы выше читались как пересчёт того самого измерения, а не как подобранные числа.
+        private const double AscentGapFactor = 0.29;    // верх рамки → верх букв, одиночная строка
+        private const double BaselineDropFactor = 1.02; // доля шага, приходящаяся на саму строку
 
         /// <summary>
         /// Во сколько кеглей укладывается ОДНА строка. Всё, что выше, — многострочный абзац.
@@ -334,14 +348,19 @@ namespace ExcelMerger
                 // второй строкой). Многострочному абзацу перенос, наоборот, нужен — его ширина
                 // и есть та, по которой он вёрстан.
                 bool singleLine = IsSingleLine(heightPt, fontPt);
+                // У однострочной надписи рамка обнимает сам текст, поэтому её левый край и есть
+                // точное место строки — выравнивание здесь только сдвинуло бы её на запас ширины.
+                OcrAlignment align = singleLine ? OcrAlignment.Left : paragraph.Alignment;
                 widthPt = SlackWidthPt(leftPt, widthPt, _page.WidthPt);
-                if (heightPt <= 0)
-                    heightPt = fontPt * LineHeightFactor; // вырожденная рамка — строка своего кегля
-                // Рамку поднимаем на подъёмную часть строки и на неё же увеличиваем — иначе
-                // текст сядет ниже, чем стоял в источнике (см. AscentGapFactor).
-                double ascentGap = AscentGapPt(fontPt, LinePitchPt(paragraph, 0));
-                double boxTopPt = paragraph.TopPt + ascentGap;
-                heightPt += ascentGap;
+                // Верх рамки — от БАЗОВОЙ ЛИНИИ первой строки, а не от верха её чернил: у строки
+                // из одних строчных букв чернила начинаются на высоте строчных, и отсчёт от них
+                // поднимал бы её над своим местом (см. FirstBaselineFactor).
+                double boxTopPt = FirstBaselinePt(paragraph, fontPt)
+                    + FirstBaselineDropPt(fontPt, LinePitchPt(paragraph, 0));
+                // Высота — до низа чернил абзаца: рамка обязана вместить все строки, иначе
+                // последняя вылезет за неё и при правке текст поедет.
+                double boxHeightPt = boxTopPt - paragraph.BottomPt;
+                heightPt = boxHeightPt > 0 ? boxHeightPt : fontPt * LineHeightFactor;
 
                 var sb = new StringBuilder(1024);
                 sb.Append("<p:sp><p:nvSpPr><p:cNvPr id=\"").Append(PptxParts.Num(_shapeId))
@@ -356,9 +375,6 @@ namespace ExcelMerger
                 sb.Append("<p:txBody><a:bodyPr wrap=\"").Append(singleLine ? "none" : "square")
                     .Append("\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\""
                     + " anchor=\"t\"><a:noAutofit/></a:bodyPr><a:lstStyle/>");
-                // У однострочной надписи рамка обнимает сам текст, поэтому её левый край и есть
-                // точное место строки — выравнивание здесь только сдвинуло бы её на запас ширины.
-                OcrAlignment align = singleLine ? OcrAlignment.Left : paragraph.Alignment;
                 for (int i = 0; i < lines.Count; i++)
                     sb.Append("<a:p>")
                       .Append(ParagraphProps(paragraph, align, i == 0 ? firstIndentPt : 0, LinePitchPt(paragraph, i)))
@@ -406,13 +422,17 @@ namespace ExcelMerger
             }
 
             /// <summary>
-            /// Шаг для строки по её номеру: расстояние от верха предыдущей строки источника.
+            /// Шаг для строки по её номеру: расстояние между её базовой линией и базовой линией
+            /// предыдущей строки источника. По базовым линиям, а не по верхам чернил: верх
+            /// зависит от того, попались ли в строке заглавные буквы, и шаг, посчитанный по
+            /// нему, гулял бы от строки к строке на разницу высот прописных и строчных.
             /// У первой строки своего расстояния нет — берём шаг второй, потому что именно он
             /// задаёт, где внутри рамки окажется первая строка. 0 — строка одна.
             /// </summary>
             private static double LinePitchPt(OcrParagraph paragraph, int index)
             {
-                List<double> tops = paragraph.LineTopsPt;
+                List<double> tops = paragraph.LineBaselinesPt != null && paragraph.LineBaselinesPt.Count > 0
+                    ? paragraph.LineBaselinesPt : paragraph.LineTopsPt;
                 if (tops == null || tops.Count < 2)
                     return 0;
                 int i = index > 0 ? index : 1;
@@ -448,7 +468,7 @@ namespace ExcelMerger
                         continue;
                     if (text.Trim().Length > 0)
                         anyVisible = true;
-                    sb.Append("<a:r>").Append(RunProps(run, text)).Append("<a:t>")
+                    sb.Append("<a:r>").Append(RunProps(run, text)).Append("<a:t xml:space=\"preserve\">")
                       .Append(XmlText.Escape(text)).Append("</a:t></a:r>");
                 }
                 result.Add(anyVisible ? sb.ToString() : string.Empty);
@@ -480,7 +500,7 @@ namespace ExcelMerger
                     // нечем, а строка обязана начаться там же, где начиналась.
                     if (run.StartsLine && sb.Length > 0)
                         sb.Append("<a:br/>");
-                    sb.Append("<a:r>").Append(RunProps(run, text)).Append("<a:t>")
+                    sb.Append("<a:r>").Append(RunProps(run, text)).Append("<a:t xml:space=\"preserve\">")
                       .Append(XmlText.Escape(text)).Append("</a:t></a:r>");
                 }
                 return anyVisible ? sb.ToString() : string.Empty; // только пробелы — это не текст
@@ -737,27 +757,45 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// На сколько поднять рамку, чтобы буквы встали туда, где стояли в источнике.
+        /// Насколько верх рамки надписи выше базовой линии её ПЕРВОЙ строки. Ставим рамку по
+        /// этой величине — и буквы встают туда, где стояли в источнике.
         ///
         /// Случая два, и считаются они по-разному. Когда абзац МНОГОСТРОЧНЫЙ, шаг строк задан
-        /// точно (в пунктах), и первую строку читатель отсчитывает ОТ ШАГА, а не от кегля:
-        /// низ первой строки лежит на её базовой линии, поднятой на шаг. Когда строка ОДНА,
-        /// шага нет, и высоту строки читатель берёт из метрик шрифта.
+        /// точно (в пунктах), и место первой строки читатель отсчитывает ОТ ШАГА, а не от
+        /// кегля: базовая линия оказывается на шаг ниже верха рамки за вычетом подстрочной
+        /// доли. Когда строка ОДНА, шага нет, и высоту строки читатель берёт из метрик шрифта.
         ///
         /// Оба коэффициента измерены прогоном через настоящий PowerPoint (одна строка и три
-        /// строки с известным шагом, сравнение по первому пикселю чернил): одиночная строка
-        /// дала 0,29 кегля, многострочная — «шаг минус 1,02 кегля» с остаточной ошибкой
-        /// меньше трети пункта на Arial 12/24 и Times 18. Чистая — под тест.
+        /// строки с известным шагом, сравнение по первому пикселю чернил) — см.
+        /// <see cref="FirstBaselineFactor"/>. Чистая — под тест.
         /// </summary>
-        internal static double AscentGapPt(double fontPt, double linePitchPt = 0)
+        internal static double FirstBaselineDropPt(double fontPt, double linePitchPt = 0)
         {
             double font = fontPt > 0 ? fontPt : FontResolver.DefaultFontSize;
             if (linePitchPt > 0)
             {
-                double gap = linePitchPt - BaselineDropFactor * font;
-                return gap > 0 ? gap : 0;
+                double drop = linePitchPt - DescentFactor * font;
+                // Слишком тесный шаг (строки источника налезали друг на друга) поднял бы рамку
+                // выше самой строки — тогда отступаем к метрикам шрифта, как у одиночной строки.
+                if (drop > 0)
+                    return drop;
             }
-            return AscentGapFactor * font;
+            return FirstBaselineFactor * font;
+        }
+
+        /// <summary>
+        /// Базовая линия первой строки абзаца. Настоящая — если строки собраны из букв; иначе
+        /// оценка от верха чернил (линовка, прочерки — у них букв нет). Оценка подобрана так,
+        /// чтобы для строки, начатой с ЗАГЛАВНОЙ, место совпадало с прежним расчётом от верха
+        /// чернил: разница между двумя ориентирами — ровно высота прописных.
+        /// </summary>
+        internal static double FirstBaselinePt(OcrParagraph paragraph, double fontPt)
+        {
+            List<double> baselines = paragraph.LineBaselinesPt;
+            if (baselines != null && baselines.Count > 0 && baselines[0] != 0)
+                return baselines[0];
+            double font = fontPt > 0 ? fontPt : FontResolver.DefaultFontSize;
+            return paragraph.TopPt - CapHeightFactor * font;
         }
 
         internal static bool IsSingleLine(double heightPt, double fontPt)
