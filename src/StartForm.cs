@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Reflection;
 using System.Windows.Forms;
@@ -118,6 +119,7 @@ namespace ExcelMerger
             var globe = new GlyphButton("", 15f, "Segoe MDL2 Assets",
                 delegate { return Flags.For(Loc.Current); }); // U+E774 — «глобус»
             globe.ForeColor = Color.White;
+            globe.HoverFill = Color.FromArgb(46, 255, 255, 255); // на синей шапке отзывается высветлением
             globe.AccessibleName = Loc.T("lang.tooltip"); // с клавиатуры и для экранного диктора
             // Y задаёт сама шапка (AlignToText): глобус встаёт по центру пары «заголовок +
             // подпись» при любом масштабе экрана, здесь только колонка.
@@ -308,7 +310,11 @@ namespace ExcelMerger
             // занимает четверть нижнего ряда. Подпись остаётся в подсказке и в имени для
             // экранного диктора — узнаваемость значка не должна быть единственной опорой.
             var settings = new GlyphButton("", 17f, "Segoe MDL2 Assets"); // U+E713 — «шестерня»
-            settings.ForeColor = Theme.TextPrimary;
+            // Свой цвет, а не общий тёмно-серый: две одинаково серые закорючки по краям белого
+            // ряда сливались и между собой, и с фоном — по значку нельзя было понять, куда
+            // ведёт нажатие, не наводя на него курсор.
+            settings.ForeColor = Theme.SettingsBlue;
+            settings.HoverFill = Color.FromArgb(30, Theme.SettingsBlue);
             settings.AccessibleName = Loc.T("settings.title");
             settings.SetBounds(Pad, BottomRowY, BottomRowH, BottomRowH);
             settings.Click += delegate { using (var f = new SettingsForm()) f.ShowDialog(this); };
@@ -316,10 +322,12 @@ namespace ExcelMerger
             _bottomTip = new ToolTip();
             _bottomTip.SetToolTip(settings, Loc.T("settings.title"));
 
-            // «О программе» — знаком вопроса, парно к шестерне настроек: два служебных
-            // действия нижнего ряда выглядят одинаково и не спорят с карточками инструментов.
+            // «О программе» — знаком вопроса, парно к шестерне настроек: оба служебных действия
+            // нижнего ряда одного размера и не спорят с карточками инструментов, но цвет у
+            // каждого свой — форма значка на белом читается хуже, чем цветовое пятно.
             var about = new GlyphButton("", 17f, "Segoe MDL2 Assets"); // U+E9CE — «вопрос в круге»
-            about.ForeColor = Theme.TextPrimary;
+            about.ForeColor = Theme.HelpTeal;
+            about.HoverFill = Color.FromArgb(30, Theme.HelpTeal);
             about.AccessibleName = Loc.T("hub.about");
             about.SetBounds(ClientSize.Width - Pad - BottomRowH, BottomRowY, BottomRowH, BottomRowH);
             about.Click += delegate { using (var f = new AboutForm()) f.ShowDialog(this); };
@@ -382,6 +390,16 @@ namespace ExcelMerger
 
             private readonly Func<Image> _fallback;
 
+            private bool _hover, _pressed;
+
+            /// <summary>
+            /// Подложка под значком при наведении и нажатии. Значок без рамки ничем не отвечает
+            /// на курсор, а «нажимается или нет» — это ровно то, что мышью выясняют наведением.
+            /// Цвет задаёт вызывающий: на белом ряду нужна светло-серая, на синей шапке — белая
+            /// полупрозрачная, и обратное в каждом случае было бы невидимо.
+            /// </summary>
+            public Color HoverFill = Color.Empty;
+
             public GlyphButton(string glyph, float size, string family, Func<Image> fallback = null)
             {
                 _fallback = fallback;
@@ -397,6 +415,16 @@ namespace ExcelMerger
 
             protected override void OnPaint(PaintEventArgs e)
             {
+                if (HoverFill != Color.Empty && (_hover || _pressed))
+                {
+                    // Круг, а не прямоугольник: значок квадратный и мелкий, прямоугольная плашка
+                    // на его фоне выглядит крупнее самого значка.
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    int alpha = _pressed ? Math.Min(255, HoverFill.A * 2) : HoverFill.A;
+                    using (var b = new SolidBrush(Color.FromArgb(alpha, HoverFill)))
+                        e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
+                    e.Graphics.SmoothingMode = SmoothingMode.Default;
+                }
                 Image fallback = _glyphFontPresent || _fallback == null ? null : _fallback();
                 if (fallback != null)
                 {
@@ -440,6 +468,15 @@ namespace ExcelMerger
 
             protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
             protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+
+            protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); _hover = true; Invalidate(); }
+            protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); _hover = false; _pressed = false; Invalidate(); }
+            protected override void OnMouseDown(MouseEventArgs e)
+            {
+                base.OnMouseDown(e);
+                if (e.Button == MouseButtons.Left) { _pressed = true; Invalidate(); }
+            }
+            protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); _pressed = false; Invalidate(); }
         }
     }
 }

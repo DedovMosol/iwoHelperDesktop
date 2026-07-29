@@ -19,9 +19,20 @@ namespace ExcelMerger
         public static readonly Color WordViolet = Color.FromArgb(91, 79, 191);    // #5B4FBF
         public static readonly Color WordVioletDark = Color.FromArgb(62, 52, 140);// #3E348C
 
-        // «PDF → PowerPoint» — фирменный оранжево-красный, чтобы инструменты различались с одного взгляда
-        public static readonly Color PowerPointOrange = Color.FromArgb(196, 62, 28);     // #C43E1C
-        public static readonly Color PowerPointOrangeDark = Color.FromArgb(150, 45, 20); // #962D14
+        // «PDF → PowerPoint». Полоса шапки и значок карточки НАМЕРЕННО разного тона: по полосе
+        // идёт белый текст, и подпись под заголовком требует контраста 4,5:1 — яркий оранжевый
+        // его не даёт, а тёмный оранжево-красный на белом фоне карточки читается просто как
+        // «ещё один красный» рядом со значками PDF.
+        public static readonly Color PowerPointBand = Color.FromArgb(196, 62, 28);       // #C43E1C, контраст с белым 5,2:1
+        public static readonly Color PowerPointBandDark = Color.FromArgb(150, 45, 20);   // #962D14
+        public static readonly Color PowerPointOrange = Color.FromArgb(237, 112, 20);    // #ED7014 — значок
+        public static readonly Color PowerPointOrangeDark = Color.FromArgb(184, 83, 12); // #B8530C — загнутый уголок
+
+        // Значки нижнего ряда стартового экрана. Одинаковый серый превращал их в две
+        // неразличимые закорючки на белом, поэтому у каждого свой тон: настройки — синий
+        // шапки, справка — бирюзовый (не занят ни одним инструментом).
+        public static readonly Color SettingsBlue = Color.FromArgb(15, 108, 189);        // #0F6CBD
+        public static readonly Color HelpTeal = Color.FromArgb(11, 122, 133);            // #0B7A85
 
         public static readonly Color TextPrimary = Color.FromArgb(45, 45, 45);
         public static readonly Color TextMuted = Color.FromArgb(115, 115, 115);

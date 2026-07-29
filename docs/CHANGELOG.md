@@ -82,6 +82,26 @@ versions follow [SemVer](https://semver.org/).
   line asking the reader to press Ctrl+A and F9.
 
 ### Fixed
+- **A paragraph without capital letters sat a line too high on the slide.** Text was placed
+  by the top of its ink, and that top is where the tallest letter starts: a line beginning
+  with a capital reaches higher than one made of lower-case letters alone. The same
+  correction under both therefore lifted the second kind above its place — far enough for
+  the underline, which arrives with the background as a drawn rule, to cross the words
+  instead of running below them, and far enough for the line spacing inside a paragraph to
+  drift as the letters changed. Placement now works from the **baseline**, which does not
+  depend on which letters are in the line: it is read from the source, carried through page
+  rotation, and the measured constants are the same numbers restated against it — a line
+  starting with a capital lands exactly where it did before. Measured over a thirty-slide
+  document and thirteen more decks of 584 slides: no page came out worse.
+- **A space between two differently formatted words was lost**, so “bold word” followed by
+  a plain one read as one long word. A run ends where the formatting changes, which is
+  precisely mid-sentence, and the space at that seam was being trimmed by the XML reader.
+- **The two icons in the start screen's bottom row could not be told apart** — same grey,
+  on white, one at each end — and neither answered the mouse. Each now has its own colour
+  and lights up under the cursor, as does the language globe on the header.
+- **The PowerPoint icon was another red one.** Beside the red PDF cards the dark
+  orange-red read as the same colour. The icon is orange now; the tool's header band keeps
+  the darker tone, because white text runs across it and a bright orange cannot carry it.
 - **A release tagged with two numbers would have crashed the startup check** — and with it
   the app, at launch, for everyone at once. Versions are formatted through one function now.
 - **Two update windows could stack** if the button was pressed within the ten seconds the
