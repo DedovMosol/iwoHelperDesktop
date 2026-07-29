@@ -127,6 +127,10 @@ namespace ExcelMerger
                         // Какая ориентация текста станет горизонтальной после поворота страницы
                         // пользователем: только её и пускаем в поток (при 0° — прежний фильтр).
                         UglyToad.PdfPig.Content.TextOrientation keepOrientation = KeepOrientationFor(rotation);
+                        // Разметка структуры страницы, если автор её оставил: по ней видно, какие
+                        // строки автор считал ОДНИМ абзацем (см. StructureBlocks). Пусто — работаем
+                        // как раньше, по зазорам.
+                        Dictionary<UglyToad.PdfPig.Content.Letter, int> blocks = StructureBlocks.Map(page);
                         var words = new List<PdfWord>();
                         foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
                         {
@@ -181,6 +185,7 @@ namespace ExcelMerger
                             // пространстве, а при 0° результат прежний.
                             double baseX, baseY;
                             BaselineOf(w.Letters, out baseX, out baseY);
+                            int blockId = StructureBlocks.Of(blocks, w.Letters);
                             words.Add(new PdfWord
                             {
                                 Text = text,
@@ -190,6 +195,7 @@ namespace ExcelMerger
                                 Top = bb.Top,
                                 BaselineXPt = baseX,
                                 BaselineYPt = baseY,
+                                BlockId = blockId,
                                 FontSizePt = size,
                                 Bold = bold,
                                 Italic = italic,
