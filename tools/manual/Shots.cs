@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -183,6 +183,17 @@ static class Shots
         globe.GetType().GetMethod("InvokeOnClick", BindingFlags.NonPublic | BindingFlags.Instance)
             .Invoke(globe, new object[] { globe, EventArgs.Empty });
         Pump(600);
+        // Границы раскрытого меню запоминаем ЯВНО: снимок берёт с экрана только их, а окно
+        // печатает PrintWindow'ом. Без этого меню в кадр не попадёт вовсе — оно отдельное окно.
+        foreach (Form open in Application.OpenForms)
+            if (open != f && open != _backdrop && open.Visible)
+                _popup = open.Bounds;
+        if (_popup.IsEmpty)
+        {
+            var menu = (ContextMenuStrip)Field(f, "_langMenu");
+            if (menu != null && menu.Visible)
+                _popup = menu.Bounds;
+        }
         ScreenShot(f, "hub-lang");
         Kill(f);
     }
@@ -599,6 +610,14 @@ static class Shots
     /// <summary>Снимок С ЭКРАНА: захватывает и выпадающие меню (они — отдельные окна).</summary>
     static void ScreenShot(Form f, string name) { ScreenShot(f, name, true); }
 
+    /// <summary>
+    /// Снимок окна С РАСКРЫТЫМ МЕНЮ. Меню — отдельное окно Windows, в PrintWindow формы оно не
+    /// попадает, поэтому его приходится брать с экрана. Но брать С ЭКРАНА ВСЁ нельзя: за краем
+    /// окна тогда оказывается рабочий стол снимающего — чужие окна, папки, имена файлов.
+    /// Поэтому окно печатаем через PrintWindow, а с экрана вырезаем ТОЛЬКО прямоугольник меню и
+    /// накладываем его на своё место. Подложка при этом перестаёт быть единственной защитой:
+    /// даже если её перекрыли, в кадр не попадёт ни одного постороннего пикселя.
+    /// </summary>
     static void ScreenShot(Form f, string name, bool activate)
     {
         if (activate)
@@ -608,20 +627,43 @@ static class Shots
             SetForegroundWindow(f.Handle);
             Pump(500);
         }
-        Rectangle r = f.Bounds;
-        if (!_popup.IsEmpty)
-            r = Rectangle.Union(r, _popup); // меню — отдельное окно, оно может выходить за форму
-        r.Inflate(8, 8); // тонкая рамка вокруг, чтобы тень окна не обрезалась
-        r.Intersect(Screen.FromControl(f).Bounds);
+        Rectangle form = f.Bounds;
+        Rectangle shot = _popup.IsEmpty ? form : Rectangle.Union(form, _popup);
         string png = Path.Combine(_out, name + ".png");
-        using (var bmp = new Bitmap(r.Width, r.Height))
+        using (var bmp = new Bitmap(shot.Width, shot.Height))
         {
             using (Graphics g = Graphics.FromImage(bmp))
-                g.CopyFromScreen(r.Location, Point.Empty, r.Size);
+            {
+                // Фон кадра — тот же нейтральный цвет, что у подложки: за окном не должно быть
+                // ни рабочего стола, ни чёрных полей.
+                g.Clear(Color.FromArgb(232, 234, 238));
+                using (var window = new Bitmap(form.Width, form.Height))
+                {
+                    using (Graphics wg = Graphics.FromImage(window))
+                    {
+                        IntPtr hdc = wg.GetHdc();
+                        PrintWindow(f.Handle, hdc, 0);
+                        wg.ReleaseHdc(hdc);
+                    }
+                    g.DrawImage(window, form.X - shot.X, form.Y - shot.Y);
+                }
+                if (!_popup.IsEmpty)
+                {
+                    // Меню — единственное, что берётся с экрана, и ровно по своим границам.
+                    Rectangle menu = _popup;
+                    menu.Intersect(Screen.FromControl(f).Bounds);
+                    using (var popup = new Bitmap(menu.Width, menu.Height))
+                    {
+                        using (Graphics pg = Graphics.FromImage(popup))
+                            pg.CopyFromScreen(menu.Location, Point.Empty, menu.Size);
+                        g.DrawImage(popup, menu.X - shot.X, menu.Y - shot.Y);
+                    }
+                }
+            }
             bmp.Save(png, ImageFormat.Png);
         }
         f.TopMost = false;
         _popup = Rectangle.Empty;
-        Say(name + " -> screen " + r.Width + "x" + r.Height);
+        Say(name + " -> window+menu " + shot.Width + "x" + shot.Height);
     }
 }
