@@ -337,18 +337,19 @@ namespace ExcelMerger
         /// форме). Курсор-эффект только когда не идёт операция/загрузка и в дропе есть файлы;
         /// сам дроп передаёт непустой список в onFiles. Обработчик грида (дроп на сетку) — отдельно.
         /// </summary>
-        protected void WireFileDrop(Action<string[]> onFiles)
+        protected void WireFileDrop(Action<string[]> onFiles, string[] extensions = null)
         {
+            string[] accepted = extensions ?? PdfDrop.PdfOnly;
             DragEnter += delegate(object s, DragEventArgs e)
             {
-                e.Effect = !Working && PdfDrop.ExtractPaths(e).Length > 0
+                e.Effect = !Working && PdfDrop.ExtractPaths(e, accepted).Length > 0
                     ? DragDropEffects.Copy : DragDropEffects.None;
             };
             DragDrop += delegate(object s, DragEventArgs e)
             {
                 if (Working)
                     return;
-                string[] paths = PdfDrop.ExtractPaths(e);
+                string[] paths = PdfDrop.ExtractPaths(e, accepted);
                 if (paths.Length > 0)
                     onFiles(paths);
             };
@@ -827,11 +828,14 @@ namespace ExcelMerger
                     case PageKeyAction.Paste:
                         if (_grid.AllowReorder) { _grid.PasteClipboard(); return true; }
                         break;
+                    // Откат — там, где вообще есть что откатывать: поворот попадает в историю
+                    // и в сетке без права переставлять страницы («Разделение»), а Ctrl+Z до
+                    // 1.18.1 был заперт за этим правом и до поворотов не доставал.
                     case PageKeyAction.Undo:
-                        if (_grid.AllowReorder) { UndoOrder(); return true; }
+                        if (_grid.AllowReorder || _grid.AllowRotate) { UndoOrder(); return true; }
                         break;
                     case PageKeyAction.Redo:
-                        if (_grid.AllowReorder) { RedoOrder(); return true; }
+                        if (_grid.AllowReorder || _grid.AllowRotate) { RedoOrder(); return true; }
                         break;
                     case PageKeyAction.GoTo:
                         ShowGoToPage();
@@ -939,7 +943,8 @@ namespace ExcelMerger
 
         /// <summary>
         /// Тело шпаргалки: общие клавиши всегда, буфер/перестановка — при reorder,
-        /// поворот — при rotate. Переводчик t инъектируется (чистая — под тест).
+        /// поворот — при rotate, откат — при любом из двух (поворот тоже откатывается).
+        /// Переводчик t инъектируется (чистая — под тест).
         /// </summary>
         internal static string BuildShortcuts(bool reorder, bool rotate, Func<string, string> t)
         {
@@ -953,10 +958,13 @@ namespace ExcelMerger
                 sb.AppendLine(t("shortcuts.cutcopy"));
                 sb.AppendLine(t("shortcuts.paste"));
                 sb.AppendLine(t("shortcuts.delete"));
-                sb.AppendLine(t("shortcuts.undo"));
             }
             if (rotate)
                 sb.AppendLine(t("shortcuts.rotate"));
+            // Откат — общий для правки порядка и поворота: обещать его надо ровно там, где он
+            // работает, иначе шпаргалка либо врёт, либо умалчивает.
+            if (reorder || rotate)
+                sb.AppendLine(t("shortcuts.undo"));
             return sb.ToString().TrimEnd();
         }
 

@@ -112,6 +112,11 @@ Step 'Born-digital PDF -> PowerPoint (свой писатель OOXML, без Of
     if ($LASTEXITCODE) { exit 1 }
 }
 
+Step 'Картинки страницами в «Прочих операциях» (живое окно)' {
+    powershell -NoProfile -STA -File "$PSScriptRoot\verify_ops_images.ps1"
+    if ($LASTEXITCODE) { exit 1 }
+}
+
 Step 'Zombie Excel/Word processes' {
     Start-Sleep -Seconds 3
     $newExcel = @(Get-Process EXCEL   -ErrorAction SilentlyContinue | Where-Object { $baselineExcel -notcontains $_.Id })

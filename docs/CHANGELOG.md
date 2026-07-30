@@ -3,6 +3,56 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.18.1] — 2026-07-30
+
+### Added
+- **More operations became a page workshop.** Its grid used to be a viewer: the pages of the
+  open document could be looked at and nothing else, because every action was a copy of the
+  file. Now the pages are reordered by dragging, rotated, removed, cut and pasted, undone with
+  Ctrl+Z — exactly as in the other tools — and **every action applies to the document as it is
+  assembled on screen**, not to the file on disk. Compression, grayscale, images, text, print
+  and properties all take the assembled document; until the pages are touched the source is
+  simply copied, so nothing became slower for the ordinary case.
+  The window says so plainly: while the grid differs from the file, the status line reports how
+  many pages are assembled in it. A window that shows one thing and does another is the worst
+  kind of correct.
+- **Images become pages.** Photos and scans (JPEG, PNG, BMP, GIF, TIFF, including multi-page
+  TIFF) are added to the same grid with "Add images..." or by dropping them on the window, on
+  the grid or on the tool's card. Each image becomes an A4 sheet with 1 cm margins, fitted whole
+  and centred without distorting its proportions, and the sheet takes the orientation of the
+  image. From there it is an ordinary page: rotate it, reorder it, print it, compress it.
+  It went into this window rather than into a seventh one because everything one does with such
+  a page — turning, ordering, compressing, printing — already lives here.
+  A JPEG is carried into the PDF **as it is**, without re-encoding: a 12-megapixel photo would
+  otherwise bloat the file and lose quality for nothing. Transparency lands on white (without
+  it a PNG arrives as black patches), and the EXIF orientation tag is applied — GDI+ ignores it,
+  which is why a phone photo used to lie on its side.
+- **"Save PDF..." in More operations.** The assembled document becomes a new file: that is how
+  images turn into a document, and how a reordered, rotated or thinned-out PDF turns into one.
+  The compression level comes from the same list at the bottom of the window. Cancelling leaves
+  no half-written file, as everywhere else.
+- **Print in More operations.** The selected pages (or all of them) go to a printer with the
+  rotations assigned to them.
+
+### Fixed
+- **The beta note in PDF → Word and PDF → PowerPoint was cut off.** Its height was a number
+  (two lines), so the tail of the sentence disappeared under the grid: 2 pixels short at the
+  normal font, and a whole line and a half missing with a large system font — the reader saw a
+  truncated phrase and never learned the main thing, that a scan cannot be converted at all.
+  The height is now measured from the text at the current width, and the grid and the buttons
+  move down by exactly as much as the note took. A live test measures the note in a real window
+  at its minimum size, at the normal font and at a large one.
+- **Ctrl+Z did not undo a rotation in Split PDF.** The rotation went into the history, but the
+  key was locked behind the right to reorder pages, which that window does not grant — so the
+  undo existed and was unreachable. The keyboard cheat sheet promised it just as inconsistently.
+
+### Changed
+- The layer "page order ↔ grid" now lives in one place for all tools (`PdfPageOrderFormBase`):
+  the multi-file tools and the single-document ones share it instead of holding two copies. The
+  minimum height of the More operations window is computed from the panel it actually built,
+  not written as a number — the previous number was already wrong once on a screen with a
+  different scale factor.
+
 ## [1.18.0] — 2026-07-30
 
 ### Added

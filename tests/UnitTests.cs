@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -380,12 +380,21 @@ namespace ExcelMerger.Tests
             Run("В исходниках нет управляющих символов", TestNoControlCharactersInSources);
             Run("Переводы помечены как бета и объясняют, чего им не хватает", TestBetaNotice);
             Run("Руководство выбирается по языку интерфейса", TestManualBothLanguages);
+            Run("Примечание «бета» переносится по словам, а не обрезается", TestBetaNoteWraps);
+            Run("Полоска «бета» (живое): на минимальной ширине текст цел", TestBetaNoteFitsLive);
+            Run("Собранное = исходник: чем правка отличается от файла", TestAssembledPristine);
+            Run("Постранично можно читать прямо из исходника (подмножество по возрастанию)", TestPlainSubset);
+            Run("Дроп: набор расширений (PDF, а у «Прочих операций» и картинки)", TestDropExtensions);
+            Run("Картинка → лист A4: ориентация, поля, пропорции", TestImageLayoutOnPage);
+            Run("Картинка → EXIF-поворот применяется, а не игнорируется", TestImageExifRotation);
+            Run("Картинки (живое): JPEG переносится как есть, PNG и TIFF собираются", TestImageToPdfLive);
+            Run("Прочие операции (живое): сетка правится, кнопки по составу набора", TestOpsGridEditableLive);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 349;
+            const int MinTests = 358;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -4930,6 +4939,535 @@ namespace ExcelMerger.Tests
 
 
         /// <summary>
+        /// Примечание «бета» — длинная строка, и на узком окне ей нужно больше строк, чем на
+        /// широком. Раньше высота была задана числом (две строки), и на минимальной ширине хвост
+        /// уходил под сетку: человек читал обрезанную фразу и не узнавал главного — что скан
+        /// переводить нечем. Проверяем сам расчёт: чем уже, тем выше, и тело окна съезжает ровно
+        /// на столько, сколько заняло примечание.
+        /// </summary>
+        private static void TestBetaNoteWraps()
+        {
+            Lang was = Loc.Current;
+            try
+            {
+                using (var font = new System.Drawing.Font("Segoe UI", 9.75f))
+                {
+                    var offenders = new List<string>();
+                    foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                    {
+                        Loc.Init(lang);
+                        string notice = Loc.T("convert.beta");
+                        int wide = PdfConvertFormBase.NoteHeight(notice, font, 1200);
+                        int narrow = PdfConvertFormBase.NoteHeight(notice, font, 420);
+                        int tiny = PdfConvertFormBase.NoteHeight(notice, font, 240);
+                        if (narrow <= wide)
+                            offenders.Add(lang + ": узкое окно не добавило строк (" + wide + " -> " + narrow + ")");
+                        if (tiny <= narrow)
+                            offenders.Add(lang + ": совсем узкое окно не добавило строк");
+                        if (wide < font.Height)
+                            offenders.Add(lang + ": высота меньше строки текста");
+                        // Тело окна съезжает вниз ровно на высоту примечания: иначе сетка
+                        // наехала бы на него (или под ним осталась бы пустая полоса).
+                        int topNarrow = PdfConvertFormBase.ContentTop(24, narrow);
+                        int topWide = PdfConvertFormBase.ContentTop(24, wide);
+                        if (topNarrow - topWide != narrow - wide)
+                            offenders.Add(lang + ": тело окна съехало не на высоту примечания");
+                    }
+                    AssertTrue(offenders.Count == 0, "перенос примечания: " + string.Join(" | ", offenders.ToArray()));
+                    AssertEqual(0, PdfConvertFormBase.NoteHeight(null, null, 100), "без текста и шрифта — ноль");
+                }
+            }
+            finally { Loc.Init(was); }
+        }
+
+        /// <summary>
+        /// То же, но на ЖИВЫХ окнах и на их минимальном размере: в расчёте можно ошибиться
+        /// шрифтом или шириной, и единственная надёжная проверка — спросить у самой надписи,
+        /// поместился ли в неё текст. Заодно убеждаемся, что сетка стоит НИЖЕ примечания.
+        ///
+        /// Второй проход — с КРУПНЫМ шрифтом: именно так дефект и увидели. При постоянной
+        /// высоте в две строки достаточно шрифта побольше (масштаб экрана, системная настройка
+        /// размера текста), чтобы третья строка ушла под сетку, а окно ни в чём не признавалось.
+        /// </summary>
+        private static void TestBetaNoteFitsLive()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_beta_", delegate
+            {
+                Action back = delegate { };
+                foreach (System.Windows.Forms.Form f in new System.Windows.Forms.Form[] { new OcrForm(back), new PptxForm(back) })
+                    using (f)
+                    {
+                        string where = f.GetType().Name;
+                        try
+                        {
+                            f.Show();
+                            f.Size = f.MinimumSize; // пользователь дотащил рамку до упора
+                            f.PerformLayout();
+                            CheckBetaNote(f, where + " (обычный шрифт)", offenders);
+
+                            using (var big = new System.Drawing.Font("Segoe UI", 14f))
+                            {
+                                f.Font = big; // крупный системный шрифт: строк становится больше
+                                f.PerformLayout();
+                                CheckBetaNote(f, where + " (крупный шрифт)", offenders);
+                            }
+                            f.Close();
+                        }
+                        catch (Exception ex) { offenders.Add(where + " — " + Root(ex).Message); }
+                    }
+            });
+            AssertTrue(offenders.Count == 0, "полоска «бета»: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Примечание «бета» цело и не перекрыто сеткой — на текущей раскладке окна.</summary>
+        private static void CheckBetaNote(System.Windows.Forms.Form f, string where, List<string> offenders)
+        {
+            System.Windows.Forms.Label note = FindLabel(f, Loc.T("convert.beta"));
+            if (note == null)
+            {
+                offenders.Add(where + ": примечания «бета» нет в окне");
+                return;
+            }
+            int needed = System.Windows.Forms.TextRenderer.MeasureText(note.Text, note.Font,
+                new System.Drawing.Size(note.Width, int.MaxValue),
+                System.Windows.Forms.TextFormatFlags.WordBreak).Height;
+            if (note.Height < needed)
+                offenders.Add(where + ": текст обрезан (высота " + note.Height +
+                    " при нужных " + needed + ", ширина " + note.Width + ")");
+            System.Windows.Forms.Control grid = FindPageGrid(f);
+            if (grid == null)
+                offenders.Add(where + ": сетки страниц нет в окне");
+            else if (grid.Top < note.Bottom)
+                offenders.Add(where + ": сетка наехала на примечание (" +
+                    grid.Top + " < " + note.Bottom + ")");
+        }
+
+        /// <summary>Надпись с таким текстом (вглубь по дереву) или null.</summary>
+        private static System.Windows.Forms.Label FindLabel(System.Windows.Forms.Control root, string text)
+        {
+            foreach (System.Windows.Forms.Control c in root.Controls)
+            {
+                var l = c as System.Windows.Forms.Label;
+                if (l != null && l.Text == text)
+                    return l;
+                System.Windows.Forms.Label deeper = FindLabel(c, text);
+                if (deeper != null)
+                    return deeper;
+            }
+            return null;
+        }
+
+        /// <summary>Сетка страниц окна (вглубь по дереву) или null.</summary>
+        private static PdfPageGrid FindPageGrid(System.Windows.Forms.Control root)
+        {
+            foreach (System.Windows.Forms.Control c in root.Controls)
+            {
+                var grid = c as PdfPageGrid;
+                if (grid != null)
+                    return grid;
+                PdfPageGrid deeper = FindPageGrid(c);
+                if (deeper != null)
+                    return deeper;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// «Прочие операции» применяют действия к документу ТАКИМ, КАК ОН СОБРАН в сетке, и весь
+        /// выбор «копировать исходник или собрать заново» держится на этой проверке. Ошибись она
+        /// в сторону «как есть» — и убранная страница вернулась бы в результат, а поворот пропал.
+        /// </summary>
+        private static void TestAssembledPristine()
+        {
+            const string src = @"C:\docs\a.pdf";
+            var whole = new List<PdfPageRef>
+            {
+                new PdfPageRef { SourcePath = src, PageIndex = 0 },
+                new PdfPageRef { SourcePath = src, PageIndex = 1 },
+                new PdfPageRef { SourcePath = src, PageIndex = 2 }
+            };
+            AssertTrue(PdfSingleDocFormBase.IsPristine(whole, src, 3), "не тронутый набор — это сам файл");
+            AssertTrue(PdfSingleDocFormBase.IsPristine(whole, src.ToUpperInvariant(), 3),
+                "регистр пути не делает файл другим");
+
+            var removed = new List<PdfPageRef> { whole[0], whole[1] };
+            AssertTrue(!PdfSingleDocFormBase.IsPristine(removed, src, 3), "убрали страницу — уже не файл");
+
+            var reordered = new List<PdfPageRef> { whole[1], whole[0], whole[2] };
+            AssertTrue(!PdfSingleDocFormBase.IsPristine(reordered, src, 3), "переставили — уже не файл");
+
+            var rotated = new List<PdfPageRef>
+            {
+                new PdfPageRef { SourcePath = src, PageIndex = 0, Rotation = 90 },
+                whole[1], whole[2]
+            };
+            AssertTrue(!PdfSingleDocFormBase.IsPristine(rotated, src, 3), "повернули — уже не файл");
+
+            var foreign = new List<PdfPageRef>
+            {
+                whole[0], whole[1], new PdfPageRef { SourcePath = @"C:\docs\b.pdf", PageIndex = 0 }
+            };
+            AssertTrue(!PdfSingleDocFormBase.IsPristine(foreign, src, 3), "чужая страница в наборе — уже не файл");
+            AssertTrue(!PdfSingleDocFormBase.IsPristine(null, src, 3), "пустой набор не выдаём за файл");
+            AssertTrue(!PdfSingleDocFormBase.IsPristine(whole, null, 3), "без открытого файла сравнивать нечего");
+        }
+
+        /// <summary>
+        /// Постраничные действия (картинки) читают прямо из исходника, пока страницы идут из него
+        /// по возрастанию и без поворотов: так в именах файлов остаются НАСТОЯЩИЕ номера страниц.
+        /// Стоит переставить или повернуть — читать нужно из собранного, иначе на диск ляжет
+        /// не то, что показано.
+        /// </summary>
+        private static void TestPlainSubset()
+        {
+            const string src = @"C:\docs\a.pdf";
+            Func<int, int, PdfPageRef> page = delegate(int index, int rotation)
+            {
+                return new PdfPageRef { SourcePath = src, PageIndex = index, Rotation = rotation };
+            };
+            AssertTrue(PdfOpsForm.IsPlainSubset(new List<PdfPageRef> { page(0, 0), page(2, 0) }, src),
+                "выделенные подряд возрастающие страницы читаются из исходника");
+            AssertTrue(!PdfOpsForm.IsPlainSubset(new List<PdfPageRef> { page(2, 0), page(0, 0) }, src),
+                "переставленные — только через сборку");
+            AssertTrue(!PdfOpsForm.IsPlainSubset(new List<PdfPageRef> { page(0, 90) }, src),
+                "повёрнутая — только через сборку");
+            AssertTrue(!PdfOpsForm.IsPlainSubset(new List<PdfPageRef> { page(1, 0), page(1, 0) }, src),
+                "повторённая страница — только через сборку");
+            AssertTrue(!PdfOpsForm.IsPlainSubset(new List<PdfPageRef>
+                { page(0, 0), new PdfPageRef { SourcePath = @"C:\docs\b.pdf", PageIndex = 0 } }, src),
+                "страница из другого файла — только через сборку");
+            AssertTrue(!PdfOpsForm.IsPlainSubset(new List<PdfPageRef>(), src), "пустой набор читать нечем");
+        }
+
+        /// <summary>
+        /// Что окна принимают перетаскиванием. «Прочие операции» собирают документ и из картинок,
+        /// а остальные инструменты — только из PDF: расширение снимка, попавшее в общий набор,
+        /// молча уронило бы дроп в «Объединении» на разборе «PDF».
+        /// </summary>
+        private static void TestDropExtensions()
+        {
+            AssertTrue(PdfDrop.Matches("a.pdf", PdfDrop.PdfOnly), "PDF принимается всегда");
+            AssertTrue(PdfDrop.Matches("A.PDF", PdfDrop.PdfOnly), "регистр расширения не важен");
+            AssertTrue(!PdfDrop.Matches("photo.jpg", PdfDrop.PdfOnly), "картинка не PDF-инструментам");
+            AssertTrue(PdfDrop.Matches("photo.JPG", PdfDrop.PdfAndImages), "картинка — «Прочим операциям»");
+            AssertTrue(PdfDrop.Matches("scan.tiff", PdfDrop.PdfAndImages), "многостраничный TIFF тоже");
+            AssertTrue(PdfDrop.Matches("a.pdf", PdfDrop.PdfAndImages), "и PDF в том же наборе");
+            AssertTrue(!PdfDrop.Matches("photo.heic", PdfDrop.PdfAndImages),
+                "HEIC не обещаем: GDI+ его не читает");
+            AssertTrue(!PdfDrop.Matches(null, PdfDrop.PdfAndImages), "пустой путь не подходит");
+            AssertTrue(ImageToPdfService.IsImage("a.png") && !ImageToPdfService.IsImage("a.pdf"),
+                "картинка отличается от документа по расширению");
+        }
+
+        /// <summary>
+        /// Картинка на листе: лист берёт ориентацию картинки, картинка вписана в поля целиком,
+        /// по центру и БЕЗ искажения пропорций. Растянутый снимок — брак, который видно сразу.
+        /// </summary>
+        private static void TestImageLayoutOnPage()
+        {
+            double pageW, pageH, x, y, w, h;
+            ImageToPdfService.Layout(1200, 1600, out pageW, out pageH, out x, out y, out w, out h);
+            AssertTrue(Math.Abs(pageW - ImageToPdfService.A4WidthPt) < 0.01 &&
+                Math.Abs(pageH - ImageToPdfService.A4HeightPt) < 0.01, "высокая картинка — книжный лист");
+            AssertTrue(Math.Abs((w / h) - 0.75) < 0.001, "пропорции сохранены (1200x1600)");
+            AssertTrue(x >= ImageToPdfService.MarginPt - 0.01 && y >= ImageToPdfService.MarginPt - 0.01,
+                "картинка не заезжает в поля");
+            AssertTrue(Math.Abs(x - (pageW - w) / 2) < 0.01 && Math.Abs(y - (pageH - h) / 2) < 0.01,
+                "картинка по центру листа");
+            // Вписана ЦЕЛИКОМ: одна сторона занимает поле полностью, вторая в него не выходит.
+            // У снимка 3:4 на A4 (1:1,41) упор приходится в ширину, а не в высоту: лист
+            // «длиннее» кадра, и требовать полной высоты значило бы требовать растянуть кадр.
+            AssertTrue(FillsMarginBox(w, h, pageW, pageH), "картинка вписана в поля целиком (книжный лист)");
+
+            ImageToPdfService.Layout(1600, 1200, out pageW, out pageH, out x, out y, out w, out h);
+            AssertTrue(pageW > pageH, "широкая картинка — альбомный лист");
+            AssertTrue(FillsMarginBox(w, h, pageW, pageH), "картинка вписана в поля целиком (альбомный лист)");
+
+            // Узкая полоска упирается в высоту — тот же инвариант с другой стороны.
+            ImageToPdfService.Layout(200, 1600, out pageW, out pageH, out x, out y, out w, out h);
+            AssertTrue(FillsMarginBox(w, h, pageW, pageH), "узкая полоска вписана в поля целиком");
+            AssertTrue(Math.Abs(h - (pageH - 2 * ImageToPdfService.MarginPt)) < 0.01,
+                "у высокой полоски упор в высоту листа");
+
+            ImageToPdfService.Layout(0, 0, out pageW, out pageH, out x, out y, out w, out h);
+            AssertTrue(w > 0 && h > 0 && !double.IsNaN(w), "вырожденный кадр не делит на ноль");
+        }
+
+        /// <summary>
+        /// Картинка вписана в поля листа целиком: хотя бы одна сторона упирается в поле, и ни
+        /// одна за него не выходит. Именно это и значит «во весь лист без искажения пропорций».
+        /// </summary>
+        private static bool FillsMarginBox(double w, double h, double pageW, double pageH)
+        {
+            double boxW = pageW - 2 * ImageToPdfService.MarginPt;
+            double boxH = pageH - 2 * ImageToPdfService.MarginPt;
+            if (w > boxW + 0.01 || h > boxH + 0.01)
+                return false;
+            return Math.Abs(w - boxW) < 0.01 || Math.Abs(h - boxH) < 0.01;
+        }
+
+        /// <summary>
+        /// EXIF-ориентация: GDI+ её НЕ применяет, и снимок с телефона ложится в PDF боком.
+        /// Таблица из стандарта — восемь значений, всё непонятное считается «как есть».
+        /// </summary>
+        private static void TestImageExifRotation()
+        {
+            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
+                ImageToPdfService.ExifRotation(1).ToString(), "1 — как снято");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate90FlipNone.ToString(),
+                ImageToPdfService.ExifRotation(6).ToString(), "6 — вправо на 90");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate270FlipNone.ToString(),
+                ImageToPdfService.ExifRotation(8).ToString(), "8 — влево на 90");
+            AssertEqual(System.Drawing.RotateFlipType.Rotate180FlipNone.ToString(),
+                ImageToPdfService.ExifRotation(3).ToString(), "3 — вверх ногами");
+            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
+                ImageToPdfService.ExifRotation(0).ToString(), "нуля в стандарте нет — как есть");
+            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
+                ImageToPdfService.ExifRotation(42).ToString(), "мусор в теге — как есть");
+        }
+
+        /// <summary>
+        /// Живая сборка PDF из настоящих картинок: JPEG должен уйти в документ КАК ЕСТЬ (иначе
+        /// снимок раздувает файл и теряет качество), PNG с прозрачностью — лечь на белое, а
+        /// многостраничный TIFF — дать столько страниц, сколько в нём кадров. Плюс проверка, что
+        /// битый файл объясняется человеку, а не роняет поток.
+        /// </summary>
+        private static void TestImageToPdfLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_img2pdf_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                var offenders = new List<string>();
+
+                // JPEG с шумом: такой почти не сжимается, поэтому по размеру видно, перенесли его
+                // как есть или пересобрали.
+                string jpg = Path.Combine(dir, "photo.jpg");
+                using (var bmp = new System.Drawing.Bitmap(900, 600))
+                {
+                    var rnd = new Random(4242);
+                    for (int yy = 0; yy < bmp.Height; yy += 3)
+                        for (int xx = 0; xx < bmp.Width; xx += 3)
+                            bmp.SetPixel(xx, yy, System.Drawing.Color.FromArgb(rnd.Next(256), rnd.Next(256), rnd.Next(256)));
+                    bmp.Save(jpg, System.Drawing.Imaging.ImageFormat.Jpeg);
+                }
+                string fromJpg = Path.Combine(dir, "from_jpg.pdf");
+                int pages = ImageToPdfService.WritePages(jpg, fromJpg);
+                if (pages != 1)
+                    offenders.Add("JPEG дал страниц: " + pages);
+                using (PdfDocument doc = PdfReader.Open(fromJpg, PdfDocumentOpenMode.InformationOnly))
+                {
+                    if (doc.PageCount != 1)
+                        offenders.Add("в PDF из JPEG страниц: " + doc.PageCount);
+                    else
+                    {
+                        double w = doc.Pages[0].Width.Point, h = doc.Pages[0].Height.Point;
+                        if (Math.Abs(w - ImageToPdfService.A4HeightPt) > 1 ||
+                            Math.Abs(h - ImageToPdfService.A4WidthPt) > 1)
+                            offenders.Add("широкий снимок дал лист " + Math.Round(w) + "x" + Math.Round(h) +
+                                " вместо альбомного A4");
+                    }
+                }
+                long jpgSize = new FileInfo(jpg).Length, pdfSize = new FileInfo(fromJpg).Length;
+                if (pdfSize > jpgSize * 1.5 + 4096)
+                    offenders.Add("JPEG пересобрали: снимок " + jpgSize + ", PDF " + pdfSize);
+                // Нижняя граница не менее важна верхней: страница нужного размера получается и
+                // тогда, когда картинки в ней НЕТ, — а такой PDF весит пару килобайт.
+                if (pdfSize < jpgSize)
+                    offenders.Add("картинки в PDF нет: снимок " + jpgSize + ", PDF " + pdfSize);
+                if (!HasImageXObject(fromJpg))
+                    offenders.Add("в странице из JPEG нет картинки (XObject)");
+
+                // PNG с прозрачностью: страница должна получиться, а прозрачное — стать белым.
+                string png = Path.Combine(dir, "shot.png");
+                using (var bmp = new System.Drawing.Bitmap(400, 300,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                {
+                    using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(bmp))
+                    {
+                        g.Clear(System.Drawing.Color.Transparent);
+                        g.FillRectangle(System.Drawing.Brushes.Black, 10, 10, 100, 50);
+                    }
+                    bmp.Save(png, System.Drawing.Imaging.ImageFormat.Png);
+                }
+                string fromPng = Path.Combine(dir, "from_png.pdf");
+                if (ImageToPdfService.WritePages(png, fromPng) != 1)
+                    offenders.Add("PNG дал не одну страницу");
+                if (!HasImageXObject(fromPng))
+                    offenders.Add("в странице из PNG нет картинки (XObject)");
+
+                // Многостраничный TIFF — норма для сканов.
+                string tif = Path.Combine(dir, "scan.tif");
+                SaveMultipageTiff(tif, 3);
+                string fromTif = Path.Combine(dir, "from_tif.pdf");
+                int tifPages = ImageToPdfService.WritePages(tif, fromTif);
+                if (tifPages != 3)
+                    offenders.Add("трёхкадровый TIFF дал страниц: " + tifPages);
+                using (PdfDocument doc = PdfReader.Open(fromTif, PdfDocumentOpenMode.InformationOnly))
+                    if (doc.PageCount != 3)
+                        offenders.Add("в PDF из TIFF страниц: " + doc.PageCount);
+                if (!HasImageXObject(fromTif))
+                    offenders.Add("в странице из TIFF нет картинки (XObject)");
+
+                // Собранный из картинок документ — обычный PDF: его читает то же объединение,
+                // которым окно и сохраняет результат.
+                string merged = Path.Combine(dir, "merged.pdf");
+                var order = new List<PdfPageRef>
+                {
+                    new PdfPageRef { SourcePath = fromJpg, PageIndex = 0 },
+                    new PdfPageRef { SourcePath = fromPng, PageIndex = 0, Rotation = 90 }
+                };
+                PdfMergeService.Merge(order, merged);
+                using (PdfDocument doc = PdfReader.Open(merged, PdfDocumentOpenMode.InformationOnly))
+                    if (doc.PageCount != 2)
+                        offenders.Add("сборка из двух картинок дала страниц: " + doc.PageCount);
+
+                // Битый файл: понятное сообщение вместо падения потока.
+                string broken = Path.Combine(dir, "broken.png");
+                File.WriteAllText(broken, "это не картинка");
+                try
+                {
+                    ImageToPdfService.WritePages(broken, Path.Combine(dir, "broken.pdf"));
+                    offenders.Add("битая картинка не вызвала ошибки");
+                }
+                catch (MergeException ex)
+                {
+                    if (ex.Message.IndexOf("broken.png", StringComparison.OrdinalIgnoreCase) < 0)
+                        offenders.Add("в сообщении об ошибке нет имени файла: " + ex.Message);
+                }
+
+                AssertTrue(offenders.Count == 0, "картинки в PDF: " + string.Join(" | ", offenders.ToArray()));
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>
+        /// В первой странице документа лежит хотя бы одна картинка. Проверка именно ресурсов, а
+        /// не размера файла: пустая страница нужного формата выглядит в отчётах так же успешно,
+        /// как страница с картинкой, и отличить их можно только заглянув внутрь.
+        /// </summary>
+        private static bool HasImageXObject(string pdfPath)
+        {
+            using (PdfDocument doc = PdfReader.Open(pdfPath, PdfDocumentOpenMode.InformationOnly))
+            {
+                var resources = doc.Pages[0].Elements.GetDictionary("/Resources");
+                if (resources == null)
+                    return false;
+                var xobjects = resources.Elements.GetDictionary("/XObject");
+                if (xobjects == null)
+                    return false;
+                foreach (string key in xobjects.Elements.Keys)
+                {
+                    var obj = xobjects.Elements.GetDictionary(key);
+                    if (obj != null && obj.Elements.GetName("/Subtype") == "/Image")
+                        return true;
+                }
+                return false;
+            }
+        }
+
+        /// <summary>TIFF из нескольких кадров — как его отдаёт сканер.</summary>
+        private static void SaveMultipageTiff(string path, int frames)
+        {
+            System.Drawing.Imaging.ImageCodecInfo codec = null;
+            foreach (System.Drawing.Imaging.ImageCodecInfo c in System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders())
+                if (c.FormatID == System.Drawing.Imaging.ImageFormat.Tiff.Guid)
+                    codec = c;
+            var first = new System.Drawing.Bitmap(300, 400);
+            try
+            {
+                using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(first))
+                    g.Clear(System.Drawing.Color.White);
+                using (var ps = new System.Drawing.Imaging.EncoderParameters(1))
+                {
+                    ps.Param[0] = new System.Drawing.Imaging.EncoderParameter(
+                        System.Drawing.Imaging.Encoder.SaveFlag,
+                        (long)System.Drawing.Imaging.EncoderValue.MultiFrame);
+                    first.Save(path, codec, ps);
+                    for (int i = 1; i < frames; i++)
+                        using (var next = new System.Drawing.Bitmap(300, 400))
+                        using (var page = new System.Drawing.Imaging.EncoderParameters(1))
+                        {
+                            using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(next))
+                                g.Clear(System.Drawing.Color.White);
+                            page.Param[0] = new System.Drawing.Imaging.EncoderParameter(
+                                System.Drawing.Imaging.Encoder.SaveFlag,
+                                (long)System.Drawing.Imaging.EncoderValue.FrameDimensionPage);
+                            first.SaveAdd(next, page);
+                        }
+                    using (var flush = new System.Drawing.Imaging.EncoderParameters(1))
+                    {
+                        flush.Param[0] = new System.Drawing.Imaging.EncoderParameter(
+                            System.Drawing.Imaging.Encoder.SaveFlag,
+                            (long)System.Drawing.Imaging.EncoderValue.Flush);
+                        first.SaveAdd(flush);
+                    }
+                }
+            }
+            finally { first.Dispose(); }
+        }
+
+        /// <summary>
+        /// «Прочие операции» (живое окно): сетка стала полноправной — страницы переставляют,
+        /// поворачивают и убирают, а действия смотрят на СОБРАННЫЕ страницы, не на открытый файл
+        /// (набор можно собрать одними картинками). Правая панель при этом обязана поместиться
+        /// на своём минимуме — её высота теперь считается по факту, а не числом.
+        /// </summary>
+        private static void TestOpsGridEditableLive()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_opsgrid_", delegate
+            {
+                try
+                {
+                    using (var f = new PdfOpsForm(delegate { }))
+                    {
+                        f.Show();
+                        PdfPageGrid grid = FindPageGrid(f);
+                        if (grid == null)
+                        {
+                            offenders.Add("сетки нет в окне");
+                        }
+                        else
+                        {
+                            if (!grid.AllowReorder)
+                                offenders.Add("порядок страниц править нельзя");
+                            if (!grid.AllowRotate)
+                                offenders.Add("страницы поворачивать нельзя");
+                            if (!PdfDrop.Matches("photo.jpg", grid.DropExtensions))
+                                offenders.Add("сетка не принимает картинки перетаскиванием");
+                        }
+                        // Без страниц действия недоступны — нечего делать.
+                        System.Windows.Forms.Button save = FindVisibleButton(f, Loc.T("ops.btn.savePdf"));
+                        System.Windows.Forms.Button addImages = FindVisibleButton(f, Loc.T("ops.btn.addImages"));
+                        System.Windows.Forms.Button print = FindVisibleButton(f, Loc.T("common.btn.print"));
+                        if (save == null || addImages == null || print == null)
+                            offenders.Add("нет кнопки: сохранение/картинки/печать");
+                        else
+                        {
+                            if (save.Enabled)
+                                offenders.Add("«Сохранить PDF…» доступно на пустом наборе");
+                            if (!addImages.Enabled)
+                                offenders.Add("«Добавить картинки…» недоступно на пустом наборе");
+                            if (print.Enabled)
+                                offenders.Add("«Печать…» доступна на пустом наборе");
+                        }
+                        // На минимуме окна панель не должна наезжать на нижний строй.
+                        f.Size = f.MinimumSize;
+                        f.PerformLayout();
+                        string where = "PdfOpsForm (Min=" + f.MinimumSize.Height + ")";
+                        CheckFits(f, where, offenders);
+                        CheckControlsDoNotOverlap(f, where, offenders);
+                        f.Close();
+                    }
+                }
+                catch (Exception ex) { offenders.Add("не собралось: " + Root(ex).Message); }
+            });
+            AssertTrue(offenders.Count == 0, "«Прочие операции»: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
         /// Открывается то руководство, на языке которого человек читает интерфейс:
         /// английскому читателю русский документ инструкцией не станет. Что оба вшиты в
         /// настоящий exe, проверяет --selftest — у тестов своя сборка без ресурсов.
@@ -5952,7 +6490,10 @@ namespace ExcelMerger.Tests
             string split = PdfToolFormBase.BuildShortcuts(false, true, t);   // разделение: без reorder, с rotate
             AssertTrue(split.Contains("shortcuts.zoom") && split.Contains("shortcuts.goto"), "общие клавиши всегда");
             AssertTrue(split.Contains("shortcuts.rotate"), "поворот при rotate");
-            AssertTrue(!split.Contains("shortcuts.cutcopy") && !split.Contains("shortcuts.undo"), "без reorder — нет буфера/отмены");
+            AssertTrue(!split.Contains("shortcuts.cutcopy"), "без reorder — нет буфера страниц");
+            // Поворот попадает в историю, значит Ctrl+Z работает и без права переставлять
+            // страницы: раньше шпаргалка о нём молчала, а клавиша была заперта.
+            AssertTrue(split.Contains("shortcuts.undo"), "откат при rotate — поворот откатывается");
 
             string merge = PdfToolFormBase.BuildShortcuts(true, true, t);    // объединение: всё
             AssertTrue(merge.Contains("shortcuts.cutcopy") && merge.Contains("shortcuts.paste") &&
@@ -5960,6 +6501,7 @@ namespace ExcelMerger.Tests
 
             string plain = PdfToolFormBase.BuildShortcuts(false, false, t);  // ни reorder, ни rotate
             AssertTrue(!plain.Contains("shortcuts.rotate") && !plain.Contains("shortcuts.cutcopy"), "минимальный набор");
+            AssertTrue(!plain.Contains("shortcuts.undo"), "нечего править — нечего и откатывать");
             AssertTrue(plain.Contains("shortcuts.selectAll"), "выделить всё — общее");
             AssertTrue(!plain.EndsWith("\n") && !plain.EndsWith("\r"), "хвостовые переводы срезаны");
         }
@@ -7764,7 +8306,7 @@ namespace ExcelMerger.Tests
             return new System.Windows.Forms.Form[]
             {
                 new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back), new OcrForm(back),
-                new PdfOpsForm(back)
+                new PptxForm(back), new PdfOpsForm(back)
             };
         }
 

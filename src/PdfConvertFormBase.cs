@@ -41,6 +41,7 @@ namespace ExcelMerger
     public class PdfConvertFormBase : PdfOrderedToolFormBase
     {
         private readonly ConvertToolSpec _spec;
+        private Label _beta;
         private Button _btnOpen;
         private Button _btnUp;
         private Button _btnDown;
@@ -73,23 +74,19 @@ namespace ExcelMerger
             WireFileDropAppend(); // дроп PDF на окно — добавить в конец (общая обвязка базы)
             BuildHeaderWithHome(Title, _spec.Text("header.subtitle"), _spec.Theme, _spec.ThemeDark, ShowHelp);
 
-            int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
-            int panelW = 210;
-            int gridBottom = ClientSize.Height - 152;
 
             // Полоска «бета» — между шапкой и сеткой, где её нельзя не увидеть и где она
             // никому не мешает. Оба перевода берут ТЕКСТОВЫЙ слой PDF, а отсканированную
             // страницу читать нечем: без этой строки человек видит пустой слайд и считает
             // сломанной программу, а не понимает, что в источнике не было текста.
-            var beta = new Label();
-            beta.Text = Loc.T("convert.beta");
-            beta.ForeColor = Theme.WarnOrange;
-            beta.AutoSize = false;
-            beta.SetBounds(20, m + 78, right - 20, 32);
-            beta.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Controls.Add(beta);
-            int noteH = beta.Height + 6;
+            // Высоту и место всей этой части окна считает LayoutBody на каждой раскладке:
+            // строка длинная, и на узком окне ей нужно больше строк, чем на широком.
+            _beta = new Label();
+            _beta.Text = Loc.T("convert.beta");
+            _beta.ForeColor = Theme.WarnOrange;
+            _beta.AutoSize = false;
+            Controls.Add(_beta);
 
             _grid = new PdfPageGrid();
             _grid.AllowReorder = true; // перестановка страниц перетаскиванием
@@ -97,29 +94,24 @@ namespace ExcelMerger
             _grid.AllowRotate = true; // страница выправляется ДО анализа макета (боковой текст станет строками)
             _grid.EmptyHint = _spec.Text("grid.empty");
             _grid.DropHint = Loc.T("grid.dropHint");
-            _grid.SetBounds(20, m + 84 + noteH, right - 20 - panelW, gridBottom - (m + 84 + noteH));
-            _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             WireOrderGrid(); // события порядка + контекстное меню (общая обвязка базы)
             Controls.Add(_grid);
 
-            int px = right - panelW + 10;
-            int pw = panelW - 10;
             _btnOpen = new RoundedButton(false);
             _btnOpen.Text = _spec.Text("btn.open");
-            _btnOpen.SetBounds(px, m + 84 + noteH, pw, 32);
-            _btnOpen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnOpen.Click += delegate { PickAndAddFiles(); };
             _tips.SetToolTip(_btnOpen, _spec.Text("tip.open"));
             Controls.Add(_btnOpen);
 
-            _btnUp = AddPanelButton(Loc.T("common.earlier"), px, m + 128 + noteH, pw, Loc.T("common.tip.earlier"));
+            _btnUp = AddPanelButton(Loc.T("common.earlier"), Loc.T("common.tip.earlier"));
             _btnUp.Click += delegate { MoveSelected(false); };
-            _btnDown = AddPanelButton(Loc.T("common.later"), px, m + 164 + noteH, pw, Loc.T("common.tip.later"));
+            _btnDown = AddPanelButton(Loc.T("common.later"), Loc.T("common.tip.later"));
             _btnDown.Click += delegate { MoveSelected(true); };
-            _btnRemove = AddPanelButton(Loc.T("common.remove"), px, m + 208 + noteH, pw, Loc.T("common.tip.remove"));
-            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), px, m + 244 + noteH, pw, Loc.T("common.tip.print"));
+            _btnRemove = AddPanelButton(Loc.T("common.remove"), Loc.T("common.tip.remove"));
+            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), Loc.T("common.tip.print"));
             _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
             _btnRemove.Click += delegate { RemoveSelected(); };
+            LayoutBody();
 
             // Ширина действия — по его подписи: «Конвертировать в PowerPoint…» длиннее, чем
             // «Конвертировать в Word…», а в английском обе длиннее русских. Фиксированная
@@ -138,6 +130,88 @@ namespace ExcelMerger
             Controls.Add(_btnConvert);
             AcceptButton = _btnConvert;
             RegisterActionButton(_btnConvert); // база подменит её кнопкой «Отмена» во время конвертации
+        }
+
+        // Раскладка тела окна. Все числа — отступы от низа меню и от верха тела; они же стояли
+        // в SetBounds, когда полоска «бета» была ростом ровно в две строки.
+        private const int NoteTop = 78;      // от низа меню до полоски «бета»
+        private const int NoteGap = 12;      // просвет между полоской и телом
+        private const int PanelWidth = 210;  // колонка кнопок справа от сетки
+        private const int MinGridHeight = 80;
+
+        /// <summary>
+        /// Ставит полоску «бета», сетку и колонку кнопок от ФАКТИЧЕСКОЙ высоты полоски.
+        /// Раньше высота была задана числом (две строки), и на узком окне хвост предупреждения
+        /// просто исчезал под сеткой: человек читал обрезанную фразу и не узнавал главного —
+        /// что скан переводить нечем. Теперь строка переносится, а всё, что ниже, съезжает
+        /// ровно на столько, сколько она заняла.
+        /// </summary>
+        private void LayoutBody()
+        {
+            // Раскладка приходит и посреди сборки окна, когда половины элементов ещё нет.
+            if (_beta == null || _grid == null || _btnPrint == null)
+                return;
+
+            int m = HelpMenu.Height;
+            int right = ClientSize.Width - 20;
+            int width = right - 20;
+            int noteH = NoteHeight(_beta.Text, _beta.Font, width);
+            SetBoundsIfChanged(_beta, 20, m + NoteTop, width, noteH);
+
+            int top = ContentTop(m, noteH);
+            int gridH = Math.Max(MinGridHeight, ClientSize.Height - 152 - top);
+            SetBoundsIfChanged(_grid, 20, top, width - PanelWidth, gridH);
+
+            int px = right - PanelWidth + 10, pw = PanelWidth - 10;
+            SetBoundsIfChanged(_btnOpen, px, top, pw, 32);
+            SetBoundsIfChanged(_btnUp, px, top + 44, pw, 30);
+            SetBoundsIfChanged(_btnDown, px, top + 80, pw, 30);
+            SetBoundsIfChanged(_btnRemove, px, top + 124, pw, 30);
+            SetBoundsIfChanged(_btnPrint, px, top + 160, pw, 30);
+        }
+
+        /// <summary>
+        /// Верх тела окна: под полоской «бета» с просветом. Чистая — под тест.
+        /// </summary>
+        internal static int ContentTop(int menuHeight, int noteHeight)
+        {
+            return menuHeight + NoteTop + noteHeight + NoteGap;
+        }
+
+        /// <summary>
+        /// Высота многострочного примечания при заданной ширине — по ПЕРЕНОСУ ПО СЛОВАМ, тем же
+        /// шрифтом, каким подпись рисует. Меряем по чуть меньшей ширине: у надписи есть свои
+        /// поля, и замер впритык давал на строку меньше, чем выходило на экране.
+        /// </summary>
+        internal static int NoteHeight(string text, Font font, int width)
+        {
+            if (string.IsNullOrEmpty(text) || font == null || width <= 0)
+                return font != null ? font.Height : 0;
+            Size measured = TextRenderer.MeasureText(text, font, new Size(Math.Max(1, width - 6), int.MaxValue),
+                TextFormatFlags.WordBreak);
+            return Math.Max(measured.Height, font.Height);
+        }
+
+        /// <summary>
+        /// Ставит элемент на место, только если оно изменилось: присваивание внутри раскладки
+        /// запускает её заново, и без этой проверки вышла бы бесконечная рекурсия.
+        /// </summary>
+        private static void SetBoundsIfChanged(Control c, int x, int y, int w, int h)
+        {
+            var want = new Rectangle(x, y, w, h);
+            if (c.Bounds != want)
+                c.Bounds = want;
+        }
+
+        /// <summary>
+        /// Тело окна расставляем в OnLayout, а не в OnResize: раскладка идёт и при смене
+        /// шрифта, и при появлении полос меню, и только к этому моменту известны настоящие
+        /// размеры клиентской области.
+        /// </summary>
+        protected override void OnLayout(LayoutEventArgs levent)
+        {
+            base.OnLayout(levent);
+            LayoutBody();
         }
 
         private void ShowHelp()
@@ -264,12 +338,11 @@ namespace ExcelMerger
             return text > max ? max : text;
         }
 
-        private Button AddPanelButton(string text, int x, int y, int w, string tip)
+        /// <summary>Кнопка правой колонки: место ей найдёт <see cref="LayoutBody"/>.</summary>
+        private Button AddPanelButton(string text, string tip)
         {
             var b = new RoundedButton(false);
             b.Text = text;
-            b.SetBounds(x, y, w, 30);
-            b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _tips.SetToolTip(b, tip);
             Controls.Add(b);
             return b;
