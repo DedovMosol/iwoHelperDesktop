@@ -65,7 +65,10 @@ TEXT = {
         "xlTitle": "Показатели подразделения «%s»",
         "xlHead": ["№", "Показатель", "План", "Факт"],
         "xlRow": "Показатель %d", "xlTotal": "Итого",
+        "photo": "Снимок страницы", "photoTitle": "СНИМОК СТРАНИЦЫ",
+        "photoLine": "Строка %d текста на снятой странице",
         "sayPdf": "Образцы PDF:", "sayXl": "Образцы Excel:", "sayDone": "Готово:", "pages": "стр.",
+        "sayImg": "Образец снимка:",
     },
     "en": {
         "body": [
@@ -96,7 +99,10 @@ TEXT = {
         "xlTitle": "Indicators of the %s division",
         "xlHead": ["No.", "Indicator", "Plan", "Actual"],
         "xlRow": "Indicator %d", "xlTotal": "Total",
+        "photo": "Page photo", "photoTitle": "PAGE PHOTO",
+        "photoLine": "Line %d of text on the photographed page",
         "sayPdf": "Sample PDFs:", "sayXl": "Sample workbooks:", "sayDone": "Done:", "pages": "pages",
+        "sayImg": "Sample photo:",
     },
 }
 T = TEXT[LANG]
@@ -195,5 +201,29 @@ for n, name in enumerate(["%s %d" % (T["unit"], i) for i in range(1, 6)], start=
     path = os.path.join(XL, "%s.xlsx" % name)
     wb.save(path)
     print("  ", os.path.basename(path))
+
+# Образец снимка — то, что человек добавляет в «Прочих операциях» кнопкой «Добавить
+# картинки…»: лист, снятый под небольшим углом на сероватом фоне. Рисуем сами, потому что
+# ни одна настоящая фотография не должна попасть ни в репозиторий, ни в руководство.
+print(T["sayImg"])
+photo = os.path.join(SAMPLES, T["photo"] + ".jpg")
+try:
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (1400, 1000), (168, 170, 174))
+    d = ImageDraw.Draw(img)
+    d.rectangle([120, 60, 1280, 940], fill=(250, 249, 246), outline=(196, 196, 196))
+    try:
+        head = ImageFont.truetype("times.ttf", 44)
+        body = ImageFont.truetype("times.ttf", 26)
+    except OSError:
+        head = body = ImageFont.load_default()
+    d.text((200, 120), T["photoTitle"], font=head, fill=(30, 30, 30))
+    for i in range(1, 17):
+        d.text((200, 210 + i * 42), T["photoLine"] % i, font=body, fill=(48, 48, 48))
+    img.save(photo, "JPEG", quality=88)
+    print("  ", os.path.basename(photo))
+except ImportError:
+    print("   PIL не установлен — снимок не создан")
 
 print(T["sayDone"], SAMPLES)

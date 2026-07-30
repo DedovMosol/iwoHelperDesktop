@@ -20,7 +20,9 @@ The tools read the files you choose and write results to the folders you choose:
 - **PDF Merge** — build one PDF out of several,
 - **PDF Split** — extract or split pages,
 - **PDF → Word** — turn the text layer of a born‑digital PDF into a `.docx`,
-- **More operations** — compress, save pages as images, extract text to `.txt`, convert
+- **PDF → PowerPoint** — turn the pages of a born‑digital PDF into a `.pptx`,
+- **More operations** — assemble a document from its pages and from images you add, save it
+  as a PDF, compress, save pages as images, extract text to `.txt`, print, convert
   to grayscale, repair a damaged file, view and edit document properties,
 - **Excel Digest** — combine sheets from several workbooks, with an optional Word cover note.
 
@@ -36,7 +38,9 @@ This processing runs entirely on your machine using local components:
   repairing damaged files, and for rendering the picture regions that PDF → Word puts
   into the `.docx`,
 - the built‑in Windows PDF engine (`Windows.Data.Pdf`) for rendering page thumbnails,
-  the full‑size preview, and the images produced by “save pages as images.”
+  the full‑size preview, and the images produced by “save pages as images,”
+- the Windows imaging library (GDI+) for reading the images you add as pages — they are
+  read from your disk, laid onto a page and never sent anywhere.
 
 **Your documents are never uploaded, copied off your device, or transmitted anywhere.**
 The app does not modify your source files except where you explicitly ask it to write
@@ -51,11 +55,18 @@ machine only, and nothing is read or sent beyond that.
 **Printing** hands the pages to the printer you pick in the standard Windows dialog. The
 app has no print service of its own and sends nothing over the network by itself.
 
-Some operations write short‑lived working files, and all of them are removed as soon as
-the operation ends — successfully or not:
+Some operations write working files. All of them stay on your machine, and all are removed
+as soon as they are no longer needed — successfully or not:
 
 - **PDF → Word** puts any images found in the PDF into a folder under your system temp
   directory, and deletes that folder as soon as the `.docx` is saved.
+- **Images added as pages** (More operations) are each wrapped into a one‑page PDF in a
+  folder under your system temp directory. Unlike the others, these live as long as the
+  window does — they *are* the pages you see in it — and the folder is deleted when the
+  window closes. A folder left behind by a crash is swept the next time images are added.
+- **An action over an assembled document** (More operations) first writes that document to a
+  temporary PDF in the same directory when the pages have been reordered, rotated or removed,
+  and deletes it as soon as the action finishes. Untouched pages need no such file.
 - **Compression, grayscale, and repair** write the new copy beside the output file
   (`<name>.pdf.gstmp`) and keep the original as `<name>.pdf.gsbak` while they swap them,
   so a failure part‑way through cannot lose the file. Both are deleted afterwards.

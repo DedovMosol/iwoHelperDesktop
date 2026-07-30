@@ -31,7 +31,9 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHOTS = None  # задаётся ниже, когда известен язык
-REPO = r"C:\work\iwoHelperDesktop"
+# Корень репозитория — ОТ САМОГО ФАЙЛА: путь, написанный на одной машине, и работает
+# только на ней, и попутно уносит на гит имя учётной записи вместе с именем папки.
+REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 OUT_DIR = os.path.join(REPO, "docs")
 
 # Язык и всё, что от него зависит: имя файла и служебные подписи документа.
@@ -499,7 +501,8 @@ FIG_ORDER = [
     "hub", "hub-pdf", "hub-lang", "help-split", "shortcuts", "merge-ctx", "goto", "preview",
     "merge-compress", "chart", "settings", "stats", "merge", "merge-menu",
     "split", "split-modes", "split-ranges", "split-everyn", "split-bookmarks",
-    "split-template", "ops", "ops-dpi", "metadata", "ocr", "pptx", "excel", "excel-menu", "about",
+    "split-template", "ops", "ops-images", "ops-dpi", "metadata", "ocr", "pptx",
+    "excel", "excel-menu", "about",
 ]
 _inserted = []
 

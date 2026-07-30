@@ -13,7 +13,10 @@ import zipfile
 from docx import Document
 from docx.shared import Pt
 
-PATH = r"C:\work\iwoHelperDesktop\docs\Инструкция пользователя.docx"
+# Путь — от самого скрипта: конвейер лежит в репозитории и не должен зависеть от того,
+# куда его склонировали.
+PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                    "docs", "Инструкция пользователя.docx")
 FONT = "Times New Roman"
 problems = []
 log = []
@@ -126,10 +129,10 @@ check(in_toc == in_body, "оглавление совпадает с загол�
 check("<w:titlePg" in document, "у первой страницы свой колонтитул (без номера)",
       "титульный лист не отделён от нумерации")
 
-# Сколько рисунков должно быть — спрашиваем у самой сборки (FIG_ORDER), а не держим
-# отдельную константу: разошедшись, она превращает проверку в источник ложной тревоги.
+# Сколько рисунков должно быть — спрашиваем у самой сборки (FIG_ORDER в engine.py), а не
+# держим отдельную константу: разошедшись, она превращает проверку в источник ложной тревоги.
 FIGURES = len(re.findall(r'"[a-z0-9-]+"', io.open(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_all.py"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine.py"),
     encoding="utf-8").read().split("FIG_ORDER = [")[1].split("]")[0]))
 images = [n for n in names if n.startswith("word/media/")]
 check(len(images) == FIGURES, "картинок внедрено: %d" % len(images),
@@ -180,6 +183,8 @@ PROSE = [
     "каждая страница отдельным файлом", "плывут", "поедут", "склеивания",
     "том на триста страниц, смотрите раздел четыре", "файл повреждён", "Пуск",
     "Хорошо", "Нормально", "Инструкция по работе с программой: открыть",
+    # Обороты речи, а не подписи на экране: кавычки здесь цитируют мысль, а не кнопку.
+    "Настройках", "страница целиком картинкой", "только текста", "у вас последняя",
 ]
 lower = set(k.lower() for k in known)
 
@@ -203,9 +208,34 @@ check(not unknown, "все подписи в кавычках есть в кат
       "подписи, которых нет в программе: %s" % ", ".join(unknown))
 
 # --- рабочих упоминаний в инструкции быть не должно
-banned = ["w1", "w2", "w3", "w4", "w5", "w6", "iwoHelperDesktop"]
-found = [word for word in banned if word in text.lower()]
-check(not found, "рабочих упоминаний нет", "найдены рабочие упоминания: %s" % found)
+#
+# Слова проверяем ПО ОТПЕЧАТКАМ, а не списком: список из тех самых слов — это ровно то,
+# чему в открытом репозитории делать нечего. Отпечаток берётся от начала слова (3–14 букв),
+# поэтому одна запись накрывает все склонения и производные.
+import hashlib
+
+BANNED_FINGERPRINTS = {
+    "610a4b77c77b3ffd",
+    "2c0cda61e536f2c5",
+    "fe4e39d2d1e3c6b5",
+    "2821bc2655a8343f",
+    "d74a2fa10ca4be11",
+    "f3dcd5e6ce37de3e",
+    "dab70bc2d883a287"
+}
+
+
+def _fingerprint(word):
+    return hashlib.sha256(word.encode("utf-8")).hexdigest()[:16]
+
+
+found = []
+for raw in re.findall(r"[^\W\d_]{3,}", text.lower(), re.UNICODE):
+    for size in range(3, min(len(raw), 14) + 1):
+        if _fingerprint(raw[:size]) in BANNED_FINGERPRINTS:
+            found.append(raw)
+            break
+check(not found, "рабочих упоминаний нет", "найдены рабочие упоминания: %s" % sorted(set(found)))
 
 headings = [par.text for par in doc.paragraphs if par.style.name.startswith("Heading")]
 print("Заголовков: %d" % len(headings))

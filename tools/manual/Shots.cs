@@ -38,6 +38,20 @@ static class Shots
     }
 
     static string Doc { get { return Sample("Образец", "Sample"); } }
+    static string Photo { get { return SampleImage("Снимок", "Page photo"); } }
+    /// <summary>Образец-снимок (его добавляют страницей) — по той же маске имени, что и PDF.</summary>
+    static string SampleImage(string ruStart, string enStart)
+    {
+        foreach (string path in Directory.GetFiles(_samples, "*.jpg"))
+        {
+            string name = Path.GetFileName(path);
+            if (name.StartsWith(ruStart, StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith(enStart, StringComparison.OrdinalIgnoreCase))
+                return path;
+        }
+        throw new FileNotFoundException("нет образца-снимка " + ruStart + " / " + enStart + " в " + _samples);
+    }
+
     static string AppA { get { return Sample("Приложение А", "Appendix A"); } }
     static string AppB { get { return Sample("Приложение Б", "Appendix B"); } }
     static string XlDir
@@ -116,6 +130,7 @@ static class Shots
         yield return S("split-bookmarks", SplitBookmarks);
         yield return S("split-template", SplitTemplate);
         yield return S("ops", Ops);
+        yield return S("ops-images", OpsImages);
         yield return S("ops-dpi", OpsDpi);
         yield return S("ocr", Ocr);
         yield return S("pptx", Pptx);
@@ -269,6 +284,21 @@ static class Shots
     {
         Form f = Loaded("ExcelMerger.PdfOpsForm", new[] { Doc }, 0, 0);
         Shot(f, "ops");
+        Kill(f);
+    }
+
+    /// <summary>
+    /// Картинка, добавленная страницей к страницам документа (с 1.18.1). Зовём тот же метод,
+    /// что и кнопка «Добавить картинки…», — снимок должен показывать настоящий путь, а не
+    /// подстроенную сетку.
+    /// </summary>
+    static void OpsImages()
+    {
+        Form f = Loaded("ExcelMerger.PdfOpsForm", new[] { Doc }, 0, 0);
+        f.GetType().GetMethod("AddImages", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(f, new object[] { new[] { Photo } });
+        Pump(4000); // обёртывание картинки и её миниатюра идут в фоне
+        Shot(f, "ops-images");
         Kill(f);
     }
 

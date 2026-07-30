@@ -5,8 +5,13 @@ import io
 import json
 import re
 
-SRC = r"C:\work\iwoHelperDesktop\src\Loc.cs"
-OUT = r"loc_ru.json"
+# Пути — ОТ САМОГО СКРИПТА, а не литералами с чужой машины: конвейер живёт в
+# репозитории, и жёсткий путь работал бы только там, где его однажды написали.
+import os
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SRC = os.path.join(HERE, "..", "..", "src", "Loc.cs")
+OUT = os.path.join(HERE, "loc_ru.json")
 
 text = io.open(SRC, encoding="utf-8").read()
 call = re.compile(r'A\(\s*"([^"]+)"\s*,\s*(.*?)\)\s*;', re.S)

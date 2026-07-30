@@ -41,8 +41,11 @@ offline tools** behind one start screen with two sections (PDF and everything el
 5. **PDF → PowerPoint** — turns the pages of a born-digital PDF into a `.pptx` whose text is
    real, editable text (same extraction, own OOXML writer, no PowerPoint required); everything
    that is not text arrives as the page background rendered without its text layer.
-6. **More operations** — six actions over one document: compress, grayscale, repair, pages to
-   images, text to `.txt`, document properties. Each writes a **new** file.
+6. **More operations** — a page workshop over one document plus eight actions: save PDF,
+   compress, grayscale, repair, pages to images, text to `.txt`, print, document properties.
+   The grid is edited like everywhere else (order, rotation, removal, clipboard, undo) and
+   **images can be added as pages**, so every action works on the document *as assembled*.
+   Each writes a **new** file.
 
 Cross-cutting services: optional **PDF compression** (Ghostscript as a child process),
 page **thumbnails** (WinRT `Windows.Data.Pdf`), a Word cover note, reports,

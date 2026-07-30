@@ -378,6 +378,7 @@ namespace ExcelMerger.Tests
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
             Run("В исходниках нет управляющих символов", TestNoControlCharactersInSources);
+            Run("В репозитории нет рабочих упоминаний и путей машины", TestNoWorkReferencesInRepo);
             Run("Переводы помечены как бета и объясняют, чего им не хватает", TestBetaNotice);
             Run("Руководство выбирается по языку интерфейса", TestManualBothLanguages);
             Run("Примечание «бета» переносится по словам, а не обрезается", TestBetaNoteWraps);
@@ -394,7 +395,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 358;
+            const int MinTests = 359;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -4845,6 +4846,108 @@ namespace ExcelMerger.Tests
             }
         }
 
+
+        /// <summary>
+        /// В репозитории не должно остаться ни рабочих упоминаний, ни следов машины, на
+        /// которой он собирался: имя учётной записи в пути, название рабочей папки, рабочее
+        /// слово в комментарии.
+        ///
+        /// Слова сверяем ПО ОТПЕЧАТКАМ: список из тех самых слов, лежащий в открытом
+        /// репозитории, — это ровно то, чему в нём быть и не должно. Отпечаток берётся от
+        /// начала слова, поэтому одна запись накрывает все склонения и производные.
+        /// </summary>
+        private static void TestNoWorkReferencesInRepo()
+        {
+            string root = RepoRoot();
+            if (root == null) { AssertTrue(true, "исходники рядом не найдены — пропускаем"); return; }
+            var banned = new HashSet<string>(new[]
+            {
+                "610a4b77c77b3ffd",
+                "2c0cda61e536f2c5",
+                "fe4e39d2d1e3c6b5",
+                "2821bc2655a8343f",
+                "d74a2fa10ca4be11",
+                "f3dcd5e6ce37de3e",
+                "d028554a0a7b4514",
+                "e994a1c965fcf540",
+                "6d54019640cdd227",
+                "41ad327734850b89",
+                "d197f4a34fadf25e",
+                "dab70bc2d883a287"
+            });
+            var offenders = new List<string>();
+            string[] folders = { "src", "tests", "tools", "docs", "installer", ".github" };
+            string[] extensions = { ".cs", ".ps1", ".py", ".md", ".cmd", ".yml", ".iss", ".json", ".txt" };
+            foreach (string folder in folders)
+            {
+                string dir = Path.Combine(root, folder);
+                if (!Directory.Exists(dir)) continue;
+                foreach (string file in Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories))
+                {
+                    if (Skipped(file)) continue;
+                    bool wanted = false;
+                    foreach (string ext in extensions)
+                        if (file.EndsWith(ext, StringComparison.OrdinalIgnoreCase)) { wanted = true; break; }
+                    if (!wanted) continue;
+                    string word = FirstBannedWord(File.ReadAllText(file).ToLowerInvariant(), banned);
+                    if (word != null)
+                        offenders.Add(file.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar) +
+                            ": " + Mask(word));
+                }
+            }
+            AssertTrue(offenders.Count == 0,
+                "рабочие упоминания или путь машины в репозитории: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Служебные и собранные каталоги проверять незачем — их на гите нет.</summary>
+        private static bool Skipped(string file)
+        {
+            string[] parts = { "bin", "obj", "shots-ru", "shots-en", "samples-ru", "samples-en", "out" };
+            foreach (string part in parts)
+                if (file.IndexOf(Path.DirectorySeparatorChar + part + Path.DirectorySeparatorChar,
+                        StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Первое слово текста, начало которого совпало с запретным отпечатком (или null).
+        /// Проверяем именно НАЧАЛА слов: так одна запись накрывает все склонения и
+        /// производные разом, а «администратор» не выдаётся за что-то запретное.
+        /// </summary>
+        private static string FirstBannedWord(string text, HashSet<string> banned)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                var word = new System.Text.StringBuilder();
+                for (int i = 0; i <= text.Length; i++)
+                {
+                    char c = i < text.Length ? text[i] : ' ';
+                    if (char.IsLetter(c) || c == '.') { word.Append(c); continue; }
+                    if (word.Length >= 3)
+                    {
+                        string whole = word.ToString();
+                        for (int size = 3; size <= Math.Min(whole.Length, 14); size++)
+                        {
+                            byte[] hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(whole.Substring(0, size)));
+                            var hex = new System.Text.StringBuilder();
+                            for (int b = 0; b < 8; b++)
+                                hex.Append(hash[b].ToString("x2"));
+                            if (banned.Contains(hex.ToString()))
+                                return whole;
+                        }
+                    }
+                    word.Length = 0;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Найденное слово в отчёте показываем ЗАКРЫТЫМ: иначе отчёт сам его и разгласит.</summary>
+        private static string Mask(string word)
+        {
+            return word.Substring(0, 1) + new string('*', Math.Max(1, word.Length - 1));
+        }
 
         /// <summary>
         /// В исходниках не должно быть управляющих символов, кроме табуляции и перевода строки.
