@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
@@ -223,7 +223,9 @@ namespace ExcelMerger
             card.Click += delegate { OpenTool(key, nameKey, factory, home); };
             if (key != "excel") // свод Excel работает с ПАПКОЙ, не с файлами — дроп ему не нужен
             {
-                card.AcceptFiles(".pdf");
+                // «Прочие операции» собирают документ и из картинок, поэтому их карточка
+                // принимает то же, что и само окно (иначе дроп снимка на неё молча отвергался бы).
+                card.AcceptFiles(key == "ops" ? PdfDrop.PdfAndImages : PdfDrop.PdfOnly);
                 card.FilesDropped += delegate(string[] files)
                 {
                     if (_context != null)

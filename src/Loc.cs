@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace ExcelMerger
@@ -162,8 +162,8 @@ namespace ExcelMerger
                 "Turn the pages of a born‑digital PDF into a *.pptx presentation. Scanned pages are not carried over yet.");
             A("hub.ops.name", "Прочие операции", "More operations");
             A("hub.ops.desc",
-                "Сжать документ, сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
-                "Compress a document, save pages as images, extract text, convert to grayscale, repair a damaged file, edit document properties.");
+                "Сжать документ, сохранить страницы картинками, извлечь текст, напечатать, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
+                "Compress a document, save pages as images, extract text, print, convert to grayscale, repair a damaged file, edit document properties.");
             A("hub.about", "О программе", "About");
 
             // common.* — общие элементы нескольких окон
@@ -199,6 +199,9 @@ namespace ExcelMerger
             A("common.status.openPdf", "Откройте PDF — кнопкой «Открыть PDF…» или перетащите его в окно программы.",
                 "Open a PDF — with “Open PDF…” or drag it onto the program window.");
             A("common.status.opened", "Открыт «{0}»: страниц {1}.", "Opened “{0}”: {1} pages.");
+            // Добавка к предыдущей строке, когда в сетке собрано не то, что лежит в файле:
+            // действия пойдут по собранному, и молчать об этом нельзя.
+            A("common.status.assembled", " В сетке собрано страниц: {0}.", " Assembled in the grid: {0} pages.");
             A("common.err.fileNotOpened", "Файл не открыт", "File not opened");
             A("common.grid.emptyOpen", "Перетащите PDF сюда\nили нажмите «Открыть PDF…»",
                 "Drop a PDF here\nor click “Open PDF…”");
@@ -280,15 +283,24 @@ namespace ExcelMerger
                 "Сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа. Откроется отдельное окно, и открытый здесь документ уедет туда сам.",
                 "Compression, images, text, grayscale, repair, editing the document properties. A separate window opens, and the document you have open here goes there with it.");
 
-            // ops.* — окно «Прочие операции» (PdfOpsForm): шесть действий над одним документом.
+            // ops.* — окно «Прочие операции» (PdfOpsForm): семь действий над одним документом.
             // До 1.17.9 они были спрятаны в меню «Доп. действия» внутри «Разделения PDF», где их
             // никто не находил, а самостоятельного сжатия одного файла не было вовсе.
-            A("ops.header.subtitle", "Сжатие, картинки, текст, оттенки серого, восстановление и свойства одного документа.",
-                "Compression, images, text, grayscale, repair and properties of a single document.");
+            A("ops.header.subtitle",
+                "Собрать документ из страниц и картинок, сжать, извлечь текст, напечатать, править свойства.",
+                "Assemble a document from pages and images, compress, extract text, print, edit properties.");
             A("ops.pickPdf", "Выберите PDF", "Choose a PDF");
             A("ops.group.convert", "Преобразовать документ", "Convert the document");
             A("ops.group.extract", "Извлечь из документа", "Extract from the document");
             A("ops.group.edit", "Правка", "Edit");
+            A("ops.btn.addImages", "Добавить картинки…", "Add images…");
+            A("ops.tip.addImages",
+                "Снимки и сканы (JPEG, PNG, BMP, GIF, TIFF) лягут страницами в конец набора: каждая картинка — лист A4 с полями. Их можно переставлять, поворачивать и убирать, как обычные страницы.",
+                "Photos and scans (JPEG, PNG, BMP, GIF, TIFF) are appended as pages: each image becomes an A4 sheet with margins. They can be reordered, rotated and removed like any other page.");
+            A("ops.btn.savePdf", "Сохранить PDF…", "Save PDF…");
+            A("ops.tip.savePdf",
+                "Записать собранное в сетке в новый PDF: порядок, повороты и состав страниц — как на экране. Уровень сжатия берётся из списка «Сжатие» внизу окна.",
+                "Write what is assembled in the grid into a new PDF: order, rotations and the set of pages exactly as shown. The compression level comes from the “Compression” list below.");
             A("ops.btn.compress", "Сжать…", "Compress…");
             A("ops.tip.compress",
                 "Уменьшить размер файла: копия с изображениями пониженного разрешения. Уровень выбирается в списке «Сжатие» внизу окна, текст и векторы не растрируются.",
@@ -313,9 +325,17 @@ namespace ExcelMerger
                 "Заголовок, автор, тема и ключевые слова. Результат — новый файл, исходник не меняется.",
                 "Title, author, subject and keywords. The result is a new file, the source is not modified.");
             A("ops.menu.dpi", "{0} dpi", "{0} dpi");
+            A("ops.grid.empty", "Перетащите сюда PDF или картинки\nили нажмите «Открыть PDF…»",
+                "Drop a PDF or images here\nor click “Open PDF…”");
+            A("ops.pick.images", "Выберите картинки", "Choose images");
             A("ops.pick.imagesDir", "Куда сохранить картинки", "Where to save the images");
             A("ops.pick.repair", "Выберите повреждённый PDF", "Choose the damaged PDF");
             A("ops.txtFilter", "Текстовый файл (*.txt)|*.txt", "Text file (*.txt)|*.txt");
+            A("ops.ask.replacePages.title", "Заменить собранные страницы?",
+                "Replace the assembled pages?");
+            A("ops.ask.replacePages.body",
+                "В наборе есть добавленные картинки. Открытие другого PDF заменит набор целиком, и они из него исчезнут. Открыть?",
+                "The set contains images you added. Opening another PDF replaces the whole set and they will be gone. Open it?");
             A("ops.ask.jpeg.title", "Сохранить в JPEG?", "Save as JPEG?");
             A("ops.ask.jpeg.body",
                 "JPEG заметно компактнее, но сжимает с потерями. PNG крупнее и сохраняет страницу точно.\n\n«Да» — JPEG, «Нет» — PNG.",
@@ -328,6 +348,12 @@ namespace ExcelMerger
             A("ops.status.converted", "Преобразование выполнено", "Conversion done");
             A("ops.status.convertFailed", "Преобразовать не удалось — файл оставлен без изменений.",
                 "The conversion failed — the file was left unchanged.");
+            A("ops.status.addingImages", "Подготовка картинок…", "Preparing the images…");
+            A("ops.status.savingPdf", "Сборка PDF…", "Building the PDF…");
+            A("ops.status.savingPage", "Сборка: страница {0} из {1}…", "Building: page {0} of {1}…");
+            A("ops.status.savedPdf", "Сохранено страниц: {0}", "Pages saved: {0}");
+            A("ops.status.onlyImages", "Собрано страниц: {0}. Нажмите «Сохранить PDF…».",
+                "Assembled: {0} pages. Click “Save PDF…”.");
             A("ops.status.compressing", "Сжатие…", "Compressing…");
             A("ops.status.compressed", "Сжато, изображения до {0} dpi", "Compressed, images to {0} dpi");
             A("ops.status.notCompressed", "Файл уже оптимизирован — копия сохранена без изменений",
@@ -338,6 +364,7 @@ namespace ExcelMerger
                 "The “Compression” list at the bottom is set to “no compression” — there is nothing to compress with. Choose “Good” or “Smaller” and try again.");
             A("ops.status.savingMeta", "Запись свойств…", "Saving properties…");
             A("ops.status.metaSaved", "Свойства записаны", "Properties saved");
+            A("ops.suffix.saved", "_собранный", "_assembled");
             A("ops.suffix.gray", "_серый", "_gray");
             A("ops.suffix.repaired", "_восстановленный", "_repaired");
             A("ops.suffix.meta", "_свойства", "_properties");
@@ -345,28 +372,38 @@ namespace ExcelMerger
             A("ops.err.exportFailed", "Не удалось сохранить", "Could not save");
             A("ops.err.convertFailed", "Не удалось преобразовать", "Could not convert");
             A("ops.err.compressFailed", "Не удалось сжать", "Could not compress");
+            A("ops.err.saveFailed", "Не удалось сохранить PDF", "Could not save the PDF");
+            A("err.img.cantRead", "Не удалось прочитать «{0}»: {1}",
+                "Could not read “{0}”: {1}");
+            A("img.filter", "Картинки", "Images");
             A("ops.err.metaFailed", "Не удалось записать свойства", "Could not save the properties");
             A("ops.err.sameFile", "Нельзя записать поверх исходника", "Cannot write over the source");
             A("ops.err.sameFile.body",
                 "Приложение не изменяет исходные файлы. Укажите другое имя — результат появится рядом.",
                 "The app does not modify source files. Choose another name and the result will appear alongside.");
             A("ops.help.body",
-                "1. Откройте PDF — кнопкой «Открыть PDF…» или перетащите файл в окно программы.\n" +
-                "2. Нажмите нужное действие в панели справа. Каждое пишет РЕЗУЛЬТАТ В НОВЫЙ ФАЙЛ — исходник остаётся как был.\n\n" +
+                "1. Наберите страницы: откройте PDF («Открыть PDF…» или перетаскиванием) либо добавьте картинки («Добавить картинки…»). Каждая картинка становится листом A4 с полями.\n" +
+                "2. При надобности соберите документ в сетке: страницы переставляются перетаскиванием, поворачиваются кнопками на плитке и убираются клавишей Delete (Ctrl+Z возвращает). Любое действие пойдёт по СОБРАННОМУ документу, а не по файлу.\n" +
+                "3. Нажмите нужное действие в панели справа. Каждое пишет РЕЗУЛЬТАТ В НОВЫЙ ФАЙЛ — исходник остаётся как был.\n\n" +
+                "• «Сохранить PDF…» — собранное в сетке становится новым PDF: так картинки превращаются в документ, а переставленные и повёрнутые страницы — в файл.\n" +
                 "• «Сжать…» — копия с изображениями пониженного разрешения (уровень — в списке «Сжатие» внизу). Текст и векторы не растрируются, поэтому документ остаётся читаемым и после сжатия.\n" +
                 "• «В оттенки серого…» — копия без цвета: дешевле печатать.\n" +
                 "• «Восстановить…» — лечит «файл повреждён»: движок перезаписывает документ и чинит битую таблицу ссылок. Файл выбирается отдельным окном, потому что повреждённый в сетку не открывается.\n" +
                 "• «Страницы в картинки…» — выделенные страницы (или все) в PNG либо JPEG выбранного разрешения.\n" +
                 "• «Текст в .txt…» — текстовый слой документа, таблицы сохраняются ячейками через табуляцию.\n" +
+                "• «Печать…» — выделенные страницы (или все) на принтер, вместе с назначенными им поворотами.\n" +
                 "• «Свойства документа…» — заголовок, автор, тема, ключевые слова. Пустое поле очищает свойство: так убирают имя автора перед отправкой.\n\n" +
                 "Отсканированный документ (без текстового слоя) текста не отдаст — там нечего извлекать.",
-                "1. Open a PDF — with “Open PDF…” or drag the file onto the program window.\n" +
-                "2. Click the action you need in the panel on the right. Every one writes its RESULT INTO A NEW FILE — the source is left as it was.\n\n" +
+                "1. Collect the pages: open a PDF (“Open PDF…” or drag it in) or add images (“Add images…”). Every image becomes an A4 sheet with margins.\n" +
+                "2. Assemble the document in the grid if you need to: pages are reordered by dragging, rotated with the buttons on the tile and removed with Delete (Ctrl+Z brings them back). Every action then works on the ASSEMBLED document, not on the file.\n" +
+                "3. Click the action you need in the panel on the right. Every one writes its RESULT INTO A NEW FILE — the source is left as it was.\n\n" +
+                "• “Save PDF…” — what is assembled in the grid becomes a new PDF: that is how images turn into a document and reordered or rotated pages turn into a file.\n" +
                 "• “Compress…” — a copy with downsampled images (the level is in the “Compression” list below). Text and vectors are never rasterized, so the document stays readable after compression.\n" +
                 "• “To grayscale…” — a copy without colour: cheaper to print.\n" +
                 "• “Repair…” — cures “the file is damaged”: the engine rewrites the document and fixes a broken cross-reference table. The file is chosen in a separate dialog, because a damaged one cannot be opened into the grid.\n" +
                 "• “Pages to images…” — the selected pages (or all of them) as PNG or JPEG at the chosen resolution.\n" +
                 "• “Text to .txt…” — the text layer of the document, tables are kept as tab-separated cells.\n" +
+                "• “Print…” — the selected pages (or all of them) to a printer, with the rotations assigned to them.\n" +
                 "• “Document properties…” — title, author, subject, keywords. An empty field clears the property: that is how the author's name is removed before sending.\n\n" +
                 "A scanned document (without a text layer) will not give up any text — there is nothing to extract there.");
             A("preview.fit", "По окну", "Fit to window");

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -19,8 +19,8 @@ namespace ExcelMerger
         private const int ModeExtract = 0, ModeRanges = 1, ModeEveryN = 2, ModeBookmarks = 3;
 
         // Сетка, зум, сжатие, статус, подсказки и флаг _busy — в базе PdfToolFormBase.
-        // Открытый документ (_sourcePath, _pageCount, _pages), его загрузка и выбор страниц —
-        // в базе PdfSingleDocFormBase (общее с «Прочими операциями»).
+        // Открытый документ (_sourcePath, _pageCount), его загрузка и порядок страниц _order —
+        // в базах PdfSingleDocFormBase и PdfPageOrderFormBase (общее с «Прочими операциями»).
         private Button _btnOpen;
         private ComboBox _cmbMode;
         private Label _lblRanges;
@@ -72,8 +72,7 @@ namespace ExcelMerger
             // ShowPositionNumbers = false: под плиткой — номер исходной страницы.
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            WireSingleDocGrid(); // подсказки, выделение, дроп на сетку и на окно (общая обвязка базы)
-            WireGridMenu();
+            WireSingleDocGrid(); // подсказки, выделение, меню, дроп на сетку и на окно (общая обвязка баз)
             Controls.Add(_grid);
 
             int px = right - panelW + 10; // левый край панели режима
@@ -226,7 +225,7 @@ namespace ExcelMerger
         {
             if (_sourcePath == null)
                 return;
-            PrintPages(SelectedPageRefs());
+            PrintPages(SelectedOrAllPages());
         }
 
         protected override void Dispose(bool disposing)
@@ -404,11 +403,12 @@ namespace ExcelMerger
         /// </summary>
         private int[] CurrentRotations()
         {
-            if (_pages == null || _pages.Count == 0)
+            List<PdfPageRef> pages = _order.ToList();
+            if (pages.Count == 0)
                 return null;
             bool any = false;
             var rotations = new int[_pageCount];
-            foreach (PdfPageRef page in _pages)
+            foreach (PdfPageRef page in pages)
                 if (page.PageIndex >= 0 && page.PageIndex < rotations.Length && page.Rotation != 0)
                 {
                     rotations[page.PageIndex] = page.Rotation;

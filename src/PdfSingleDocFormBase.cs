@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
@@ -8,66 +8,78 @@ namespace ExcelMerger
     /// <summary>
     /// База инструментов, работающих с ОДНИМ открытым документом — «Разделение PDF» и
     /// «Прочие операции». Держит весь слой «открыть файл и показать его страницы»: выбор
-    /// файла, фоновый разбор, заполнение сетки, статус, приём файла дропом на окно, на сетку
-    /// и с карточки стартового экрана, а также выбор страниц для операций.
+    /// файла, фоновый разбор, заполнение сетки, статус и приём файла дропом на окно, на сетку
+    /// и с карточки стартового экрана.
     ///
     /// Выделена в 1.17.9, когда шесть действий над одним документом переехали из «Разделения»
     /// в собственное окно: копировать этот слой во второе окно значило бы держать две правки
-    /// на каждый будущий баг. Инструменты, собирающие результат из НЕСКОЛЬКИХ файлов, живут
-    /// на другой базе — <see cref="PdfOrderedToolFormBase"/>.
+    /// на каждый будущий баг. Правка страниц (порядок, поворот, удаление, Ctrl+Z) — общая с
+    /// многофайловыми инструментами и живёт в <see cref="PdfPageOrderFormBase"/>; сколько из
+    /// неё разрешено, каждое окно решает флагами сетки.
     ///
     /// Наследник строит свою раскладку сам и зовёт <see cref="WireSingleDocGrid"/> после
     /// создания сетки. Только UI-поток, кроме тела фонового разбора.
     /// </summary>
-    public abstract class PdfSingleDocFormBase : PdfToolFormBase, IFileAcceptor
+    public abstract class PdfSingleDocFormBase : PdfPageOrderFormBase, IFileAcceptor
     {
         /// <summary>Путь открытого документа или null, если ещё ничего не открыли.</summary>
         protected string _sourcePath;
-        /// <summary>Число страниц открытого документа.</summary>
+        /// <summary>Число страниц В ФАЙЛЕ (не в сетке: из неё страницы могли убрать).</summary>
         protected int _pageCount;
-        /// <summary>
-        /// Страницы открытого документа, показанные сеткой. Сетка мутирует их
-        /// <see cref="PdfPageRef.Rotation"/> при повороте, отсюда форма собирает карту
-        /// поворотов для записи.
-        /// </summary>
-        protected List<PdfPageRef> _pages = new List<PdfPageRef>();
 
         protected PdfSingleDocFormBase(Action showHub) : base(showHub) { }
 
         /// <summary>Заголовок окна выбора файла — у каждого инструмента свой («…для разделения»).</summary>
         protected abstract string PickFileTitle { get; }
 
-        /// <summary>Idle-статус: не открыт — подсказка открытия, иначе имя файла и число страниц.</summary>
+        /// <summary>
+        /// Idle-статус: не открыт — подсказка открытия, иначе имя файла и число страниц В ФАЙЛЕ.
+        /// Если в сетке собрано другое (страницы убрали, переставили или повернули), говорим и
+        /// это: иначе окно молчит о том, что дальше операции пойдут не по исходнику.
+        /// </summary>
         protected override string IdleStatusText()
         {
-            return _sourcePath == null
-                ? Loc.T("common.status.openPdf")
-                : string.Format(Loc.T("common.status.opened"), Path.GetFileName(_sourcePath), _pageCount);
+            if (_sourcePath == null)
+                return Loc.T("common.status.openPdf");
+            string status = string.Format(Loc.T("common.status.opened"), Path.GetFileName(_sourcePath), _pageCount);
+            if (!IsPristine(_order.ToList(), _sourcePath, _pageCount))
+                status += string.Format(Loc.T("common.status.assembled"), _order.Count);
+            return status;
         }
 
         /// <summary>
-        /// Общая обвязка сетки одного документа: выделение отражается на кнопках и статусе,
-        /// дроп на сетку и на окно открывает первый брошенный файл (инструмент работает с
-        /// одним документом, поэтому остальные игнорируются).
+        /// Общая обвязка сетки одного документа: правка страниц как у всех (база), а брошенные
+        /// файлы уходят в <see cref="AcceptDroppedPaths"/> — что с ними делать, решает
+        /// инструмент. Набор принимаемых расширений тоже его: «Прочие операции» берут и картинки.
         /// </summary>
         protected void WireSingleDocGrid()
         {
             _grid.EmptyHint = Loc.T("common.grid.emptyOpen");
             _grid.DropHint = Loc.T("common.grid.dropOpen");
-            _grid.SelectionChanged += delegate { SyncControls(); RefreshRestingStatus(); };
-            _grid.FilesDropped += delegate(string[] paths, int insertAt)
-            {
-                if (paths.Length > 0)
-                    LoadSource(paths[0]); // LoadSource гейтит занятость сам
-            };
-            WireFileDrop(delegate(string[] paths) { LoadSource(paths[0]); });
+            _grid.DropExtensions = DropExtensions;
+            WireOrderGrid();
+            _grid.FilesDropped += delegate(string[] paths, int insertAt) { AcceptDroppedPaths(paths); };
+            WireFileDrop(AcceptDroppedPaths, DropExtensions);
         }
 
-        /// <summary>Дроп PDF на карточку стартового экрана: открыть первый файл.</summary>
-        public void AcceptFiles(string[] paths)
+        /// <summary>Что инструмент принимает перетаскиванием. По умолчанию только PDF.</summary>
+        protected virtual string[] DropExtensions { get { return PdfDrop.PdfOnly; } }
+
+        /// <summary>
+        /// Брошенные файлы (на окно, на сетку, на карточку хаба — одна точка на все три):
+        /// инструмент одного документа открывает ПЕРВЫЙ, остальные не его дело. Наследник может
+        /// решить иначе — «Прочие операции» ещё и добавляют картинки страницами.
+        /// </summary>
+        protected virtual void AcceptDroppedPaths(string[] paths)
         {
             if (paths != null && paths.Length > 0)
                 LoadSource(paths[0]); // LoadSource гейтит занятость сам
+        }
+
+        /// <summary>Дроп файлов на карточку стартового экрана — тем же путём, что и на окно.</summary>
+        public void AcceptFiles(string[] paths)
+        {
+            AcceptDroppedPaths(paths);
         }
 
         /// <summary>Спросить файл и открыть его.</summary>
@@ -88,8 +100,12 @@ namespace ExcelMerger
         /// </summary>
         protected void LoadSource(string path)
         {
+            if (Working)
+                return; // идёт операция или загрузка: спрашивать не о чем, ответ ничего не изменит
+            if (!ConfirmReplacingPages())
+                return; // человек не согласился потерять собранное — прежний набор цел
             if (!BeginLoad(Loc.T("common.status.loading")))
-                return; // уже идёт операция или загрузка
+                return; // защёлка на случай гонки: решение всё равно за BeginLoad
             Ui.RunWorker(delegate()
             {
                 int count = 0;
@@ -113,44 +129,57 @@ namespace ExcelMerger
             {
                 RefreshRestingStatus(); // вернуть статус прежнего документа вместо залипшей «Загрузка…»
                 Dialogs.Error(this, ToolTitle, Loc.T("common.err.fileNotOpened"), error); // прежний документ остаётся
+                OnLoadAttemptFinished(false);
                 return;
             }
             _sourcePath = path;
             _pageCount = pageCount;
-            _pages = new List<PdfPageRef>();
-            for (int i = 0; i < _pageCount; i++)
-                _pages.Add(new PdfPageRef { SourcePath = path, PageIndex = i });
-            _grid.SetPages(_pages);
+            _order.Clear(); // другой документ — и правки прежнего, и их история ни к чему
+            _order.AddDocument(path, pageCount);
+            RefreshGrid();
             SetStatus(string.Format(Loc.T("common.status.opened"), Path.GetFileName(path), _pageCount),
                 Theme.TextMuted);
             OnSourceLoaded();
             SyncControls();
+            OnLoadAttemptFinished(true);
         }
+
+        /// <summary>
+        /// Попытка открыть документ завершилась — удачно или нет. Нужен тем, у кого на очереди
+        /// ждёт своя работа: «Прочие операции» так добавляют картинки, брошенные вместе с PDF
+        /// (сразу их добавить нельзя — окно занято разбором, и они пропали бы молча).
+        /// </summary>
+        protected virtual void OnLoadAttemptFinished(bool loaded) { }
 
         /// <summary>Документ открыт — наследник может подстроить свои поля. По умолчанию ничего.</summary>
         protected virtual void OnSourceLoaded() { }
 
-        /// <summary>Страницы для операции: выделенные в сетке, а если ничего не выделено — все.</summary>
-        protected List<int> PagesForExport()
-        {
-            var pages = new List<int>(_grid.GetSelectedIndices());
-            if (pages.Count == 0)
-                for (int i = 0; i < _pageCount; i++)
-                    pages.Add(i);
-            pages.Sort();
-            return pages;
-        }
+        /// <summary>
+        /// Спросить разрешение заменить собранный набор новым документом. По умолчанию нечего и
+        /// спрашивать: набор — это и есть открытый файл. Смысл появляется там, где в сетку
+        /// добавляют своё («Прочие операции» — картинки): молча выбросить их значило бы стереть
+        /// работу человека одним нажатием «Открыть PDF…».
+        /// </summary>
+        protected virtual bool ConfirmReplacingPages() { return true; }
 
         /// <summary>
-        /// Ссылки на выбранные страницы (для печати): берутся из показанных сеткой, чтобы
-        /// вместе со страницей уехал и назначенный ей поворот.
+        /// Набор страниц — это открытый файл КАК ЕСТЬ: все его страницы, в исходном порядке и
+        /// без поворотов. Тогда операция идёт прямо по исходнику, а иначе документ приходится
+        /// сначала собрать заново — тем, что человек видит в сетке. Чистая — под тест.
         /// </summary>
-        protected List<PdfPageRef> SelectedPageRefs()
+        internal static bool IsPristine(IList<PdfPageRef> pages, string sourcePath, int pageCount)
         {
-            var refs = new List<PdfPageRef>();
-            foreach (int i in PagesForExport())
-                refs.Add(i < _pages.Count ? _pages[i] : new PdfPageRef { SourcePath = _sourcePath, PageIndex = i });
-            return refs;
+            if (pages == null || pages.Count != pageCount)
+                return false;
+            for (int i = 0; i < pages.Count; i++)
+            {
+                PdfPageRef page = pages[i];
+                if (page == null || page.PageIndex != i || page.Rotation != 0)
+                    return false;
+                if (!string.Equals(page.SourcePath, sourcePath, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            return true;
         }
     }
 }

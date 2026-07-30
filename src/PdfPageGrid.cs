@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -176,8 +176,14 @@ namespace ExcelMerger
         public event Action<int[], int> MoveRangeRequested;
         /// <summary>Вставка скопированных: вставить НОВЫЕ экземпляры страниц ПЕРЕД позицией.</summary>
         public event Action<PdfPageRef[], int> InsertPagesRequested;
-        /// <summary>На сетку сбросили PDF-файлы; int — позиция вставки (Count — в конец).</summary>
+        /// <summary>На сетку сбросили файлы; int — позиция вставки (Count — в конец).</summary>
         public event Action<string[], int> FilesDropped;
+
+        /// <summary>
+        /// Какие файлы сетка принимает перетаскиванием. По умолчанию только PDF; «Прочие
+        /// операции» добавляют картинки — там их тоже кладут страницами в набор.
+        /// </summary>
+        public string[] DropExtensions = PdfDrop.PdfOnly;
         /// <summary>«Удалить» из контекстного меню (клавиша Delete обрабатывается формой напрямую).</summary>
         public event EventHandler DeleteRequested;
         /// <summary>«Перейти к странице…» из контекстного меню (диалог показывает форма).</summary>
@@ -1311,10 +1317,10 @@ namespace ExcelMerger
 
         private void OnListDragEnter(object sender, DragEventArgs e)
         {
-            // Наличие PDF среди файлов выясняем один раз на drag-сессию: DragOver
+            // Наличие подходящих файлов выясняем один раз на drag-сессию: DragOver
             // сыплется на каждое движение мыши, разбирать там HDROP было бы расточительно.
             _dragHasFiles = !Locked && e.Data.GetDataPresent(DataFormats.FileDrop) &&
-                PdfDrop.ExtractPaths(e).Length > 0;
+                PdfDrop.ExtractPaths(e, DropExtensions).Length > 0;
             // Effect обязан быть выставлен уже на входе: без этого курсор показывает
             // «нельзя» до первого движения, а дроп без движения мыши отвергается вовсе.
             e.Effect = _dragHasFiles
@@ -1370,7 +1376,7 @@ namespace ExcelMerger
             if (_dragHasFiles)
             {
                 _dragHasFiles = false;
-                string[] paths = PdfDrop.ExtractPaths(e);
+                string[] paths = PdfDrop.ExtractPaths(e, DropExtensions);
                 if (Locked || paths.Length == 0)
                     return;
                 int insertAt = DropInsertIndex(AllowReorder, target, after, _list.Items.Count);
