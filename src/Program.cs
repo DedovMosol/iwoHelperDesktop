@@ -114,9 +114,20 @@ namespace ExcelMerger
             {
                 // Руководство лежит ресурсом и открывается из «О программе». Проверяем его
                 // здесь, а не в юнит-тестах: там своя сборка, и вшито ли оно в НАСТОЯЩИЙ exe,
-                // она сказать не может.
-                if (!UserManual.IsPacked())
-                    return 4;
+                // она сказать не может. Проверяем ОБА языка: ресурс держится одной строкой в
+                // csproj, и пропажа английского не выдала бы себя ничем, пока англоязычный
+                // читатель не нажмёт «открыть» и не получит ошибку.
+                Lang wasLanguage = Loc.Current;
+                foreach (Lang language in new[] { Lang.Ru, Lang.En })
+                {
+                    Loc.Init(language);
+                    if (!UserManual.IsPacked())
+                    {
+                        Loc.Init(wasLanguage);
+                        return 4;
+                    }
+                }
+                Loc.Init(wasLanguage);
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Action noop = delegate { };

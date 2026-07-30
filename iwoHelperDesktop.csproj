@@ -99,6 +99,9 @@
     <EmbeddedResource Include="docs\Инструкция пользователя.docx">
       <LogicalName>manual.docx</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="docs\User manual.docx">
+      <LogicalName>manual.en.docx</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

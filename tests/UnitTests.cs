@@ -378,12 +378,14 @@ namespace ExcelMerger.Tests
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
             Run("В исходниках нет управляющих символов", TestNoControlCharactersInSources);
+            Run("Переводы помечены как бета и объясняют, чего им не хватает", TestBetaNotice);
+            Run("Руководство выбирается по языку интерфейса", TestManualBothLanguages);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
             // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 347;
+            const int MinTests = 349;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total < MinTests)
@@ -4889,6 +4891,69 @@ namespace ExcelMerger.Tests
                 dir = parent == null ? null : parent.FullName;
             }
             return null;
+        }
+
+
+        /// <summary>
+        /// Оба перевода — бета, и сказано об этом должно быть на ОБОИХ языках и в обоих
+        /// местах: на карточке инструмента (там выбирают) и в самом окне (там работают).
+        /// Причина названа прямо: берётся текстовый слой PDF, а отсканированную страницу
+        /// читать нечем — без этой строки пустой слайд читается как поломка программы.
+        /// </summary>
+        private static void TestBetaNotice()
+        {
+            Lang was = Loc.Current;
+            try
+            {
+                var offenders = new List<string>();
+                foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                {
+                    Loc.Init(lang);
+                    string mark = lang == Lang.Ru ? "(бета)" : "(beta)";
+                    foreach (string key in new[] { "hub.ocr.name", "hub.pptx.name" })
+                        if (!Loc.T(key).EndsWith(mark))
+                            offenders.Add(lang + " " + key + ": нет пометки " + mark);
+                    string notice = Loc.T("convert.beta");
+                    if (notice.Length < 40)
+                        offenders.Add(lang + ": примечание пустое или слишком короткое");
+                    // Названо и чего не хватает, и что это не навсегда.
+                    if (notice.IndexOf("OCR", StringComparison.OrdinalIgnoreCase) < 0)
+                        offenders.Add(lang + ": не сказано, что нужно распознавание");
+                    string future = lang == Lang.Ru ? "версия" : "version";
+                    if (notice.IndexOf(future, StringComparison.OrdinalIgnoreCase) < 0)
+                        offenders.Add(lang + ": не сказано, что это планируется");
+                }
+                AssertTrue(offenders.Count == 0, "пометка беты: " + string.Join(" | ", offenders.ToArray()));
+            }
+            finally { Loc.Init(was); }
+        }
+
+
+        /// <summary>
+        /// Открывается то руководство, на языке которого человек читает интерфейс:
+        /// английскому читателю русский документ инструкцией не станет. Что оба вшиты в
+        /// настоящий exe, проверяет --selftest — у тестов своя сборка без ресурсов.
+        /// </summary>
+        private static void TestManualBothLanguages()
+        {
+            Lang was = Loc.Current;
+            try
+            {
+                var offenders = new List<string>();
+                foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                {
+                    Loc.Init(lang);
+                    // Вшито ли руководство в НАСТОЯЩИЙ exe, проверяет --selftest: у тестов своя
+                    // сборка, и ресурсов приложения в ней нет. Здесь — выбор языка.
+                    string path = UserManual.FilePath;
+                    string name = System.IO.Path.GetFileName(path);
+                    bool english = name.IndexOf("User", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if ((lang == Lang.En) != english)
+                        offenders.Add(lang + ": открылось бы «" + name + "»");
+                }
+                AssertTrue(offenders.Count == 0, "руководство: " + string.Join(" | ", offenders.ToArray()));
+            }
+            finally { Loc.Init(was); }
         }
 
         private static void TestPptxBackground()

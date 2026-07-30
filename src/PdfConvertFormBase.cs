@@ -78,13 +78,26 @@ namespace ExcelMerger
             int panelW = 210;
             int gridBottom = ClientSize.Height - 152;
 
+            // Полоска «бета» — между шапкой и сеткой, где её нельзя не увидеть и где она
+            // никому не мешает. Оба перевода берут ТЕКСТОВЫЙ слой PDF, а отсканированную
+            // страницу читать нечем: без этой строки человек видит пустой слайд и считает
+            // сломанной программу, а не понимает, что в источнике не было текста.
+            var beta = new Label();
+            beta.Text = Loc.T("convert.beta");
+            beta.ForeColor = Theme.WarnOrange;
+            beta.AutoSize = false;
+            beta.SetBounds(20, m + 78, right - 20, 32);
+            beta.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Controls.Add(beta);
+            int noteH = beta.Height + 6;
+
             _grid = new PdfPageGrid();
             _grid.AllowReorder = true; // перестановка страниц перетаскиванием
             _grid.ShowPositionNumbers = true; // под плиткой — позиция в итоговом документе
             _grid.AllowRotate = true; // страница выправляется ДО анализа макета (боковой текст станет строками)
             _grid.EmptyHint = _spec.Text("grid.empty");
             _grid.DropHint = Loc.T("grid.dropHint");
-            _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
+            _grid.SetBounds(20, m + 84 + noteH, right - 20 - panelW, gridBottom - (m + 84 + noteH));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             WireOrderGrid(); // события порядка + контекстное меню (общая обвязка базы)
             Controls.Add(_grid);
@@ -93,18 +106,18 @@ namespace ExcelMerger
             int pw = panelW - 10;
             _btnOpen = new RoundedButton(false);
             _btnOpen.Text = _spec.Text("btn.open");
-            _btnOpen.SetBounds(px, m + 84, pw, 32);
+            _btnOpen.SetBounds(px, m + 84 + noteH, pw, 32);
             _btnOpen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnOpen.Click += delegate { PickAndAddFiles(); };
             _tips.SetToolTip(_btnOpen, _spec.Text("tip.open"));
             Controls.Add(_btnOpen);
 
-            _btnUp = AddPanelButton(Loc.T("common.earlier"), px, m + 128, pw, Loc.T("common.tip.earlier"));
+            _btnUp = AddPanelButton(Loc.T("common.earlier"), px, m + 128 + noteH, pw, Loc.T("common.tip.earlier"));
             _btnUp.Click += delegate { MoveSelected(false); };
-            _btnDown = AddPanelButton(Loc.T("common.later"), px, m + 164, pw, Loc.T("common.tip.later"));
+            _btnDown = AddPanelButton(Loc.T("common.later"), px, m + 164 + noteH, pw, Loc.T("common.tip.later"));
             _btnDown.Click += delegate { MoveSelected(true); };
-            _btnRemove = AddPanelButton(Loc.T("common.remove"), px, m + 208, pw, Loc.T("common.tip.remove"));
-            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), px, m + 244, pw, Loc.T("common.tip.print"));
+            _btnRemove = AddPanelButton(Loc.T("common.remove"), px, m + 208 + noteH, pw, Loc.T("common.tip.remove"));
+            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), px, m + 244 + noteH, pw, Loc.T("common.tip.print"));
             _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
             _btnRemove.Click += delegate { RemoveSelected(); };
 

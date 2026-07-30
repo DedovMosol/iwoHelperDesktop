@@ -152,14 +152,14 @@ namespace ExcelMerger
             A("hub.split.desc",
                 "Извлечь выбранные страницы в один PDF или разбить документ на несколько: по диапазонам, каждые N страниц или по закладкам.",
                 "Extract selected pages into one PDF, or split the document into several: by ranges, every N pages, or by bookmarks.");
-            A("hub.ocr.name", "PDF → Word", "PDF → Word");
+            A("hub.ocr.name", "PDF → Word (бета)", "PDF → Word (beta)");
             A("hub.ocr.desc",
-                "Извлечь текст цифрового PDF (сохранённого из Word и т.п.) в редактируемый Word (.docx). Поддержка отсканированных документов в настоящее время недоступна.",
-                "Extract the text of a born‑digital PDF (saved from Word, etc.) into an editable Word (.docx). Scanned documents are not supported yet.");
-            A("hub.pptx.name", "PDF → PowerPoint", "PDF → PowerPoint");
+                "Извлечь текст цифрового PDF (сохранённого из Word и т.п.) в редактируемый Word (.docx). Отсканированные страницы пока не переносятся.",
+                "Extract the text of a born‑digital PDF (saved from Word, etc.) into an editable Word (.docx). Scanned pages are not carried over yet.");
+            A("hub.pptx.name", "PDF → PowerPoint (бета)", "PDF → PowerPoint (beta)");
             A("hub.pptx.desc",
-                "Перенести страницы цифрового PDF в презентацию *.pptx.",
-                "Turn the pages of a born‑digital PDF into a *.pptx presentation.");
+                "Перенести страницы цифрового PDF в презентацию *.pptx. Отсканированные страницы пока не переносятся.",
+                "Turn the pages of a born‑digital PDF into a *.pptx presentation. Scanned pages are not carried over yet.");
             A("hub.ops.name", "Прочие операции", "More operations");
             A("hub.ops.desc",
                 "Сжать документ, сохранить страницы картинками, извлечь текст, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
@@ -794,6 +794,13 @@ namespace ExcelMerger
                 "Compression changes the file bytes, so a signed PDF’s signature becomes " +
                 "invalid (as with Acrobat) — compress before signing.");
 
+            // Оба перевода помечены как бета: текст берётся из текстового слоя PDF, а
+            // отсканированную страницу (картинку) читать нечем — для этого нужен модуль
+            // распознавания. Пока его нет, честнее сказать это прямо в окне, чем оставить
+            // человека гадать, почему на слайде пусто.
+            A("convert.beta",
+                "Бета: переносится текстовый слой PDF. Отсканированные страницы требуют распознавания (OCR) — оно планируется в следующих версиях.",
+                "Beta: the text layer of the PDF is carried over. Scanned pages need recognition (OCR), which is planned for a future version.");
             // ocr.* — инструмент «PDF → Word» (OcrForm)
             A("ocr.header.subtitle",
                 "Извлечение текста и таблиц из документов формата *.pdf с возможностью изменения порядка страниц.",

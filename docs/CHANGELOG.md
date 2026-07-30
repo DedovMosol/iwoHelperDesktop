@@ -3,7 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
-## [1.18.0] — 2026-07-29
+## [1.18.0] — 2026-07-30
 
 ### Added
 - **PDF → PowerPoint.** A sixth tool: the pages of a born-digital PDF become slides whose
@@ -81,6 +81,14 @@ versions follow [SemVer](https://semver.org/).
   “the links go vertical” looks like. Measured and fixed: no row now outruns the column.
 - **The user guide builds its own contents page.** It used to ship with an empty one and a
   line asking the reader to press Ctrl+A and F9.
+
+- **Both conversions are marked as beta, and say what they are still missing.** The card and
+  the window now carry “(beta)”, and a line under the header explains the limit in one
+  sentence: what is carried over is the text layer of the PDF, and a scanned page needs
+  recognition, which is planned for a future version. Without that line an empty slide reads
+  as a broken program rather than as a source with no text in it.
+- **The user manual now ships in English as well**, and the one that opens is the one in the
+  language of the interface. A Russian document is not a manual to an English reader.
 
 ### Fixed
 - **Cancelling during compression did nothing.** Splitting a document runs in two phases,

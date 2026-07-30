@@ -45,3 +45,12 @@ Example/
 /*.pptx
 /*.docx
 /*.png
+
+# Сборка руководства: исходники конвейера в репозитории, а его вывод — нет.
+# Снимки и образцы делаются заново одной командой, а .exe пробника собирается из .cs.
+tools/manual/shots-*/
+tools/manual/samples-*/
+tools/manual/Shots.exe
+tools/manual/loc_*.json
+tools/manual/_toc_*.docx
+__pycache__/
