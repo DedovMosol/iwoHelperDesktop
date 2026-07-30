@@ -421,27 +421,58 @@ def build():
     h1("5. More operations")
 
     h2("5.1. What it is for")
-    p("The tool gathers six actions on ONE document — those that are neither merging nor "
-      "splitting, but are needed all the time: make it smaller, take the colour out, repair a "
-      "damaged file, pull pages out of it as images or as text, edit its properties.")
-    par = p("All six write a new file and leave the source alone, so they are safe to try: if "
-            "you do not like the result, you still have the original.")
+    p("The tool is a page workshop over ONE document. First you assemble the document the way "
+      "you need it: open a PDF and add images if you have any, reorder the pages, rotate them, "
+      "remove the ones you do not want. Then you pick an action — save it as a PDF, make it "
+      "smaller, take the colour out, repair a damaged file, pull pages out as images or as "
+      "text, print, edit the properties — and it applies to the ASSEMBLED document rather "
+      "than to the file on disk.")
+    par = p("Every action writes a new file and leaves the source alone, so they are safe to "
+            "try: if you do not like the result, you still have the original. While the pages "
+            "are untouched the program simply copies the source, so ordinary work did not "
+            "become any slower.")
     footnote(par, "The program will not let the result be written over the open document: such "
                   "a write would destroy the file the operation itself is reading.")
 
     h2("5.2. The window")
-    p("On the left is the grid of pages of the open document, on the right the buttons, "
+    p("On the left is the grid of assembled pages, on the right are first the two ways to "
+      "collect them (“Open PDF…” and “Add images…”) and below them the action buttons, "
       "grouped by meaning: “Convert the document”, “Extract from the document” and "
       "“Edit” %s." % ref("ops"))
     picture("ops", "The “More operations” window")
     p("A document reaches this window three ways: with the “Open PDF…” button, by being "
       "dragged into the window, and by coming across from a neighbouring tool — “Split PDF” "
       "hands over its open document with its own “More operations” button, and “Merge PDF” "
-      "hands over the file it has just built through “More operations” in its Menu.")
-    note("Until a document is open the action buttons are greyed out: it is immediately clear "
-         "that a file is needed first, and there is no need to find that out by clicking.")
+      "hands over the file it has just built through “More operations” in its Menu. Images can "
+      "simply be dragged in as well — onto the window, onto the grid, or onto the tool’s card "
+      "on the start screen.")
+    note("While the grid holds no pages the action buttons are greyed out: it is immediately "
+         "clear that a document has to be assembled first, and there is no need to find that "
+         "out by clicking.")
 
-    h2("5.3. The actions")
+    h2("5.3. Assembling the document")
+    p("The grid here is edited just as it is in merging: pages are reordered by dragging, "
+      "rotated with the buttons on the tile, removed with Delete, moved through the clipboard "
+      "(Ctrl+X, Ctrl+C, Ctrl+V), and Ctrl+Z takes any of those edits back.")
+    p("What is assembled is what every action in the window works on. While the grid differs "
+      "from the file, the status line says how many pages are assembled in it — so that the "
+      "result does not come as a surprise.")
+    bullet("Photos and scans (JPEG, PNG, BMP, GIF, TIFF, multi-page TIFF included) are appended "
+           "to the set as pages: each image becomes an A4 sheet with margins, fitted whole and "
+           "without distorting its proportions, and the sheet takes the orientation of the "
+           "image %s. From there it is an ordinary page: rotate it, reorder it, print it, "
+           "compress it." % ref("ops-images"),
+           bold_head="Add images. ")
+    picture("ops-images", "An image added as a page next to the pages of a document")
+    note("A phone photo arrives the way it was taken: the program reads the orientation tag out "
+         "of the picture itself. A JPEG is carried into the PDF as it is, without re-encoding, "
+         "so no quality is lost and the file does not swell. Transparent areas of a PNG become "
+         "white.")
+
+    h2("5.4. The actions")
+    bullet("Writes what is assembled into a new PDF: that is how images become a document and "
+           "reordered or rotated pages become a finished file. The compression level comes from "
+           "the same list at the bottom of the window.", bold_head="Save PDF. ")
     bullet("Makes a finished file smaller — with the same levels as merging (see 2.7). If the "
            "file is already optimised, the program says so rather than silently handing back "
            "the same file.", bold_head="Compress. ")
@@ -463,6 +494,8 @@ def build():
            "cells are separated by tabs and paste into Excel as a table. Pages are separated by "
            "a page-break character, and the file is written in UTF-8.",
            bold_head="Text into .txt. ")
+    bullet("The selected pages (or all of them if nothing is selected) go to the printer "
+           "together with the rotations assigned to them.", bold_head="Print. ")
     bullet("Title, author, subject and keywords — what any viewer shows in the properties of a "
            "file %s. An empty field clears the property: that is how an author's name is taken "
            "out of a document before it is sent." % ref("metadata"),

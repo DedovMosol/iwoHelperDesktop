@@ -18,7 +18,18 @@ from reportlab.pdfgen import canvas
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORK = os.path.join(HERE, "compress")
 os.makedirs(WORK, exist_ok=True)
-GS = r"C:\Program Files\gs\gs10.07\bin\gswin64c.exe"
+# Ghostscript ИЩЕМ, а не прописываем: путь с чужой машины несёт на гит имя учётной
+# записи и всё равно не совпадёт ни с одной другой установкой.
+def _find_gs():
+    from glob import glob
+    found = sorted(glob(r"C:\Program Files\gs\gs*\bin\gswin64c.exe")) \
+        + sorted(glob(os.path.expanduser(r"~\gs*\bin\gswin64c.exe")))
+    if not found:
+        raise SystemExit("не найден gswin64c.exe — укажите путь переменной GS_EXE")
+    return found[-1]
+
+
+GS = os.environ.get("GS_EXE") or _find_gs()
 
 # «Скан» страницы: серый фон с зерном и текстом — так выглядит документ, снятый сканером,
 # и именно на таких файлах сжатие даёт заметный эффект.
