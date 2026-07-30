@@ -15,8 +15,19 @@ namespace ExcelMerger
     /// </summary>
     internal static class UserManual
     {
-        private const string ResourceName = "manual.docx";
-        private const string FileName = "Инструкция пользователя.docx";
+        // Руководство есть на обоих языках, и открывать надо то, на котором человек читает
+        // интерфейс: английский читатель, получив русский документ, останется без инструкции.
+        // Имена ресурсов ASCII (кириллица в именах ресурсов — лишний повод для сюрпризов),
+        // имена файлов на диске человеческие: их видно в заголовке Word.
+        private static string ResourceName
+        {
+            get { return Loc.Current == Lang.En ? "manual.en.docx" : "manual.docx"; }
+        }
+
+        private static string FileName
+        {
+            get { return Loc.Current == Lang.En ? "User manual.docx" : "Инструкция пользователя.docx"; }
+        }
 
         /// <summary>Куда распаковывается документ (рядом с настройками приложения).</summary>
         internal static string FilePath
