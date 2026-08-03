@@ -52,7 +52,9 @@ namespace ExcelMerger
             _combo = new ComboBox();
             _combo.DropDownStyle = ComboBoxStyle.DropDownList;
             _combo.Items.AddRange(PdfCompression.LevelLabels());
-            _combo.SelectedIndex = (int)CompressionLevel.None; // «Отлично — без сжатия»
+            // Позиция в списке и число уровня в настройках — РАЗНЫЕ вещи (см. CompressionLevel):
+            // перевод между ними живёт в PdfCompression, здесь его повторять нельзя.
+            _combo.SelectedIndex = PdfCompression.IndexOf(CompressionLevel.None); // «Отлично — без сжатия»
             // Ширина контрола — PreferredWidth (под самый длинный пункт), ту же резервируют экраны
             // без сжатия, чтобы регулятор масштаба был одинакового размера везде.
             int total = PreferredWidth();
@@ -69,23 +71,19 @@ namespace ExcelMerger
         /// <summary>Выбранный уровень сжатия.</summary>
         public CompressionLevel Level
         {
-            get
-            {
-                int i = _combo.SelectedIndex;
-                return i < 0 ? CompressionLevel.None : (CompressionLevel)i;
-            }
+            get { return PdfCompression.LevelAt(_combo.SelectedIndex); }
         }
 
         /// <summary>
         /// Восстановить сохранённый уровень (без показа диалога «нужен Ghostscript» — это не
-        /// действие пользователя): вне диапазона ИЛИ сжатие при отсутствии Ghostscript тихо
-        /// откатывается к «Отлично».
+        /// действие пользователя): неизвестный уровень ИЛИ сжатие при отсутствии Ghostscript
+        /// тихо откатывается к «Отлично».
         /// </summary>
         public void SetLevel(CompressionLevel level)
         {
-            int i = (int)level;
+            int i = PdfCompression.IndexOf(level);
             if (i <= 0 || i >= _combo.Items.Count || !Ghostscript.Available)
-                i = (int)CompressionLevel.None;
+                i = PdfCompression.IndexOf(CompressionLevel.None);
             bool prev = _reverting;
             _reverting = true; // подавить обработчик выбора (иначе всплыл бы диалог при старте)
             try { _combo.SelectedIndex = i; }
@@ -104,7 +102,7 @@ namespace ExcelMerger
         {
             if (_reverting)
                 return;
-            if (_combo.SelectedIndex > 0 && !Ghostscript.Available)
+            if (PdfCompression.LevelAt(_combo.SelectedIndex) != CompressionLevel.None && !Ghostscript.Available)
             {
                 Dialogs.InfoWithLink(FindForm(),
                     Loc.T("gs.title"),
@@ -113,7 +111,7 @@ namespace ExcelMerger
                     Loc.T("gs.download"),
                     Ghostscript.DownloadPage);
                 _reverting = true;
-                try { _combo.SelectedIndex = (int)CompressionLevel.None; }
+                try { _combo.SelectedIndex = PdfCompression.IndexOf(CompressionLevel.None); }
                 finally { _reverting = false; }
             }
         }

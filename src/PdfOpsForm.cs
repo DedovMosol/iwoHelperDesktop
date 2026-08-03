@@ -615,9 +615,13 @@ namespace ExcelMerger
                         return;
                     // Копия создана в любом случае — она и есть то, о чём просили. Но если файл
                     // уже оптимизирован и меньше не стал, молчать нельзя: человек ждал сжатия.
+                    // Разрешение называем только там, где изображения пересчитаны: уровень
+                    // «Очень хорошо» их не трогает, и «до 0 dpi» было бы неправдой.
+                    string done = PdfCompression.Downsamples(level)
+                        ? string.Format(Loc.T("ops.status.compressed"), PdfCompression.ImageDpi(level))
+                        : Loc.T("ops.status.compressedKeep");
                     SetStatus(smaller
-                        ? SuccessStatus(string.Format(Loc.T("ops.status.compressed"),
-                            PdfCompression.ImageDpi(level)))
+                        ? SuccessStatus(done)
                         : SuccessStatus(Loc.T("ops.status.notCompressed")), Theme.OkGreen);
                     Ui.OpenPath(outPath);
                 });
