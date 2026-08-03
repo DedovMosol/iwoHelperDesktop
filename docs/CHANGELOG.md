@@ -56,6 +56,15 @@ versions follow [SemVer](https://semver.org/).
   Requested compression that did not make the file smaller now says so. "More operations"
   already did; the other two stayed quiet.
 
+- **A page at the format's limit could cost the colour check 400 MB.** PDF allows a sheet of
+  14400 pt at a width of a few, and the check renders by width — so the raster grew to
+  140 × 672000 pixels. It was not caught by reasoning: on the development machine the system
+  renderer declines such a page outright and costs nothing, and only the build machine drew
+  it in full. The renderer now takes an optional ceiling on raster height and the check uses
+  it: the same sheet costs 19 KB, and — a second gain — it is now actually examined instead
+  of being silently skipped. Thumbnails and the preview are untouched: their width is given
+  and a long page simply comes out a narrow strip.
+
 ### Changed
 - The check of a converted file is no longer wired into the compression class: the pipeline
   guarantees the document survived, the caller adds what only it can judge — size for
