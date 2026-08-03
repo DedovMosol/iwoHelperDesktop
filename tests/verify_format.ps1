@@ -11,7 +11,7 @@ try {
     $wb = $xl.Workbooks.Open($out, 0, $true)
     if ($wb.FileFormat -ne 50) { $fails += "формат файла $($wb.FileFormat), ожидался 50 (xlExcel12)" }
     if ($wb.Sheets.Count -ne 10) { $fails += "листов $($wb.Sheets.Count), ожидалось 10" }
-    $wsA = $wb.Sheets.Item('Отчет управления A_2')
+    $wsA = $wb.Sheets.Item('Отчет A_2')
     if ($wsA.Range("A4").Value2 -ne 30) { $fails += "A4: $($wsA.Range('A4').Value2), ожидалось 30" }
     if (-not $wsA.Range("A1").Font.Bold) { $fails += "A1 потеряла жирный шрифт" }
     $wb.Close($false)

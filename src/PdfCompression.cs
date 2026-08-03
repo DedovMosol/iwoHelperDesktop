@@ -43,12 +43,6 @@ namespace ExcelMerger
             CompressionLevel.Small
         };
 
-        /// <summary>Копия порядка показа (наружу отдаём копию — массив изменяем только здесь).</summary>
-        public static CompressionLevel[] DisplayOrder()
-        {
-            return (CompressionLevel[])Order.Clone();
-        }
-
         /// <summary>Уровень по позиции в списке. Вне диапазона — «без сжатия». Чистая — под тест.</summary>
         public static CompressionLevel LevelAt(int index)
         {
@@ -73,12 +67,14 @@ namespace ExcelMerger
         {
             switch (level)
             {
-                case CompressionLevel.VeryGood: return Loc.T("compress.level.veryGood");
+                case CompressionLevel.VeryGood:
+                    return Loc.T("compress.level.veryGood");
                 case CompressionLevel.Good:
+                    return string.Format(Loc.T("compress.level.good"), ImageDpi(level));
                 case CompressionLevel.Small:
-                    return string.Format(Loc.T(level == CompressionLevel.Good
-                        ? "compress.level.good" : "compress.level.small"), ImageDpi(level));
-                default: return Loc.T("compress.level.none");
+                    return string.Format(Loc.T("compress.level.small"), ImageDpi(level));
+                default:
+                    return Loc.T("compress.level.none");
             }
         }
 

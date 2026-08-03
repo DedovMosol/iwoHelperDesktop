@@ -18,17 +18,17 @@ try {
         'Отчет _март 2026_',
         'Отчет 2',
         'Отчет 10',
-        'Отчет управления A',
-        'Отчет управления A_2',
-        'Отчет управления B',
-        'Отчет управления C',
+        'Отчет A',
+        'Отчет A_2',
+        'Отчет B',
+        'Отчет C',
         'Очень длинное имя файла отчета',
         'Пустой отчет',
         'Скрытый первый лист'
     )
     if (($names -join ';') -ne ($expected -join ';')) { $fails += "состав/порядок листов не совпал" }
 
-    $wsA = $wb.Sheets.Item('Отчет управления A_2')  # source .xlsx with formatting
+    $wsA = $wb.Sheets.Item('Отчет A_2')  # source .xlsx with formatting
     if ($wsA.Range("A4").Value2 -ne 30) { $fails += "формула A4: ожидалось 30, получено $($wsA.Range('A4').Value2)" }
     if ($wsA.Range("A4").Formula -ne '=SUM(A2:A3)') { $fails += "A4 не формула: $($wsA.Range('A4').Formula)" }
     if (-not $wsA.Range("A1").MergeCells) { $fails += "A1 не объединена" }

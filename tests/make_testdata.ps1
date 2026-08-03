@@ -11,7 +11,7 @@ try {
     # 1. Normal file: formatting, merged cells, a formula, a fill
     $wb = $xl.Workbooks.Add()
     $ws = $wb.Sheets.Item(1)
-    $ws.Range("A1").Value2 = "Отчет управления A"
+    $ws.Range("A1").Value2 = "Отчет A"
     $ws.Range("A1").Font.Bold = $true
     $ws.Range("A1:C1").Merge()
     $ws.Range("A2").Value2 = 10
@@ -27,7 +27,7 @@ try {
     $ws.Range("F1").Formula = '="="&"тест"'
     $ws.Range("G1").Formula = '="12 345"'
     $ws.Range("H1").Formula = '="01.02.2026"'
-    $wb.SaveAs((Join-Path $dir "Отчет управления A.xlsx"), 51)
+    $wb.SaveAs((Join-Path $dir "Отчет A.xlsx"), 51)
     $wb.Close($false)
 
     # 2. Empty file
@@ -38,19 +38,19 @@ try {
     # 3. Old binary .xls format
     $wb = $xl.Workbooks.Add()
     $wb.Sheets.Item(1).Range("A1").Value2 = "старый формат xls"
-    $wb.SaveAs((Join-Path $dir "Отчет управления B.xls"), 56)
+    $wb.SaveAs((Join-Path $dir "Отчет B.xls"), 56)
     $wb.Close($false)
 
     # 4. Duplicate base name with a different extension (.xlsm) -> the sheet must get suffix _2
     $wb = $xl.Workbooks.Add()
     $wb.Sheets.Item(1).Range("A1").Value2 = "дубль имени"
-    $wb.SaveAs((Join-Path $dir "Отчет управления A.xlsm"), 52)
+    $wb.SaveAs((Join-Path $dir "Отчет A.xlsm"), 52)
     $wb.Close($false)
 
     # 5. Binary .xlsb format
     $wb = $xl.Workbooks.Add()
     $wb.Sheets.Item(1).Range("A1").Value2 = "формат xlsb"
-    $wb.SaveAs((Join-Path $dir "Отчет управления C.xlsb"), 50)
+    $wb.SaveAs((Join-Path $dir "Отчет C.xlsb"), 50)
     $wb.Close($false)
 
     # 6. First sheet hidden, second visible -> the second one must be taken
@@ -101,7 +101,7 @@ finally {
 Set-Content -Path (Join-Path $dir "Битый файл.xlsx") -Value "this is not an excel file" -Encoding ASCII
 
 # 10. Excel temp file - must be ignored
-Set-Content -Path (Join-Path $dir ('~$' + 'Отчет управления A.xlsx')) -Value "lock" -Encoding ASCII
+Set-Content -Path (Join-Path $dir ('~$' + 'Отчет A.xlsx')) -Value "lock" -Encoding ASCII
 
 Write-Host "TESTDATA OK:"
 Get-ChildItem $dir -File | ForEach-Object { Write-Host ("  " + $_.Name) }

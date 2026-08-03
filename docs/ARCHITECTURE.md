@@ -75,8 +75,9 @@ flowchart LR
     U(["User"]) --> APP["iwoHelperDesktop.exe<br>(WinForms, net48, x64)"]
     APP -->|"late-bound COM"| XL["Microsoft Excel<br>(Excel Digest)"]
     APP -->|"late-bound COM"| WD["Microsoft Word<br>(cover note, PDF→Word)"]
-    APP -->|"WinRT, in-memory"| RT["Windows.Data.Pdf<br>(thumbnails, preview, image export)"]
+    APP -->|"WinRT, in-memory"| RT["Windows.Data.Pdf<br>(thumbnails, preview, image export,<br>colour check of a conversion)"]
     APP -->|"child process"| GS["Ghostscript<br>(compression, grayscale,<br>repair, raster fallbacks)"]
+    GS -.->|"its output is re-read<br>before it replaces anything"| PIG["PdfPig<br>(page count of the result)"]
     APP -->|"read/write"| FS[("User files<br>.xlsx / .pdf / .docx")]
     APP -->|"settings, stats,<br>reports, crash log"| AD[("APPDATA / iwo Helper Desktop")]
     APP -.->|"update check<br>(version tag only)"| GH["GitHub Releases API"]
@@ -87,8 +88,8 @@ flowchart LR
 | Microsoft Excel | COM, late-bound | copying sheets with full formatting | Excel Digest only |
 | Microsoft Word | COM, late-bound | writing `.docx` (cover note, PDF → Word) | Excel Digest note, PDF → Word |
 | PdfSharp (MIT) | embedded assembly | PDF page copy for merge/split | PDF Merge/Split |
-| PdfPig (Apache 2.0) | embedded assemblies | glyph-level text extraction | PDF → Word, text export |
-| `Windows.Data.Pdf` (WinRT) | OS component (Windows 8.1+) | rendering pages | thumbnails, full-size preview, image export |
+| PdfPig (Apache 2.0) | embedded assemblies | glyph-level text extraction, page count of a produced file | PDF → Word, text export, every Ghostscript run |
+| `Windows.Data.Pdf` (WinRT) | OS component (Windows 8.1+) | rendering pages | thumbnails, full-size preview, image export, colour check after a grayscale run |
 | Ghostscript (AGPL) | separate process | image downsampling, colour conversion, rewrite, raster fallbacks | compression (optional), grayscale, repair, PDF → Word raster fallbacks |
 | GitHub Releases API | HTTPS, manual | latest version tag | update check only |
 
@@ -212,10 +213,12 @@ on the header while building would put it *first* and land the focus on “Home�
 | `WindowPlacement.cs` | Remembers each window's size and position between runs (keyed by form type name), restored clamped onto a visible working area so a window never opens off-screen or on a disconnected monitor, keeping the maximized state. `Attach` is the only entry point — one line in a window's constructor wires both halves through the `Load` and `FormClosing` events, so a window needs no overrides of its own and the pair cannot be half-removed (restoring and saving are `private`). A window that vetoes its own close leaves its override before calling base, so the event never fires and nothing is saved. Meant for **resizable** windows: a fixed-size one could be handed bounds that no longer suit the current display scale. `NormalBounds` is the single rule for “where does this window sit when it is not minimized or maximized” — a minimized window reports a position far off every screen (-32000, -32000), so anything that copies raw `Bounds` parks the window past the edge of the desktop. `Snapshot`/`ShowAt` package that rule with the window state for `ShellContext`, which reuses it to rebuild windows on a language change instead of keeping its own version. Pure `ClampToWorkingArea`/`Format`/`TryParse` are unit-tested, the wiring is covered by a live test that opens the real windows, and the store lives in `UserSettings` (read-modify-write, so one window never clobbers another's bounds). |
 | `Cancellation.cs` | Both halves of cooperative cancellation. `ThrowIf(Func<bool>)` throws `OperationCanceledException` when the flag is set, and services call it between work units. `NoPartialOutput(...)` holds the other half of the promise — **a cancel leaves nothing behind**: a service that writes one file per unit of work (split parts, exported page images) registers each file as it lands, and the wrapper deletes them before the cancel travels on, while a service that writes a single file simply saves at the very end. It is a wrapper rather than a `catch` per site because the same block sat in all three split modes and was missing from the fourth writer, which is how a cancelled image export came to leave half the pages in the folder. An **error** is deliberately not the same case: what was written before a failure stays. |
 | `Ghostscript.cs` | Locates gs (bundled → registry → `Program Files` → user profile → `PATH`) and runs it with a timeout. |
-| `PdfCompression.cs` | `pdfwrite` downsampling (`/ebook`, `/screen`), PDF 1.4 output, the result replaces the original only if it is a valid PDF **and** strictly smaller. `ImageDpi` is the single place that knows what each preset does to images (150 and 72 dpi, the values Ghostscript itself sets in `Resource\Init\gs_pdfwr.ps`) so the result messages can name it. Only raster images are downsampled — text and vectors are never rasterized, which is why the wording is “images to N dpi” and not “compressed at N dpi”. |
+| `PdfCompression.cs` | Four levels, PDF 1.4 output, the result replaces the original only if the document survived (see `PdfPageProbe`) **and** the file is strictly smaller. Two levels downsample (`/ebook` 150 dpi, `/screen` 72 dpi) and one — “Very good” — rebuilds the document with `/default` while switching downsampling **off explicitly**, so its promise of untouched resolution does not rest on another program's defaults (the portable build runs on whatever Ghostscript the machine has). `ImageDpi` is the single place that knows what each preset does to images (the values Ghostscript itself sets in `Resource\Init\gs_pdfwr.ps`), `Downsamples` derives from it, and `CompressedSuffix` is the single place that words the result — with a resolution where one was applied, without it where the pictures were left alone. Only raster images are downsampled — text and vectors are never rasterized, which is why the wording is “images to N dpi” and not “compressed at N dpi”. **Level numbers are identifiers, not positions**: they are written to `settings.txt`, so a new level is appended to the end of the enumeration and the display order lives separately (`LevelAt`/`IndexOf`) — inserting mid-enum would have moved everyone who had picked another level. |
+| `PdfPageProbe.cs` | “Is this still a document, and does it hold the same pages?” — the check every Ghostscript run passes before its output replaces anything. Counted with **PdfPig, not PdfSharp**: PdfSharp 1.50 cannot read object streams (PDF 1.5+), which Word and Acrobat write by default, so counting with it would have rejected healthy results on such files. One rule (`PagesKept`) serves compression, grayscale and repair alike, and is deliberately lenient where there is nothing to compare against — repair opens a file that is broken by definition. |
+| `PdfColorProbe.cs` | “Did the colour actually go?” — the check of a grayscale run. Looks at what a person sees rather than at the file structure: a sample of pages is rendered through the same WinRT renderer as the thumbnails and searched for saturated pixels, because colour arrives through ICC profiles, palettes and transparency groups and no list of switches covers all of them in advance. The probe can only **disprove**: a page that will not render is not “still coloured”, or the feature would break on the machines where it used to work. |
 | `PageRasterizer.cs` | Renders a page region to PNG via gs — the raster fallback used for soft-masked images and rasterized regions. |
 | `PdfExportService.cs`, `PlainText.cs` | Export out of PDF: pages to PNG/JPEG at a chosen dpi through the same renderer as the thumbnails, and the text layer to `.txt`. Images are the one export that writes a file per page, so it runs inside `Cancellation.NoPartialOutput`. `PlainText` is the pure half — it merges paragraphs **and tables** back into reading order by vertical position, because the analysis moves table words out of the paragraph stream and a naive dump loses them. |
-| `PdfConvert.cs`, `GsRewrite.cs` | Grayscale and repair through Ghostscript. `GsRewrite` is the pipeline both they and compression share: run, validate, replace only when the caller's policy allows, restore the original on any failure. Compression replaces only a **smaller** file, the conversions replace any sound one. |
+| `PdfConvert.cs`, `GsRewrite.cs` | Grayscale and repair through Ghostscript. `GsRewrite` is the pipeline both they and compression share, and it runs four checks in a deliberate order — cheapest first, each only for what passed the previous: the engine really worked (`EngineSucceeded` — its exit code lies on a file it cannot read), the document kept its pages (`PdfPageProbe`), the caller's size policy (`replace`), and an optional check of the output itself (`verify` — grayscale looks with `PdfColorProbe` whether the colour is gone). The original is restored on any failure. Compression replaces only a **smaller** file, the conversions replace any sound one. Grayscale passes `-sColorConversionStrategy=Gray` **alone**: pairing it with `ProcessColorModel` is what the pdfwrite documentation asks not to do (since 9.11 the strategy sets the model itself) and is the subject of bug 693074. |
 | `PageInterleave.cs` | Pure interleaving of the page order — assembling the two stacks a single-sided scanner produces (fronts, and backs in reverse). |
 | `NameTemplate.cs`, `OutputFile.cs` | Output names: pure token substitution (`[BASENAME]`, `[FILENUMBER###10]`, …) and the one place that picks a free file name. |
 | `PreviewZoom.cs` | Pure zoom and pan maths of the full-size preview: the step ladder, fit-to-window, the scroll offset that keeps the point under the cursor in place, and when a click closes the window. |
@@ -286,6 +289,13 @@ the output format. The `.pptx` differs only in what happens after it.
   own output only after validation. Page rotation is a property of the page **in the
   model** (`PdfPageRef.Rotation`) — it is composed with the page's own `/Rotate` when
   the output is written, never applied to the source.
+- **Nothing an external engine produced is trusted on its word.** Ghostscript reports
+  success on a file it could not read and on a conversion it only half performed, so its
+  output is re-opened and counted before it replaces anything, and a run that promises
+  something checkable (grayscale) is checked (`PdfPageProbe`, `PdfColorProbe`). Such a
+  check may only ever **disprove**: when it cannot look — no renderer, an unreadable
+  original — the answer is "nothing to say", never "it failed", or the feature would
+  break on the machines where it used to work.
 - **Thumbnail memory is bounded.** Rendered pages live in a byte-budgeted LRU (halved
   in a 32-bit process), tile keys include the rotation, so duplicated pages can carry
   different rotations. An evicted page silently re-renders when scrolled into view.
@@ -353,13 +363,68 @@ Two decisions define this pipeline:
   emitting OOXML: Word owns list numbering, spacing and font substitution, so the result
   behaves natively when edited — and the app needs no OOXML library.
 
+### PDF → PowerPoint
+
+```mermaid
+flowchart TB
+    EXT["PdfPageExtraction<br>(same gate and same extraction<br>as PDF → Word)"] --> SPLIT{"per page"}
+    SPLIT --> TXT["text layer:<br>paragraphs → text boxes<br>placed by BASELINE, not by ink top"]
+    SPLIT --> BG["PageBackgrounds (Ghostscript):<br>the page rendered WITHOUT its text layer"]
+    TXT --> WR["PptxWriter (own OOXML, no PowerPoint):<br>one slide size for the deck,<br>tables as real tables,<br>identical images stored once"]
+    BG --> WR
+    WR --> PPTX([".pptx"])
+```
+
+The half that is shared with PDF → Word is shared in code, not in spirit:
+`PdfPageExtraction` is the one place that opens each source once, gates scanned files and
+assembles the pages in the order shown. What differs is the destination — and the two
+decisions behind it:
+
+- **Two layers per slide.** Text arrives as real text boxes, and everything that is *not*
+  text arrives as the page rendered without its text layer. A slide made only of text
+  boxes would look nothing like the source; a slide made of one picture would not be
+  editable. Without Ghostscript the deck simply comes out text-only.
+- **We write the file ourselves.** No PowerPoint on the machine, no COM: the `.pptx` is a
+  ZIP of XML parts, and element order there is part of the schema — which is why the
+  geometry maths (`PptxGeometry`: points → EMU, y-flip, one slide size for pages that
+  differ) is pure and unit-tested rather than checked by opening the result.
+
 ### PDF Compression
 
 `Ghostscript.Exe` resolution order: bundled (`<app>\gs\bin`, from the installer) →
 registry → `Program Files\gs` → user profile → `PATH`. Arguments produce PDF 1.4 via
-`pdfwrite` with `/ebook` (~150 DPI) or `/screen` (~72 DPI), `-dSAFER`, bundled runs get
-explicit `-I` resource paths. The output replaces the target only if it is a valid PDF
-and strictly smaller — an already-optimized file is left untouched.
+`pdfwrite`, `-dSAFER`, bundled runs get explicit `-I` resource paths.
+
+Three levels do work, and they differ in what they are allowed to touch:
+
+| Level | Preset | Images | Where the bytes come from |
+|---|---|---|---|
+| Very good | `/default` + `-dDownsample*Images=false` | untouched | the rebuild itself: pages re-packed, identical images stored once, leftovers dropped |
+| Good | `/ebook` | to ~150 dpi | the rebuild **and** recomputed pictures |
+| Normal | `/screen` | to ~72 dpi | same, more aggressively |
+
+Measured on four ordinary documents, the level that spares the pictures still takes off
+25–48 %; on a file built from repeated images, 136 times (that is deduplication, which
+Ghostscript does by default — the switch for it is not passed because it changes nothing).
+1.4 is not a preference but a constraint: our own PdfSharp 1.50 cannot read the object
+streams that 1.5 brings, and a compressed file must remain re-mergeable and re-splittable.
+
+The output replaces the target only if it **kept its pages** and is strictly smaller — an
+already-optimized file is left untouched, and the status line says so rather than going
+quiet on a compression the user asked for.
+
+```mermaid
+flowchart TB
+    RUN["Ghostscript pdfwrite<br>(compression / grayscale / repair)"] --> ENG{"EngineSucceeded?<br>exit code lies —<br>look for «****» in stderr"}
+    ENG -->|no| KEEP(["original untouched"])
+    ENG -->|yes| PAGES{"PdfPageProbe:<br>same page count?"}
+    PAGES -->|no| KEEP
+    PAGES -->|yes| SIZE{"caller's size policy:<br>smaller / any"}
+    SIZE -->|no| KEEP
+    SIZE -->|yes| VER{"verify — only where<br>there is something to check<br>(grayscale: PdfColorProbe)"}
+    VER -->|colour left| KEEP
+    VER -->|ok| SWAP["replace via rename,<br>original held in a backup"]
+```
 
 ## Office COM layer
 
@@ -430,7 +495,7 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` (301 tests, custom exe runner, zero
+1. **Unit tests** — `tests/UnitTests.cs` (370 tests, custom exe runner, zero
    dependencies, no Office) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
    zoom percentage and wheel-step chaining, the number-strip hit-test and double-click
@@ -447,6 +512,16 @@ The pyramid, bottom-up:
    engine's own marker, drag hints stay imperative and name the drop target, every `Loc`
    key used in code exists in the catalog (and no catalog key is orphaned), and the
    single-instance name is taken once and freed on exit.
+
+   The checks around Ghostscript are pinned by the measurements they came from, so a later
+   "simplification" has to argue with a number rather than with an opinion: that PdfSharp
+   cannot open a 1.5 file the engine itself produces (hence PdfPig for counting pages),
+   that a level promising untouched resolution really leaves the pixel count of every
+   image alone while a downsampling level really lowers it, that a level's number survives
+   a round trip through `settings.txt` while its position in the list is a different
+   number, that fifty file swaps in a row do not fail (which is why the swap carries no
+   retry logic), and that a page at the format's limit — 3 × 14400 pt — neither hangs the
+   colour probe nor costs it memory.
 
    A dozen tests build **real windows** on an STA thread with the settings redirected to a
    temporary folder (`InIsolatedSettings` — live windows save their bounds on close, and
@@ -554,7 +629,11 @@ needs Office gets a `verify` script.
 - **Scanned-PDF OCR**: the branch point is `PdfToWordService.Convert` (documented in
   code). The layout and writing stages are input-agnostic — they consume words with
   geometry, wherever those come from.
-- **A new compression level**: `PdfCompression.BuildArguments` + `CompressionPicker`.
+- **A new compression level**: a value appended to the END of `CompressionLevel` (the
+  numbers live in `settings.txt`), its place in `PdfCompression.Order`, a branch in
+  `Preset`/`ImageDpi`/`Label`, and a catalog row. `CompressionPicker` needs nothing — it
+  builds itself from that order. If the level does not recompute images, say so in the
+  arguments (`-dDownsample*Images=false`) rather than relying on the preset's defaults.
 - **A new UI language**: extend `Lang` and the `Loc` catalog rows (each key holds one
   string per language), add the menu item/flag.
 
@@ -568,6 +647,10 @@ needs Office gets a `verify` script.
 | Word writes the `.docx` (COM), not an OOXML library | Native list numbering, spacing and font substitution, fewer dependencies, the file behaves as if typed in Word. |
 | …but the `.pptx` is written **directly as OOXML**, without PowerPoint | The reasons above are about flow layout — numbering, spacing, font substitution — and a slide has none of them: every shape carries its own rectangle, so there is nothing for PowerPoint to lay out. Meanwhile the tool is used exactly when Office is not at hand, and an own writer is the only one that can be checked in CI (the result is unzipped and parsed; the schema validator runs in the test project only). |
 | A slide is two layers: page-without-text + real text boxes | Text alone would drop everything a text model cannot hold — backgrounds, frames, charts, vector logos — which on a typical slide is most of the picture. Rendering the whole page as an image would keep the look and lose the point (editable text). Ghostscript can render a page with the text filtered out, so both halves survive; without Ghostscript the deck degrades to text only. |
+| The engine's own verdict is not accepted | Ghostscript exits with zero on a file it could not read and reports success on a conversion it only half performed. A pipeline that believes it hands the user a green "done" over a stub or a still-coloured document — so the output is re-opened, counted, and where the promise is checkable, checked. |
+| Pages counted with PdfPig, not the PdfSharp already in hand | PdfSharp 1.50 cannot read object streams, which Word and Acrobat write by default. Reusing it here would have turned a correct compression into "could not compress" on ordinary files — a check that rejects healthy results is worse than no check. |
+| A compression level that spares the images | Between "no compression" and "recompute every picture" there was nothing, and most documents need neither: they are text, and their bytes sit in how the file is assembled. Deliberately not called "lossless" — the page is rebuilt and differs by hundredths of a tone; the guarantee is about the images, and the label promises exactly that. |
+| Level numbers are identifiers, positions are separate | The number goes into `settings.txt`. Inserting a level mid-enumeration to keep the list tidy would silently move everyone who had picked another one. |
 | Managed deps embedded as resources | Single-file distribution without ILMerge, resolver also kills binding-redirect pain. |
 | WinRT for thumbnails, loaded from memory | In-box rasterizer (no native deps), memory loading avoids the user-mapped-file lock on shown files. |
 | Ghostscript as a child process | Acrobat-grade downsampling, AGPL stays outside the MIT process boundary, graceful absence. |
