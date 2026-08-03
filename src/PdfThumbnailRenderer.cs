@@ -41,6 +41,24 @@ namespace ExcelMerger
         /// </summary>
         public Bitmap Render(string path, int pageIndex, int targetWidth)
         {
+            return Render(path, pageIndex, targetWidth, 0);
+        }
+
+        /// <summary>
+        /// То же, но с потолком высоты растра: если при запрошенной ширине страница
+        /// оказывается выше maxHeight пикселей, ширина уменьшается так, чтобы в него уложиться
+        /// (0 — без потолка, поведение обычного <see cref="Render(string,int,int)"/>).
+        ///
+        /// Нужен ровно для одного случая — предельно вытянутой страницы. PDF разрешает лист
+        /// до 14400 пунктов при ширине в единицы, и тогда высота растра при обычной ширине
+        /// уходит в сотни тысяч пикселей. Полагаться на то, что движок сам откажется, нельзя:
+        /// на одной машине он и правда не берётся за такую страницу и отдаёт пусто, а на
+        /// другой честно рисует лист 140×672000 — это 376 МБ на один растр, замерено.
+        /// Сетке миниатюр и предпросмотру потолок не нужен: там ширина плитки задана, а
+        /// длинная страница просто выходит узкой полоской.
+        /// </summary>
+        public Bitmap Render(string path, int pageIndex, int targetWidth, int maxHeight)
+        {
             if (_disposed)
                 return null;
             try
@@ -51,8 +69,9 @@ namespace ExcelMerger
                 using (PdfPage page = doc.GetPage((uint)pageIndex))
                 using (var ras = new InMemoryRandomAccessStream())
                 {
+                    Windows.Foundation.Size size = page.Size;
                     var opts = new PdfPageRenderOptions();
-                    opts.DestinationWidth = (uint)targetWidth;
+                    opts.DestinationWidth = (uint)FitWidth(targetWidth, size.Width, size.Height, maxHeight);
                     page.RenderToStreamAsync(ras, opts).AsTask().GetAwaiter().GetResult();
                     using (Stream managed = ras.AsStreamForRead())
                     using (var decoded = new Bitmap(managed))
@@ -63,6 +82,22 @@ namespace ExcelMerger
             {
                 return null; // страница без миниатюры — не причина падать
             }
+        }
+
+        /// <summary>
+        /// Ширина растра, при которой его высота не превысит maxHeight. Ноль (нет потолка),
+        /// неизвестные размеры страницы или и без того низкий растр оставляют ширину как есть;
+        /// иначе она уменьшается пропорционально, но не до нуля. Чистая — под тест.
+        /// </summary>
+        internal static int FitWidth(int targetWidth, double pageWidth, double pageHeight, int maxHeight)
+        {
+            if (maxHeight <= 0 || targetWidth <= 0 || pageWidth <= 0 || pageHeight <= 0)
+                return targetWidth;
+            double height = targetWidth * pageHeight / pageWidth;
+            if (height <= maxHeight)
+                return targetWidth;
+            int fitted = (int)(maxHeight * pageWidth / pageHeight);
+            return fitted < 1 ? 1 : fitted;
         }
 
         private PdfDocument GetDocument(string path)
