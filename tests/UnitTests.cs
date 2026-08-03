@@ -99,6 +99,7 @@ namespace ExcelMerger.Tests
             Run("PdfCompression.Preset: уровень -> пресет Ghostscript", TestCompressionPreset);
             Run("Сжатие: число уровня — идентификатор, порядок показа — отдельно", TestCompressionLevelOrder);
             Run("Сжатие: «Очень хорошо» не пересчитывает изображения (обещание в аргументах)", TestCompressionKeepsResolution);
+            Run("Сжатие: уровень переживает запись в настройки и совместим с прежними", TestCompressionLevelRoundTrip);
             Run("PdfCompression.BuildArguments: кавычки, пресет, -I для бандла", TestCompressionArgs);
             Run("PdfCompression.ShouldReplace: только валидный и строго меньше", TestCompressionShouldReplace);
             Run("Ghostscript.PickFirstExisting: первый существующий из кандидатов", TestGhostscriptPick);
@@ -282,7 +283,7 @@ namespace ExcelMerger.Tests
             Run("MathUtil.Median: нижняя медиана, пустой вход, вход не переставлен", TestMedian);
             Run("ListMarker: не-ASCII цифры («１.», «١.») номером списка не считаются", TestListMarkerNonAsciiDigits);
             Run("Loc.T: отсутствующий ключ возвращается как есть, null не роняет", TestLocMissingKey);
-            Run("PdfCompression.LevelLabels: три подписи, переводы, а не ключи (оба языка)", TestCompressionLevelLabels);
+            Run("PdfCompression.LevelLabels: подпись на уровень, переводы, а не ключи (оба языка)", TestCompressionLevelLabels);
             Run("Cancellation.ThrowIf: null молчит, поднятый флаг бросает", TestCancellationThrowIf);
             Run("Cancellation.NoPartialOutput: и отмена, и сбой удаляют созданное", TestNoPartialOutput);
             Run("WindowPlacement.BestWorkArea: экран по наибольшему пересечению, фолбэк без него", TestBestWorkArea);
@@ -310,6 +311,8 @@ namespace ExcelMerger.Tests
             Run("Ghostscript: документ обязан остаться документом (страницы целы)", TestPagesKept);
             Run("Проба цвета: выборка страниц по всей длине документа", TestColorSamplePages);
             Run("Проба цвета: насыщенность и доля, а не одинокий пиксель", TestColorHasColor);
+            Run("Проба цвета (живая): предельно длинная страница не рвёт память и время", TestColorProbeExtremePage);
+            Run("Ghostscript (стресс): подмена файла не отказывает на повторах", TestGsReplaceStress);
             Run("Ghostscript (живой): страницы считает PdfPig — PdfSharp не читает 1.5", TestPageProbeLive);
             Run("Сжатие (живое): «Очень хорошо» уменьшает файл, не трогая пиксели картинок", TestCompressKeepsResolutionLive);
             Run("Ghostscript (живой): серое на JPEG, CMYK и прозрачности", TestGrayscaleHardLive);
@@ -1897,25 +1900,60 @@ namespace ExcelMerger.Tests
             AssertEqual(3, (int)CompressionLevel.VeryGood, "новый уровень добавлен в КОНЕЦ, а не в середину");
 
             // Показываем по возрастанию силы сжатия, а не по значению перечисления.
-            CompressionLevel[] order = PdfCompression.DisplayOrder();
-            AssertEqual(4, order.Length, "уровней четыре");
-            AssertEqual(CompressionLevel.None, order[0], "первым — «без сжатия»");
-            AssertEqual(CompressionLevel.VeryGood, order[1], "затем «очень хорошо»");
-            AssertEqual(CompressionLevel.Good, order[2], "затем «хорошо»");
-            AssertEqual(CompressionLevel.Small, order[3], "последним — самый сильный");
+            AssertEqual(4, PdfCompression.LevelLabels().Length, "уровней четыре");
+            AssertEqual(CompressionLevel.None, PdfCompression.LevelAt(0), "первым — «без сжатия»");
+            AssertEqual(CompressionLevel.VeryGood, PdfCompression.LevelAt(1), "затем «очень хорошо»");
+            AssertEqual(CompressionLevel.Good, PdfCompression.LevelAt(2), "затем «хорошо»");
+            AssertEqual(CompressionLevel.Small, PdfCompression.LevelAt(3), "последним — самый сильный");
 
             // Перевод «позиция ↔ уровень» обратим и не падает за границами.
-            foreach (CompressionLevel level in order)
-                AssertEqual(level, PdfCompression.LevelAt(PdfCompression.IndexOf(level)),
-                    "позиция и обратно даёт тот же уровень: " + level);
+            for (int i = 0; i < PdfCompression.LevelLabels().Length; i++)
+                AssertEqual(i, PdfCompression.IndexOf(PdfCompression.LevelAt(i)),
+                    "позиция и обратно даёт ту же позицию: " + i);
             AssertEqual(CompressionLevel.None, PdfCompression.LevelAt(-1), "позиция левее списка — без сжатия");
             AssertEqual(CompressionLevel.None, PdfCompression.LevelAt(99), "позиция правее списка — без сжатия");
             AssertEqual(0, PdfCompression.IndexOf((CompressionLevel)77), "неизвестный уровень — позиция «без сжатия»");
 
-            // Порядок отдаётся копией: чужая правка не должна менять список в окне.
-            CompressionLevel[] mine = PdfCompression.DisplayOrder();
-            mine[0] = CompressionLevel.Small;
-            AssertEqual(CompressionLevel.None, PdfCompression.DisplayOrder()[0], "порядок наружу отдаётся копией");
+            // Каждый уровень перечисления обязан иметь своё место в списке — иначе новый
+            // уровень появился бы в настройках, но не в окне.
+            foreach (CompressionLevel level in Enum.GetValues(typeof(CompressionLevel)))
+                AssertEqual(level, PdfCompression.LevelAt(PdfCompression.IndexOf(level)),
+                    "уровень показывается в списке: " + level);
+        }
+
+        /// <summary>
+        /// Сквозной путь уровня через диск. Настройки хранят ЧИСЛО уровня, а список показывает
+        /// его на СВОЁЙ позиции, и это разные вещи: у «Очень хорошо» число 3, а позиция 1.
+        /// Сюда же — обещание совместимости: настройка, записанная прежней версией, обязана
+        /// означать то же самое и после обновления.
+        /// Живой %APPDATA% не трогается: тест работает в изолированном корне AppPaths.
+        /// </summary>
+        private static void TestCompressionLevelRoundTrip()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "iwo_level_" + Guid.NewGuid().ToString("N"));
+            AppPaths.SetRootForTests(root);
+            try
+            {
+                new UserSettings().SaveView(300, (int)CompressionLevel.VeryGood);
+                int stored = UserSettings.Load().CompressionLevel;
+                AssertEqual(3, stored, "на диск ушло число уровня, а не его позиция в списке");
+                AssertEqual(CompressionLevel.VeryGood, (CompressionLevel)stored, "число вернулось тем же уровнем");
+                AssertEqual(1, PdfCompression.IndexOf((CompressionLevel)stored),
+                    "а показывается он вторым по счёту — позиция с числом не совпадает намеренно");
+
+                // Настройка прежних версий: 1 — это «Хорошо», 2 — «Нормально», и так навсегда.
+                new UserSettings().SaveView(300, 1);
+                AssertEqual(CompressionLevel.Good, (CompressionLevel)UserSettings.Load().CompressionLevel,
+                    "«1» из настроек прежней версии по-прежнему «Хорошо»");
+                new UserSettings().SaveView(300, 2);
+                AssertEqual(CompressionLevel.Small, (CompressionLevel)UserSettings.Load().CompressionLevel,
+                    "«2» из настроек прежней версии по-прежнему «Нормально»");
+            }
+            finally
+            {
+                AppPaths.SetRootForTests(null);
+                try { Directory.Delete(root, true); } catch { }
+            }
         }
 
         /// <summary>
@@ -2544,13 +2582,13 @@ namespace ExcelMerger.Tests
             // строки умышленный, строки подписи не склеиваются.
             var words = new List<PdfWord>
             {
-                W("Руководитель главного управления", 0, 90, 150, 10),
+                W("Руководитель проектной группы", 0, 90, 150, 10),
                 W("испытательного отдела", 0, 75, 120, 10),
                 W("Иванов", 300, 75, 60, 10)
             };
             List<string> p = OcrLayout.ToParagraphs(words);
             AssertEqual(3, p.Count, "две строки подписи и Ф.И.О. — три абзаца");
-            AssertEqual("Руководитель главного управления", p[0], "первая строка подписи");
+            AssertEqual("Руководитель проектной группы", p[0], "первая строка подписи");
             AssertEqual("испытательного отдела", p[1], "вторая строка подписи");
             AssertEqual("Иванов", p[2], "правая колонка после левой");
         }
@@ -7322,7 +7360,7 @@ namespace ExcelMerger.Tests
                 {
                     Loc.Init(lang);
                     string[] labels = PdfCompression.LevelLabels();
-                    AssertEqual(PdfCompression.DisplayOrder().Length, labels.Length,
+                    AssertEqual(PdfCompression.LevelLabels().Length, labels.Length,
                         "по подписи на каждый уровень (" + lang + ")");
                     var seen = new HashSet<string>();
                     for (int i = 0; i < labels.Length; i++)
@@ -8830,7 +8868,7 @@ namespace ExcelMerger.Tests
         {
             // Разрешение называет ровно тот уровень, который его меняет: у остальных числа в
             // подписи быть не должно, иначе «Очень хорошо» обещало бы несуществующие dpi.
-            foreach (CompressionLevel level in PdfCompression.DisplayOrder())
+            foreach (CompressionLevel level in Enum.GetValues(typeof(CompressionLevel)))
             {
                 string label = PdfCompression.Label(level);
                 bool namesDpi = label.Contains(PdfCompression.ImageDpi(level).ToString());
@@ -8840,9 +8878,9 @@ namespace ExcelMerger.Tests
             }
             // Подпись из списка и подпись уровня — одно и то же (список строится из них).
             string[] labels = PdfCompression.LevelLabels();
-            CompressionLevel[] order = PdfCompression.DisplayOrder();
-            for (int i = 0; i < order.Length; i++)
-                AssertEqual(PdfCompression.Label(order[i]), labels[i], "подпись позиции " + i + " берётся из уровня");
+            for (int i = 0; i < PdfCompression.LevelLabels().Length; i++)
+                AssertEqual(PdfCompression.Label(PdfCompression.LevelAt(i)), labels[i],
+                    "подпись позиции " + i + " берётся из уровня");
         }
 
         /// <summary>
@@ -9897,6 +9935,84 @@ namespace ExcelMerger.Tests
                     AssertTrue(PdfConvert.Verify(hard, PdfConvertMode.Grayscale),
                         "переведённый документ проверку проходит");
                 }
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>
+        /// ЭКСТРЕМАЛЬНАЯ геометрия: PDF разрешает лист до 14400 пунктов при ширине в единицы,
+        /// и у пробы цвета высота растра считается от ширины — на такой странице она ушла бы
+        /// в сотни тысяч пикселей, то есть в сотни мегабайт под один растр. Проверяем ровно
+        /// это: проба обязана отработать, не подвесив и не обвалив процесс.
+        /// </summary>
+        private static void TestColorProbeExtremePage()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerLong_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string tall = Path.Combine(dir, "длинная.pdf");
+                using (var doc = new PdfDocument())
+                {
+                    PdfSharp.Pdf.PdfPage page = doc.AddPage();
+                    page.Width = 3;       // предельно узкий и предельно длинный лист
+                    page.Height = 14400;  // потолок формата
+                    using (XGraphics g = XGraphics.FromPdfPage(page))
+                        g.DrawRectangle(new XSolidBrush(XColors.Red), 0, 0, 3, 14400);
+                    doc.Save(tall);
+                }
+                long peakBefore = System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                bool coloured = PdfColorProbe.HasColorPages(tall); // не должно ни падать, ни виснуть
+                sw.Stop();
+                long peakAfter = System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64;
+                Console.WriteLine("      [замер] длинная страница: {0} мс, пик +{1:F1} МБ, цвет={2}",
+                    sw.ElapsedMilliseconds, (peakAfter - peakBefore) / 1048576.0, coloured);
+                AssertTrue(sw.ElapsedMilliseconds < 20000,
+                    "проба на предельной странице укладывается в разумное время: " + sw.ElapsedMilliseconds + " мс");
+                AssertTrue((peakAfter - peakBefore) < 400L * 1024 * 1024,
+                    "проба не съедает сотни мегабайт: +" + (peakAfter - peakBefore) / 1048576 + " МБ");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>
+        /// Подмена файла идёт сразу после того, как его читали (страницы, а для серого ещё и
+        /// рендер), а на Windows такое соседство упирается в антивирус: он берётся за файл
+        /// сразу после закрытия хэндла, и переименование изредка отказывает. Отсюда и правило
+        /// «страницы исходника считаем ДО запуска движка» в GsRewrite.
+        ///
+        /// Замер, на котором основано решение НЕ добавлять повторные попытки в подмену:
+        /// 25 кругов, то есть 50 подмен подряд, — ноль отказов. Пока это так, повторы были бы
+        /// кодом на случай, которого нет; если тест однажды упадёт, повод появится.
+        /// </summary>
+        private static void TestGsReplaceStress()
+        {
+            if (!Ghostscript.Available)
+                return;
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerStress_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                // Кругов ровно столько, чтобы систематический отказ проявился, но набор не
+                // распухал: полтора десятка подмен ловят его так же, как полсотни.
+                const int Rounds = 8;
+                int grayFails = 0, compressFails = 0;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                for (int i = 0; i < Rounds; i++)
+                {
+                    string gray = Path.Combine(dir, "г" + i + ".pdf");
+                    MakeColorPdf(gray);
+                    if (!PdfConvert.Apply(gray, PdfConvertMode.Grayscale)) grayFails++;
+                    string comp = Path.Combine(dir, "с" + i + ".pdf");
+                    MakeImagePdf(comp, 1);
+                    if (!PdfCompression.Compress(comp, CompressionLevel.Small)) compressFails++;
+                }
+                sw.Stop();
+                Console.WriteLine("      [замер] {0} циклов: отказов серого {1}, отказов сжатия {2}, {3} мс",
+                    Rounds, grayFails, compressFails, sw.ElapsedMilliseconds);
+                AssertEqual(0, grayFails, "перевод в серое не отказывает на повторах");
+                AssertEqual(0, compressFails, "сжатие не отказывает на повторах");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }

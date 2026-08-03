@@ -34,7 +34,7 @@ try {
     if ($toc.Range("A2").Font.Color -ne 2237106) { $fails += "пропущенный файл не подсвечен" }
 
     # Formulas replaced with values (including the formula in the merged cell)
-    $wsA = $wb.Sheets.Item('Отчет управления A_2')
+    $wsA = $wb.Sheets.Item('Отчет A_2')
     if ($wsA.Range("A4").HasFormula) { $fails += "A4 осталась формулой" }
     if ($wsA.Range("A4").Value2 -ne 30) { $fails += "A4: $($wsA.Range('A4').Value2), ожидалось 30" }
     if ($wsA.Range("D1").HasFormula) { $fails += "D1 (объединённая) осталась формулой" }
