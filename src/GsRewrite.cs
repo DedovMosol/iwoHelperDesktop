@@ -17,24 +17,46 @@ namespace ExcelMerger
     internal static class GsRewrite
     {
         /// <summary>
-        /// Прогнать файл через Ghostscript и заменить его результатом, если replace скажет
-        /// «да». Возвращает true, если замена произошла. Ошибки, таймаут и негодный вывод
-        /// глушатся: преобразование не должно ронять операцию, ради которой его запустили.
+        /// Прогнать файл через Ghostscript и заменить его результатом, если тот уцелел как
+        /// документ и replace скажет «да» про его размер. Возвращает true, если замена
+        /// произошла. Ошибки, таймаут и негодный вывод глушатся: преобразование не должно
+        /// ронять операцию, ради которой его запустили.
         /// Только с фонового потока и до открытия файла посторонними программами.
+        ///
+        /// Проверок четыре, и порядок в них не косметический — от дешёвой к дорогой, каждая
+        /// следующая выполняется только для того, что прошло предыдущие:
+        /// 1) движок отработал (<see cref="EngineSucceeded"/>);
+        /// 2) вывод открывается и в нём столько же страниц (<see cref="PdfPageProbe.PagesKept"/>) —
+        ///    инвариант конвейера, общий всем режимам: что бы мы ни делали с документом,
+        ///    документом он остаться обязан;
+        /// 3) replace — политика вызывающего по размеру;
+        /// 4) verify — необязательная проверка вывода по существу (перевод в серое смотрит
+        ///    ею, что цвет действительно ушёл). Она последняя, потому что самая дорогая, и
+        ///    незачем платить за неё, если результат всё равно не применяется.
         /// </summary>
         public static bool Run(string path, string args, int timeoutMs,
-            Func<long, long, bool, bool> replace)
+            Func<long, long, bool> replace, Func<string, bool> verify = null)
         {
             string tmp = path + ".gstmp";
             string bak = path + ".gsbak";
             try
             {
                 long origSize = new FileInfo(path).Length;
+                // Страницы исходника считаем ДО запуска движка, а не перед самой подменой.
+                // Дело не в скорости: чтение открывает файл, а следом идёт File.Move этого же
+                // файла — на Windows такое соседство упирается в антивирус, который берётся
+                // за файл сразу после закрытия хэндла, и подмена изредка отказывает. Между
+                // этим чтением и подменой теперь стоит вся работа движка, и окно закрыто.
+                int pagesBefore = PdfPageProbe.PageCount(path);
                 string stderr;
                 int exit = Ghostscript.Run(args, timeoutMs, out stderr);
-                bool valid = EngineSucceeded(exit, stderr) && PdfCompression.LooksLikePdf(tmp);
-                long newSize = valid ? new FileInfo(tmp).Length : 0L;
-                if (!replace(origSize, newSize, valid))
+                if (!EngineSucceeded(exit, stderr))
+                    return false;
+                if (!PdfPageProbe.PagesKept(pagesBefore, PdfPageProbe.PageCount(tmp)))
+                    return false;
+                if (!replace(origSize, new FileInfo(tmp).Length))
+                    return false;
+                if (verify != null && !verify(tmp))
                     return false;
                 ReplaceInPlace(path, tmp, bak);
                 return true;

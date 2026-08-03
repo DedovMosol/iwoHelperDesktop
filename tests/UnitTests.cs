@@ -97,6 +97,8 @@ namespace ExcelMerger.Tests
             Run("CheckOutputWritable: свободный и новый файлы", TestOutputWritable);
             Run("CheckOutputWritable: несуществующая папка", TestOutputBadFolder);
             Run("PdfCompression.Preset: уровень -> пресет Ghostscript", TestCompressionPreset);
+            Run("Сжатие: число уровня — идентификатор, порядок показа — отдельно", TestCompressionLevelOrder);
+            Run("Сжатие: «Очень хорошо» не пересчитывает изображения (обещание в аргументах)", TestCompressionKeepsResolution);
             Run("PdfCompression.BuildArguments: кавычки, пресет, -I для бандла", TestCompressionArgs);
             Run("PdfCompression.ShouldReplace: только валидный и строго меньше", TestCompressionShouldReplace);
             Run("Ghostscript.PickFirstExisting: первый существующий из кандидатов", TestGhostscriptPick);
@@ -305,6 +307,12 @@ namespace ExcelMerger.Tests
             Run("Ghostscript: аргументы режимов серого и починки", TestConvertArguments);
             Run("Ghostscript: политика замены мягче, чем у сжатия", TestConvertShouldReplace);
             Run("Ghostscript: нулевой код возврата с «****» в потоке — это отказ", TestEngineSucceeded);
+            Run("Ghostscript: документ обязан остаться документом (страницы целы)", TestPagesKept);
+            Run("Проба цвета: выборка страниц по всей длине документа", TestColorSamplePages);
+            Run("Проба цвета: насыщенность и доля, а не одинокий пиксель", TestColorHasColor);
+            Run("Ghostscript (живой): страницы считает PdfPig — PdfSharp не читает 1.5", TestPageProbeLive);
+            Run("Сжатие (живое): «Очень хорошо» уменьшает файл, не трогая пиксели картинок", TestCompressKeepsResolutionLive);
+            Run("Ghostscript (живой): серое на JPEG, CMYK и прозрачности", TestGrayscaleHardLive);
             Run("Ghostscript (живой): серое действительно серое, битый файл чинится", TestConvertLive);
             Run("Просмотр: ступени масштаба и проценты", TestPreviewZoomSteps);
             Run("Просмотр: вписывание по окну без растягивания мелкой страницы", TestPreviewZoomFit);
@@ -1872,7 +1880,68 @@ namespace ExcelMerger.Tests
         {
             AssertEqual("/ebook", PdfCompression.Preset(CompressionLevel.Good), "Хорошо -> /ebook");
             AssertEqual("/screen", PdfCompression.Preset(CompressionLevel.Small), "Нормально -> /screen");
+            AssertEqual("/default", PdfCompression.Preset(CompressionLevel.VeryGood), "Очень хорошо -> /default");
             AssertEqual(null, PdfCompression.Preset(CompressionLevel.None), "Отлично -> без пресета");
+        }
+
+        /// <summary>
+        /// Число уровня — идентификатор в settings.txt, позиция в списке — дело показа.
+        /// Пин ровно на это: значения ранее существовавших уровней МЕНЯТЬ НЕЛЬЗЯ, иначе у
+        /// всех, кто выбрал «Хорошо», после обновления окажется выбран другой уровень.
+        /// </summary>
+        private static void TestCompressionLevelOrder()
+        {
+            AssertEqual(0, (int)CompressionLevel.None, "«Отлично» = 0 навсегда");
+            AssertEqual(1, (int)CompressionLevel.Good, "«Хорошо» = 1 навсегда");
+            AssertEqual(2, (int)CompressionLevel.Small, "«Нормально» = 2 навсегда");
+            AssertEqual(3, (int)CompressionLevel.VeryGood, "новый уровень добавлен в КОНЕЦ, а не в середину");
+
+            // Показываем по возрастанию силы сжатия, а не по значению перечисления.
+            CompressionLevel[] order = PdfCompression.DisplayOrder();
+            AssertEqual(4, order.Length, "уровней четыре");
+            AssertEqual(CompressionLevel.None, order[0], "первым — «без сжатия»");
+            AssertEqual(CompressionLevel.VeryGood, order[1], "затем «очень хорошо»");
+            AssertEqual(CompressionLevel.Good, order[2], "затем «хорошо»");
+            AssertEqual(CompressionLevel.Small, order[3], "последним — самый сильный");
+
+            // Перевод «позиция ↔ уровень» обратим и не падает за границами.
+            foreach (CompressionLevel level in order)
+                AssertEqual(level, PdfCompression.LevelAt(PdfCompression.IndexOf(level)),
+                    "позиция и обратно даёт тот же уровень: " + level);
+            AssertEqual(CompressionLevel.None, PdfCompression.LevelAt(-1), "позиция левее списка — без сжатия");
+            AssertEqual(CompressionLevel.None, PdfCompression.LevelAt(99), "позиция правее списка — без сжатия");
+            AssertEqual(0, PdfCompression.IndexOf((CompressionLevel)77), "неизвестный уровень — позиция «без сжатия»");
+
+            // Порядок отдаётся копией: чужая правка не должна менять список в окне.
+            CompressionLevel[] mine = PdfCompression.DisplayOrder();
+            mine[0] = CompressionLevel.Small;
+            AssertEqual(CompressionLevel.None, PdfCompression.DisplayOrder()[0], "порядок наружу отдаётся копией");
+        }
+
+        /// <summary>
+        /// Уровень «Очень хорошо» обещает нетронутую чёткость — и держать обещание обязаны
+        /// аргументы, а не умолчания чужого движка: портативная сборка работает с тем
+        /// Ghostscript, который стоит у пользователя, и его версия нам неизвестна.
+        /// </summary>
+        private static void TestCompressionKeepsResolution()
+        {
+            AssertTrue(!PdfCompression.Downsamples(CompressionLevel.VeryGood), "«Очень хорошо» не пересчитывает картинки");
+            AssertTrue(!PdfCompression.Downsamples(CompressionLevel.None), "«Отлично» тем более");
+            AssertTrue(PdfCompression.Downsamples(CompressionLevel.Good), "«Хорошо» пересчитывает");
+            AssertTrue(PdfCompression.Downsamples(CompressionLevel.Small), "«Нормально» пересчитывает");
+
+            string keep = PdfCompression.BuildArguments("in.pdf", "out.pdf", CompressionLevel.VeryGood, null);
+            AssertTrue(keep.Contains("-dPDFSETTINGS=/default"), "пресет без пересчёта изображений");
+            AssertTrue(keep.Contains("-dDownsampleColorImages=false"), "цветные не пересчитываются — явно");
+            AssertTrue(keep.Contains("-dDownsampleGrayImages=false"), "серые не пересчитываются — явно");
+            AssertTrue(keep.Contains("-dDownsampleMonoImages=false"), "штриховые не пересчитываются — явно");
+
+            // А уровням с пересчётом эти ключи, наоборот, всё сломали бы.
+            foreach (CompressionLevel level in new[] { CompressionLevel.Good, CompressionLevel.Small })
+            {
+                string args = PdfCompression.BuildArguments("in.pdf", "out.pdf", level, null);
+                AssertTrue(!args.Contains("Downsample"), "уровень с пересчётом не выключает его: " + level);
+            }
         }
 
         private static void TestCompressionArgs()
@@ -1899,11 +1968,11 @@ namespace ExcelMerger.Tests
 
         private static void TestCompressionShouldReplace()
         {
-            AssertTrue(PdfCompression.ShouldReplace(1000, 400, true), "валидный и меньше — заменяем");
-            AssertTrue(!PdfCompression.ShouldReplace(1000, 1000, true), "равный размер — оставляем оригинал");
-            AssertTrue(!PdfCompression.ShouldReplace(1000, 1500, true), "больше — оставляем оригинал");
-            AssertTrue(!PdfCompression.ShouldReplace(1000, 400, false), "невалидный вывод — не заменяем");
-            AssertTrue(!PdfCompression.ShouldReplace(1000, 0, true), "пустой вывод — не заменяем");
+            // Годность вывода к этому моменту уже проверил конвейер, здесь остался размер.
+            AssertTrue(PdfCompression.ShouldReplace(1000, 400), "меньше — заменяем");
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 1000), "равный размер — оставляем оригинал");
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 1500), "больше — оставляем оригинал");
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 0), "пустой вывод — не заменяем");
         }
 
         private static void TestGhostscriptPick()
@@ -6495,16 +6564,33 @@ namespace ExcelMerger.Tests
             AssertEqual(150, PdfCompression.ImageDpi(CompressionLevel.Good), "/ebook — 150 dpi");
             AssertEqual(72, PdfCompression.ImageDpi(CompressionLevel.Small), "/screen — 72 dpi");
             AssertEqual(0, PdfCompression.ImageDpi(CompressionLevel.None), "без сжатия — разрешения нет");
-            // Уровни и пресеты не должны разъезжаться: у кого есть пресет, у того есть и dpi.
+            AssertEqual(0, PdfCompression.ImageDpi(CompressionLevel.VeryGood),
+                "изображения не пересчитываются — разрешения у уровня нет");
+            // Уровни и пресеты не должны разъезжаться: у кого есть разрешение, у того есть и
+            // пресет. Обратное с 1.18.2 неверно — «Очень хорошо» имеет пресет без пересчёта.
             foreach (CompressionLevel level in Enum.GetValues(typeof(CompressionLevel)))
-                AssertEqual(PdfCompression.Preset(level) != null, PdfCompression.ImageDpi(level) > 0,
-                    "пресет и разрешение согласованы для " + level);
-            AssertEqual(null, PdfToolFormBase.CompressedPart(false, CompressionLevel.Good),
-                "сжатия не было — части нет");
+                if (PdfCompression.ImageDpi(level) > 0)
+                    AssertTrue(PdfCompression.Preset(level) != null, "разрешение без пресета у " + level);
+            AssertEqual(null, PdfToolFormBase.CompressedPart(false, CompressionLevel.None),
+                "сжатия не заказывали — части нет");
+            // А вот заказанное сжатие, не давшее выигрыша, обязано отчитаться словами:
+            // прежде статус в этом случае молчал, и человек не знал, сработало ли оно.
+            foreach (CompressionLevel level in new[]
+                { CompressionLevel.VeryGood, CompressionLevel.Good, CompressionLevel.Small })
+            {
+                string quiet = PdfToolFormBase.CompressedPart(false, level);
+                AssertTrue(!string.IsNullOrEmpty(quiet), "заказанное сжатие без выигрыша не молчит: " + level);
+                AssertTrue(quiet != PdfToolFormBase.CompressedPart(true, level),
+                    "«не уменьшило» и «сжато» — разные слова: " + level);
+            }
             AssertTrue(PdfToolFormBase.CompressedPart(true, CompressionLevel.Good).Contains("150"),
                 "часть про сжатие называет разрешение уровня");
             AssertTrue(PdfToolFormBase.CompressedPart(true, CompressionLevel.Small).Contains("72"),
                 "минимальный размер — 72 dpi");
+            // А уровень без пересчёта не должен называть ни своего «нуля», ни чужих чисел.
+            string keptPart = PdfToolFormBase.CompressedPart(true, CompressionLevel.VeryGood);
+            AssertTrue(!keptPart.Contains("0 dpi") && !keptPart.Contains("150") && !keptPart.Contains("72"),
+                "часть про сжатие без пересчёта не называет разрешение: " + keptPart);
         }
 
         /// <summary>
@@ -7223,8 +7309,8 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
-        /// Подписи уровней сжатия лежат в списке по индексу = CompressionLevel и уходят прямо в
-        /// выпадающий список. Промах по ключу Loc.T не бросает, а тихо отдаёт сам ключ, поэтому
+        /// Подписи уровней сжатия идут в порядке показа и уходят прямо в выпадающий список.
+        /// Промах по ключу Loc.T не бросает, а тихо отдаёт сам ключ, поэтому
         /// «compress.level.none» уехал бы в интерфейс при всех зелёных тестах.
         /// </summary>
         private static void TestCompressionLevelLabels()
@@ -7236,15 +7322,18 @@ namespace ExcelMerger.Tests
                 {
                     Loc.Init(lang);
                     string[] labels = PdfCompression.LevelLabels();
-                    AssertEqual(3, labels.Length, "по подписи на каждый уровень (" + lang + ")");
+                    AssertEqual(PdfCompression.DisplayOrder().Length, labels.Length,
+                        "по подписи на каждый уровень (" + lang + ")");
+                    var seen = new HashSet<string>();
                     for (int i = 0; i < labels.Length; i++)
                     {
                         AssertTrue(!string.IsNullOrEmpty(labels[i]), "подпись уровня " + i + " не пуста (" + lang + ")");
                         AssertTrue(labels[i].IndexOf("compress.level", StringComparison.Ordinal) < 0,
                             "подпись уровня " + i + " — перевод, а не сам ключ (" + lang + ")");
+                        AssertTrue(!labels[i].Contains("{0}"),
+                            "подстановка выполнена, а не показана как есть (" + lang + "): " + labels[i]);
+                        AssertTrue(seen.Add(labels[i]), "уровни различимы на глаз (" + lang + "): " + labels[i]);
                     }
-                    AssertTrue(labels[0] != labels[1] && labels[1] != labels[2] && labels[0] != labels[2],
-                        "уровни различимы на глаз (" + lang + ")");
                 }
             }
             finally { Loc.Init(saved); }
@@ -8739,13 +8828,21 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestCompressionLabelsNameDpi()
         {
+            // Разрешение называет ровно тот уровень, который его меняет: у остальных числа в
+            // подписи быть не должно, иначе «Очень хорошо» обещало бы несуществующие dpi.
+            foreach (CompressionLevel level in PdfCompression.DisplayOrder())
+            {
+                string label = PdfCompression.Label(level);
+                bool namesDpi = label.Contains(PdfCompression.ImageDpi(level).ToString());
+                AssertEqual(PdfCompression.Downsamples(level), namesDpi,
+                    "разрешение в подписи ровно у пересчитывающих уровней (" + level + "): " + label);
+                AssertTrue(!label.Contains("{0}"), "подстановка выполнена, а не показана как есть: " + label);
+            }
+            // Подпись из списка и подпись уровня — одно и то же (список строится из них).
             string[] labels = PdfCompression.LevelLabels();
-            AssertTrue(labels[1].Contains(PdfCompression.ImageDpi(CompressionLevel.Good).ToString()),
-                "«Хорошо» называет своё разрешение: " + labels[1]);
-            AssertTrue(labels[2].Contains(PdfCompression.ImageDpi(CompressionLevel.Small).ToString()),
-                "«Нормально» называет своё разрешение: " + labels[2]);
-            AssertTrue(!labels[0].Contains("{0}") && !labels[1].Contains("{0}"),
-                "подстановка выполнена, а не показана как есть");
+            CompressionLevel[] order = PdfCompression.DisplayOrder();
+            for (int i = 0; i < order.Length; i++)
+                AssertEqual(PdfCompression.Label(order[i]), labels[i], "подпись позиции " + i + " берётся из уровня");
         }
 
         /// <summary>
@@ -9533,8 +9630,12 @@ namespace ExcelMerger.Tests
         {
             string gray = PdfConvert.BuildArguments("in.pdf", "out.pdf", PdfConvertMode.Grayscale, null);
             AssertTrue(gray.Contains("-sColorConversionStrategy=Gray"), "перевод цветов в серое");
-            // Без модели устройства движок возвращает цвет на отдельных объектах — нужны обе части.
-            AssertTrue(gray.Contains("-dProcessColorModel=/DeviceGray"), "модель устройства — серая");
+            // Модель устройства задавать НЕ надо: документация pdfwrite прямо просит не
+            // указывать оба переключателя (с 9.11 стратегия выставляет модель сама), и на эту
+            // связку заведён баг 693074 — часть изображений остаётся цветной. Пин на то, что
+            // ключ не вернётся «для надёжности»: живая проверка ниже показывает, что одной
+            // стратегии хватает на всех восьми пробах.
+            AssertTrue(!gray.Contains("ProcessColorModel"), "модель устройства отдельно не задаётся");
             string repair = PdfConvert.BuildArguments("in.pdf", "out.pdf", PdfConvertMode.Repair, null);
             AssertTrue(!repair.Contains("ColorConversionStrategy"), "починка цвета не трогает");
             foreach (string args in new[] { gray, repair })
@@ -9552,12 +9653,309 @@ namespace ExcelMerger.Tests
         private static void TestConvertShouldReplace()
         {
             // В отличие от сжатия, размер здесь не критерий: серый вариант бывает и больше.
-            AssertTrue(PdfConvert.ShouldReplace(1000, 1200, true), "годный результат применяется, даже если больше");
-            AssertTrue(PdfConvert.ShouldReplace(1000, 10, true), "годный результат применяется, если меньше");
-            AssertTrue(!PdfConvert.ShouldReplace(1000, 1200, false), "негодный вывод оригинал не заменяет");
-            AssertTrue(!PdfConvert.ShouldReplace(1000, 0, true), "пустой вывод оригинал не заменяет");
+            AssertTrue(PdfConvert.ShouldReplace(1000, 1200), "результат применяется, даже если больше");
+            AssertTrue(PdfConvert.ShouldReplace(1000, 10), "результат применяется, если меньше");
+            AssertTrue(!PdfConvert.ShouldReplace(1000, 0), "пустой вывод оригинал не заменяет");
             // А у сжатия — строго меньше, иначе в нём нет смысла.
-            AssertTrue(!PdfCompression.ShouldReplace(1000, 1200, true), "сжатие не применяется, если файл вырос");
+            AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Проверка результата прогона Ghostscript ----------
+
+        /// <summary>
+        /// Инвариант конвейера: документ обязан остаться документом. Правило одно на все три
+        /// режима, и вся его тонкость — в случае «исходник не читается нами самими»
+        /// (починка: он битый по условию; экзотика, понятная движку, но не PdfPig). Там
+        /// сравнивать не с чем, и строгое сравнение дало бы ложный отказ на ровном месте.
+        /// </summary>
+        private static void TestPagesKept()
+        {
+            AssertTrue(PdfPageProbe.PagesKept(10, 10), "столько же страниц — уцелел");
+            AssertTrue(!PdfPageProbe.PagesKept(10, 9), "страница пропала — отказ");
+            AssertTrue(!PdfPageProbe.PagesKept(10, 11), "страница прибавилась — тоже отказ");
+            AssertTrue(!PdfPageProbe.PagesKept(10, 0), "пустой вывод — отказ");
+            AssertTrue(!PdfPageProbe.PagesKept(10, PdfPageProbe.Unreadable), "вывод не открылся — отказ");
+            // Исходник не прочитан: сверять не с чем, но вывод обязан быть годным.
+            AssertTrue(PdfPageProbe.PagesKept(PdfPageProbe.Unreadable, 3), "починка битого — судим по выводу");
+            AssertTrue(PdfPageProbe.PagesKept(0, 3), "нулевой счёт исходника считаем «не прочитан»");
+            AssertTrue(!PdfPageProbe.PagesKept(PdfPageProbe.Unreadable, 0),
+                "и при нечитаемом исходнике пустой вывод — отказ");
+            AssertTrue(!PdfPageProbe.PagesKept(PdfPageProbe.Unreadable, PdfPageProbe.Unreadable),
+                "оба нечитаемы — отказ");
+        }
+
+        /// <summary>Выборка страниц для проверки цвета: все, пока их немного, иначе равномерно по длине.</summary>
+        private static void TestColorSamplePages()
+        {
+            AssertEqual("0,1,2", string.Join(",", ToStrings(PdfColorProbe.SamplePages(3, 8))),
+                "страниц меньше лимита — берём все");
+            AssertEqual("0,1,2,3,4,5,6,7", string.Join(",", ToStrings(PdfColorProbe.SamplePages(8, 8))),
+                "ровно лимит — тоже все");
+            int[] many = PdfColorProbe.SamplePages(80, 8);
+            AssertEqual(8, many.Length, "страниц больше лимита — ровно лимит проб");
+            AssertEqual(0, many[0], "первая страница попадает всегда");
+            AssertTrue(many[many.Length - 1] < 80, "индексы не выходят за документ");
+            for (int i = 1; i < many.Length; i++)
+                AssertTrue(many[i] > many[i - 1], "выборка строго возрастает (без повторных рендеров)");
+            AssertEqual(0, PdfColorProbe.SamplePages(0, 8).Length, "пустой документ — нечего смотреть");
+            AssertEqual(0, PdfColorProbe.SamplePages(5, 0).Length, "нулевой лимит — пустая выборка");
+            AssertEqual(0, PdfColorProbe.SamplePages(PdfPageProbe.Unreadable, 8).Length,
+                "нечитаемый документ — пустая выборка, а не падение");
+        }
+
+        /// <summary>
+        /// Поиск цвета в растре. Порог по ДОЛЕ, а не по одному пикселю: одинокий артефакт
+        /// масштабирования не должен отменять операцию, которая на деле удалась.
+        /// </summary>
+        private static void TestColorHasColor()
+        {
+            AssertTrue(!PdfColorProbe.HasColor(null), "растра нет — цвет не доказан");
+            using (var gray = SolidBitmap(100, 100, System.Drawing.Color.FromArgb(128, 128, 128)))
+                AssertTrue(!PdfColorProbe.HasColor(gray), "ровно серый — цвета нет");
+            using (var white = SolidBitmap(100, 100, System.Drawing.Color.White))
+                AssertTrue(!PdfColorProbe.HasColor(white), "белый лист — цвета нет");
+            using (var red = SolidBitmap(100, 100, System.Drawing.Color.Red))
+                AssertTrue(PdfColorProbe.HasColor(red), "красный лист — цвет");
+            // Ровно на пороге — ещё не цвет (строгое «больше»), на единицу выше — уже цвет.
+            using (var edge = SolidBitmap(100, 100,
+                System.Drawing.Color.FromArgb(128, 128, 128 - PdfColorProbe.SaturationThreshold)))
+                AssertTrue(!PdfColorProbe.HasColor(edge), "насыщенность ровно на пороге — не цвет");
+            // Доля: 10000 пикселей, порог 0.5% = 50. Сорок цветных — шум, двести — цвет.
+            using (var speck = SolidBitmap(100, 100, System.Drawing.Color.FromArgb(128, 128, 128)))
+            {
+                PaintPixels(speck, 40, System.Drawing.Color.Red);
+                AssertTrue(!PdfColorProbe.HasColor(speck), "единичные цветные точки — не приговор");
+            }
+            using (var patch = SolidBitmap(100, 100, System.Drawing.Color.FromArgb(128, 128, 128)))
+            {
+                PaintPixels(patch, 200, System.Drawing.Color.Red);
+                AssertTrue(PdfColorProbe.HasColor(patch), "заметная доля цветных точек — цвет");
+            }
+        }
+
+        private static string[] ToStrings(int[] values)
+        {
+            var s = new string[values.Length];
+            for (int i = 0; i < values.Length; i++)
+                s[i] = values[i].ToString();
+            return s;
+        }
+
+        private static System.Drawing.Bitmap SolidBitmap(int w, int h, System.Drawing.Color color)
+        {
+            var bmp = new System.Drawing.Bitmap(w, h);
+            using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(bmp))
+            using (var brush = new System.Drawing.SolidBrush(color))
+                g.FillRectangle(brush, 0, 0, w, h);
+            return bmp;
+        }
+
+        /// <summary>Закрасить ровно count первых пикселей растра (построчно) заданным цветом.</summary>
+        private static void PaintPixels(System.Drawing.Bitmap bmp, int count, System.Drawing.Color color)
+        {
+            for (int i = 0; i < count; i++)
+                bmp.SetPixel(i % bmp.Width, i / bmp.Width, color);
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проверка обещания уровня «Очень хорошо»: файл становится меньше, а
+        /// изображения остаются В ТОМ ЖЕ разрешении. Смотрим не на слова в подписи, а на
+        /// сами картинки внутри документа — сколько в них пикселей до и после. Уровень
+        /// «Нормально» тут же служит контролем: он их пересчитывает, и если бы обе ветки
+        /// вели себя одинаково, тест бы это увидел.
+        /// </summary>
+        private static void TestCompressKeepsResolutionLive()
+        {
+            if (!Ghostscript.Available)
+                return;
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerKeep_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string keep = Path.Combine(dir, "чёткость.pdf");
+                MakeImagePdf(keep, 2);
+                long before = new FileInfo(keep).Length;
+                long pixelsBefore = ImagePixels(keep);
+                AssertTrue(pixelsBefore > 0, "в исходнике есть изображения");
+
+                AssertTrue(PdfCompression.Compress(keep, CompressionLevel.VeryGood), "«Очень хорошо» применено");
+                AssertTrue(new FileInfo(keep).Length < before,
+                    "файл стал меньше: " + before + " -> " + new FileInfo(keep).Length);
+                AssertEqual(2, PdfPageProbe.PageCount(keep), "страницы на месте");
+                AssertEqual(pixelsBefore, ImagePixels(keep), "изображения остались в том же разрешении");
+
+                // Контроль: уровень с пересчётом пиксели действительно уменьшает.
+                string shrink = Path.Combine(dir, "пересчёт.pdf");
+                MakeImagePdf(shrink, 2);
+                AssertTrue(PdfCompression.Compress(shrink, CompressionLevel.Small), "«Нормально» применено");
+                AssertTrue(ImagePixels(shrink) < pixelsBefore,
+                    "пересчитывающий уровень уменьшает разрешение: " + ImagePixels(shrink) + " < " + pixelsBefore);
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>Сколько всего пикселей в изображениях документа (0 — их нет или файл не открылся).</summary>
+        private static long ImagePixels(string path)
+        {
+            try
+            {
+                long total = 0;
+                using (UglyToad.PdfPig.PdfDocument doc = UglyToad.PdfPig.PdfDocument.Open(path))
+                    foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
+                        foreach (UglyToad.PdfPig.Content.IPdfImage img in page.GetImages())
+                            total += (long)img.WidthInSamples * img.HeightInSamples;
+                return total;
+            }
+            catch { return 0; }
+        }
+
+        /// <summary>
+        /// ЖИВОЙ пин на выбор библиотеки для проверки результата. Страницы считаются PdfPig, и
+        /// это не вкусовщина: PdfSharp 1.50 не понимает потоков объектов (PDF 1.5+), а их
+        /// пишут по умолчанию и Word, и Acrobat. Считай мы страницы PdfSharp — проверка
+        /// отказывала бы на каждом таком файле, то есть сжатие сообщало бы «не удалось» там,
+        /// где движок отработал безупречно. Файл для пробы делает сам движок.
+        /// Если PdfSharp однажды научится их читать, тест упадёт — и решение можно будет
+        /// пересмотреть осознанно, а не случайно.
+        /// </summary>
+        private static void TestPageProbeLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerProbe_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = Path.Combine(dir, "исходник.pdf");
+                MakeEmptyPagesPdf(src, 3);
+                AssertEqual(3, PdfPageProbe.PageCount(src), "обычный файл: страницы посчитаны");
+                AssertEqual(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(Path.Combine(dir, "нет.pdf")),
+                    "несуществующий файл — «не открылся», а не исключение");
+                File.WriteAllText(Path.Combine(dir, "мусор.pdf"), "это вовсе не PDF");
+                AssertEqual(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(Path.Combine(dir, "мусор.pdf")),
+                    "мусор вместо PDF — «не открылся»");
+
+                if (!Ghostscript.Available)
+                    return; // файл с потоками объектов делает движок — без него пина нет
+
+                string modern = Path.Combine(dir, "объектные-потоки.pdf");
+                string args = "-sDEVICE=pdfwrite -dCompatibilityLevel=1.5 -dNOPAUSE -dBATCH -dQUIET -dSAFER" +
+                              " -sOutputFile=\"" + modern + "\" \"" + src + "\"";
+                string stderr;
+                Ghostscript.Run(args, 120000, out stderr);
+                if (!File.Exists(modern))
+                    return;
+                // Потоки объектов движок создаёт не всегда: если их в файле нет, пин про
+                // PdfSharp бессмысленен, но счёт страниц PdfPig проверить всё равно надо.
+                bool hasObjectStreams = IndexOfBytes(File.ReadAllBytes(modern),
+                    System.Text.Encoding.ASCII.GetBytes("/ObjStm")) >= 0;
+                AssertEqual(3, PdfPageProbe.PageCount(modern), "PdfPig читает файл версии 1.5");
+                if (hasObjectStreams)
+                    AssertThrowsAny("PdfSharp 1.50 на потоках объектов спотыкается — потому и PdfPig",
+                        delegate { PdfPageCount(modern); });
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проверка перевода в серое на трудных случаях. Простой цветной прямоугольник
+        /// движок переводит и без всяких ухищрений — а вот цвет, спрятанный в JPEG, в модели
+        /// CMYK и под прозрачностью, ходит другими путями внутри движка, и раньше связка
+        /// «стратегия + модель устройства» проверялась только на самом лёгком из них.
+        /// Здесь же проверяется и то, что проба цвета не врёт в обе стороны: на цветном
+        /// документе она цвет находит, на переведённом — нет.
+        /// </summary>
+        private static void TestGrayscaleHardLive()
+        {
+            if (!Ghostscript.Available)
+                return;
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerGray_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string hard = Path.Combine(dir, "трудный.pdf");
+                MakeHardColorPdf(hard, dir);
+                AssertEqual(3, PdfPageProbe.PageCount(hard), "проба из трёх страниц");
+                AssertTrue(HasColor(hard), "на первой странице исходника есть цвет");
+
+                // Без работающего рендера проба цвета молчит по построению (см. PdfColorProbe):
+                // тогда её утверждения проверять нечем, а перевод обязан работать как прежде.
+                bool canRender = ThumbnailsWork(hard);
+                if (canRender)
+                    AssertTrue(PdfColorProbe.HasColorPages(hard), "проба находит цвет в исходнике");
+                AssertTrue(PdfConvert.Verify(hard, PdfConvertMode.Repair),
+                    "починке цвет исходника безразличен");
+                if (canRender)
+                    AssertTrue(!PdfConvert.Verify(hard, PdfConvertMode.Grayscale),
+                        "цветной документ проверку «серое» не проходит");
+
+                AssertTrue(PdfConvert.Apply(hard, PdfConvertMode.Grayscale), "перевод применён");
+                AssertEqual(3, PdfPageProbe.PageCount(hard), "все три страницы на месте");
+                AssertTrue(!HasColor(hard), "цвета не осталось (страница с JPEG)");
+                if (canRender)
+                {
+                    AssertTrue(!PdfColorProbe.HasColorPages(hard),
+                        "цвета не осталось ни на одной из трёх страниц");
+                    AssertTrue(PdfConvert.Verify(hard, PdfConvertMode.Grayscale),
+                        "переведённый документ проверку проходит");
+                }
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>Работает ли системный рендер миниатюр на этой машине (WinRT есть не везде).</summary>
+        private static bool ThumbnailsWork(string pdf)
+        {
+            using (var renderer = new PdfThumbnailRenderer())
+            using (System.Drawing.Bitmap bmp = renderer.Render(pdf, 0, 80))
+                return bmp != null;
+        }
+
+        /// <summary>
+        /// Три страницы, на каждой цвет своей природы: JPEG (проходит через движок отдельным
+        /// путём как DCTDecode), модель CMYK и цвет под прозрачностью (ExtGState).
+        /// </summary>
+        private static void MakeHardColorPdf(string path, string workDir)
+        {
+            string jpeg = Path.Combine(workDir, "яркая.jpg");
+            using (var bmp = new System.Drawing.Bitmap(120, 90))
+            {
+                using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(bmp))
+                {
+                    g.Clear(System.Drawing.Color.FromArgb(220, 30, 40));
+                    using (var brush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(20, 90, 220)))
+                        g.FillRectangle(brush, 0, 45, 120, 45);
+                }
+                bmp.Save(jpeg, System.Drawing.Imaging.ImageFormat.Jpeg);
+            }
+
+            using (var doc = new PdfDocument())
+            {
+                // 1. Цвет внутри JPEG.
+                using (XGraphics g = XGraphics.FromPdfPage(doc.AddPage()))
+                using (XImage img = XImage.FromFile(jpeg))
+                    g.DrawImage(img, 40, 40, 300, 200);
+                // 2. Цвет в модели CMYK.
+                using (XGraphics g = XGraphics.FromPdfPage(doc.AddPage()))
+                    g.DrawRectangle(new XSolidBrush(XColor.FromCmyk(0, 1, 1, 0)), 40, 40, 300, 200);
+                // 3. Цвет под прозрачностью.
+                using (XGraphics g = XGraphics.FromPdfPage(doc.AddPage()))
+                    g.DrawRectangle(new XSolidBrush(XColor.FromArgb(128, 20, 60, 220)), 40, 40, 300, 200);
+                doc.Save(path);
+            }
+        }
+
+        /// <summary>Первое вхождение подстроки байтов (или -1).</summary>
+        private static int IndexOfBytes(byte[] haystack, byte[] needle)
+        {
+            for (int i = 0; i + needle.Length <= haystack.Length; i++)
+            {
+                bool hit = true;
+                for (int j = 0; j < needle.Length && hit; j++)
+                    if (haystack[i + j] != needle[j])
+                        hit = false;
+                if (hit)
+                    return i;
+            }
+            return -1;
         }
 
         // ---------- Простой текст (экспорт в .txt) ----------

@@ -252,13 +252,21 @@ namespace ExcelMerger
 
         /// <summary>
         /// Часть статуса про сжатие для инструмента с ОДНИМ результатом: «сжато, изображения
-        /// до 150 dpi». null, если сжатия не было — тогда часть просто не попадёт в статус.
-        /// Разрешение берётся из <see cref="PdfCompression.ImageDpi"/> (единственный источник).
+        /// до 150 dpi» — либо «чёткость сохранена» на уровне, который их не пересчитывает.
+        /// Формулировку выбирает <see cref="PdfCompression.CompressedSuffix"/>.
+        ///
+        /// Если сжатие БЫЛО ЗАКАЗАНО, но файл меньше не стал, часть всё равно строится — со
+        /// словами об этом. Молчать нельзя: человек выбрал «Сжатие» и вправе знать, чем
+        /// дело кончилось, а прежде статус в таком случае просто ничего не говорил, и
+        /// «уже оптимизирован» было видно только в «Прочих операциях». null остаётся ровно
+        /// для случая «сжатие не заказывали» — тогда части в статусе и не место.
         /// Чистая — под тест.
         /// </summary>
         internal static string CompressedPart(bool compressed, CompressionLevel level)
         {
-            return compressed ? string.Format(Loc.T("common.suffix.compressed"), PdfCompression.ImageDpi(level)) : null;
+            if (compressed)
+                return PdfCompression.CompressedSuffix(level);
+            return level == CompressionLevel.None ? null : Loc.T("common.suffix.notCompressed");
         }
 
         /// <summary>

@@ -518,9 +518,14 @@ namespace ExcelMerger
             if (!openAsFolder)
                 return SuccessStatus(string.Format(Loc.T("split.status.pagesExtracted"), pageCount),
                     CompressedPart(compressed > 0, level));
-            string manyFiles = compressed > 0
-                ? string.Format(Loc.T("split.suffix.compressed"), compressed, PdfCompression.ImageDpi(level))
-                : null;
+            // Как и у одиночного результата, разрешение называем только там, где изображения
+            // действительно пересчитаны (иначе вышло бы «до 0 dpi»), а о заказанном, но
+            // безрезультатном сжатии говорим прямо, вместо того чтобы промолчать.
+            string manyFiles = compressed <= 0
+                ? (level == CompressionLevel.None ? null : Loc.T("common.suffix.notCompressed"))
+                : PdfCompression.Downsamples(level)
+                    ? string.Format(Loc.T("split.suffix.compressed"), compressed, PdfCompression.ImageDpi(level))
+                    : string.Format(Loc.T("split.suffix.compressedKeep"), compressed);
             return SuccessStatus(string.Format(Loc.T("split.status.filesCreated"), count), manyFiles);
         }
 

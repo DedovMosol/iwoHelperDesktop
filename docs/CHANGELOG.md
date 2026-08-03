@@ -3,6 +3,66 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.18.2] — 2026-08-03
+
+### Added
+- **A compression level that leaves the pictures alone.** Between "Excellent — no
+  compression" and "Good — 150 dpi" there was a cliff: either the file stayed as it was, or
+  every image in it was recomputed. Most documents need neither — they are already made of
+  text, and the bytes sit in how the file is put together. **"Very good — smaller, image
+  resolution kept"** rebuilds the document without touching a single picture: pages are
+  re-packed, identical images stored once, leftovers not carried over. Measured on four
+  documents: 25 % to 48 % smaller at untouched resolution, and on a file built from repeated
+  images — 136 times smaller.
+  It is deliberately not called "lossless". The document *is* rebuilt, and its rendered page
+  differs from the source by hundredths of a tone; what is guaranteed is the images, and the
+  label says exactly that and nothing more.
+  The promise is held by our own arguments (`-dDownsample*Images=false`), not by the engine's
+  defaults: the portable build runs on whatever Ghostscript the machine has, and its version
+  is not ours to assume.
+- **The number of a compression level is now an identifier, not a position.** Levels are
+  stored in `settings.txt` as numbers, so the new one was appended at the END of the
+  enumeration even though it belongs in the middle of the list — otherwise everyone who had
+  picked "Good" would have silently ended up on a different level after updating. The order
+  shown in the list lives separately, in one place, and a test pins both.
+
+### Fixed
+- **Grayscale no longer reports success it cannot vouch for.** The engine exits with zero
+  even when part of the content stays coloured — colour arrives through ICC profiles,
+  palettes and transparency groups, and no list of switches covers all of them in advance.
+  The result is now looked at: pages are rendered and searched for saturated pixels, and a
+  document that did not come out grey is not passed off as done. The check can only
+  *disprove* — if a page cannot be rendered at all (old Windows, no WinRT), that is not
+  treated as "still coloured", or the feature would break on the very machines where it
+  used to work.
+- **The grayscale switch that documentation asks not to use.** `-dProcessColorModel=/DeviceGray`
+  stood next to `-sColorConversionStrategy=Gray` with a comment claiming both were required.
+  That knowledge predates Ghostscript 9.11: the docs state the strategy sets the model itself
+  and that specifying both should be avoided, and bug 693074 is filed on this exact pair
+  ("some images are not converted"). Verified on eight probes — vector, colour JPEG, CMYK,
+  indexed palette, Separation, transparency group, soft mask, real transparency: the strategy
+  alone converts all of them, leaving only DeviceGray inside the file.
+- **Every Ghostscript run is now checked for having kept the document.** The old test was the
+  first five bytes being `%PDF-`; a stunted output passed it. Now the pages are counted before
+  and after, and a result that lost or gained pages is rejected — one rule for compression,
+  grayscale and repair alike, and lenient exactly where there is nothing to compare against
+  (repair opens a file that is broken by definition).
+  The pages are counted with **PdfPig, not PdfSharp**, and that is load-bearing: PdfSharp 1.50
+  cannot read object streams (PDF 1.5+), which Word and Acrobat write by default, so counting
+  with it would have turned a healthy compression into "could not compress" on such files. A
+  live test pins this.
+- **A silent status when compression gained nothing.** Choosing "Compression" in Merge or
+  Split and getting a plain "Pages saved: 10" left no way to tell whether it had worked.
+  Requested compression that did not make the file smaller now says so. "More operations"
+  already did; the other two stayed quiet.
+
+### Changed
+- The check of a converted file is no longer wired into the compression class: the pipeline
+  guarantees the document survived, the caller adds what only it can judge — size for
+  compression, absence of colour for grayscale. Three call sites, one rule each.
+- The status line no longer names a resolution where none was applied: a level that keeps
+  the pictures reports "image resolution kept" instead of "images to 0 dpi".
+
 ## [1.18.1] — 2026-07-30
 
 ### Added

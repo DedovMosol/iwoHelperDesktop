@@ -356,6 +356,8 @@ namespace ExcelMerger
                 "Assembled: {0} pages. Click “Save PDF…”.");
             A("ops.status.compressing", "Сжатие…", "Compressing…");
             A("ops.status.compressed", "Сжато, изображения до {0} dpi", "Compressed, images to {0} dpi");
+            A("ops.status.compressedKeep", "Сжато, чёткость изображений сохранена",
+                "Compressed, image resolution kept");
             A("ops.status.notCompressed", "Файл уже оптимизирован — копия сохранена без изменений",
                 "The file is already optimized — the copy was saved unchanged");
             A("ops.compress.pickLevel.title", "Выберите уровень сжатия", "Choose a compression level");
@@ -422,6 +424,14 @@ namespace ExcelMerger
             // Часть статуса про сжатие для инструментов с ОДНИМ результатом. Разрешение
             // подставляет PdfCompression.ImageDpi, чтобы число жило в одном месте.
             A("common.suffix.compressed", "сжато, изображения до {0} dpi", "compressed, images to {0} dpi");
+            // Тот же статус для уровня, который изображения не пересчитывает: разрешения в
+            // нём нет, потому что оно и не менялось (иначе вышло бы «до 0 dpi»).
+            A("common.suffix.compressedKeep", "сжато, чёткость изображений сохранена",
+                "compressed, image resolution kept");
+            // Сжатие заказали, но меньше не стало (файл уже оптимизирован либо движок не
+            // справился). Молчать об этом нельзя — человек его выбрал и ждёт ответа.
+            A("common.suffix.notCompressed", "сжатие не уменьшило файл",
+                "compression did not make the file smaller");
             A("grid.pageTip", "{0} — стр. {1}", "{0} — p. {1}");
             // Контекстное меню сетки страниц (подписи плиток — просто номера, без строк).
             A("grid.menu.cut", "Вырезать", "Cut");
@@ -593,6 +603,11 @@ namespace ExcelMerger
                 "which already bundles Ghostscript.");
             A("gs.download", "Скачать Ghostscript", "Download Ghostscript");
             A("compress.level.none", "Отлично — без сжатия", "Excellent — no compression");
+            // «Без потерь» этот уровень назвать было бы нечестно: документ пересобирается, и
+            // растр страницы расходится с исходным на сотые доли тона. Не пересчитываются
+            // именно ИЗОБРАЖЕНИЯ — ровно об этом подпись и говорит, не обещая сверх того.
+            A("compress.level.veryGood", "Очень хорошо — меньше без потери чёткости",
+                "Very good — smaller, image resolution kept");
             A("compress.level.good", "Хорошо — меньше размер ({0} dpi)", "Good — smaller size ({0} dpi)");
             A("compress.level.small", "Нормально — минимальный размер ({0} dpi)", "Normal — minimal size ({0} dpi)");
 
@@ -705,6 +720,8 @@ namespace ExcelMerger
             A("split.status.pagesExtracted", "Извлечено страниц: {0}", "Pages extracted: {0}");
             A("split.suffix.compressed", "сжато файлов: {0}, изображения до {1} dpi",
                 "compressed: {0} files, images to {1} dpi");
+            A("split.suffix.compressedKeep", "сжато файлов: {0}, чёткость изображений сохранена",
+                "compressed: {0} files, image resolution kept");
             A("split.status.largeHint", " Файл крупный — включите «Сжатие», чтобы уменьшить размер.",
                 " The file is large — turn on “Compression” to reduce its size.");
             A("split.help.body",
