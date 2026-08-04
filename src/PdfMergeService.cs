@@ -84,7 +84,7 @@ namespace ExcelMerger
         {
             try
             {
-                using (PdfDocument doc = PdfReader.Open(path, PdfDocumentOpenMode.Import))
+                using (PdfDocument doc = PdfReader.Open(path, PdfPasswords.For(path), PdfDocumentOpenMode.Import))
                 {
                     var pages = new List<PdfPageInfo>();
                     for (int i = 0; i < doc.PageCount; i++)
@@ -144,7 +144,7 @@ namespace ExcelMerger
                     {
                         try
                         {
-                            source = PdfReader.Open(key, PdfDocumentOpenMode.Import);
+                            source = PdfReader.Open(key, PdfPasswords.For(key), PdfDocumentOpenMode.Import);
                         }
                         catch (Exception ex) when (MergeException.ShouldWrap(ex))
                         {

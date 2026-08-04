@@ -48,12 +48,29 @@ namespace ExcelMerger
             return before <= 0 || after == before;
         }
 
+        /// <summary>
+        /// Открыть документ PdfPig — единственное место, где это делается, и потому
+        /// единственное, где помнят про пароль. Защищённый файл без пароля PdfPig не
+        /// открывает вовсе, так что забыть подставить его здесь значило бы получить
+        /// «файл не читается» на каждом шаге разбора.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static UglyToad.PdfPig.PdfDocument OpenPig(string path)
+        {
+            string password = PdfPasswords.For(path);
+            if (string.IsNullOrEmpty(password))
+                return UglyToad.PdfPig.PdfDocument.Open(path);
+            var options = new UglyToad.PdfPig.ParsingOptions();
+            options.Password = password;
+            return UglyToad.PdfPig.PdfDocument.Open(path, options);
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int PageCountCore(string path)
         {
             try
             {
-                using (UglyToad.PdfPig.PdfDocument doc = UglyToad.PdfPig.PdfDocument.Open(path))
+                using (UglyToad.PdfPig.PdfDocument doc = OpenPig(path))
                     return doc.NumberOfPages;
             }
             catch { return Unreadable; }

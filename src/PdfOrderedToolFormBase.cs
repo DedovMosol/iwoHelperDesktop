@@ -56,20 +56,52 @@ namespace ExcelMerger
             int at = insertAt < 0 || insertAt > _order.Count ? _order.Count : insertAt;
             bool insertMode = insertAt >= 0;
             string[] toLoad = (string[])paths.Clone(); // воркер работает со снимком
+            LoadPass(toLoad, new List<LoadedDoc>(), new List<string>(), new List<string>(), at, insertMode);
+        }
+
+        /// <summary>
+        /// Один заход разбора: прочитать пачку файлов в фоне, а защищённые отложить и спросить
+        /// по ним пароль. Введённые пароли отправляют файл на следующий заход — так неверный
+        /// пароль даёт ещё одну попытку, а отказ прекращает круг по этому файлу.
+        /// Круг конечен: каждый заход либо добавляет файл, либо получает отказ по нему.
+        /// </summary>
+        private void LoadPass(string[] toLoad, List<LoadedDoc> loaded, List<string> errors,
+            List<string> tried, int at, bool insertMode)
+        {
             Ui.RunWorker(delegate()
             {
-                var loaded = new List<LoadedDoc>();
-                var errors = new List<string>();
+                var locked = new List<string>();
                 foreach (string path in toLoad)
                 {
                     // Ловим ШИРОКО (как операционные воркеры): один битый/занятый/аварийный файл
                     // (в т.ч. редкий OOM, который LoadPages НЕ оборачивает) не должен ронять
                     // фоновый поток — остальные файлы пакета всё равно добавляются.
                     try { loaded.Add(new LoadedDoc { Path = path, PageCount = PdfMergeService.LoadPages(path).Count }); }
-                    catch (MergeException ex) { errors.Add(ex.Message); } // понятное локализованное сообщение
-                    catch (Exception ex) { errors.Add(string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message)); }
+                    catch (Exception ex)
+                    {
+                        // Защищённый файл — не ошибка, а вопрос: его отложим и спросим пароль.
+                        if (PdfPasswords.LooksPasswordProtected(ex))
+                            locked.Add(path);
+                        else if (ex is MergeException)
+                            errors.Add(ex.Message); // понятное локализованное сообщение
+                        else
+                            errors.Add(string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message));
+                    }
                 }
-                OnUi(delegate { ApplyAdded(loaded, errors, at, insertMode); });
+                OnUi(delegate
+                {
+                    if (locked.Count > 0)
+                    {
+                        List<string> retry = AskPasswords(locked, tried, errors);
+                        tried.AddRange(locked);
+                        if (retry.Count > 0)
+                        {
+                            LoadPass(retry.ToArray(), loaded, errors, tried, at, insertMode);
+                            return; // итог подведёт последний заход
+                        }
+                    }
+                    ApplyAdded(loaded, errors, at, insertMode);
+                });
             });
         }
 

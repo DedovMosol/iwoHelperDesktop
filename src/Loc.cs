@@ -610,6 +610,19 @@ namespace ExcelMerger
                 "Install it (free) and restart the app — or use the app installer, " +
                 "which already bundles Ghostscript.");
             A("gs.download", "Скачать Ghostscript", "Download Ghostscript");
+            // Защищённый паролем PDF. Предупреждение о последствиях отказа стоит В САМОМ
+            // диалоге: подтверждать каждый отказ отдельным окном значило бы удвоить их число
+            // на пакете защищённых файлов.
+            A("pdf.password.title", "Требуется пароль", "Password required");
+            A("pdf.password.prompt",
+                "Файл «{0}» защищён паролем.\nБез пароля он не будет добавлен.",
+                "The file “{0}” is password-protected.\nWithout the password it will not be added.");
+            A("pdf.password.again",
+                "Пароль не подошёл.\nПопробуйте ещё раз — иначе файл «{0}» добавлен не будет.",
+                "That password did not work.\nTry again — otherwise “{0}” will not be added.");
+            A("pdf.password.open", "Открыть", "Open");
+            A("err.pdf.passwordSkipped", "{0} — файл защищён паролем и не добавлен",
+                "{0} — the file is password-protected and was not added");
             A("compress.level.none", "Отлично — без сжатия", "Excellent — no compression");
             // «Без потерь» этот уровень назвать было бы нечестно: документ пересобирается, и
             // растр страницы расходится с исходным на сотые доли тона. Не пересчитываются

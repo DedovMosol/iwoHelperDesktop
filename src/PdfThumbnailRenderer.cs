@@ -117,7 +117,12 @@ namespace ExcelMerger
             {
                 ras.WriteAsync(bytes.AsBuffer()).AsTask().GetAwaiter().GetResult();
                 ras.Seek(0);
-                PdfDocument doc = PdfDocument.LoadFromStreamAsync(ras).AsTask().GetAwaiter().GetResult();
+                // Защищённый файл системный движок без пароля не откроет — а пароль к нему
+                // человек уже вводил при открытии документа, и лежит он в общем реестре.
+                string password = PdfPasswords.For(key);
+                PdfDocument doc = string.IsNullOrEmpty(password)
+                    ? PdfDocument.LoadFromStreamAsync(ras).AsTask().GetAwaiter().GetResult()
+                    : PdfDocument.LoadFromStreamAsync(ras, password).AsTask().GetAwaiter().GetResult();
                 _docs.Add(key, new CachedDoc { Doc = doc, Stream = ras }); // вытеснение освободит оба
                 return doc;
             }

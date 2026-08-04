@@ -55,7 +55,7 @@ namespace ExcelMerger
                 if (total <= 0)
                     return Unknown;
                 long images = 0;
-                using (UglyToad.PdfPig.PdfDocument doc = UglyToad.PdfPig.PdfDocument.Open(path))
+                using (UglyToad.PdfPig.PdfDocument doc = PdfPageProbe.OpenPig(path))
                 {
                     foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
                     {
