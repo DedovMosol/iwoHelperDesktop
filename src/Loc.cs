@@ -360,6 +360,14 @@ namespace ExcelMerger
                 "Compressed, image resolution kept");
             A("ops.status.notCompressed", "Файл уже оптимизирован — копия сохранена без изменений",
                 "The file is already optimized — the copy was saved unchanged");
+            // Тот же исход, но по другой причине: документ состоит из изображений, а уровень
+            // их не пересчитывает. Говорить тут «уже оптимизирован» — вводить в заблуждение:
+            // такой файл сжимается прекрасно, просто другим уровнем.
+            A("ops.status.notCompressedImages",
+                "Страницы этого документа — изображения, а выбранный уровень их не пересчитывает. " +
+                "Выберите уровень, который уменьшает изображения",
+                "The pages of this document are images, and the chosen level leaves them as they are. " +
+                "Pick a level that reduces images");
             A("ops.compress.pickLevel.title", "Выберите уровень сжатия", "Choose a compression level");
             A("ops.compress.pickLevel.body",
                 "В списке «Сжатие» внизу окна выбрано «без сжатия» — сжимать нечем. Выберите «Хорошо» или «Нормально» и повторите.",

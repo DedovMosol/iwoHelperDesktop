@@ -602,27 +602,38 @@ namespace ExcelMerger
             {
                 Exception error = null;
                 bool shrank = false;
+                double imageShare = PdfContentProfile.Unknown;
                 try
                 {
                     WriteWorkingCopy(source, pages, pageCount, outPath);
                     shrank = PdfCompression.Compress(outPath, level);
+                    // Состав документа выясняем ТОЛЬКО когда сжатие не помогло: иначе это
+                    // лишнее чтение файла на каждой удачной операции. И здесь же, в фоне, —
+                    // на UI-поток такую работу выносить нельзя.
+                    if (!shrank)
+                        imageShare = PdfContentProfile.ImageShare(outPath);
                 }
                 catch (Exception ex) { error = ex; }
                 bool smaller = shrank;
+                double share = imageShare;
                 OnUi(delegate
                 {
                     if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("ops.err.compressFailed")))
                         return;
                     // Копия создана в любом случае — она и есть то, о чём просили. Но если файл
-                    // уже оптимизирован и меньше не стал, молчать нельзя: человек ждал сжатия.
+                    // меньше не стал, молчать нельзя: человек ждал сжатия.
                     // Разрешение называем только там, где изображения пересчитаны: уровень
                     // «Очень хорошо» их не трогает, и «до 0 dpi» было бы неправдой.
                     string done = PdfCompression.Downsamples(level)
                         ? string.Format(Loc.T("ops.status.compressed"), PdfCompression.ImageDpi(level))
                         : Loc.T("ops.status.compressedKeep");
-                    SetStatus(smaller
-                        ? SuccessStatus(done)
-                        : SuccessStatus(Loc.T("ops.status.notCompressed")), Theme.OkGreen);
+                    // «Уже оптимизирован» — не всегда правда: у документа из сканов уровень,
+                    // не трогающий изображения, не может дать ничего в принципе, и человеку
+                    // нужно знать не это, а что выбрать вместо него.
+                    string missed = PdfContentProfile.ShouldSuggestDownsampling(level, share)
+                        ? Loc.T("ops.status.notCompressedImages")
+                        : Loc.T("ops.status.notCompressed");
+                    SetStatus(smaller ? SuccessStatus(done) : SuccessStatus(missed), Theme.OkGreen);
                     Ui.OpenPath(outPath);
                 });
             });

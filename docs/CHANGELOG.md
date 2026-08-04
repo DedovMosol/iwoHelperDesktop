@@ -6,6 +6,15 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased] — 1.18.3
 
 ### Fixed
+- **"The file is already optimized" was a lie for scans.** A four-page scan of 1.6 MB: no
+  text at all, four images making up 99.8 % of the file. The "Very good" level leaves images
+  alone by definition, so the rebuilt document came out 0.1 % *larger*, was rejected, and the
+  status reported the file as already optimized — while the very same file shrank by 64 % on
+  "Good" and by 88 % on "Normal". The message was formally true and substantially false.
+  When compression gains nothing, the document is now looked at: if it is mostly images and
+  the chosen level does not recompute them, the status says so and points at what to pick
+  instead. The look costs nothing on the normal path — it only happens when compression
+  already failed to help.
 - **Merging and splitting silently dropped the table of contents.** Pages were copied one by
   one, and the bookmarks stayed behind in the source: a four-page document with three
   bookmarks came out of a merge with none, and out of a split with none. The file opened,
