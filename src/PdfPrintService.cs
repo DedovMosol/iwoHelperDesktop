@@ -49,13 +49,34 @@ namespace ExcelMerger
         public static void Print(IList<PdfPageRef> pages, PrinterSettings settings,
             Action<int, int> progress = null, Func<bool> cancelled = null)
         {
+            IDisposable renderer;
+            using (PrintDocument doc = CreateDocument(pages, settings, progress, cancelled, out renderer))
+            using (renderer)
+                doc.Print();
+        }
+
+        /// <summary>
+        /// Собрать задание печати, ничего не отправляя на принтер. Нужно предпросмотру: он
+        /// показывает ровно тот <see cref="PrintDocument"/>, который потом и печатается, —
+        /// иначе показанное и напечатанное могли бы разойтись, а это худший вид предпросмотра.
+        ///
+        /// renderer отдаётся наружу, потому что страницы рисуются лениво, по событию: освободи
+        /// его здесь — и предпросмотру нечем будет рисовать. Освобождает вызывающий, вместе с
+        /// документом. Окно предпросмотра строит тоже вызывающий: интерфейса в сервисе нет.
+        /// </summary>
+        public static PrintDocument CreateDocument(IList<PdfPageRef> pages, PrinterSettings settings,
+            Action<int, int> progress, Func<bool> cancelled, out IDisposable renderer)
+        {
             if (pages == null || pages.Count == 0)
                 throw new MergeException(Loc.T("err.export.noPages"));
 
-            using (var renderer = new PdfThumbnailRenderer())
-            using (var doc = new PrintDocument())
+            var owned = new PdfThumbnailRenderer();
+            renderer = owned;
+            var doc = new PrintDocument();
+            try
             {
-                doc.PrinterSettings = settings;
+                if (settings != null)
+                    doc.PrinterSettings = settings;
                 doc.DocumentName = System.IO.Path.GetFileName(pages[0].SourcePath);
                 doc.OriginAtMargins = false; // печатаем по всей доступной области, а не по полям
 
@@ -66,7 +87,7 @@ namespace ExcelMerger
                     // Ширину рендера считаем от РЕАЛЬНОГО размера листа принтера, а не страницы
                     // PDF: так одинаково печатаются и A4, и нестандартные вставки.
                     int width = Math.Max(1, e.PageBounds.Width * RenderDpi / 100);
-                    using (Bitmap page = renderer.Render(ref_.SourcePath, ref_.PageIndex, width))
+                    using (Bitmap page = owned.Render(ref_.SourcePath, ref_.PageIndex, width))
                     {
                         if (page != null)
                         {
@@ -83,7 +104,16 @@ namespace ExcelMerger
                     // Отмена — только между листами: прерывать наполовину напечатанный лист нечем.
                     e.HasMorePages = next < pages.Count && (cancelled == null || !cancelled());
                 };
-                doc.Print();
+                // Предпросмотр листает документ по кругу и начинает заново — счётчик обязан
+                // сбрасываться, иначе второй показ выводит хвост списка вместо начала.
+                doc.BeginPrint += delegate { next = 0; };
+                return doc;
+            }
+            catch
+            {
+                doc.Dispose();
+                owned.Dispose();
+                throw;
             }
         }
     }

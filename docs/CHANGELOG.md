@@ -15,6 +15,14 @@ versions follow [SemVer](https://semver.org/).
   than quietly doing something else. Sources are never modified here either: commands that
   change a file work on a copy, and input equal to output is refused.
 
+- **Print now shows what will come out.** Choosing a printer is followed by a preview of the
+  sheets, with Print and Cancel — paper is spent only after it has been looked at. The preview
+  draws the very same print job that is then sent, so the two cannot disagree. It shows the
+  first few sheets rather than the whole job, and says so: the question a preview answers is
+  "how will this lay out", and the control it is built on renders every shown sheet at once
+  and keeps the rasters — a hundred pages would mean a hundred rasters and a frozen window.
+  Printing itself is unchanged: still in the background, with progress and cancellation.
+
 - **Password-protected PDFs open now.** Until this version such a file simply did not load —
   the tool refused exactly when it was needed. The password is asked for in a dialog that
   **names the file**, so a batch where only one document is protected makes it obvious which

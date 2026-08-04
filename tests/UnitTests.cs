@@ -389,6 +389,8 @@ namespace ExcelMerger.Tests
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("Печать: предпросмотр рисует ограниченное число листов", TestPrintPreviewPageLimit);
+            Run("Печать (живая): задание одно и то же для показа и для печати", TestPrintDocumentReusable);
             Run("Командная строка: разбор команд и отказов", TestPdfCliParse);
             Run("Командная строка: имена уровней сжатия", TestPdfCliLevels);
             Run("Командная строка (живая): команды делают то же, что кнопки", TestPdfCliLive);
@@ -9709,6 +9711,82 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfConvert.ShouldReplace(1000, 0), "пустой вывод оригинал не заменяет");
             // А у сжатия — строго меньше, иначе в нём нет смысла.
             AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Предпросмотр печати ----------
+
+        /// <summary>
+        /// Сколько листов рисует предпросмотр. Ограничение не косметическое: контрол строит
+        /// показанные страницы СРАЗУ и держит их растры в памяти, поэтому «показать всё» на
+        /// сотне листов — это сотня растров и заморозка окна.
+        /// </summary>
+        private static void TestPrintPreviewPageLimit()
+        {
+            AssertEqual(0, PrintPreviewForm.PagesToShow(0), "печатать нечего — и показывать нечего");
+            AssertEqual(0, PrintPreviewForm.PagesToShow(-3), "отрицательное число страниц не ломает счёт");
+            AssertEqual(1, PrintPreviewForm.PagesToShow(1), "одна страница показывается целиком");
+            AssertEqual(PrintPreviewForm.PreviewPages - 1,
+                PrintPreviewForm.PagesToShow(PrintPreviewForm.PreviewPages - 1),
+                "меньше предела — показываем всё");
+            AssertEqual(PrintPreviewForm.PreviewPages, PrintPreviewForm.PagesToShow(PrintPreviewForm.PreviewPages),
+                "ровно предел — показываем всё");
+            AssertEqual(PrintPreviewForm.PreviewPages, PrintPreviewForm.PagesToShow(500),
+                "больше предела — ровно предел, а не всё задание");
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проверка задания печати: предпросмотр и печать рисуют ОДИН И ТОТ ЖЕ документ,
+        /// иначе показанное разошлось бы с напечатанным. Заодно — что задание проходится
+        /// дважды: предпросмотр листает его по кругу, и без сброса счётчика второй показ
+        /// выдал бы хвост списка вместо начала.
+        /// </summary>
+        private static void TestPrintDocumentReusable()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerPrint_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = Path.Combine(dir, "печать.pdf");
+                MakeEmptyPagesPdf(src, 3);
+                var pages = new List<PdfPageRef>();
+                for (int i = 0; i < 3; i++)
+                    pages.Add(new PdfPageRef { SourcePath = src, PageIndex = i });
+
+                IDisposable renderer;
+                using (System.Drawing.Printing.PrintDocument doc =
+                    PdfPrintService.CreateDocument(pages, null, null, null, out renderer))
+                using (renderer)
+                {
+                    AssertTrue(doc != null, "задание печати собрано");
+                    // На принтер ничего не уходит: считаем листы так же, как предпросмотр.
+                    int first = CountPreviewPages(doc);
+                    int second = CountPreviewPages(doc);
+                    AssertEqual(3, first, "листов столько же, сколько страниц");
+                    AssertEqual(first, second, "повторный обход даёт то же самое");
+                }
+
+                // Пустой набор — понятная ошибка, а не попытка печатать пустоту.
+                AssertThrowsAny("печатать нечего", delegate
+                {
+                    IDisposable none;
+                    PdfPrintService.CreateDocument(new List<PdfPageRef>(), null, null, null, out none);
+                });
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>Прогнать задание так же, как предпросмотр, и посчитать листы.</summary>
+        private static int CountPreviewPages(System.Drawing.Printing.PrintDocument doc)
+        {
+            var controller = new System.Drawing.Printing.PreviewPrintController();
+            System.Drawing.Printing.PrintController saved = doc.PrintController;
+            doc.PrintController = controller;
+            try
+            {
+                doc.Print();
+                return controller.GetPreviewPageInfo().Length;
+            }
+            finally { doc.PrintController = saved; }
         }
 
         // ---------- Командная строка для PDF ----------
