@@ -389,6 +389,8 @@ namespace ExcelMerger.Tests
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("Состав документа: когда советовать уровень с пересчётом картинок", TestContentProfileAdvice);
+            Run("Состав документа (живой): доля изображений у скана и у текста", TestContentProfileLive);
             Run("Оглавление: пересчёт под новый состав страниц", TestBookmarksRemap);
             Run("Оглавление: карта подряд идущего диапазона", TestBookmarksRangeMap);
             Run("Оглавление (живое): объединение и разделение его не теряют", TestBookmarksLive);
@@ -9700,6 +9702,78 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfConvert.ShouldReplace(1000, 0), "пустой вывод оригинал не заменяет");
             // А у сжатия — строго меньше, иначе в нём нет смысла.
             AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Состав документа (почему не сжалось) ----------
+
+        /// <summary>
+        /// Когда советовать другой уровень. Случай из жизни: скан на 1,6 МБ, изображения —
+        /// 99,8% файла, уровень «Очень хорошо» их не трогает и потому не даёт ничего, а
+        /// «Хорошо» снимает 64%. Сказать про такой файл «уже оптимизирован» — обмануть.
+        /// </summary>
+        private static void TestContentProfileAdvice()
+        {
+            AssertTrue(PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.VeryGood, 0.998),
+                "документ из картинок и уровень без пересчёта — советуем другой");
+            AssertTrue(PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.None, 0.998),
+                "то же и для уровня «без сжатия»");
+            AssertTrue(!PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.Good, 0.998),
+                "уровень уже пересчитывает — советовать нечего, файл правда не ужался");
+            AssertTrue(!PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.Small, 0.998),
+                "и самый сильный уровень тоже");
+            AssertTrue(!PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.VeryGood, 0.02),
+                "текстовый документ: картинок мало, пересчёт не поможет");
+            AssertTrue(!PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.VeryGood, PdfContentProfile.Unknown),
+                "долю выяснить не удалось — молчим, а не гадаем");
+            // Ровно на пороге советуем: половина файла в картинках — уже повод.
+            AssertTrue(PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.VeryGood, 0.5),
+                "половина файла в изображениях — порог сработал");
+            AssertTrue(!PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.VeryGood, 0.49),
+                "чуть ниже порога — молчим");
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проверка доли изображений: документ, собранный из картинок, обязан показать
+        /// долю около единицы, а документ из одного текста — около нуля. Без этого правило
+        /// «советовать другой уровень» опиралось бы на число, которое никто не измерял.
+        /// </summary>
+        private static void TestContentProfileLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerShare_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string scan = Path.Combine(dir, "скан.pdf");
+                MakeImagePdf(scan, 2);                      // страницы целиком из фотошума
+                double scanShare = PdfContentProfile.ImageShare(scan);
+                AssertTrue(scanShare > 0.8, "документ из картинок: доля изображений " + scanShare.ToString("F3"));
+
+                string text = Path.Combine(dir, "текст.pdf");
+                using (var doc = new PdfDocument())
+                    for (int i = 0; i < 3; i++)
+                    {
+                        PdfSharp.Pdf.PdfPage page = doc.AddPage();
+                        using (XGraphics g = XGraphics.FromPdfPage(page))
+                            g.DrawString("Обычный текстовый документ без картинок",
+                                new XFont("Times New Roman", 12), XBrushes.Black, new XPoint(50, 100));
+                        if (i == 2) doc.Save(text);
+                    }
+                double textShare = PdfContentProfile.ImageShare(text);
+                AssertTrue(textShare < 0.1, "текстовый документ: доля изображений " + textShare.ToString("F3"));
+
+                // Сюда же — связка с советом: именно так решает окно «Прочих операций».
+                AssertTrue(PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.VeryGood, scanShare),
+                    "скану советуем уровень с пересчётом");
+                AssertTrue(!PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.VeryGood, textShare),
+                    "текстовому документу — нет");
+
+                AssertEqual(PdfContentProfile.Unknown, PdfContentProfile.ImageShare(Path.Combine(dir, "нет.pdf")),
+                    "несуществующий файл — «выяснить не удалось», а не исключение");
+                File.WriteAllText(Path.Combine(dir, "мусор.pdf"), "не PDF");
+                AssertEqual(PdfContentProfile.Unknown, PdfContentProfile.ImageShare(Path.Combine(dir, "мусор.pdf")),
+                    "мусор вместо PDF — тоже «не удалось»");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
         }
 
         // ---------- Оглавление (закладки) ----------
