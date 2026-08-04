@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -228,6 +228,16 @@ namespace ExcelMerger
         // Значок-документ с загнутым уголком (стиль file-excel): единое семейство
         // для обоих инструментов, различаются цветом и содержимым внутри листа.
         private void DrawGlyph(Graphics g, Rectangle r)
+        {
+            DrawGlyph(g, _glyph, r);
+        }
+
+        /// <summary>
+        /// Тот же значок, но для любого места, где он нужен: карточка недавнего файла на
+        /// стартовом экране рисует его же. Рисование вынесено, а не скопировано, — иначе
+        /// значки инструмента и его результата однажды разошлись бы.
+        /// </summary>
+        internal static void DrawGlyph(Graphics g, CardGlyph _glyph, Rectangle r)
         {
             bool excel = _glyph == CardGlyph.Excel;
             Color main, fold;

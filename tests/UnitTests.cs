@@ -391,6 +391,7 @@ namespace ExcelMerger.Tests
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
             Run("Окна: работа с диском не на потоке интерфейса", TestNoDiskWorkOnUiThread);
             Run("Окна: сбой при опросе пароля не оставит окно заблокированным", TestPasswordPromptCannotHangWindow);
+            Run("Недавние файлы: значок по инструменту, затем по расширению", TestRecentCardGlyph);
             Run("Недавние файлы: свежие, без повторов и без исчезнувших", TestRecentFiles);
             Run("Пустая страница: формат берётся у соседа", TestBlankSheetSize);
             Run("Пустая страница (живая): обёртка нужного размера собирается в документ", TestBlankSheetLive);
@@ -9746,9 +9747,10 @@ namespace ExcelMerger.Tests
             if (worker < 0 || exists < 0 || exists < worker)
                 offenders.Add("StartForm: проверка недавних файлов вне фонового захода");
 
-            // Пустая страница: размеры соседа читаются в фоне, а не при нажатии.
-            string ops = File.ReadAllText(Path.Combine(root, "src", "PdfOpsForm.cs"));
-            int add = ops.IndexOf("private void AddBlankPage", StringComparison.Ordinal);
+            // Пустая страница: размеры соседа читаются в фоне, а не при нажатии. Метод живёт
+            // в общей базе — вставка доступна всюду, где сетка правится, а не в одном окне.
+            string ops = File.ReadAllText(Path.Combine(root, "src", "PdfPageOrderFormBase.cs"));
+            int add = ops.IndexOf("protected void AddBlankPage", StringComparison.Ordinal);
             AssertTrue(add > 0, "вставка пустой страницы на месте");
             int addWorker = ops.IndexOf("Ui.RunWorker", add, StringComparison.Ordinal);
             int sizeOf = ops.IndexOf("SizeOf(", add, StringComparison.Ordinal);
@@ -9798,10 +9800,10 @@ namespace ExcelMerger.Tests
             data.Entries.Add(new HistoryEntry { Path = @"C:\есть\первый.pdf" }); // тот же файл ещё раз
             Func<string, bool> exists = delegate(string p) { return p.StartsWith(@"C:\есть"); };
 
-            List<string> recent = OperationHistory.RecentFiles(data, 5, exists);
+            List<HistoryEntry> recent = OperationHistory.RecentFiles(data, 5, exists);
             AssertEqual(2, recent.Count, "исчезнувший файл в список не попал");
-            AssertEqual(@"C:\есть\первый.pdf", recent[0], "самый свежий — первым, и без повтора");
-            AssertEqual(@"C:\есть\второй.pdf", recent[1], "затем предыдущий");
+            AssertEqual(@"C:\есть\первый.pdf", recent[0].Path, "самый свежий — первым, и без повтора");
+            AssertEqual(@"C:\есть\второй.pdf", recent[1].Path, "затем предыдущий");
 
             AssertEqual(1, OperationHistory.RecentFiles(data, 1, exists).Count, "предел соблюдается");
             AssertEqual(0, OperationHistory.RecentFiles(data, 0, exists).Count, "нулевой предел — пустой список");
@@ -9819,6 +9821,27 @@ namespace ExcelMerger.Tests
             AssertEqual(0, OperationHistory.RecentFiles(messy, 3,
                 delegate { throw new UnauthorizedAccessException("нет доступа"); }).Count,
                 "недоступный путь считается исчезнувшим, а не поводом упасть");
+        }
+
+        /// <summary>
+        /// Значок карточки недавнего файла: сначала по инструменту, которым файл сделан (это
+        /// точнее — файл могли переименовать), и лишь потом по расширению.
+        /// </summary>
+        private static void TestRecentCardGlyph()
+        {
+            AssertEqual(CardGlyph.PdfSplit, RecentCard.GlyphFor("split.done", "a.pdf"), "разделение");
+            AssertEqual(CardGlyph.Excel, RecentCard.GlyphFor("excel.merged", "свод.xlsx"), "свод Excel");
+            AssertEqual(CardGlyph.Pptx, RecentCard.GlyphFor("pptx.done", "a.pptx"), "презентация");
+            AssertEqual(CardGlyph.Ocr, RecentCard.GlyphFor("word.done", "a.docx"), "PDF → Word");
+            AssertEqual(CardGlyph.Tools, RecentCard.GlyphFor("ops.compressed", "a.pdf"), "прочие операции");
+            AssertEqual(CardGlyph.Pdf, RecentCard.GlyphFor("pdf.merged", "a.pdf"), "объединение");
+            // Операция неизвестна — узнаём по расширению.
+            AssertEqual(CardGlyph.Excel, RecentCard.GlyphFor(null, @"C:\путь\книга.XLSX"), "по расширению .xlsx");
+            AssertEqual(CardGlyph.Pptx, RecentCard.GlyphFor("", "доклад.pptx"), "по расширению .pptx");
+            AssertEqual(CardGlyph.Ocr, RecentCard.GlyphFor("", "письмо.docx"), "по расширению .docx");
+            AssertEqual(CardGlyph.Pdf, RecentCard.GlyphFor("", "скан.pdf"), "по расширению .pdf");
+            AssertEqual(CardGlyph.Other, RecentCard.GlyphFor("", "заметки.txt"), "чужое расширение — общий значок");
+            AssertEqual(CardGlyph.Other, RecentCard.GlyphFor(null, null), "нет ничего — тоже общий, а не падение");
         }
 
         // ---------- Пустая страница ----------

@@ -1,7 +1,25 @@
-# Changelog
+﻿# Changelog
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
+
+## [1.18.3.1] — 2026-08-04
+
+### Changed
+- **A blank sheet can now be inserted in every tool that edits pages**, not only in More
+  operations: Merge, Split, PDF → Word and PDF → PowerPoint have it too, from the same
+  context menu. The machinery — the window's wrapper folder and the insertion itself — moved
+  into the shared base, so all of them got it at once and there is one copy of it, not five.
+- **The start screen opens full-screen.** It was a fixed window; now it resizes and maximises
+  like the tool windows, and the cards stay centred as a group rather than sticking to the
+  top-left corner. Stretching them would have been worse: a card has a size at which its
+  glyph, name and description read well.
+
+### Added
+- **Recent files are now cards with the glyph of the tool that made them**, and they refresh
+  by themselves — finish an operation in any window and the start screen shows the result at
+  once, with no restart. The glyph comes from the operation rather than the extension, so a
+  renamed file still shows where it came from. Clicking or pressing Enter opens it.
 
 ## [1.18.3] — 2026-08-04
 

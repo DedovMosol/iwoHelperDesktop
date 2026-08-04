@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
@@ -69,8 +70,15 @@ namespace ExcelMerger
             Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
+            // Окно разворачивается на весь экран, как и окна инструментов: на большом мониторе
+            // карточки в маленьком неподвижном прямоугольнике выглядят потерянными, а часть
+            // работы (перетащить сюда файлы) удобнее делать в развёрнутом окне.
+            // Раскладка карточек задана координатами, поэтому при изменении размера они
+            // ЦЕНТРИРУЮТСЯ целой группой (CenterLevels) — растягивать их незачем, а
+            // прижиматься к левому верхнему углу они не должны.
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox = true;
+            MinimumSize = new Size(820, 730);
             KeyPreview = true; // Esc — назад из раздела
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -81,6 +89,7 @@ namespace ExcelMerger
             BuildLevels();
             BuildBottomRow();
 
+            _designSize = ClientSize;   // от него считается центрирование карточек
             AcceptButton = null; // Enter активирует карточку в фокусе
             GoTo(level, false);  // при пересборке (смена языка) возвращаемся в тот же раздел
         }
@@ -192,6 +201,34 @@ namespace ExcelMerger
                 delegate(Action back) { return new MainForm(back); }, Pad, Row1, WideW);
         }
 
+        /// <summary>Исходные места карточек: от них считается центрирование при изменении размера.</summary>
+        private readonly Dictionary<Control, Rectangle> _cardHome = new Dictionary<Control, Rectangle>();
+        private Size _designSize;
+
+        /// <summary>
+        /// Сдвинуть карточки каждого уровня так, чтобы группа стояла по центру окна. Растягивать
+        /// их было бы хуже: у карточки есть свой размер, при котором значок, название и описание
+        /// читаются, и растянутая на полэкрана карточка перестаёт быть карточкой.
+        /// </summary>
+        private void CenterLevels()
+        {
+            if (_designSize.Width <= 0)
+                return;
+            int dx = (ClientSize.Width - _designSize.Width) / 2;
+            int dy = (ClientSize.Height - _designSize.Height) / 2;
+            foreach (KeyValuePair<Control, Rectangle> home in _cardHome)
+            {
+                Rectangle r = home.Value;
+                home.Key.Location = new Point(r.X + (dx > 0 ? dx : 0), r.Y + (dy > 0 ? dy : 0));
+            }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            CenterLevels();
+        }
+
         private Panel AddLevelPanel()
         {
             var panel = new Panel();
@@ -199,6 +236,7 @@ namespace ExcelMerger
             // всё окно, закрыла бы собой «Проверить обновления» и «О программе» (они добавлены
             // позже, а значит ниже по z-порядку).
             panel.SetBounds(0, HeaderH, ClientSize.Width, BottomRowY - HeaderH);
+            panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             panel.BackColor = Color.White;
             panel.Visible = false;
             Controls.Add(panel);
@@ -211,6 +249,7 @@ namespace ExcelMerger
             var card = new ChoiceCard(glyph, title, desc);
             card.SetBounds(x, y - level.Top, width, CardH); // панель начинается под шапкой
             level.Controls.Add(card);
+            _cardHome[card] = card.Bounds;   // отсюда считается центрирование при изменении размера
             return card;
         }
 
@@ -319,6 +358,7 @@ namespace ExcelMerger
             settings.HoverFill = Color.FromArgb(30, Theme.SettingsBlue);
             settings.AccessibleName = Loc.T("settings.title");
             settings.SetBounds(Pad, BottomRowY, BottomRowH, BottomRowH);
+            settings.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             settings.Click += delegate { using (var f = new SettingsForm()) f.ShowDialog(this); };
             Controls.Add(settings);
             _bottomTip = new ToolTip();
@@ -332,6 +372,7 @@ namespace ExcelMerger
             about.HoverFill = Color.FromArgb(30, Theme.HelpTeal);
             about.AccessibleName = Loc.T("hub.about");
             about.SetBounds(ClientSize.Width - Pad - BottomRowH, BottomRowY, BottomRowH, BottomRowH);
+            about.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             about.Click += delegate { using (var f = new AboutForm()) f.ShowDialog(this); };
             Controls.Add(about);
             _bottomTip.SetToolTip(about, Loc.T("hub.about"));
@@ -339,78 +380,76 @@ namespace ExcelMerger
             BuildRecentFiles();
         }
 
-        /// <summary>Сколько последних файлов показывать в нижнем ряду.</summary>
+        /// <summary>Сколько последних файлов показывать карточками.</summary>
         private const int RecentCount = 3;
+        /// <summary>Полоса карточек недавних — над нижним рядом со значками.</summary>
+        private const int RecentCardH = 52;
+        private const int RecentRowY = BottomRowY - RecentCardH - 10;
+        private readonly List<RecentCard> _recentCards = new List<RecentCard>();
 
         /// <summary>
-        /// Ссылки на последние сделанные файлы — между служебными значками нижнего ряда.
-        /// Их нет, когда возвращаться не к чему: история выключена, пуста или всё записанное
-        /// уже удалено. Строка «Недавние:» без единого файла занимала бы место и обещала то,
-        /// чего нет.
+        /// Карточки последних сделанных файлов — прямо на стартовом экране, значком того
+        /// инструмента, который их сделал. Обновляются сами: подписка на историю снимает
+        /// нужду перезапускать программу, чтобы увидеть только что полученный файл.
         ///
-        /// Открываем файл системой — тем же способом, что и кнопка «Открыть файл» после
-        /// операции. Гадать, в каком из шести инструментов человек хотел бы его увидеть,
-        /// значит ошибаться в пяти случаях из шести.
+        /// История читается с диска, а существование файлов проверяется обращением к ним —
+        /// и это НЕ работа для потока интерфейса: путь на отключённой сетевой шаре отвечает
+        /// около секунды на файл (замерено), то есть три записи задержали бы появление окна
+        /// на три секунды. Поэтому в фоне, а карточки строятся по готовому ответу.
         /// </summary>
         private void BuildRecentFiles()
         {
-            // История читается с диска, а существование файлов проверяется обращением к ним —
-            // и это НЕ работа для потока интерфейса. Путь на отключённой сетевой шаре отвечает
-            // около секунды на файл (замерено), то есть три записи задержали бы появление
-            // стартового экрана на три секунды. Поэтому: в фоне, а ссылки добавляются, когда
-            // ответ получен. Окно к тому моменту может быть уже закрыто — OnUi это переживает.
+            OperationHistory.Changed += OnHistoryChanged;   // отписка — в Dispose
+            RefreshRecentFiles();
+        }
+
+        private void OnHistoryChanged()
+        {
+            // Событие приходит с того потока, где закончилась операция, — возвращаемся к себе.
+            Ui.OnUi(this, RefreshRecentFiles);
+        }
+
+        private void RefreshRecentFiles()
+        {
+            if (IsDisposed || Disposing)
+                return;
             Ui.RunWorker(delegate()
             {
-                System.Collections.Generic.List<string> found;
-                try
-                {
-                    found = OperationHistory.RecentFiles(OperationHistory.Load(), RecentCount,
-                        System.IO.File.Exists);
-                }
+                List<HistoryEntry> found;
+                try { found = OperationHistory.RecentFiles(OperationHistory.Load(), RecentCount, System.IO.File.Exists); }
                 catch { return; } // история недоступна — стартовому экрану это безразлично
-                if (found.Count == 0)
-                    return;
                 Ui.OnUi(this, delegate { ShowRecentFiles(found); });
             });
         }
 
-        /// <summary>Разместить ссылки на недавние файлы в нижнем ряду. Только UI-поток.</summary>
-        private void ShowRecentFiles(System.Collections.Generic.List<string> recent)
+        /// <summary>Разложить карточки недавних файлов в нижней части экрана. Только UI-поток.</summary>
+        private void ShowRecentFiles(List<HistoryEntry> recent)
         {
-            if (IsDisposed || Disposing || _bottomTip == null)
-                return; // окно успело закрыться или пересобраться под другой язык
-
-            int left = Pad + BottomRowH + Pad;
-            int right = ClientSize.Width - Pad - BottomRowH - Pad;
-            var caption = new Label();
-            caption.AutoSize = true;
-            caption.ForeColor = Theme.TextMuted;
-            caption.Font = Ui.Font(8.5f);
-            caption.Text = Loc.T("hub.recent");
-            caption.Location = new Point(left, BottomRowY + (BottomRowH - caption.PreferredHeight) / 2);
-            Controls.Add(caption);
-
-            int x = caption.Right + 6;
-            foreach (string path in recent)
+            if (IsDisposed || Disposing)
+                return;
+            // Прежние карточки убираем целиком: список пересобирается после каждой операции,
+            // и подчищать его по одной записи было бы больше кода без единой выгоды.
+            foreach (RecentCard old in _recentCards)
             {
-                string file = path;                       // копия для замыкания
-                var link = new LinkLabel();
-                link.AutoSize = true;
-                link.Font = Ui.Font(8.5f);
-                link.Text = System.IO.Path.GetFileName(file);
-                link.LinkColor = Theme.SettingsBlue;
-                link.ActiveLinkColor = Theme.SettingsBlue;
-                link.Location = new Point(x, BottomRowY + (BottomRowH - link.PreferredHeight) / 2);
-                link.Click += delegate { Ui.OpenPath(file); };
-                Controls.Add(link);
-                if (link.Right > right)                   // за край нижнего ряда не лезем
-                {
-                    Controls.Remove(link);
-                    link.Dispose();
-                    break;
-                }
-                _bottomTip.SetToolTip(link, file);        // полный путь — в подсказке, а не в строке
-                x = link.Right + 10;
+                Controls.Remove(old);
+                old.Dispose();
+            }
+            _recentCards.Clear();
+            if (recent == null || recent.Count == 0)
+                return;   // возвращаться не к чему — не занимаем место пустым обещанием
+
+            int gap = 12;
+            int width = (ClientSize.Width - 2 * Pad - (RecentCount - 1) * gap) / RecentCount;
+            int x = Pad;
+            foreach (HistoryEntry entry in recent)
+            {
+                var card = new RecentCard(entry);
+                card.SetBounds(x, RecentRowY, width, RecentCardH);
+                card.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+                Controls.Add(card);
+                card.BringToFront();
+                _recentCards.Add(card);
+                x += width + gap;
             }
         }
 
@@ -442,6 +481,9 @@ namespace ExcelMerger
             // ToolTip и ContextMenuStrip — компоненты (не дочерние контролы): освобождаем вручную.
             if (disposing)
             {
+                // Отписка обязательна: статическое событие держало бы закрытое окно живым, а
+                // при смене языка окно пересоздаётся — подписки копились бы за сеанс.
+                OperationHistory.Changed -= OnHistoryChanged;
                 if (_langTip != null) _langTip.Dispose();
                 if (_bottomTip != null) _bottomTip.Dispose();
                 if (_langMenu != null) _langMenu.Dispose();

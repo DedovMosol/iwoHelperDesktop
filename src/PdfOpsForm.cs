@@ -41,8 +41,6 @@ namespace ExcelMerger
         // Картинки живут в наборе одностраничными PDF-обёртками: их показывает та же сетка,
         // что и страницы документа, и они попадают во все действия окна без единой особой
         // ветки — включая поворот, порядок, печать и сжатие.
-        private string _imageTempDir;
-        private int _imageCounter; // номер обёртки: имена файлов не должны совпадать
         // Обёртка → настоящее имя картинки: от него предлагается имя результата (иначе человеку
         // предложили бы имя временного файла, которого он никогда не видел).
         private readonly Dictionary<string, string> _imageOrigins =
@@ -93,11 +91,6 @@ namespace ExcelMerger
             // и Ctrl+Z. Исходный файл при этом цел — правки описывают РЕЗУЛЬТАТ операции.
             _grid.AllowReorder = true;
             _grid.AllowRotate = true;
-            // Пустой лист — правка набора, поэтому живёт в меню сетки рядом с остальными
-            // правками, а не кнопкой на панели: панель растёт в высоту, а окно на небольшом
-            // экране и так упирается в свой минимальный размер (это поймал живой тест).
-            _grid.AllowInsertBlank = true;
-            _grid.InsertBlankRequested += delegate { AddBlankPage(); };
             _grid.ShowPositionNumbers = true; // под плиткой — место страницы в собранном документе
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
@@ -297,86 +290,12 @@ namespace ExcelMerger
 
         /// <summary>Спросить картинки и добавить их страницами в конец набора.</summary>
         /// <summary>
-        /// Вставить пустой лист ПОСЛЕ выделенной страницы (без выделения — в конец). Формат
-        /// берётся у соседа, чтобы лист не выпадал из документа. Работа с диском мгновенная
-        /// (один пустой файл), поэтому фонового потока здесь не нужно — в отличие от картинок,
-        /// где каждая перекодируется.
+        /// Обёртке (пустой лист, картинка) даём осмысленное имя: по нему предлагается имя
+        /// результата, и «blank0001» там смотрелось бы случайным.
         /// </summary>
-        private void AddBlankPage()
+        protected override void OnWrapperInserted(string path, string displayName)
         {
-            if (Working)
-                return;
-            string dir;
-            try { dir = ImageTempDir(); }
-            catch (Exception ex)
-            {
-                Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), ex.Message);
-                return;
-            }
-            // После последней выделенной страницы: так же ведёт себя вставка из буфера.
-            int at = _order.Count;
-            int[] selected = _grid.GetSelectedIndices();
-            if (selected.Length > 0)
-                at = selected[selected.Length - 1] + 1;
-
-            // В фон уходит не запись пустого листа (она мгновенная), а ЧТЕНИЕ размеров соседа:
-            // размеры страниц в модели не хранятся, и разбор документа ради них на потоке
-            // интерфейса подвешивал бы окно — 900-страничный файл читается 278 мс (замерено),
-            // а сетевой и того дольше. Путь тот же, что у добавления картинок.
-            if (!BeginLoad(Loc.T("ops.status.addingImages")))
-                return;
-            PdfPageRef neighbour = NeighbourOf(at);
-            string wrapper = Path.Combine(dir, "blank" + (_imageCounter++).ToString("D4") + ".pdf");
-            Ui.RunWorker(delegate()
-            {
-                string error = null;
-                try
-                {
-                    double width, height;
-                    BlankPages.SheetSize(SizeOf(neighbour), out width, out height);
-                    BlankPages.WriteSheet(wrapper, width, height);
-                }
-                catch (MergeException ex) { error = ex.Message; }
-                catch (Exception ex) { error = ex.Message; }
-                string err = error;
-                OnUi(delegate
-                {
-                    EndLoad();
-                    if (err != null)
-                    {
-                        Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), err);
-                        return;
-                    }
-                    _imageOrigins[wrapper] = Loc.T("ops.blankPage.name"); // в именах результата — не «blank0001»
-                    var loaded = new List<LoadedDoc> { new LoadedDoc { Path = wrapper, PageCount = 1 } };
-                    InsertLoaded(loaded, new List<string>(), at, true);
-                });
-            });
-        }
-
-        /// <summary>Страница, рядом с которой встаёт пустой лист (та, что сейчас на позиции at−1), или null.</summary>
-        private PdfPageRef NeighbourOf(int at)
-        {
-            int index = at - 1;
-            if (index < 0 || index >= _order.Count)
-                index = _order.Count - 1;
-            return index < 0 ? null : _order[index];
-        }
-
-        /// <summary>
-        /// Размеры страницы. Только с фонового потока: разбор документа не мгновенный.
-        /// Не прочитали — null, и лист станет A4: это не повод отказывать во вставке.
-        /// </summary>
-        private static PdfPageInfo SizeOf(PdfPageRef page)
-        {
-            if (page == null)
-                return null;
-            try
-            {
-                List<PdfPageInfo> pages = PdfMergeService.LoadPages(page.SourcePath);
-                return page.PageIndex >= 0 && page.PageIndex < pages.Count ? pages[page.PageIndex] : null;
-            }
-            catch { return null; }
+            _imageOrigins[path] = displayName;
         }
 
         private void PickAndAddImages()
@@ -401,7 +320,7 @@ namespace ExcelMerger
             if (paths == null || paths.Length == 0)
                 return;
             string dir;
-            try { dir = ImageTempDir(); }
+            try { dir = WrapperDir(); }
             catch (Exception ex)
             {
                 // Некуда положить обёртки (нет места, запрет на запись) — это отказ операции,
@@ -411,8 +330,6 @@ namespace ExcelMerger
             }
             if (!BeginLoad(Loc.T("ops.status.addingImages")))
                 return; // уже идёт операция или загрузка
-            int firstNumber = _imageCounter;
-            _imageCounter += paths.Length;
             string[] toLoad = (string[])paths.Clone(); // воркер работает со снимком
             Ui.RunWorker(delegate()
             {
@@ -421,7 +338,7 @@ namespace ExcelMerger
                 var errors = new List<string>();
                 for (int i = 0; i < toLoad.Length; i++)
                 {
-                    string wrapper = Path.Combine(dir, "img" + (firstNumber + i).ToString("D4") + ".pdf");
+                    string wrapper = Path.Combine(dir, "img" + Guid.NewGuid().ToString("N") + ".pdf");
                     // Ловим ШИРОКО (как остальные воркеры): битая, чужая или огромная картинка
                     // (в том числе OOM, который сервис НЕ маскирует) не должна ронять поток —
                     // остальные картинки пакета всё равно добавляются.
@@ -449,39 +366,6 @@ namespace ExcelMerger
             for (int i = 0; i < loaded.Count; i++)
                 _imageOrigins[loaded[i].Path] = origins[i];
             InsertLoaded(loaded, errors, _order.Count, true); // вставка — общая с «Объединением»
-        }
-
-        /// <summary>
-        /// Папка обёрток этого окна (создаётся при первой картинке). Заодно уносим мусор
-        /// прошлых сеансов: аварийное завершение оставляет папку на диске, а сама она не уйдёт.
-        /// </summary>
-        private string ImageTempDir()
-        {
-            if (_imageTempDir == null)
-            {
-                SweepOldWrapperDirs();
-                _imageTempDir = Path.Combine(Path.GetTempPath(), WrapperPrefix + Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(_imageTempDir);
-            }
-            return _imageTempDir;
-        }
-
-        private const string WrapperPrefix = "iwo_ops_img_";
-
-        /// <summary>
-        /// Убрать папки обёрток, брошенные прошлыми сеансами. Сутки — чтобы не задеть чужой
-        /// работающий экземпляр: приложение и так одно на систему, но полагаться на это здесь
-        /// не стоит, а лишние сутки на диске ничего не стоят.
-        /// </summary>
-        private static void SweepOldWrapperDirs()
-        {
-            try
-            {
-                foreach (string dir in Directory.GetDirectories(Path.GetTempPath(), WrapperPrefix + "*"))
-                    if (Directory.GetLastWriteTimeUtc(dir) < DateTime.UtcNow.AddDays(-1))
-                        try { Directory.Delete(dir, true); } catch { } // занята — уйдёт в следующий раз
-            }
-            catch { } // нет доступа к папке временных файлов — не повод отказывать в добавлении
         }
 
         // ---------- документ, собранный в сетке ----------
@@ -967,14 +851,8 @@ namespace ExcelMerger
                 _dpiMenu.Dispose();
                 _dpiMenu = null;
             }
+            // Папку обёрток (картинки, пустые листы) убирает база — она же её и завела.
             base.Dispose(disposing);
-            // Обёртки картинок удаляем ПОСЛЕ базы: до этого сетка ещё жива и держит их
-            // миниатюры. Окно закрылось — временные файлы не должны его переживать.
-            if (disposing && _imageTempDir != null)
-            {
-                try { Directory.Delete(_imageTempDir, true); } catch { } // занят — уберёт следующий сеанс
-                _imageTempDir = null;
-            }
         }
     }
 }
