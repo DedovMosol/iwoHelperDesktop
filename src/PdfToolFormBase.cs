@@ -932,6 +932,8 @@ namespace ExcelMerger
                     return;
                 settings = dialog.PrinterSettings;
             }
+            if (!ShowPrintPreview(pages, settings))
+                return; // посмотрели и передумали — бумага цела
             BeginOperation(Loc.T("common.status.printing"), pages.Count, Loc.T("common.status.printingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
@@ -947,6 +949,44 @@ namespace ExcelMerger
                     SetStatus(SuccessStatus(string.Format(Loc.T("common.status.printed"), pages.Count)), Theme.OkGreen);
                 });
             });
+        }
+
+        /// <summary>
+        /// Показать, что уйдёт на бумагу, и спросить, печатать ли. false — передумали.
+        ///
+        /// Предпросмотр рисует ТОТ ЖЕ <see cref="System.Drawing.Printing.PrintDocument"/>,
+        /// который затем печатается: показывать одно, а печатать другое — худшее, что может
+        /// сделать предпросмотр. Из-за этого же он и модальный: пока смотрят, задание менять
+        /// некому. Рендер идёт на UI-потоке, но только для видимых листов и только пока окно
+        /// открыто — это цена ленивой отрисовки штатного контрола, и она заметно меньше, чем
+        /// у самой печати.
+        /// </summary>
+        private bool ShowPrintPreview(System.Collections.Generic.IList<PdfPageRef> pages,
+            System.Drawing.Printing.PrinterSettings settings)
+        {
+            IDisposable renderer = null;
+            System.Drawing.Printing.PrintDocument doc = null;
+            try
+            {
+                // Рисуем только первые листы — этого хватает, чтобы увидеть раскладку, а
+                // рендер всего задания предпросмотр держал бы в памяти целиком.
+                int shown = PrintPreviewForm.PagesToShow(pages.Count);
+                var head = new System.Collections.Generic.List<PdfPageRef>();
+                for (int i = 0; i < shown; i++)
+                    head.Add(pages[i]);
+                doc = PdfPrintService.CreateDocument(head, settings, null, null, out renderer);
+                return PrintPreviewForm.Confirm(this, doc, shown, pages.Count);
+            }
+            catch (Exception ex)
+            {
+                Dialogs.Error(this, Text, Loc.T("common.err.printFailed"), ex.Message);
+                return false;
+            }
+            finally
+            {
+                if (doc != null) doc.Dispose();
+                if (renderer != null) renderer.Dispose();
+            }
         }
 
         /// <summary>Диалог «Перейти к странице» (Ctrl+G и контекстное меню): выделяет и показывает её.</summary>
