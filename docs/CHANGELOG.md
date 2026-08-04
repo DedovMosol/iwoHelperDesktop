@@ -15,6 +15,13 @@ versions follow [SemVer](https://semver.org/).
   than quietly doing something else. Sources are never modified here either: commands that
   change a file work on a copy, and input equal to output is refused.
 
+- **Recent files on the start screen.** The last few files the app produced sit in the bottom
+  row as links — one click opens the one you were just working on, without hunting for the
+  folder. Built on the history that was already kept, so nothing new is recorded and the
+  privacy switch that turns history off turns this off too. Files that have since been moved
+  or deleted are not listed: a quick-access list where half the entries fail to open is worse
+  than no list. Nothing is shown at all when there is nothing to return to.
+
 - **A blank sheet can be inserted into the page grid.** In More operations, next to "Add
   images": the sheet goes in after the selected page (at the end if nothing is selected) and
   takes the **format of its neighbour**, because a sheet of a different size in the middle of

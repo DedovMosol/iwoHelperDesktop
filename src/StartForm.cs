@@ -335,6 +335,67 @@ namespace ExcelMerger
             about.Click += delegate { using (var f = new AboutForm()) f.ShowDialog(this); };
             Controls.Add(about);
             _bottomTip.SetToolTip(about, Loc.T("hub.about"));
+
+            BuildRecentFiles();
+        }
+
+        /// <summary>Сколько последних файлов показывать в нижнем ряду.</summary>
+        private const int RecentCount = 3;
+
+        /// <summary>
+        /// Ссылки на последние сделанные файлы — между служебными значками нижнего ряда.
+        /// Их нет, когда возвращаться не к чему: история выключена, пуста или всё записанное
+        /// уже удалено. Строка «Недавние:» без единого файла занимала бы место и обещала то,
+        /// чего нет.
+        ///
+        /// Открываем файл системой — тем же способом, что и кнопка «Открыть файл» после
+        /// операции. Гадать, в каком из шести инструментов человек хотел бы его увидеть,
+        /// значит ошибаться в пяти случаях из шести.
+        /// </summary>
+        private void BuildRecentFiles()
+        {
+            System.Collections.Generic.List<string> recent;
+            try
+            {
+                recent = OperationHistory.RecentFiles(OperationHistory.Load(), RecentCount,
+                    System.IO.File.Exists);
+            }
+            catch { return; } // история недоступна — стартовому экрану это безразлично
+            if (recent.Count == 0)
+                return;
+
+            int left = Pad + BottomRowH + Pad;
+            int right = ClientSize.Width - Pad - BottomRowH - Pad;
+            var caption = new Label();
+            caption.AutoSize = true;
+            caption.ForeColor = Theme.TextMuted;
+            caption.Font = Ui.Font(8.5f);
+            caption.Text = Loc.T("hub.recent");
+            caption.Location = new Point(left, BottomRowY + (BottomRowH - caption.PreferredHeight) / 2);
+            Controls.Add(caption);
+
+            int x = caption.Right + 6;
+            foreach (string path in recent)
+            {
+                string file = path;                       // копия для замыкания
+                var link = new LinkLabel();
+                link.AutoSize = true;
+                link.Font = Ui.Font(8.5f);
+                link.Text = System.IO.Path.GetFileName(file);
+                link.LinkColor = Theme.SettingsBlue;
+                link.ActiveLinkColor = Theme.SettingsBlue;
+                link.Location = new Point(x, BottomRowY + (BottomRowH - link.PreferredHeight) / 2);
+                link.Click += delegate { Ui.OpenPath(file); };
+                Controls.Add(link);
+                if (link.Right > right)                   // за край нижнего ряда не лезем
+                {
+                    Controls.Remove(link);
+                    link.Dispose();
+                    break;
+                }
+                _bottomTip.SetToolTip(link, file);        // полный путь — в подсказке, а не в строке
+                x = link.Right + 10;
+            }
         }
 
         /// <summary>Esc возвращает из раздела на главный экран (как «Назад»).</summary>
