@@ -34,6 +34,15 @@ namespace ExcelMerger
                 return RunThumbCheck();
             if (args.Length >= 1 && string.Equals(args[0], "--gscheck", StringComparison.OrdinalIgnoreCase))
                 return RunGsCheck();
+            // PDF-команды: те же операции, что и в окнах, для пакетной обработки и сценариев.
+            // Стоят рядом с режимом Excel и до создания окон — интерфейс им не нужен.
+            if (PdfCli.IsCommand(args))
+            {
+                AttachConsole(-1);
+                int code = PdfCli.Execute(PdfCli.Parse(args), WriteConsole);
+                FastExit.Now(code);   // как прочие безоконные режимы: без выгрузки WinRT
+                return code;
+            }
             if (args.Length >= 3 && string.Equals(args[0], "--cli", StringComparison.OrdinalIgnoreCase))
             {
                 MergeOptions options;
