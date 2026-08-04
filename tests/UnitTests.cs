@@ -391,6 +391,7 @@ namespace ExcelMerger.Tests
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
             Run("Окна: работа с диском не на потоке интерфейса", TestNoDiskWorkOnUiThread);
             Run("Окна: сбой при опросе пароля не оставит окно заблокированным", TestPasswordPromptCannotHangWindow);
+            Run("Недавние: сколько карточек влезает в полосу", TestRecentFit);
             Run("Стартовый экран (живой): недавние не наезжают на карточки инструментов", TestStartScreenWithRecentSurvivesMinimum);
             Run("Недавние файлы: значок по инструменту, затем по расширению", TestRecentCardGlyph);
             Run("Недавние файлы: свежие, без повторов и без исчезнувших", TestRecentFiles);
@@ -9843,6 +9844,25 @@ namespace ExcelMerger.Tests
             AssertEqual(CardGlyph.Pdf, RecentCard.GlyphFor("", "скан.pdf"), "по расширению .pdf");
             AssertEqual(CardGlyph.Other, RecentCard.GlyphFor("", "заметки.txt"), "чужое расширение — общий значок");
             AssertEqual(CardGlyph.Other, RecentCard.GlyphFor(null, null), "нет ничего — тоже общий, а не падение");
+        }
+
+        /// <summary>
+        /// Сколько карточек недавних показать в полосе данной ширины: не более трёх и не уже
+        /// читаемого. Лучше две целых карточки, чем три огрызка, и лучше ничего, чем ряд
+        /// нечитаемых имён.
+        /// </summary>
+        private static void TestRecentFit()
+        {
+            const int gap = 10, min = 150;
+            AssertEqual(3, StartForm.RecentFit(700, gap, min, 3), "широкая полоса — все три");
+            AssertEqual(3, StartForm.RecentFit(480, gap, min, 3), "ровно на три по минимуму");
+            AssertEqual(2, StartForm.RecentFit(400, gap, min, 3), "на три не хватило — показываем две");
+            AssertEqual(1, StartForm.RecentFit(200, gap, min, 3), "хватило на одну");
+            AssertEqual(0, StartForm.RecentFit(100, gap, min, 3), "не хватило ни на одну — ничего");
+            AssertEqual(2, StartForm.RecentFit(2000, gap, min, 2), "больше, чем есть записей, не показываем");
+            AssertEqual(0, StartForm.RecentFit(0, gap, min, 3), "нулевая полоса");
+            AssertEqual(0, StartForm.RecentFit(-50, gap, min, 3), "отрицательная ширина не ломает счёт");
+            AssertEqual(0, StartForm.RecentFit(700, gap, min, 0), "записей нет — и карточек нет");
         }
 
         /// <summary>

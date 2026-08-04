@@ -19,6 +19,12 @@ versions follow [SemVer](https://semver.org/).
 - **The start screen did not remember its size or state.** It had been a fixed window, so
   there was nothing to remember; once it became resizable, that omission showed. It now
   persists like every tool window.
+- **The recent-files cards now live in the bottom row**, which was empty between the two
+  icons anyway — so they are visible at the default window size and take nothing away from
+  the tool cards. They were a separate strip at first, and since the window height is chosen
+  so the tool cards fill it almost exactly, that strip only had room in a stretched window.
+  If the row is too narrow for three cards, fewer are shown rather than three unreadable
+  slivers — the file name is the whole point of the card.
 - **The recent-files cards could sit on top of the tool cards** in a small window, and in some
   cases did not appear at all. The second was the worse of the two: the cards were built in the
   constructor, before the window had a handle, so the answer from the background check had

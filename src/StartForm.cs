@@ -217,25 +217,12 @@ namespace ExcelMerger
         /// ТОЛЬКО когда она есть: при пустой истории карточки занимают всю высоту, а не
         /// оставляют внизу дыру под то, чего не существует.
         /// </summary>
-        private int LevelBottom()
-        {
-            return HasRoomForRecent() ? BottomRowTop() - RecentCardH - 10 : BottomRowTop();
-        }
+        private int LevelBottom() { return BottomRowTop(); }
 
         /// <summary>Верх нижнего ряда: он держится на постоянном расстоянии от низа окна.</summary>
         private int BottomRowTop() { return ClientSize.Height - BottomRowGap; }
 
-        /// <summary>
-        /// Есть ли место для полосы недавних. Исходная высота окна подобрана так, что карточки
-        /// инструментов занимают её почти целиком (окно и так во всю высоту экрана 1366×768),
-        /// поэтому полоса появляется, только когда окно РАСТЯНУТО настолько, что ей есть куда
-        /// встать. Иначе она легла бы поверх карточек — а выбор инструмента здесь главное.
-        /// </summary>
-        private bool HasRoomForRecent()
-        {
-            return _recentCards.Count > 0 &&
-                   ClientSize.Height >= _designSize.Height + RecentCardH + 18;
-        }
+
 
         /// <summary>Подогнать высоту уровней под наличие полосы недавних. Только UI-поток.</summary>
         private void LayoutLevels()
@@ -431,10 +418,26 @@ namespace ExcelMerger
         /// <summary>Сколько последних файлов показывать карточками.</summary>
         private const int RecentCount = 3;
         /// <summary>Полоса карточек недавних — над нижним рядом со значками.</summary>
-        private const int RecentCardH = 52;
+        private const int RecentCardH = BottomRowH;   // ровно нижний ряд: он пуст между значками
         /// <summary>Полоса недавних — прямо над нижним рядом, считая от фактической высоты окна.</summary>
-        private int RecentRowY() { return BottomRowTop() - RecentCardH - 10; }
+        private int RecentRowY() { return BottomRowTop(); }
         private readonly List<RecentCard> _recentCards = new List<RecentCard>();
+        private const int RecentGap = 10;        // между карточками
+        private const int RecentMinWidth = 150;  // уже этого имя файла уже не прочесть
+
+        /// <summary>
+        /// Сколько карточек поместится в полосу шириной available так, чтобы каждая была не уже
+        /// minWidth, но не больше max. Ноль — полоса слишком узка, и тогда лучше не показывать
+        /// ничего, чем ряд нечитаемых огрызков. Чистая — под тест.
+        /// </summary>
+        internal static int RecentFit(int available, int gap, int minWidth, int max)
+        {
+            if (available <= 0 || minWidth <= 0 || max <= 0)
+                return 0;
+            int fit = (available + gap) / (minWidth + gap);
+            if (fit > max) fit = max;
+            return fit < 0 ? 0 : fit;
+        }
 
         /// <summary>
         /// Карточки последних сделанных файлов — прямо на стартовом экране, значком того
@@ -498,18 +501,13 @@ namespace ExcelMerger
                 return;           // возвращаться не к чему — пустым обещанием место не занимаем
             }
 
-            int gap = 12;
-            int width = (ClientSize.Width - 2 * Pad - (RecentCount - 1) * gap) / RecentCount;
-            int x = Pad;
             foreach (HistoryEntry entry in recent)
             {
                 var card = new RecentCard(entry);
-                card.SetBounds(x, RecentRowY(), width, RecentCardH);
                 card.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
                 Controls.Add(card);
                 card.BringToFront();
                 _recentCards.Add(card);
-                x += width + gap;
             }
             PlaceRecentCards();
             LayoutLevels();   // уровень ужимается, чтобы карточки инструментов не легли под полосу
@@ -518,12 +516,27 @@ namespace ExcelMerger
         /// <summary>Расставить карточки недавних и скрыть их, когда места для полосы нет.</summary>
         private void PlaceRecentCards()
         {
-            bool room = HasRoomForRecent();
-            int y = RecentRowY();
-            foreach (RecentCard card in _recentCards)
+            // Карточки стоят В нижнем ряду, между значком настроек и значком «О программе»:
+            // эта полоса всё равно пуста посередине, и так недавние видны при ЛЮБОМ размере
+            // окна, ничего не отнимая у карточек инструментов.
+            int left = Pad + BottomRowH + 12;
+            int right = ClientSize.Width - Pad - BottomRowH - 12;
+            if (_recentCards.Count == 0)
+                return;
+            // Сколько карточек показать: столько, сколько влезает НОРМАЛЬНОЙ ширины. Ужимать
+            // все три до нечитаемых огрызков хуже, чем показать две целых, — имя файла здесь
+            // единственное, ради чего карточка существует.
+            int shown = RecentFit(right - left, RecentGap, RecentMinWidth, _recentCards.Count);
+            int width = shown > 0 ? (right - left - (shown - 1) * RecentGap) / shown : 0;
+            int x = left;
+            for (int i = 0; i < _recentCards.Count; i++)
             {
-                card.Visible = room;
-                card.Top = y;
+                RecentCard card = _recentCards[i];
+                card.Visible = i < shown;
+                if (i >= shown)
+                    continue;
+                card.SetBounds(x, RecentRowY(), width, RecentCardH);
+                x += width + RecentGap;
             }
         }
 
