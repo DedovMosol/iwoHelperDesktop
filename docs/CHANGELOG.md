@@ -11,7 +11,7 @@ versions follow [SemVer](https://semver.org/).
   operations as in the windows, for batch work and scripts. Nothing new is computed: the
   command line parses arguments into a description and hands it to the very service the
   button calls, so the two cannot drift apart in behaviour. Exit codes match the Excel mode:
-  0 done, 1 failed, 2 bad usage — and a mistyped option gives 2 with an explanation rather
+  0 done, 1 failed, 2 bad usage; `--help` prints the list. A mistyped option gives 2 with an explanation rather
   than quietly doing something else. Sources are never modified here either: commands that
   change a file work on a copy, and input equal to output is refused.
 
@@ -49,6 +49,16 @@ versions follow [SemVer](https://semver.org/).
   touches the disk**: not the settings, not the reports, not the crash log.
 
 ### Fixed
+- **Work that belonged in the background had slipped onto the UI thread — twice, in this very
+  version.** Inserting a blank sheet read its neighbour's size by parsing the document (278 ms
+  on a 900-page file, measured), and the recent-files row called  on start — about
+  a second per path when the path is on a disconnected network share, which would have delayed
+  the start screen by seconds. Both now run in the background, and a test pins them there,
+  because catching this by hand needs an unplugged network at the right moment.
+- **A failure while asking for a password could leave a window locked forever** — the load
+  state was never cleared, so buttons and grid stayed disabled until the tool was closed.
+- ** opened a window instead of printing help.** An unknown first argument sends the
+  app down the normal GUI path, so the console got nothing at all.
 - **"The file is already optimized" was a lie for scans.** A four-page scan of 1.6 MB: no
   text at all, four images making up 99.8 % of the file. The "Very good" level leaves images
   alone by definition, so the rebuilt document came out 0.1 % *larger*, was rejected, and the

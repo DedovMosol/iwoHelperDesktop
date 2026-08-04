@@ -319,43 +319,64 @@ namespace ExcelMerger
             if (selected.Length > 0)
                 at = selected[selected.Length - 1] + 1;
 
-            double width, height;
-            BlankPages.SheetSize(NeighbourSize(at), out width, out height);
-            string wrapper = Path.Combine(dir, "blank" + (_imageCounter++).ToString("D4") + ".pdf");
-            try
-            {
-                BlankPages.WriteSheet(wrapper, width, height);
-            }
-            catch (Exception ex)
-            {
-                Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), ex.Message);
+            // В фон уходит не запись пустого листа (она мгновенная), а ЧТЕНИЕ размеров соседа:
+            // размеры страниц в модели не хранятся, и разбор документа ради них на потоке
+            // интерфейса подвешивал бы окно — 900-страничный файл читается 278 мс (замерено),
+            // а сетевой и того дольше. Путь тот же, что у добавления картинок.
+            if (!BeginLoad(Loc.T("ops.status.addingImages")))
                 return;
-            }
-            _imageOrigins[wrapper] = Loc.T("ops.blankPage.name"); // в именах результата — не «blank0001»
-            var loaded = new List<LoadedDoc> { new LoadedDoc { Path = wrapper, PageCount = 1 } };
-            InsertLoaded(loaded, new List<string>(), at, true);
+            PdfPageRef neighbour = NeighbourOf(at);
+            string wrapper = Path.Combine(dir, "blank" + (_imageCounter++).ToString("D4") + ".pdf");
+            Ui.RunWorker(delegate()
+            {
+                string error = null;
+                try
+                {
+                    double width, height;
+                    BlankPages.SheetSize(SizeOf(neighbour), out width, out height);
+                    BlankPages.WriteSheet(wrapper, width, height);
+                }
+                catch (MergeException ex) { error = ex.Message; }
+                catch (Exception ex) { error = ex.Message; }
+                string err = error;
+                OnUi(delegate
+                {
+                    EndLoad();
+                    if (err != null)
+                    {
+                        Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), err);
+                        return;
+                    }
+                    _imageOrigins[wrapper] = Loc.T("ops.blankPage.name"); // в именах результата — не «blank0001»
+                    var loaded = new List<LoadedDoc> { new LoadedDoc { Path = wrapper, PageCount = 1 } };
+                    InsertLoaded(loaded, new List<string>(), at, true);
+                });
+            });
         }
 
-        /// <summary>
-        /// Размеры страницы, рядом с которой встаёт пустой лист (той, что сейчас на позиции
-        /// at−1), или null — если вставляем в пустую сетку. Читаем размеры её источника: они
-        /// в модели не хранятся, а один разбор файла здесь дешевле, чем держать их всегда.
-        /// </summary>
-        private PdfPageInfo NeighbourSize(int at)
+        /// <summary>Страница, рядом с которой встаёт пустой лист (та, что сейчас на позиции at−1), или null.</summary>
+        private PdfPageRef NeighbourOf(int at)
         {
             int index = at - 1;
             if (index < 0 || index >= _order.Count)
                 index = _order.Count - 1;
-            if (index < 0)
+            return index < 0 ? null : _order[index];
+        }
+
+        /// <summary>
+        /// Размеры страницы. Только с фонового потока: разбор документа не мгновенный.
+        /// Не прочитали — null, и лист станет A4: это не повод отказывать во вставке.
+        /// </summary>
+        private static PdfPageInfo SizeOf(PdfPageRef page)
+        {
+            if (page == null)
                 return null;
-            PdfPageRef neighbour = _order[index];
             try
             {
-                List<PdfPageInfo> pages = PdfMergeService.LoadPages(neighbour.SourcePath);
-                return neighbour.PageIndex >= 0 && neighbour.PageIndex < pages.Count
-                    ? pages[neighbour.PageIndex] : null;
+                List<PdfPageInfo> pages = PdfMergeService.LoadPages(page.SourcePath);
+                return page.PageIndex >= 0 && page.PageIndex < pages.Count ? pages[page.PageIndex] : null;
             }
-            catch { return null; } // не прочитали — возьмём A4, это не повод отказывать во вставке
+            catch { return null; }
         }
 
         private void PickAndAddImages()

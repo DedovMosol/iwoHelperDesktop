@@ -141,12 +141,21 @@ namespace ExcelMerger
                     if (needPassword)
                     {
                         var errors = new List<string>();
-                        List<string> again = AskPasswords(new[] { path },
-                            retry ? new[] { path } : new string[0], errors);
-                        if (again.Count > 0)
+                        // Сбой при опросе пароля не должен оставить окно заблокированным:
+                        // тогда инструмент пришлось бы закрывать и открывать заново.
+                        try
                         {
-                            LoadSourcePass(path, true); // пароль дали — пробуем ещё раз
-                            return;
+                            List<string> again = AskPasswords(new[] { path },
+                                retry ? new[] { path } : new string[0], errors);
+                            if (again.Count > 0)
+                            {
+                                LoadSourcePass(path, true); // пароль дали — пробуем ещё раз
+                                return;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            errors.Add(ex.Message);
                         }
                         ApplyLoadedSource(path, 0, errors.Count > 0 ? errors[0] : null);
                         return;

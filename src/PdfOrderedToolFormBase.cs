@@ -90,15 +90,25 @@ namespace ExcelMerger
                 }
                 OnUi(delegate
                 {
-                    if (locked.Count > 0)
+                    // Что бы ни случилось при опросе паролей, окно обязано выйти из состояния
+                    // загрузки: иначе кнопки и сетка останутся заблокированными навсегда, и
+                    // человеку придётся закрывать инструмент.
+                    try
                     {
-                        List<string> retry = AskPasswords(locked, tried, errors);
-                        tried.AddRange(locked);
-                        if (retry.Count > 0)
+                        if (locked.Count > 0)
                         {
-                            LoadPass(retry.ToArray(), loaded, errors, tried, at, insertMode);
-                            return; // итог подведёт последний заход
+                            List<string> retry = AskPasswords(locked, tried, errors);
+                            tried.AddRange(locked);
+                            if (retry.Count > 0)
+                            {
+                                LoadPass(retry.ToArray(), loaded, errors, tried, at, insertMode);
+                                return; // итог подведёт последний заход
+                            }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add(ex.Message);
                     }
                     ApplyAdded(loaded, errors, at, insertMode);
                 });

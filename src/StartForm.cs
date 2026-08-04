@@ -354,15 +354,31 @@ namespace ExcelMerger
         /// </summary>
         private void BuildRecentFiles()
         {
-            System.Collections.Generic.List<string> recent;
-            try
+            // История читается с диска, а существование файлов проверяется обращением к ним —
+            // и это НЕ работа для потока интерфейса. Путь на отключённой сетевой шаре отвечает
+            // около секунды на файл (замерено), то есть три записи задержали бы появление
+            // стартового экрана на три секунды. Поэтому: в фоне, а ссылки добавляются, когда
+            // ответ получен. Окно к тому моменту может быть уже закрыто — OnUi это переживает.
+            Ui.RunWorker(delegate()
             {
-                recent = OperationHistory.RecentFiles(OperationHistory.Load(), RecentCount,
-                    System.IO.File.Exists);
-            }
-            catch { return; } // история недоступна — стартовому экрану это безразлично
-            if (recent.Count == 0)
-                return;
+                System.Collections.Generic.List<string> found;
+                try
+                {
+                    found = OperationHistory.RecentFiles(OperationHistory.Load(), RecentCount,
+                        System.IO.File.Exists);
+                }
+                catch { return; } // история недоступна — стартовому экрану это безразлично
+                if (found.Count == 0)
+                    return;
+                Ui.OnUi(this, delegate { ShowRecentFiles(found); });
+            });
+        }
+
+        /// <summary>Разместить ссылки на недавние файлы в нижнем ряду. Только UI-поток.</summary>
+        private void ShowRecentFiles(System.Collections.Generic.List<string> recent)
+        {
+            if (IsDisposed || Disposing || _bottomTip == null)
+                return; // окно успело закрыться или пересобраться под другой язык
 
             int left = Pad + BottomRowH + Pad;
             int right = ClientSize.Width - Pad - BottomRowH - Pad;

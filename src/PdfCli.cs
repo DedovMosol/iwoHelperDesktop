@@ -7,7 +7,7 @@ namespace ExcelMerger
     /// <summary>Что просили сделать в командной строке.</summary>
     internal enum PdfCliKind
     {
-        None = 0, Merge, Extract, Split, Compress, Grayscale, Repair, ToImages, ToText
+        None = 0, Help, Merge, Extract, Split, Compress, Grayscale, Repair, ToImages, ToText
     }
 
     /// <summary>Как разбивать документ (только для <see cref="PdfCliKind.Split"/>).</summary>
@@ -49,7 +49,7 @@ namespace ExcelMerger
         private static readonly string[] Commands =
         {
             "--merge", "--extract", "--split", "--compress", "--grayscale", "--repair",
-            "--to-image", "--to-text"
+            "--to-image", "--to-text", "--help", "-h", "/?"
         };
 
         /// <summary>Начинается ли строка запуска с нашей команды. Чистая — под тест.</summary>
@@ -79,6 +79,11 @@ namespace ExcelMerger
 
             switch (head)
             {
+                case "--help":
+                case "-h":
+                case "/?":
+                    cmd.Kind = PdfCliKind.Help;
+                    return cmd;
                 case "--merge":      return ParseMerge(cmd, rest);
                 case "--extract":    return ParseExtract(cmd, rest);
                 case "--split":      return ParseSplit(cmd, rest);
@@ -140,6 +145,9 @@ namespace ExcelMerger
             {
                 switch (cmd.Kind)
                 {
+                    case PdfCliKind.Help:
+                        Say(log, Usage());
+                        return Ok;
                     case PdfCliKind.Merge:     return RunMerge(cmd, log);
                     case PdfCliKind.Extract:   return RunExtract(cmd, log);
                     case PdfCliKind.Split:     return RunSplit(cmd, log);
