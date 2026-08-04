@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -286,6 +286,27 @@ namespace ExcelMerger
                     Path = path
                 });
             });
+            Action changed = Changed;
+            if (changed != null)
+                changed();   // стартовый экран обновляет список недавних, не дожидаясь перезапуска
+        }
+
+        /// <summary>
+        /// История пополнилась или очищена. Нужно стартовому экрану: он живёт всё время работы
+        /// программы, а операции идут в других окнах — без уведомления список недавних оставался
+        /// бы вчерашним до перезапуска.
+        ///
+        /// Событие приходит С ТОГО ПОТОКА, где закончилась операция (обычно фонового), поэтому
+        /// подписчик обязан сам вернуться на поток интерфейса.
+        /// </summary>
+        public static event Action Changed;
+
+        /// <summary>Сообщить об изменении, сделанном не через Record (очистка, выключение).</summary>
+        private static void NotifyChanged()
+        {
+            Action changed = Changed;
+            if (changed != null)
+                changed();
         }
 
         public static void SetEnabled(bool enabled)
@@ -302,7 +323,7 @@ namespace ExcelMerger
 
         public static void SetAutoClear(int days) { Mutate(delegate(Data d) { d.AutoClearDays = days; }); }
 
-        public static void Clear() { Mutate(delegate(Data d) { d.Entries.Clear(); }); }
+        public static void Clear() { Mutate(delegate(Data d) { d.Entries.Clear(); }); NotifyChanged(); }
 
         /// <summary>
         /// Последние результаты, к которым имеет смысл вернуться: от новых к старым, без
@@ -312,9 +333,9 @@ namespace ExcelMerger
         /// Показывать путь к исчезнувшему файлу нельзя: список быстрого доступа, половина
         /// которого не открывается, хуже отсутствия списка. Чистая — под тест.
         /// </summary>
-        public static List<string> RecentFiles(Data data, int max, Func<string, bool> exists)
+        public static List<HistoryEntry> RecentFiles(Data data, int max, Func<string, bool> exists)
         {
-            var result = new List<string>();
+            var result = new List<HistoryEntry>();
             if (data == null || max <= 0 || exists == null)
                 return result;
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -327,7 +348,7 @@ namespace ExcelMerger
                 try { alive = exists(entry.Path); }
                 catch { alive = false; }
                 if (alive)
-                    result.Add(entry.Path);
+                    result.Add(entry);
             }
             return result;
         }
