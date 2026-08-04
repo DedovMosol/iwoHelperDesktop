@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace ExcelMerger
 {
@@ -38,6 +39,50 @@ namespace ExcelMerger
         public static bool Needed(IList<PdfPageRef> pages)
         {
             return InsertPositions(pages).Count > 0;
+        }
+
+        /// <summary>Лист A4 в пунктах — размер по умолчанию, когда взять его не у чего.</summary>
+        public const double A4WidthPt = 595;
+        public const double A4HeightPt = 842;
+
+        /// <summary>
+        /// Размер вставляемого пустого листа: как у страницы, рядом с которой он встаёт, иначе
+        /// A4. Пустой лист чужого формата посреди документа выглядит ошибкой, а не намерением.
+        /// Чистая — под тест.
+        /// </summary>
+        public static void SheetSize(PdfPageInfo neighbour, out double widthPt, out double heightPt)
+        {
+            if (neighbour != null && neighbour.WidthPt > 0 && neighbour.HeightPt > 0)
+            {
+                widthPt = neighbour.WidthPt;
+                heightPt = neighbour.HeightPt;
+                return;
+            }
+            widthPt = A4WidthPt;
+            heightPt = A4HeightPt;
+        }
+
+        /// <summary>
+        /// Записать одностраничный пустой PDF заданного размера. В сетку он попадает тем же
+        /// путём, что и картинка: файл-обёртка во временной папке окна, а дальше — обычная
+        /// страница, которую двигают, поворачивают, печатают и сохраняют.
+        /// </summary>
+        public static void WriteSheet(string path, double widthPt, double heightPt)
+        {
+            EmbeddedAssemblies.Ensure();
+            WriteSheetCore(path, widthPt, heightPt);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void WriteSheetCore(string path, double widthPt, double heightPt)
+        {
+            using (var doc = new PdfSharp.Pdf.PdfDocument())
+            {
+                PdfSharp.Pdf.PdfPage page = doc.AddPage();
+                page.Width = widthPt;
+                page.Height = heightPt;
+                doc.Save(path);
+            }
         }
     }
 }
