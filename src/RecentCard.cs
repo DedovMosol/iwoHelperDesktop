@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -39,7 +39,9 @@ namespace ExcelMerger
             TabStop = true;
             AccessibleName = Path.GetFileName(_path);
             _tip = new ToolTip();
-            _tip.SetToolTip(this, _path);   // полный путь — в подсказке, на карточке только имя
+            // В подсказке — что за операция и полный путь: на карточке помещается только имя.
+            _tip.SetToolTip(this, string.IsNullOrEmpty(_operation)
+                ? _path : _operation + Environment.NewLine + _path);
             Click += delegate { Ui.OpenPath(_path); };
         }
 
@@ -99,24 +101,22 @@ namespace ExcelMerger
             using (var pen = new Pen(_hot ? HoverBorder : Border))
                 g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
 
-            int side = Math.Min(Height - 14, 34);
-            var glyphBox = new Rectangle(10, (Height - side) / 2, side, side);
+            // Карточка стоит в нижнем ряду и потому невысока: значок и ОДНА строка — имя файла.
+            // Название операции ушло в подсказку вместе с путём: в строке высотой в ряд две
+            // строки текста читались бы хуже, чем одна, а имя файла здесь главное.
+            int side = Math.Min(Height - 8, 24);
+            var glyphBox = new Rectangle(7, (Height - side) / 2, side, side);
             ChoiceCard.DrawGlyph(g, _glyph, glyphBox);
 
-            int textLeft = glyphBox.Right + 10;
-            int textWidth = Width - textLeft - 10;
+            int textLeft = glyphBox.Right + 8;
+            int textWidth = Width - textLeft - 8;
             if (textWidth <= 0)
                 return;
-            Font nameFont = Ui.Font(9.75f, FontStyle.Bold);
-            Font noteFont = Ui.Font(8.25f);
-            int nameH = nameFont.Height, noteH = noteFont.Height;
-            int top = (Height - nameH - noteH) / 2;
+            Font nameFont = Ui.Font(9f);
             TextRenderer.DrawText(g, Path.GetFileName(_path), nameFont,
-                new Rectangle(textLeft, top, textWidth, nameH), Theme.TextPrimary,
-                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, _operation, noteFont,
-                new Rectangle(textLeft, top + nameH, textWidth, noteH), Theme.TextMuted,
-                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                new Rectangle(textLeft, 0, textWidth, Height), Theme.TextPrimary,
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix |
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
         }
 
         protected override void Dispose(bool disposing)
