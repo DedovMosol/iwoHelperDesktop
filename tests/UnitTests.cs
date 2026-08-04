@@ -389,6 +389,9 @@ namespace ExcelMerger.Tests
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("Командная строка: разбор команд и отказов", TestPdfCliParse);
+            Run("Командная строка: имена уровней сжатия", TestPdfCliLevels);
+            Run("Командная строка (живая): команды делают то же, что кнопки", TestPdfCliLive);
             Run("Пароли: реестр помнит файл, а не написание пути", TestPasswordRegistry);
             Run("Пароли: «нужен пароль» отличается от «файл битый»", TestPasswordDetection);
             Run("Пароли: ширина окна по самой длинной строке подписи", TestPasswordDialogWidth);
@@ -9706,6 +9709,132 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfConvert.ShouldReplace(1000, 0), "пустой вывод оригинал не заменяет");
             // А у сжатия — строго меньше, иначе в нём нет смысла.
             AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Командная строка для PDF ----------
+
+        /// <summary>
+        /// Разбор строки запуска. Здесь важна не только удача, но и отказ: сценарий-обёртка
+        /// различает «сделано», «не получилось» и «неверно вызвано» по коду возврата, и
+        /// опечатка в ключе обязана давать именно третье, а не молча делать не то.
+        /// </summary>
+        private static void TestPdfCliParse()
+        {
+            AssertTrue(PdfCli.IsCommand(new[] { "--merge", "o.pdf" }), "команда опознана");
+            AssertTrue(PdfCli.IsCommand(new[] { "--TO-IMAGE", "a.pdf", "d" }), "регистр ключа не важен");
+            AssertTrue(!PdfCli.IsCommand(new[] { "--cli", "a", "b" }), "режим Excel — не наша команда");
+            AssertTrue(!PdfCli.IsCommand(new string[0]), "пустой запуск — не команда");
+            AssertTrue(!PdfCli.IsCommand(null), "и null тоже");
+
+            PdfCliCommand merge = PdfCli.Parse(new[] { "--merge", "out.pdf", "a.pdf", "b.pdf" });
+            AssertEqual(null, merge.Error, "разбор объединения без ошибок");
+            AssertEqual(PdfCliKind.Merge, merge.Kind, "это объединение");
+            AssertEqual("out.pdf", merge.Output, "первый путь — результат");
+            AssertEqual(2, merge.Inputs.Count, "остальные — исходники");
+
+            PdfCliCommand levelled = PdfCli.Parse(new[] { "--merge", "o.pdf", "a.pdf", "--level", "normal" });
+            AssertEqual(CompressionLevel.Small, levelled.Level, "уровень читается по имени");
+            AssertEqual(1, levelled.Inputs.Count, "ключ не попал в список файлов");
+
+            PdfCliCommand split = PdfCli.Parse(new[] { "--split", "a.pdf", "dir", "--every", "3" });
+            AssertEqual(PdfCliSplitMode.Every, split.SplitMode, "режим — каждые N");
+            AssertEqual(3, split.Every, "N прочитано");
+            AssertEqual(PdfCliSplitMode.Bookmarks,
+                PdfCli.Parse(new[] { "--split", "a.pdf", "dir", "--bookmarks" }).SplitMode, "режим — по закладкам");
+            AssertEqual(PdfCliSplitMode.Ranges,
+                PdfCli.Parse(new[] { "--split", "a.pdf", "dir", "--ranges", "1-3,5" }).SplitMode, "режим — диапазоны");
+
+            PdfCliCommand images = PdfCli.Parse(new[] { "--to-image", "a.pdf", "dir", "--dpi", "300", "--format", "jpg" });
+            AssertEqual(300, images.Dpi, "разрешение прочитано");
+            AssertEqual(ImageExportFormat.Jpeg, images.Format, "формат прочитан");
+            AssertEqual(ImageExportFormat.Jpeg,
+                PdfCli.Parse(new[] { "--to-image", "a.pdf", "d", "--format", "jpeg" }).Format, "jpeg = jpg");
+
+            // Сжатие без уровня бессмысленно — берём средний, а не «ничего не делать».
+            AssertEqual(CompressionLevel.Good, PdfCli.Parse(new[] { "--compress", "a.pdf", "b.pdf" }).Level,
+                "у сжатия уровень по умолчанию рабочий");
+
+            // Отказы: каждый обязан объяснить, что не так.
+            foreach (string[] bad in new[]
+            {
+                new[] { "--merge" },                                   // нет ни результата, ни входа
+                new[] { "--merge", "only-out.pdf" },                   // нет входа
+                new[] { "--extract", "a.pdf", "1-3" },                 // нет результата
+                new[] { "--split", "a.pdf", "dir" },                   // не сказано, как делить
+                new[] { "--split", "a.pdf", "dir", "--every", "0" },   // ноль страниц в части
+                new[] { "--split", "a.pdf", "dir", "--every" },        // ключ без значения
+                new[] { "--compress", "a.pdf", "b.pdf", "--level", "быстро" }, // нет такого уровня
+                new[] { "--to-image", "a.pdf", "d", "--dpi", "-5" },   // отрицательное разрешение
+                new[] { "--to-image", "a.pdf", "d", "--format", "tiff" }, // нет такого формата
+                new[] { "--merge", "o.pdf", "a.pdf", "--wat" },        // неизвестный ключ
+                new[] { "--nonsense", "a" }                            // неизвестная команда
+            })
+                AssertTrue(!string.IsNullOrEmpty(PdfCli.Parse(bad).Error),
+                    "отказ объяснён: " + string.Join(" ", bad));
+
+            AssertTrue(!string.IsNullOrEmpty(PdfCli.Parse(null).Error), "пустой запуск — отказ, а не падение");
+            AssertEqual(PdfCli.BadUsage, PdfCli.Execute(PdfCli.Parse(new[] { "--merge" }), delegate { }),
+                "неверный вызов — код 2");
+            AssertTrue(PdfCli.Usage().Contains("--merge") && PdfCli.Usage().Contains("Exit codes"),
+                "справка перечисляет команды и коды возврата");
+        }
+
+        private static void TestPdfCliLevels()
+        {
+            CompressionLevel level;
+            AssertTrue(PdfCli.TryParseLevel("none", out level) && level == CompressionLevel.None, "none");
+            AssertTrue(PdfCli.TryParseLevel("VeryGood", out level) && level == CompressionLevel.VeryGood, "verygood");
+            AssertTrue(PdfCli.TryParseLevel("good", out level) && level == CompressionLevel.Good, "good");
+            AssertTrue(PdfCli.TryParseLevel("normal", out level) && level == CompressionLevel.Small, "normal");
+            AssertTrue(!PdfCli.TryParseLevel("small", out level), "внутреннее имя уровня наружу не торчит");
+            AssertTrue(!PdfCli.TryParseLevel("", out level) && !PdfCli.TryParseLevel(null, out level), "пусто — не уровень");
+        }
+
+        /// <summary>
+        /// ЖИВОЙ прогон команд: они обязаны делать ровно то же, что кнопки, потому что зовут
+        /// те же сервисы. Проверяем сквозь: собрать, извлечь, разрезать, вынуть текст.
+        /// </summary>
+        private static void TestPdfCliLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerCli_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = Path.Combine(dir, "исходник.pdf");
+                MakeEmptyPagesPdf(src, 4);
+                var log = new List<string>();
+                Action<string> say = delegate(string line) { log.Add(line); };
+
+                string merged = Path.Combine(dir, "объединено.pdf");
+                AssertEqual(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--merge", merged, src, src }), say),
+                    "объединение выполнено");
+                AssertEqual(8, PdfPageProbe.PageCount(merged), "восемь страниц из двух копий");
+
+                string part = Path.Combine(dir, "часть.pdf");
+                AssertEqual(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--extract", merged, "2-3", part }), say),
+                    "извлечение выполнено");
+                AssertEqual(2, PdfPageProbe.PageCount(part), "извлечены две страницы");
+
+                string outDir = Path.Combine(dir, "части");
+                AssertEqual(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--split", merged, outDir, "--every", "3" }), say),
+                    "разделение выполнено");
+                AssertEqual(3, Directory.GetFiles(outDir, "*.pdf").Length, "восемь страниц по три — три файла");
+
+                string txt = Path.Combine(dir, "текст.txt");
+                AssertEqual(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--to-text", merged, txt }), say),
+                    "извлечение текста выполнено");
+                AssertTrue(File.Exists(txt), "файл текста создан");
+
+                // Исходник не тронут ни одной командой — общее правило приложения.
+                AssertEqual(4, PdfPageProbe.PageCount(src), "исходник остался прежним");
+                AssertTrue(log.Count >= 4, "каждая команда отчиталась строкой");
+
+                // Несуществующий файл — честный отказ с кодом «не получилось», а не падение.
+                AssertEqual(PdfCli.Failed,
+                    PdfCli.Execute(PdfCli.Parse(new[] { "--extract", Path.Combine(dir, "нет.pdf"), "1", part }), say),
+                    "нет исходника — код 1");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
         }
 
         // ---------- Пароли к защищённым PDF ----------

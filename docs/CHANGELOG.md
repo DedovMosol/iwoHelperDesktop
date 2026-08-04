@@ -6,6 +6,15 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased] — 1.18.3
 
 ### Added
+- **PDF operations from the command line.** Merge, extract, split (by ranges, every N, or
+  bookmarks), compress, grayscale, repair, pages to images and text to `.txt` — the same
+  operations as in the windows, for batch work and scripts. Nothing new is computed: the
+  command line parses arguments into a description and hands it to the very service the
+  button calls, so the two cannot drift apart in behaviour. Exit codes match the Excel mode:
+  0 done, 1 failed, 2 bad usage — and a mistyped option gives 2 with an explanation rather
+  than quietly doing something else. Sources are never modified here either: commands that
+  change a file work on a copy, and input equal to output is refused.
+
 - **Password-protected PDFs open now.** Until this version such a file simply did not load —
   the tool refused exactly when it was needed. The password is asked for in a dialog that
   **names the file**, so a batch where only one document is protected makes it obvious which
