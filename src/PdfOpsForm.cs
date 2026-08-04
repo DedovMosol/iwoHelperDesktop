@@ -34,7 +34,6 @@ namespace ExcelMerger
         private const int HeaderH = 16;   // заголовок группы
         private const int HeaderGap = 2;  // от заголовка до первой кнопки группы
 
-        private Button _btnBlank;
         private Button _btnOpen, _btnAddImages, _btnSave, _btnCompress, _btnGray, _btnRepair,
             _btnImages, _btnText, _btnPrint, _btnMeta;
         private ContextMenuStrip _dpiMenu; // не дочерний контрол — освобождаем сами
@@ -94,6 +93,11 @@ namespace ExcelMerger
             // и Ctrl+Z. Исходный файл при этом цел — правки описывают РЕЗУЛЬТАТ операции.
             _grid.AllowReorder = true;
             _grid.AllowRotate = true;
+            // Пустой лист — правка набора, поэтому живёт в меню сетки рядом с остальными
+            // правками, а не кнопкой на панели: панель растёт в высоту, а окно на небольшом
+            // экране и так упирается в свой минимальный размер (это поймал живой тест).
+            _grid.AllowInsertBlank = true;
+            _grid.InsertBlankRequested += delegate { AddBlankPage(); };
             _grid.ShowPositionNumbers = true; // под плиткой — место страницы в собранном документе
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
@@ -115,11 +119,6 @@ namespace ExcelMerger
             // поворачивают, переставляют, сжимают, печатают.
             _btnAddImages = AddButton(Loc.T("ops.btn.addImages"), px, y, pw, BtnH, Loc.T("ops.tip.addImages"));
             _btnAddImages.Click += delegate { PickAndAddImages(); };
-            y += BtnH + BtnGap;
-            // Пустой лист — та же сборка документа, что и картинки: разделитель между частями,
-            // оборот под двустороннюю печать, место под подпись.
-            _btnBlank = AddButton(Loc.T("ops.btn.blankPage"), px, y, pw, BtnH, Loc.T("ops.tip.blankPage"));
-            _btnBlank.Click += delegate { AddBlankPage(); };
             y += BtnH + GroupGap;
 
             // Действия тремя группами: подряд идущие равнозначные кнопки читаются как свалка,

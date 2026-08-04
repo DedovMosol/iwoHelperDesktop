@@ -22,8 +22,8 @@ versions follow [SemVer](https://semver.org/).
   or deleted are not listed: a quick-access list where half the entries fail to open is worse
   than no list. Nothing is shown at all when there is nothing to return to.
 
-- **A blank sheet can be inserted into the page grid.** In More operations, next to "Add
-  images": the sheet goes in after the selected page (at the end if nothing is selected) and
+- **A blank sheet can be inserted into the page grid.** In More operations, from the page grid's
+  context menu: the sheet goes in after the selected page (at the end if nothing is selected) and
   takes the **format of its neighbour**, because a sheet of a different size in the middle of
   a document reads as a mistake rather than an intention. From there it is an ordinary page —
   move it, rotate it, print it, save it. It arrives the same way an image does: as a one-page
