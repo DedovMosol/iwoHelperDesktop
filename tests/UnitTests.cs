@@ -389,6 +389,8 @@ namespace ExcelMerger.Tests
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("Пустая страница: формат берётся у соседа", TestBlankSheetSize);
+            Run("Пустая страница (живая): обёртка нужного размера собирается в документ", TestBlankSheetLive);
             Run("Печать: предпросмотр рисует ограниченное число листов", TestPrintPreviewPageLimit);
             Run("Печать (живая): задание одно и то же для показа и для печати", TestPrintDocumentReusable);
             Run("Командная строка: разбор команд и отказов", TestPdfCliParse);
@@ -9711,6 +9713,57 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfConvert.ShouldReplace(1000, 0), "пустой вывод оригинал не заменяет");
             // А у сжатия — строго меньше, иначе в нём нет смысла.
             AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Пустая страница ----------
+
+        /// <summary>
+        /// Формат вставляемого пустого листа берётся у соседа: лист чужого размера посреди
+        /// документа читается как ошибка, а не как намерение. Взять не у чего — A4.
+        /// </summary>
+        private static void TestBlankSheetSize()
+        {
+            double w, h;
+            BlankPages.SheetSize(new PdfPageInfo { WidthPt = 842, HeightPt = 1191 }, out w, out h);
+            AssertEqual(842.0, w, "ширина как у соседней страницы");
+            AssertEqual(1191.0, h, "высота как у соседней страницы");
+            BlankPages.SheetSize(null, out w, out h);
+            AssertEqual(BlankPages.A4WidthPt, w, "соседа нет — ширина A4");
+            AssertEqual(BlankPages.A4HeightPt, h, "соседа нет — высота A4");
+            BlankPages.SheetSize(new PdfPageInfo { WidthPt = 0, HeightPt = 500 }, out w, out h);
+            AssertEqual(BlankPages.A4WidthPt, w, "бессмысленный размер соседа — тоже A4");
+            BlankPages.SheetSize(new PdfPageInfo { WidthPt = 400, HeightPt = -1 }, out w, out h);
+            AssertEqual(BlankPages.A4HeightPt, h, "отрицательная высота соседа — A4");
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проверка: пустой лист — настоящая одностраничная обёртка нужного размера,
+        /// и он ведёт себя как обычная страница, то есть собирается в документ наравне с прочими.
+        /// </summary>
+        private static void TestBlankSheetLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerBlank_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string blank = Path.Combine(dir, "пустая.pdf");
+                BlankPages.WriteSheet(blank, 842, 1191);   // A3
+                AssertEqual(1, PdfPageProbe.PageCount(blank), "обёртка — ровно одна страница");
+                List<PdfPageInfo> pages = PdfMergeService.LoadPages(blank);
+                AssertEqual(842, (int)Math.Round(pages[0].WidthPt), "ширина листа записана");
+                AssertEqual(1191, (int)Math.Round(pages[0].HeightPt), "высота листа записана");
+
+                // Собирается в документ как обычная страница — ради этого обёртка и нужна.
+                string doc = Path.Combine(dir, "с пустой.pdf");
+                string source = Path.Combine(dir, "исходник.pdf");
+                MakeEmptyPagesPdf(source, 2);
+                PdfMergeService.Merge(new List<PdfPageRef> {
+                    new PdfPageRef { SourcePath = source, PageIndex = 0 },
+                    new PdfPageRef { SourcePath = blank, PageIndex = 0 },
+                    new PdfPageRef { SourcePath = source, PageIndex = 1 } }, doc);
+                AssertEqual(3, PdfPageProbe.PageCount(doc), "пустая страница встала между своими");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
         }
 
         // ---------- Предпросмотр печати ----------

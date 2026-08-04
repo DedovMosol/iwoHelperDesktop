@@ -34,6 +34,7 @@ namespace ExcelMerger
         private const int HeaderH = 16;   // заголовок группы
         private const int HeaderGap = 2;  // от заголовка до первой кнопки группы
 
+        private Button _btnBlank;
         private Button _btnOpen, _btnAddImages, _btnSave, _btnCompress, _btnGray, _btnRepair,
             _btnImages, _btnText, _btnPrint, _btnMeta;
         private ContextMenuStrip _dpiMenu; // не дочерний контрол — освобождаем сами
@@ -114,6 +115,11 @@ namespace ExcelMerger
             // поворачивают, переставляют, сжимают, печатают.
             _btnAddImages = AddButton(Loc.T("ops.btn.addImages"), px, y, pw, BtnH, Loc.T("ops.tip.addImages"));
             _btnAddImages.Click += delegate { PickAndAddImages(); };
+            y += BtnH + BtnGap;
+            // Пустой лист — та же сборка документа, что и картинки: разделитель между частями,
+            // оборот под двустороннюю печать, место под подпись.
+            _btnBlank = AddButton(Loc.T("ops.btn.blankPage"), px, y, pw, BtnH, Loc.T("ops.tip.blankPage"));
+            _btnBlank.Click += delegate { AddBlankPage(); };
             y += BtnH + GroupGap;
 
             // Действия тремя группами: подряд идущие равнозначные кнопки читаются как свалка,
@@ -291,6 +297,68 @@ namespace ExcelMerger
         }
 
         /// <summary>Спросить картинки и добавить их страницами в конец набора.</summary>
+        /// <summary>
+        /// Вставить пустой лист ПОСЛЕ выделенной страницы (без выделения — в конец). Формат
+        /// берётся у соседа, чтобы лист не выпадал из документа. Работа с диском мгновенная
+        /// (один пустой файл), поэтому фонового потока здесь не нужно — в отличие от картинок,
+        /// где каждая перекодируется.
+        /// </summary>
+        private void AddBlankPage()
+        {
+            if (Working)
+                return;
+            string dir;
+            try { dir = ImageTempDir(); }
+            catch (Exception ex)
+            {
+                Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), ex.Message);
+                return;
+            }
+            // После последней выделенной страницы: так же ведёт себя вставка из буфера.
+            int at = _order.Count;
+            int[] selected = _grid.GetSelectedIndices();
+            if (selected.Length > 0)
+                at = selected[selected.Length - 1] + 1;
+
+            double width, height;
+            BlankPages.SheetSize(NeighbourSize(at), out width, out height);
+            string wrapper = Path.Combine(dir, "blank" + (_imageCounter++).ToString("D4") + ".pdf");
+            try
+            {
+                BlankPages.WriteSheet(wrapper, width, height);
+            }
+            catch (Exception ex)
+            {
+                Dialogs.Error(this, Title, Loc.T("common.fileNotAdded"), ex.Message);
+                return;
+            }
+            _imageOrigins[wrapper] = Loc.T("ops.blankPage.name"); // в именах результата — не «blank0001»
+            var loaded = new List<LoadedDoc> { new LoadedDoc { Path = wrapper, PageCount = 1 } };
+            InsertLoaded(loaded, new List<string>(), at, true);
+        }
+
+        /// <summary>
+        /// Размеры страницы, рядом с которой встаёт пустой лист (той, что сейчас на позиции
+        /// at−1), или null — если вставляем в пустую сетку. Читаем размеры её источника: они
+        /// в модели не хранятся, а один разбор файла здесь дешевле, чем держать их всегда.
+        /// </summary>
+        private PdfPageInfo NeighbourSize(int at)
+        {
+            int index = at - 1;
+            if (index < 0 || index >= _order.Count)
+                index = _order.Count - 1;
+            if (index < 0)
+                return null;
+            PdfPageRef neighbour = _order[index];
+            try
+            {
+                List<PdfPageInfo> pages = PdfMergeService.LoadPages(neighbour.SourcePath);
+                return neighbour.PageIndex >= 0 && neighbour.PageIndex < pages.Count
+                    ? pages[neighbour.PageIndex] : null;
+            }
+            catch { return null; } // не прочитали — возьмём A4, это не повод отказывать во вставке
+        }
+
         private void PickAndAddImages()
         {
             using (var dialog = new OpenFileDialog())

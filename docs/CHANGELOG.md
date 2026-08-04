@@ -15,6 +15,13 @@ versions follow [SemVer](https://semver.org/).
   than quietly doing something else. Sources are never modified here either: commands that
   change a file work on a copy, and input equal to output is refused.
 
+- **A blank sheet can be inserted into the page grid.** In More operations, next to "Add
+  images": the sheet goes in after the selected page (at the end if nothing is selected) and
+  takes the **format of its neighbour**, because a sheet of a different size in the middle of
+  a document reads as a mistake rather than an intention. From there it is an ordinary page —
+  move it, rotate it, print it, save it. It arrives the same way an image does: as a one-page
+  wrapper in the window's temporary folder, so nothing in the grid needs a special case for it.
+
 - **Print now shows what will come out.** Choosing a printer is followed by a preview of the
   sheets, with Print and Cancel — paper is spent only after it has been looked at. The preview
   draws the very same print job that is then sent, so the two cannot disagree. It shows the

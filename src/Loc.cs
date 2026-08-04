@@ -613,6 +613,10 @@ namespace ExcelMerger
             // Защищённый паролем PDF. Предупреждение о последствиях отказа стоит В САМОМ
             // диалоге: подтверждать каждый отказ отдельным окном значило бы удвоить их число
             // на пакете защищённых файлов.
+            A("ops.btn.blankPage", "Пустая страница", "Blank page");
+            A("ops.tip.blankPage", "Вставить пустой лист после выделенной страницы (в конец, если ничего не выделено)",
+                "Insert a blank sheet after the selected page (at the end if nothing is selected)");
+            A("ops.blankPage.name", "пустая страница", "blank page");
             A("common.print.preview", "Предпросмотр печати", "Print preview");
             A("common.print.doPrint", "Печать", "Print");
             // Показаны не все листы (см. PrintPreviewForm): молчать об этом нельзя, иначе
