@@ -391,6 +391,7 @@ namespace ExcelMerger.Tests
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
             Run("Окна: работа с диском не на потоке интерфейса", TestNoDiskWorkOnUiThread);
             Run("Окна: сбой при опросе пароля не оставит окно заблокированным", TestPasswordPromptCannotHangWindow);
+            Run("Стартовый экран (живой): недавние не наезжают на карточки инструментов", TestStartScreenWithRecentSurvivesMinimum);
             Run("Недавние файлы: значок по инструменту, затем по расширению", TestRecentCardGlyph);
             Run("Недавние файлы: свежие, без повторов и без исчезнувших", TestRecentFiles);
             Run("Пустая страница: формат берётся у соседа", TestBlankSheetSize);
@@ -9842,6 +9843,92 @@ namespace ExcelMerger.Tests
             AssertEqual(CardGlyph.Pdf, RecentCard.GlyphFor("", "скан.pdf"), "по расширению .pdf");
             AssertEqual(CardGlyph.Other, RecentCard.GlyphFor("", "заметки.txt"), "чужое расширение — общий значок");
             AssertEqual(CardGlyph.Other, RecentCard.GlyphFor(null, null), "нет ничего — тоже общий, а не падение");
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проверка стартового экрана С КАРТОЧКАМИ НЕДАВНИХ на минимальном размере:
+        /// карточки инструментов и карточки недавних не должны делить одни пиксели. Пустая
+        /// история этого не поймает — там полосы недавних просто нет, — поэтому история
+        /// заполняется настоящими файлами, а окно затем сжимается до упора.
+        /// </summary>
+        private static void TestStartScreenWithRecentSurvivesMinimum()
+        {
+            var offenders = new List<string>();
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_recent_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            InIsolatedSettings("iwo_recent_ui_", delegate
+            {
+                try
+                {
+                    // Три настоящих файла в истории: список показывает только существующие.
+                    for (int i = 0; i < 3; i++)
+                    {
+                        string file = Path.Combine(dir, "результат" + i + ".pdf");
+                        MakeEmptyPagesPdf(file, 1);
+                        OperationHistory.Record("pdf.merged", file);
+                    }
+                    using (var form = new StartForm())
+                    {
+                        form.Show();
+                        Pump(form, 1500);              // карточки строятся в фоне — даём им прийти
+                        int cards = CountRecentCards(form);
+                        if (cards == 0)
+                        {
+                            offenders.Add("карточки недавних не появились");
+                            return;
+                        }
+                        foreach (System.Drawing.Size size in new[] { form.MinimumSize, new System.Drawing.Size(1200, 900) })
+                        {
+                            form.Size = size;
+                            form.PerformLayout();
+                            Pump(form, 200);
+                            CheckControlsDoNotOverlap(form, "стартовый экран " + size.Width + "x" + size.Height, offenders);
+                            CheckRecentDoNotCoverCards(form, size, offenders);
+                        }
+                        form.Close();
+                    }
+                }
+                catch (Exception ex) { offenders.Add("раскладка: " + ex.GetType().Name + " " + ex.Message); }
+            });
+            try { Directory.Delete(dir, true); } catch { }
+            AssertTrue(offenders.Count == 0, "стартовый экран с недавними: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Сколько карточек недавних сейчас на окне.</summary>
+        private static int CountRecentCards(System.Windows.Forms.Form form)
+        {
+            int n = 0;
+            foreach (System.Windows.Forms.Control c in form.Controls)
+                if (c.GetType().Name == "RecentCard")
+                    n++;
+            return n;
+        }
+
+        /// <summary>
+        /// Карточка недавнего файла не должна перекрывать ни одну карточку инструмента.
+        /// Сравниваем в координатах ОКНА: карточки инструментов лежат внутри панели уровня.
+        /// </summary>
+        private static void CheckRecentDoNotCoverCards(System.Windows.Forms.Form form, System.Drawing.Size size, List<string> offenders)
+        {
+            var recent = new List<System.Drawing.Rectangle>();
+            foreach (System.Windows.Forms.Control c in form.Controls)
+                if (c.GetType().Name == "RecentCard" && c.Visible)
+                    recent.Add(form.RectangleToClient(c.RectangleToScreen(c.ClientRectangle)));
+            foreach (System.Windows.Forms.Control panel in form.Controls)
+            {
+                if (!(panel is System.Windows.Forms.Panel) || !panel.Visible)
+                    continue;
+                foreach (System.Windows.Forms.Control card in panel.Controls)
+                {
+                    if (!card.Visible || card.GetType().Name != "ChoiceCard")
+                        continue;
+                        System.Drawing.Rectangle box = form.RectangleToClient(card.RectangleToScreen(card.ClientRectangle));
+                    foreach (System.Drawing.Rectangle r in recent)
+                        if (r.IntersectsWith(box))
+                            offenders.Add("недавние наезжают на карточку инструмента при " +
+                                size.Width + "x" + size.Height);
+                }
+            }
         }
 
         // ---------- Пустая страница ----------

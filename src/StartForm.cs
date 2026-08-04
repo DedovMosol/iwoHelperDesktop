@@ -40,6 +40,8 @@ namespace ExcelMerger
         private const int CardW = 240, WideW = 756, CardH = 250, Row1 = 96, Row2 = 364;
         private const int Col2 = 282, Col3 = 540, Pad = 24;
         private const int HeaderH = 78, BottomRowY = 632, BottomRowH = 36;
+        /// <summary>От низа окна до верха нижнего ряда — постоянная величина исходной раскладки.</summary>
+        private const int BottomRowGap = 692 - BottomRowY;
 
         private readonly ShellContext _context;
         private ToolTip _langTip;           // подсказка кнопки-глобуса (компонент — освобождаем вручную)
@@ -84,12 +86,16 @@ namespace ExcelMerger
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(804, 692);
             WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11
+            // Размер и состояние окна переживают перезапуск — как у окон инструментов.
+            // Раньше окно было неизменяемым, и запоминать было нечего.
+            WindowPlacement.Attach(this);
 
             BuildHeader();
             BuildLevels();
             BuildBottomRow();
 
             _designSize = ClientSize;   // от него считается центрирование карточек
+            _designHeightOfLevel = BottomRowY - HeaderH;
             AcceptButton = null; // Enter активирует карточку в фокусе
             GoTo(level, false);  // при пересборке (смена языка) возвращаемся в тот же раздел
         }
@@ -204,6 +210,41 @@ namespace ExcelMerger
         /// <summary>Исходные места карточек: от них считается центрирование при изменении размера.</summary>
         private readonly Dictionary<Control, Rectangle> _cardHome = new Dictionary<Control, Rectangle>();
         private Size _designSize;
+        private int _designHeightOfLevel;   // высота области карточек в исходной раскладке
+
+        /// <summary>
+        /// Нижняя граница области карточек инструментов. Полоса недавних резервирует место
+        /// ТОЛЬКО когда она есть: при пустой истории карточки занимают всю высоту, а не
+        /// оставляют внизу дыру под то, чего не существует.
+        /// </summary>
+        private int LevelBottom()
+        {
+            return HasRoomForRecent() ? BottomRowTop() - RecentCardH - 10 : BottomRowTop();
+        }
+
+        /// <summary>Верх нижнего ряда: он держится на постоянном расстоянии от низа окна.</summary>
+        private int BottomRowTop() { return ClientSize.Height - BottomRowGap; }
+
+        /// <summary>
+        /// Есть ли место для полосы недавних. Исходная высота окна подобрана так, что карточки
+        /// инструментов занимают её почти целиком (окно и так во всю высоту экрана 1366×768),
+        /// поэтому полоса появляется, только когда окно РАСТЯНУТО настолько, что ей есть куда
+        /// встать. Иначе она легла бы поверх карточек — а выбор инструмента здесь главное.
+        /// </summary>
+        private bool HasRoomForRecent()
+        {
+            return _recentCards.Count > 0 &&
+                   ClientSize.Height >= _designSize.Height + RecentCardH + 18;
+        }
+
+        /// <summary>Подогнать высоту уровней под наличие полосы недавних. Только UI-поток.</summary>
+        private void LayoutLevels()
+        {
+            foreach (Panel level in new[] { _levelMain, _levelPdf, _levelOther })
+                if (level != null)
+                    level.Height = Math.Max(0, LevelBottom() - HeaderH);
+            CenterLevels();
+        }
 
         /// <summary>
         /// Сдвинуть карточки каждого уровня так, чтобы группа стояла по центру окна. Растягивать
@@ -215,7 +256,10 @@ namespace ExcelMerger
             if (_designSize.Width <= 0)
                 return;
             int dx = (ClientSize.Width - _designSize.Width) / 2;
-            int dy = (ClientSize.Height - _designSize.Height) / 2;
+            // По вертикали центрируем внутри ТОГО места, что осталось уровню: полоса недавних
+            // забирает низ, и считать от высоты окна значило бы сдвинуть карточки под неё.
+            int dy = (LevelBottom() - HeaderH) - (_designHeightOfLevel > 0 ? _designHeightOfLevel : 0);
+            dy = dy / 2;
             foreach (KeyValuePair<Control, Rectangle> home in _cardHome)
             {
                 Rectangle r = home.Value;
@@ -226,7 +270,8 @@ namespace ExcelMerger
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            CenterLevels();
+            PlaceRecentCards();
+            LayoutLevels();
         }
 
         private Panel AddLevelPanel()
@@ -235,7 +280,10 @@ namespace ExcelMerger
             // От шапки до нижнего ряда, а НЕ до низа окна: панель непрозрачна и, растянутая на
             // всё окно, закрыла бы собой «Проверить обновления» и «О программе» (они добавлены
             // позже, а значит ниже по z-порядку).
-            panel.SetBounds(0, HeaderH, ClientSize.Width, BottomRowY - HeaderH);
+            // Высота — до полосы недавних, а не до нижнего ряда: карточки инструментов и
+            // карточки недавних не должны делить одни пиксели. Пересчитывается в LayoutLevels,
+            // когда полоса появляется или исчезает.
+            panel.SetBounds(0, HeaderH, ClientSize.Width, LevelBottom() - HeaderH);
             panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             panel.BackColor = Color.White;
             panel.Visible = false;
@@ -384,7 +432,8 @@ namespace ExcelMerger
         private const int RecentCount = 3;
         /// <summary>Полоса карточек недавних — над нижним рядом со значками.</summary>
         private const int RecentCardH = 52;
-        private const int RecentRowY = BottomRowY - RecentCardH - 10;
+        /// <summary>Полоса недавних — прямо над нижним рядом, считая от фактической высоты окна.</summary>
+        private int RecentRowY() { return BottomRowTop() - RecentCardH - 10; }
         private readonly List<RecentCard> _recentCards = new List<RecentCard>();
 
         /// <summary>
@@ -400,6 +449,14 @@ namespace ExcelMerger
         private void BuildRecentFiles()
         {
             OperationHistory.Changed += OnHistoryChanged;   // отписка — в Dispose
+            // Сам список строится при ПОКАЗЕ, а не здесь: ответ фоновой проверки возвращается
+            // на поток интерфейса через хэндл окна, а в конструкторе его ещё нет — результат
+            // было просто некуда доставить, и карточки не появлялись вовсе.
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
             RefreshRecentFiles();
         }
 
@@ -436,7 +493,10 @@ namespace ExcelMerger
             }
             _recentCards.Clear();
             if (recent == null || recent.Count == 0)
-                return;   // возвращаться не к чему — не занимаем место пустым обещанием
+            {
+                LayoutLevels();   // места под полосу больше не нужно — вернём его карточкам
+                return;           // возвращаться не к чему — пустым обещанием место не занимаем
+            }
 
             int gap = 12;
             int width = (ClientSize.Width - 2 * Pad - (RecentCount - 1) * gap) / RecentCount;
@@ -444,12 +504,26 @@ namespace ExcelMerger
             foreach (HistoryEntry entry in recent)
             {
                 var card = new RecentCard(entry);
-                card.SetBounds(x, RecentRowY, width, RecentCardH);
+                card.SetBounds(x, RecentRowY(), width, RecentCardH);
                 card.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
                 Controls.Add(card);
                 card.BringToFront();
                 _recentCards.Add(card);
                 x += width + gap;
+            }
+            PlaceRecentCards();
+            LayoutLevels();   // уровень ужимается, чтобы карточки инструментов не легли под полосу
+        }
+
+        /// <summary>Расставить карточки недавних и скрыть их, когда места для полосы нет.</summary>
+        private void PlaceRecentCards()
+        {
+            bool room = HasRoomForRecent();
+            int y = RecentRowY();
+            foreach (RecentCard card in _recentCards)
+            {
+                card.Visible = room;
+                card.Top = y;
             }
         }
 
