@@ -614,9 +614,7 @@ namespace ExcelMerger
             // диалоге: подтверждать каждый отказ отдельным окном значило бы удвоить их число
             // на пакете защищённых файлов.
             A("hub.recent", "Недавние:", "Recent:");
-            A("ops.btn.blankPage", "Пустая страница", "Blank page");
-            A("ops.tip.blankPage", "Вставить пустой лист после выделенной страницы (в конец, если ничего не выделено)",
-                "Insert a blank sheet after the selected page (at the end if nothing is selected)");
+            A("grid.menu.insertBlank", "Вставить пустую страницу", "Insert a blank page");
             A("ops.blankPage.name", "пустая страница", "blank page");
             A("common.print.preview", "Предпросмотр печати", "Print preview");
             A("common.print.doPrint", "Печать", "Print");

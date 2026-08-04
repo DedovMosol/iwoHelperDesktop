@@ -156,7 +156,7 @@ namespace ExcelMerger
 
         private ContextMenuStrip _menu;
         private ToolStripMenuItem _miCut, _miCopy, _miPaste, _miMoveAfter, _miRotate, _miRotateRight, _miRotateLeft,
-            _miRotateAllRight, _miRotateAllLeft, _miDelete, _miGoTo;
+            _miRotateAllRight, _miRotateAllLeft, _miDelete, _miGoTo, _miInsertBlank;
 
         /// <summary>Разрешить перетаскивание/буфер страниц для смены порядка (для «Объединения» и «PDF → Word»).</summary>
         public bool AllowReorder { get; set; }
@@ -186,6 +186,12 @@ namespace ExcelMerger
         public string[] DropExtensions = PdfDrop.PdfOnly;
         /// <summary>«Удалить» из контекстного меню (клавиша Delete обрабатывается формой напрямую).</summary>
         public event EventHandler DeleteRequested;
+
+        /// <summary>Просят вставить пустой лист. Пункт меню виден только при <see cref="AllowInsertBlank"/>.</summary>
+        public event EventHandler InsertBlankRequested;
+
+        /// <summary>Показывать ли пункт «вставить пустой лист» (нужен только там, где набор собирают).</summary>
+        public bool AllowInsertBlank { get; set; }
         /// <summary>«Перейти к странице…» из контекстного меню (диалог показывает форма).</summary>
         public event EventHandler GoToRequested;
         /// <summary>«Переместить после страницы N…» из контекстного меню (диалог показывает форма).</summary>
@@ -1469,6 +1475,10 @@ namespace ExcelMerger
             _menu.Items.Add(_miRotate);
             _menu.Items.Add(new ToolStripSeparator());
             _miDelete = AddMenuItem(Loc.T("grid.menu.delete"), "Del", delegate { var h = DeleteRequested; if (h != null) h(this, EventArgs.Empty); });
+            // Пустой лист — там же, где остальные правки набора. Не кнопкой на панели: панель
+            // растёт в высоту, а окно на небольшом экране и так упирается в свой минимум.
+            _miInsertBlank = AddMenuItem(Loc.T("grid.menu.insertBlank"), null,
+                delegate { var h = InsertBlankRequested; if (h != null) h(this, EventArgs.Empty); });
             _miGoTo = AddMenuItem(Loc.T("grid.menu.goto"), "Ctrl+G", delegate { var h = GoToRequested; if (h != null) h(this, EventArgs.Empty); });
             // Выбор одной стороны двусторонней пачки: дальше её поворачивают или удаляют
             // целиком, и отмечать полсотни плиток руками для этого не нужно.
@@ -1502,6 +1512,8 @@ namespace ExcelMerger
             bool hasSelection = _list.SelectedIndices.Count > 0;
             bool hasPages = _list.Items.Count > 0;
             _miCut.Visible = _miCopy.Visible = _miPaste.Visible = _miMoveAfter.Visible = _miDelete.Visible = AllowReorder;
+            _miInsertBlank.Visible = AllowInsertBlank;
+            _miInsertBlank.Enabled = !Locked;
             _miCut.Enabled = _miCopy.Enabled = _miMoveAfter.Enabled = _miDelete.Enabled = !Locked && hasSelection;
             _miPaste.Enabled = !Locked && ClipboardAvailable;
             _miRotate.Visible = AllowRotate;
