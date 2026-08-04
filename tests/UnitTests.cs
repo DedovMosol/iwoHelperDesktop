@@ -389,6 +389,8 @@ namespace ExcelMerger.Tests
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("Окна: работа с диском не на потоке интерфейса", TestNoDiskWorkOnUiThread);
+            Run("Окна: сбой при опросе пароля не оставит окно заблокированным", TestPasswordPromptCannotHangWindow);
             Run("Недавние файлы: свежие, без повторов и без исчезнувших", TestRecentFiles);
             Run("Пустая страница: формат берётся у соседа", TestBlankSheetSize);
             Run("Пустая страница (живая): обёртка нужного размера собирается в документ", TestBlankSheetLive);
@@ -9716,6 +9718,70 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
         }
 
+        // ---------- Что не должно попасть на поток интерфейса ----------
+
+        /// <summary>
+        /// Дрейф-гард на заморозку окна. В 1.18.3 дважды получилось так, что работа с диском
+        /// оказывалась на потоке интерфейса, и оба раза цена измерялась: разбор документа
+        /// ради размеров страницы — 278 мс на 900-страничном файле, а проверка существования
+        /// файла на отключённой сетевой шаре — около секунды НА КАЖДЫЙ путь, причём при
+        /// запуске, до появления стартового экрана.
+        ///
+        /// Тест держит оба места асинхронными: обращения к диску обязаны стоять внутри
+        /// фонового захода (RunWorker), а не в теле обработчика. Проверяется по исходнику —
+        /// поймать это на живом окне можно только с недоступной сетью под рукой.
+        /// </summary>
+        private static void TestNoDiskWorkOnUiThread()
+        {
+            string root = RepoRoot();
+            if (root == null) { AssertTrue(true, "исходники рядом не найдены — пропускаем"); return; }
+            var offenders = new List<string>();
+
+            // Недавние файлы: и чтение истории, и File.Exists — только в фоне.
+            string start = File.ReadAllText(Path.Combine(root, "src", "StartForm.cs"));
+            int build = start.IndexOf("private void BuildRecentFiles", StringComparison.Ordinal);
+            AssertTrue(build > 0, "метод недавних файлов на месте");
+            int worker = start.IndexOf("Ui.RunWorker", build, StringComparison.Ordinal);
+            int exists = start.IndexOf("File.Exists", build, StringComparison.Ordinal);
+            if (worker < 0 || exists < 0 || exists < worker)
+                offenders.Add("StartForm: проверка недавних файлов вне фонового захода");
+
+            // Пустая страница: размеры соседа читаются в фоне, а не при нажатии.
+            string ops = File.ReadAllText(Path.Combine(root, "src", "PdfOpsForm.cs"));
+            int add = ops.IndexOf("private void AddBlankPage", StringComparison.Ordinal);
+            AssertTrue(add > 0, "вставка пустой страницы на месте");
+            int addWorker = ops.IndexOf("Ui.RunWorker", add, StringComparison.Ordinal);
+            int sizeOf = ops.IndexOf("SizeOf(", add, StringComparison.Ordinal);
+            if (addWorker < 0 || sizeOf < 0 || sizeOf < addWorker)
+                offenders.Add("PdfOpsForm: размеры соседней страницы читаются на потоке интерфейса");
+
+            AssertTrue(offenders.Count == 0, "работа с диском на потоке интерфейса: " +
+                string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Дрейф-гард на зависшее окно: опрос пароля идёт из обработчика, и если он бросит,
+        /// окно останется в состоянии загрузки навсегда — кнопки и сетка заблокированы, и
+        /// помогает только закрыть инструмент. Оба места, где пароль спрашивается, обязаны
+        /// довести дело до конца в любом случае.
+        /// </summary>
+        private static void TestPasswordPromptCannotHangWindow()
+        {
+            string root = RepoRoot();
+            if (root == null) { AssertTrue(true, "исходники рядом не найдены — пропускаем"); return; }
+            foreach (string file in new[] { "PdfOrderedToolFormBase.cs", "PdfSingleDocFormBase.cs" })
+            {
+                string text = File.ReadAllText(Path.Combine(root, "src", file));
+                int ask = text.IndexOf("AskPasswords(", StringComparison.Ordinal);
+                AssertTrue(ask > 0, file + ": опрос пароля на месте");
+                // Ищем try перед вызовом и catch после него в пределах того же метода.
+                int guard = text.LastIndexOf("try", ask, StringComparison.Ordinal);
+                int rescue = text.IndexOf("catch", ask, StringComparison.Ordinal);
+                AssertTrue(guard > 0 && rescue > ask && rescue - ask < 1200,
+                    file + ": опрос пароля не огорожен — сбой оставит окно заблокированным");
+            }
+        }
+
         // ---------- Недавние файлы ----------
 
         /// <summary>
@@ -9942,6 +10008,18 @@ namespace ExcelMerger.Tests
             })
                 AssertTrue(!string.IsNullOrEmpty(PdfCli.Parse(bad).Error),
                     "отказ объяснён: " + string.Join(" ", bad));
+
+            // Справка — тоже команда, иначе «--help» открывал бы окно вместо ответа: строка
+            // запуска с неизвестным первым словом уводит приложение в обычный запуск с
+            // интерфейсом, и человек в консоли не получает ничего. Так и было до 1.18.3.
+            foreach (string flag in new[] { "--help", "-h", "/?", "--HELP" })
+            {
+                AssertTrue(PdfCli.IsCommand(new[] { flag }), flag + " — команда, а не повод открыть окно");
+                PdfCliCommand help = PdfCli.Parse(new[] { flag });
+                AssertEqual(null, help.Error, flag + " разбирается без ошибок");
+                AssertEqual(PdfCliKind.Help, help.Kind, flag + " — это справка");
+                AssertEqual(PdfCli.Ok, PdfCli.Execute(help, delegate { }), flag + " — успех, а не отказ");
+            }
 
             AssertTrue(!string.IsNullOrEmpty(PdfCli.Parse(null).Error), "пустой запуск — отказ, а не падение");
             AssertEqual(PdfCli.BadUsage, PdfCli.Execute(PdfCli.Parse(new[] { "--merge" }), delegate { }),
