@@ -15,6 +15,18 @@ versions follow [SemVer](https://semver.org/).
   top-left corner. Stretching them would have been worse: a card has a size at which its
   glyph, name and description read well.
 
+### Fixed
+- **The start screen did not remember its size or state.** It had been a fixed window, so
+  there was nothing to remember; once it became resizable, that omission showed. It now
+  persists like every tool window.
+- **The recent-files cards could sit on top of the tool cards** in a small window, and in some
+  cases did not appear at all. The second was the worse of the two: the cards were built in the
+  constructor, before the window had a handle, so the answer from the background check had
+  nowhere to be delivered. They are built on show now. As for the room they take: the window
+  height was chosen so the tool cards fill it almost exactly (it already spans a 1366×768
+  screen), so the strip appears only when the window is stretched enough to hold it — choosing
+  a tool is what this screen is for, and nothing may cover that.
+
 ### Added
 - **Recent files are now cards with the glyph of the tool that made them**, and they refresh
   by themselves — finish an operation in any window and the start screen shows the result at
