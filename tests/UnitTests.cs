@@ -389,6 +389,9 @@ namespace ExcelMerger.Tests
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("Оглавление: пересчёт под новый состав страниц", TestBookmarksRemap);
+            Run("Оглавление: карта подряд идущего диапазона", TestBookmarksRangeMap);
+            Run("Оглавление (живое): объединение и разделение его не теряют", TestBookmarksLive);
             Run("В исходниках нет управляющих символов", TestNoControlCharactersInSources);
             Run("В репозитории нет рабочих упоминаний и путей машины", TestNoWorkReferencesInRepo);
             Run("Переводы помечены как бета и объясняют, чего им не хватает", TestBetaNotice);
@@ -9697,6 +9700,169 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfConvert.ShouldReplace(1000, 0), "пустой вывод оригинал не заменяет");
             // А у сжатия — строго меньше, иначе в нём нет смысла.
             AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Оглавление (закладки) ----------
+
+        /// <summary>Закладка для проб: заголовок, страница, уровень.</summary>
+        private static PdfBookmark Mark(string title, int page, int level)
+        {
+            return new PdfBookmark { Title = title, PageIndex = page, Level = level, Opened = true };
+        }
+
+        /// <summary>
+        /// Пересчёт оглавления под новый состав документа — сердце переноса, и вся его
+        /// тонкость в том, что делать с закладкой, чья страница не попала в результат.
+        /// Выбрасывать вместе с потомками нельзя: удаление одного раздела уносило бы
+        /// половину оглавления. Поэтому потомки поднимаются на освободившийся уровень.
+        /// </summary>
+        private static void TestBookmarksRemap()
+        {
+            var map = new Dictionary<int, int> { { 0, 0 }, { 2, 1 }, { 5, 2 } };
+
+            // Простой случай: уцелевшие получают новые номера, порядок обхода сохраняется.
+            List<PdfBookmark> kept = PdfBookmarks.Remap(
+                new List<PdfBookmark> { Mark("A", 0, 0), Mark("B", 2, 0), Mark("C", 5, 0) }, map);
+            AssertEqual(3, kept.Count, "уцелели все три");
+            AssertEqual("A,0;B,1;C,2", Describe(kept), "номера страниц пересчитаны");
+
+            // Закладка на выпавшую страницу уходит, но её потомок остаётся и поднимается.
+            List<PdfBookmark> orphan = PdfBookmarks.Remap(
+                new List<PdfBookmark> { Mark("Глава", 1, 0), Mark("Раздел", 2, 1) }, map);
+            AssertEqual(1, orphan.Count, "выпавшая закладка не переносится");
+            AssertEqual("Раздел,1", Describe(orphan), "а её потомок остаётся");
+            AssertEqual(0, orphan[0].Level, "и поднимается на освободившийся уровень");
+
+            // Два выпавших предка подряд — потомок поднимается на оба уровня.
+            List<PdfBookmark> deep = PdfBookmarks.Remap(
+                new List<PdfBookmark> { Mark("X", 1, 0), Mark("Y", 3, 1), Mark("Z", 5, 2) }, map);
+            AssertEqual("Z,2", Describe(deep), "уцелел только самый глубокий");
+            AssertEqual(0, deep[0].Level, "и он оказался на верхнем уровне");
+
+            // Выход из ветви выпавшего предка не должен «съедать» уровень у следующей ветви.
+            List<PdfBookmark> siblings = PdfBookmarks.Remap(
+                new List<PdfBookmark> { Mark("A", 0, 0), Mark("B", 1, 1), Mark("C", 2, 0), Mark("D", 5, 1) }, map);
+            AssertEqual("A,0;C,1;D,2", Describe(siblings), "соседняя ветвь уцелела целиком");
+            AssertEqual(0, siblings[0].Level, "A на верхнем уровне");
+            AssertEqual(0, siblings[1].Level, "C тоже на верхнем — она соседка A, а не потомок B");
+            AssertEqual(1, siblings[2].Level, "D осталась вложенной в C");
+
+            // Уровень не прыгает больше чем на ступень: иначе запись построит рваное дерево.
+            List<PdfBookmark> jump = PdfBookmarks.Remap(
+                new List<PdfBookmark> { Mark("A", 0, 0), Mark("B", 2, 5) }, map);
+            AssertEqual(1, jump[1].Level, "вложенность растёт по одной ступени: " + jump[1].Level);
+
+            // Пусто на входе и мусор не должны ронять пересчёт.
+            AssertEqual(0, PdfBookmarks.Remap(null, map).Count, "нет закладок — нет и результата");
+            AssertEqual(0, PdfBookmarks.Remap(new List<PdfBookmark> { Mark("A", 0, 0) }, null).Count,
+                "нет карты — переносить некуда");
+            AssertEqual(0, PdfBookmarks.Remap(new List<PdfBookmark> { null }, map).Count,
+                "пустая запись пропускается, а не роняет");
+        }
+
+        /// <summary>«Заголовок,страница» через точку с запятой — компактная запись для сверки.</summary>
+        private static string Describe(IList<PdfBookmark> marks)
+        {
+            var parts = new List<string>();
+            foreach (PdfBookmark m in marks)
+                parts.Add(m.Title + "," + m.PageIndex);
+            return string.Join(";", parts.ToArray());
+        }
+
+        private static void TestBookmarksRangeMap()
+        {
+            Dictionary<int, int> map = PdfBookmarks.RangeMap(3, 5);
+            AssertEqual(3, map.Count, "три страницы диапазона");
+            AssertEqual(0, map[3], "первая страница диапазона становится первой");
+            AssertEqual(2, map[5], "последняя — последней");
+            AssertTrue(!map.ContainsKey(2) && !map.ContainsKey(6), "соседние страницы в карту не попадают");
+            AssertEqual(1, PdfBookmarks.RangeMap(4, 4).Count, "диапазон из одной страницы");
+            AssertEqual(0, PdfBookmarks.RangeMap(5, 4).Count, "пустой диапазон — пустая карта");
+        }
+
+        /// <summary>
+        /// ЖИВАЯ проверка на настоящих файлах: до 1.18.3 объединение и разделение переносили
+        /// страницы и молча теряли оглавление — файл открывался, выглядел целым, а навигация
+        /// исчезала. Проверяем оба пути и то, что закладки ведут на СВОИ страницы после
+        /// перестановки, а не просто присутствуют.
+        /// </summary>
+        private static void TestBookmarksLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerMarks_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = Path.Combine(dir, "с оглавлением.pdf");
+                MakeBookmarkedPdf(src);
+                AssertEqual("Глава А,0;Раздел А.1,1;Глава Б,2", ReadMarks(src), "исходник: три закладки");
+
+                // 1. Объединение в исходном порядке — оглавление на месте.
+                string merged = Path.Combine(dir, "объединено.pdf");
+                var order = new List<PdfPageRef>();
+                for (int i = 0; i < 4; i++)
+                    order.Add(new PdfPageRef { SourcePath = src, PageIndex = i });
+                PdfMergeService.Merge(order, merged);
+                AssertEqual("Глава А,0;Раздел А.1,1;Глава Б,2", ReadMarks(merged), "объединение сохранило оглавление");
+
+                // 2. Страницы переставлены задом наперёд — закладки обязаны переехать за ними.
+                string reversed = Path.Combine(dir, "наоборот.pdf");
+                var back = new List<PdfPageRef>();
+                for (int i = 3; i >= 0; i--)
+                    back.Add(new PdfPageRef { SourcePath = src, PageIndex = i });
+                PdfMergeService.Merge(back, reversed);
+                AssertEqual("Глава А,3;Раздел А.1,2;Глава Б,1", ReadMarks(reversed),
+                    "закладки указывают на новые места своих страниц");
+
+                // 3. Часть страниц выброшена — закладка выпавшей страницы уходит, прочие живут.
+                string subset = Path.Combine(dir, "подмножество.pdf");
+                PdfSplitService.Extract(src, new List<int> { 0, 2 }, subset);
+                AssertEqual("Глава А,0;Глава Б,1", ReadMarks(subset), "осталось оглавление уцелевших страниц");
+
+                // 4. Разделение по диапазонам идёт другим путём в коде — проверяем и его.
+                List<string> parts = PdfSplitService.SplitByRanges(src,
+                    new List<PageRange> { new PageRange(0, 1), new PageRange(2, 3) }, dir, "часть");
+                AssertEqual(2, parts.Count, "две части");
+                AssertEqual("Глава А,0;Раздел А.1,1", ReadMarks(parts[0]), "оглавление первой части");
+                AssertEqual("Глава Б,0", ReadMarks(parts[1]), "оглавление второй части");
+
+                // 5. Два источника подряд — оглавления идут одно за другим со сдвигом.
+                string twice = Path.Combine(dir, "дважды.pdf");
+                var both = new List<PdfPageRef>();
+                for (int i = 0; i < 4; i++) both.Add(new PdfPageRef { SourcePath = src, PageIndex = i });
+                string second = Path.Combine(dir, "второй.pdf");
+                MakeBookmarkedPdf(second);
+                for (int i = 0; i < 4; i++) both.Add(new PdfPageRef { SourcePath = second, PageIndex = i });
+                PdfMergeService.Merge(both, twice);
+                AssertEqual("Глава А,0;Раздел А.1,1;Глава Б,2;Глава А,4;Раздел А.1,5;Глава Б,6",
+                    ReadMarks(twice), "оглавления обоих файлов, второе со сдвигом");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        /// <summary>Четыре страницы, две закладки верхнего уровня и одна вложенная.</summary>
+        private static void MakeBookmarkedPdf(string path)
+        {
+            using (var doc = new PdfDocument())
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    PdfSharp.Pdf.PdfPage page = doc.AddPage();
+                    using (XGraphics g = XGraphics.FromPdfPage(page))
+                        g.DrawString("Страница " + (i + 1), new XFont("Times New Roman", 14),
+                            XBrushes.Black, new XPoint(50, 100));
+                }
+                PdfSharp.Pdf.PdfOutline chapter = doc.Outlines.Add("Глава А", doc.Pages[0], true);
+                chapter.Outlines.Add("Раздел А.1", doc.Pages[1], true);
+                doc.Outlines.Add("Глава Б", doc.Pages[2], true);
+                doc.Save(path);
+            }
+        }
+
+        /// <summary>Оглавление файла в виде «заголовок,страница» — плоско, в порядке обхода.</summary>
+        private static string ReadMarks(string path)
+        {
+            using (PdfDocument doc = PdfReader.Open(path, PdfDocumentOpenMode.Import))
+                return Describe(PdfBookmarks.Read(doc));
         }
 
         // ---------- Проверка результата прогона Ghostscript ----------

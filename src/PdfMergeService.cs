@@ -123,6 +123,12 @@ namespace ExcelMerger
                     padAfter.Add(at);
             // Каждый источник открывается один раз, сколько бы страниц из него ни брали.
             var sources = new Dictionary<string, PdfDocument>(StringComparer.OrdinalIgnoreCase);
+            // Куда переехала каждая взятая страница — отдельно по каждому источнику, плюс
+            // порядок первого появления источников: по этому и переносится оглавление.
+            // Страница, взятая дважды, ведёт на ПЕРВОЕ вхождение — закладка должна вести
+            // в начало раздела, а не в его повтор.
+            var movedBySource = new Dictionary<string, Dictionary<int, int>>(StringComparer.OrdinalIgnoreCase);
+            var sourceOrder = new List<string>();
             PdfDocument output = null;
             try
             {
@@ -145,10 +151,15 @@ namespace ExcelMerger
                             throw new MergeException(string.Format(Loc.T("err.pdf.cantOpenShort"), page.FileName, ex.Message));
                         }
                         sources.Add(key, source);
+                        movedBySource.Add(key, new Dictionary<int, int>());
+                        sourceOrder.Add(key);
                     }
                     if (page.PageIndex < 0 || page.PageIndex >= source.PageCount)
                         throw new MergeException(string.Format(Loc.T("err.pdf.pageGone"), page.FileName, page.PageIndex + 1));
                     PdfPage copied = output.AddPage(source.Pages[page.PageIndex]);
+                    Dictionary<int, int> moved = movedBySource[key];
+                    if (!moved.ContainsKey(page.PageIndex))          // только первое вхождение
+                        moved[page.PageIndex] = output.PageCount - 1;
                     if (page.Rotation != 0) // поворот пользователя поверх собственного /Rotate страницы
                         copied.Rotate = PdfPageRef.ComposeRotation(copied.Rotate, page.Rotation);
                     // Пустая страница ПОСЛЕ документа с нечётным числом страниц: размер берём
@@ -163,6 +174,14 @@ namespace ExcelMerger
                     if (progress != null)
                         progress(added, order.Count);
                 }
+
+                // Оглавление переносим ПОСЛЕ всех страниц: закладке нужна страница результата,
+                // а она существует только когда собран весь документ. Источники идут в порядке
+                // первого появления — «содержание первого файла, затем второго».
+                var bookmarks = new List<PdfBookmark>();
+                foreach (string key in sourceOrder)
+                    bookmarks.AddRange(PdfBookmarks.Remap(PdfBookmarks.Read(sources[key]), movedBySource[key]));
+                PdfBookmarks.Write(output, bookmarks);
 
                 try
                 {
