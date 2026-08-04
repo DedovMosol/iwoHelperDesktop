@@ -3,7 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
-## [Unreleased] — 1.18.3
+## [1.18.3] — 2026-08-04
 
 ### Added
 - **PDF operations from the command line.** Merge, extract, split (by ranges, every N, or

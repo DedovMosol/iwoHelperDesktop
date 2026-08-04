@@ -73,6 +73,9 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 - 📘 **User guide inside the program** — **About → “User guide: open”** unpacks the document from the `.exe` and opens it. No internet needed, the portable build has it too.
 - 🔄 **Update check & statistics** — compares with GitHub Releases and, if a newer version exists, offers to open the release page in your browser (it downloads and installs nothing). It also runs once at startup, in the background and silently: it speaks up only when there is a newer version, and that notice carries a “Don't remind me about this version” box. Plus local operation counters you can clear.
 - 🪟 **One window set, one process** — tools open as independent windows that outlive the start screen, and launching the app again just brings the running one back instead of starting a second copy.
+- 🔑 **Password-protected PDFs** — open with a prompt that names the file; the password stays in memory only and is never written anywhere.
+- ⌨️ **Command line for PDF** — merge, extract, split, compress, grayscale, repair, pages to images and text to a file, over the same code the buttons use (`--help` lists them).
+- 🔖 **Bookmarks survive** merging and splitting, following their pages to wherever they end up.
 - 🔒 **Safe by design** — no network, no admin, not packed or obfuscated, and writes only to folders you choose and `%APPDATA%`.
 
 ## 📸 Screenshots
@@ -88,13 +91,13 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 
 | Windows | Download |
 |----|----------|
-| **64‑bit** — Windows 8.1 / 10 / 11 *(most PCs)* | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.2/iwoHelperDesktop-setup-1.18.2.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.2/iwoHelperDesktop-1.18.2.exe) |
-| **32‑bit** — 32‑bit editions of Windows 8.1 / 10 | [![Installer](https://img.shields.io/badge/Installer-x86-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.2/iwoHelperDesktop-setup-1.18.2-x86.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x86-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.2/iwoHelperDesktop-1.18.2-x86.exe) |
+| **64‑bit** — Windows 8.1 / 10 / 11 *(most PCs)* | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.3/iwoHelperDesktop-setup-1.18.3.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.3/iwoHelperDesktop-1.18.3.exe) |
+| **32‑bit** — 32‑bit editions of Windows 8.1 / 10 | [![Installer](https://img.shields.io/badge/Installer-x86-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.3/iwoHelperDesktop-setup-1.18.3-x86.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x86-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.3/iwoHelperDesktop-1.18.3-x86.exe) |
 
-*The buttons download the current release (**v1.18.2**) directly, each file name carries its version. The newest build and the full file list are always on the [releases page](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest).*
+*The buttons download the current release (**v1.18.3**) directly, each file name carries its version. The newest build and the full file list are always on the [releases page](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest).*
 
 - **Installer** *(recommended)* — bundles Ghostscript of the matching bitness, so PDF compression works out of the box. Installs **per‑user without admin** by default (choose “for all users” for a machine‑wide install).
-- **Portable** — a single `iwoHelperDesktop-1.18.2.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
+- **Portable** — a single `iwoHelperDesktop-1.18.3.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
 - The x64 and x86 packages are functionally identical — take **x64** unless your Windows is 32‑bit.
 
 > Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split, Compression and PDF → PowerPoint** need no Office at all.
