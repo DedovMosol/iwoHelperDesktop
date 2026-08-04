@@ -3,6 +3,19 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [Unreleased] — 1.18.3
+
+### Fixed
+- **Merging and splitting silently dropped the table of contents.** Pages were copied one by
+  one, and the bookmarks stayed behind in the source: a four-page document with three
+  bookmarks came out of a merge with none, and out of a split with none. The file opened,
+  looked intact, and had lost its navigation — the worst kind of data loss, because nothing
+  reports it. Bookmarks are now carried across in all five paths (merge, extract, by ranges,
+  every N, by bookmarks), pointing at wherever their page ended up: reverse the page order
+  and the contents follow. A bookmark whose page did not make it into the result is dropped,
+  but its children are lifted to the freed level rather than vanishing with it — removing one
+  section must not take half the contents with it.
+
 ## [1.18.2] — 2026-08-03
 
 ### Added

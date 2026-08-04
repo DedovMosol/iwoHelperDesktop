@@ -175,6 +175,10 @@ namespace ExcelMerger
                     if (extra != 0) // поворот пользователя поверх собственного /Rotate страницы
                         copied.Rotate = PdfPageRef.ComposeRotation(copied.Rotate, extra);
                 }
+                // Оглавление части: закладки уцелевших страниц с их новыми номерами. Раздел,
+                // не попавший в эту часть, отпадает — вести в отсутствующую страницу нельзя.
+                PdfBookmarks.Write(outDoc,
+                    PdfBookmarks.Remap(PdfBookmarks.Read(source), PdfBookmarks.RangeMap(r.Start, r.End)));
                 try
                 {
                     outDoc.Save(path);
