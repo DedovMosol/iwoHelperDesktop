@@ -44,7 +44,7 @@ namespace ExcelMerger
         {
             try
             {
-                using (PdfDocument doc = PdfReader.Open(path, PdfDocumentOpenMode.InformationOnly))
+                using (PdfDocument doc = PdfReader.Open(path, PdfPasswords.For(path), PdfDocumentOpenMode.InformationOnly))
                     return new PdfMetadata
                     {
                         Title = doc.Info.Title ?? "",
@@ -64,7 +64,7 @@ namespace ExcelMerger
         {
             try
             {
-                using (PdfDocument doc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Modify))
+                using (PdfDocument doc = PdfReader.Open(sourcePath, PdfPasswords.For(sourcePath), PdfDocumentOpenMode.Modify))
                 {
                     doc.Info.Title = meta.Title ?? "";
                     doc.Info.Author = meta.Author ?? "";

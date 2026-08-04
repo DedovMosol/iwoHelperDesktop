@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -338,6 +339,41 @@ namespace ExcelMerger
         {
             _loading = false;
             SyncControls();
+        }
+
+        /// <summary>
+        /// Спросить пароли к файлам, которые без них не открылись, и вернуть те, что стоит
+        /// попробовать заново. Отказ по файлу превращается в строку для общего списка ошибок,
+        /// так что человек в итоге видит, что именно не добавилось и почему.
+        ///
+        /// Спрашиваем по одному файлу за раз и называем его по имени: пакет из нескольких
+        /// защищённых документов иначе превращается в череду одинаковых окон, про которые
+        /// непонятно, к чему они относятся. Пароль, введённый однажды, оседает в реестре на
+        /// весь сеанс — повторно тот же файл ни о чём не спросит.
+        ///
+        /// Только UI-поток: показывает модальные окна.
+        /// </summary>
+        protected List<string> AskPasswords(IList<string> locked, IList<string> alreadyTried, IList<string> errors)
+        {
+            var retry = new List<string>();
+            if (locked == null)
+                return retry;
+            foreach (string path in locked)
+            {
+                bool again = alreadyTried != null && alreadyTried.Contains(path);
+                string password = PasswordPromptDialog.Show(this, Path.GetFileName(path), again);
+                if (string.IsNullOrEmpty(password))
+                {
+                    // Отказались — файл не добавляем и говорим об этом прямо, а не молчим.
+                    if (errors != null)
+                        errors.Add(string.Format(Loc.T("err.pdf.passwordSkipped"), Path.GetFileName(path)));
+                    PdfPasswords.Remember(path, null); // неподошедший пароль хранить незачем
+                    continue;
+                }
+                PdfPasswords.Remember(path, password);
+                retry.Add(path);
+            }
+            return retry;
         }
 
         /// <summary>

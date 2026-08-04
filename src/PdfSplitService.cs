@@ -195,7 +195,7 @@ namespace ExcelMerger
         {
             try
             {
-                return PdfReader.Open(path, PdfDocumentOpenMode.Import);
+                return PdfReader.Open(path, PdfPasswords.For(path), PdfDocumentOpenMode.Import);
             }
             catch (Exception ex) when (MergeException.ShouldWrap(ex))
             {

@@ -84,7 +84,7 @@ namespace ExcelMerger
         {
             try
             {
-                using (UglyToad.PdfPig.PdfDocument doc = UglyToad.PdfPig.PdfDocument.Open(path))
+                using (UglyToad.PdfPig.PdfDocument doc = PdfPageProbe.OpenPig(path))
                 {
                     foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
                         if (page.Letters != null && page.Letters.Count > 0)
@@ -101,7 +101,7 @@ namespace ExcelMerger
         {
             try
             {
-                using (UglyToad.PdfPig.PdfDocument doc = UglyToad.PdfPig.PdfDocument.Open(path))
+                using (UglyToad.PdfPig.PdfDocument doc = PdfPageProbe.OpenPig(path))
                 {
                     var pages = new List<PdfPageText>();
                     int pageCount = doc.NumberOfPages;

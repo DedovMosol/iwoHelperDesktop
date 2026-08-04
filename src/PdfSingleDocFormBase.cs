@@ -106,18 +106,53 @@ namespace ExcelMerger
                 return; // человек не согласился потерять собранное — прежний набор цел
             if (!BeginLoad(Loc.T("common.status.loading")))
                 return; // защёлка на случай гонки: решение всё равно за BeginLoad
+            LoadSourcePass(path, false);
+        }
+
+        /// <summary>
+        /// Один заход открытия документа. Защищённый файл не ошибка, а вопрос: спрашиваем
+        /// пароль и заходим ещё раз (retry — прошлый пароль не подошёл, скажем об этом).
+        /// Отказ от ввода завершает круг обычным сообщением «файл не открыт».
+        /// </summary>
+        private void LoadSourcePass(string path, bool retry)
+        {
             Ui.RunWorker(delegate()
             {
                 int count = 0;
                 string error = null;
+                bool locked = false;
                 // Ловим ШИРОКО: битый, занятый или аварийный файл (в том числе редкий OOM,
                 // который LoadPages НЕ оборачивает) не должен ронять фоновый поток — только диалог.
                 try { count = PdfMergeService.LoadPages(path).Count; }
-                catch (MergeException ex) { error = ex.Message; }
-                catch (Exception ex) { error = string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message); }
+                catch (Exception ex)
+                {
+                    if (PdfPasswords.LooksPasswordProtected(ex))
+                        locked = true;
+                    else if (ex is MergeException)
+                        error = ex.Message;
+                    else
+                        error = string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message);
+                }
                 int pages = count;
                 string err = error;
-                OnUi(delegate { ApplyLoadedSource(path, pages, err); });
+                bool needPassword = locked;
+                OnUi(delegate
+                {
+                    if (needPassword)
+                    {
+                        var errors = new List<string>();
+                        List<string> again = AskPasswords(new[] { path },
+                            retry ? new[] { path } : new string[0], errors);
+                        if (again.Count > 0)
+                        {
+                            LoadSourcePass(path, true); // пароль дали — пробуем ещё раз
+                            return;
+                        }
+                        ApplyLoadedSource(path, 0, errors.Count > 0 ? errors[0] : null);
+                        return;
+                    }
+                    ApplyLoadedSource(path, pages, err);
+                });
             });
         }
 

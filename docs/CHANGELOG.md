@@ -5,6 +5,18 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased] — 1.18.3
 
+### Added
+- **Password-protected PDFs open now.** Until this version such a file simply did not load —
+  the tool refused exactly when it was needed. The password is asked for in a dialog that
+  **names the file**, so a batch where only one document is protected makes it obvious which
+  one is being asked about. A wrong password asks again and says so. Cancelling skips that
+  file and the reason appears in the summary of what was not added — and the dialog warns
+  about this **before** you cancel, rather than putting a second window in the way
+  afterwards: ten protected files would otherwise mean twenty windows to close.
+  The password reaches everything that opens the file — pages, thumbnails, text, document
+  composition — through one registry, so it is entered once per file per session. **It never
+  touches the disk**: not the settings, not the reports, not the crash log.
+
 ### Fixed
 - **"The file is already optimized" was a lie for scans.** A four-page scan of 1.6 MB: no
   text at all, four images making up 99.8 % of the file. The "Very good" level leaves images

@@ -389,6 +389,10 @@ namespace ExcelMerger.Tests
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("Пароли: реестр помнит файл, а не написание пути", TestPasswordRegistry);
+            Run("Пароли: «нужен пароль» отличается от «файл битый»", TestPasswordDetection);
+            Run("Пароли: ширина окна по самой длинной строке подписи", TestPasswordDialogWidth);
+            Run("Пароли (живое): защищённый файл открывается и работает", TestPasswordLive);
             Run("Состав документа: когда советовать уровень с пересчётом картинок", TestContentProfileAdvice);
             Run("Состав документа (живой): доля изображений у скана и у текста", TestContentProfileLive);
             Run("Оглавление: пересчёт под новый состав страниц", TestBookmarksRemap);
@@ -9702,6 +9706,142 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfConvert.ShouldReplace(1000, 0), "пустой вывод оригинал не заменяет");
             // А у сжатия — строго меньше, иначе в нём нет смысла.
             AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Пароли к защищённым PDF ----------
+
+        /// <summary>
+        /// Реестр паролей: один на процесс, поэтому важно, что тот же файл под другим
+        /// написанием пути — это тот же файл, а очистка действительно очищает.
+        /// </summary>
+        private static void TestPasswordRegistry()
+        {
+            PdfPasswords.Clear();
+            try
+            {
+                string path = Path.Combine(Path.GetTempPath(), "пример.pdf");
+                AssertEqual(null, PdfPasswords.For(path), "пароля нет — null, а не пустая строка");
+                PdfPasswords.Remember(path, "тайна");
+                AssertEqual("тайна", PdfPasswords.For(path), "запомнили и достали");
+                AssertEqual("тайна", PdfPasswords.For(path.ToUpperInvariant()),
+                    "регистр пути не делает файл другим");
+                AssertEqual("тайна", PdfPasswords.For(Path.Combine(Path.GetTempPath(), ".", "пример.pdf")),
+                    "другое написание того же пути — тот же файл");
+                PdfPasswords.Remember(path, null);
+                AssertEqual(null, PdfPasswords.For(path), "пустой пароль стирает запись");
+                PdfPasswords.Remember(path, "снова");
+                PdfPasswords.Clear();
+                AssertEqual(null, PdfPasswords.For(path), "очистка убирает всё");
+                AssertEqual(null, PdfPasswords.For(null), "пустой путь не роняет реестр");
+                PdfPasswords.Remember(null, "x");   // не должно бросать
+            }
+            finally { PdfPasswords.Clear(); }
+        }
+
+        /// <summary>
+        /// Отличить «нужен пароль» от «файл битый». Ошибиться в эту сторону не страшно —
+        /// лишний вопрос человек закроет; страшно обратное: молчаливый отказ на защищённом
+        /// файле выглядит поломкой программы. Фразы взяты у самих библиотек.
+        /// </summary>
+        private static void TestPasswordDetection()
+        {
+            AssertTrue(PdfPasswords.LooksPasswordProtected(
+                new Exception("A password is required to open the PDF document.")),
+                "PdfSharp: нужен пароль");
+            AssertTrue(PdfPasswords.LooksPasswordProtected(
+                new Exception("The specified password is invalid.")),
+                "PdfSharp: пароль неверен — тоже повод спросить");
+            AssertTrue(PdfPasswords.LooksPasswordProtected(
+                new PdfDocumentEncryptedLookalike("документ зашифрован")),
+                "PdfPig: тип исключения говорит сам за себя");
+            AssertTrue(PdfPasswords.LooksPasswordProtected(
+                new Exception("внешняя", new Exception("password required"))),
+                "причина во вложенном исключении тоже считается");
+            AssertTrue(!PdfPasswords.LooksPasswordProtected(new Exception("Unexpected token in xref table")),
+                "битый файл — не повод спрашивать пароль");
+            AssertTrue(!PdfPasswords.LooksPasswordProtected(null), "исключения нет — и вопроса нет");
+        }
+
+        /// <summary>
+        /// Ширина окна пароля считается по самой длинной СТРОКЕ подписи: она многострочная
+        /// (имя файла и предупреждение об отказе), и мерка целиком растянула бы окно на весь
+        /// экран — ровно та ошибка, из-за которой примечание «бета» когда-то обрезалось.
+        /// </summary>
+        private static void TestPasswordDialogWidth()
+        {
+            using (var font = new System.Drawing.Font("Segoe UI", 9f))
+            {
+                int oneLine = PasswordPromptDialog.WidestLine("Короткая строка", font);
+                int twoLines = PasswordPromptDialog.WidestLine("Короткая строка\nЕщё одна короткая", font);
+                AssertTrue(twoLines > 0, "ширина считается");
+                AssertTrue(twoLines < oneLine * 2, "строки не складываются в одну длину");
+                int longer = PasswordPromptDialog.WidestLine(
+                    "коротко\nсамая длинная строка подписи в этом окне", font);
+                AssertTrue(longer > oneLine, "берётся именно самая длинная строка");
+                AssertEqual(PasswordPromptDialog.WidestLine("строка\r\nдругая", font),
+                    PasswordPromptDialog.WidestLine("строка\nдругая", font),
+                    "перевод строки в двух видах даёт одно и то же");
+                AssertEqual(0, PasswordPromptDialog.WidestLine("", font), "пустая подпись — нулевая ширина");
+                AssertEqual(0, PasswordPromptDialog.WidestLine("текст", null), "без шрифта мерить нечем");
+            }
+        }
+
+        /// <summary>Имитация типа PdfPig: опознаём шифрование в том числе по имени типа.</summary>
+        private sealed class PdfDocumentEncryptedLookalike : Exception
+        {
+            public PdfDocumentEncryptedLookalike(string message) : base(message) { }
+        }
+
+        /// <summary>
+        /// ЖИВАЯ сквозная проверка: защищённый файл без пароля не открывается ни одним из
+        /// наших путей, а с паролем — открывается всеми. До 1.18.3 такой документ нельзя было
+        /// даже показать в сетке: инструмент отказывал ровно тогда, когда был нужен.
+        /// </summary>
+        private static void TestPasswordLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerPwd_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            PdfPasswords.Clear();
+            try
+            {
+                string locked = Path.Combine(dir, "под паролем.pdf");
+                MakeProtectedPdf(locked);   // пароль «1234»
+
+                // 1. Без пароля — отказ, и он опознаётся именно как «нужен пароль».
+                Exception denied = null;
+                try { PdfMergeService.LoadPages(locked); }
+                catch (Exception ex) { denied = ex; }
+                AssertTrue(denied != null, "без пароля файл не открывается");
+                AssertTrue(PdfPasswords.LooksPasswordProtected(denied),
+                    "и отказ опознан как парольный: " + denied.Message);
+                AssertEqual(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(locked),
+                    "PdfPig без пароля тоже не читает");
+
+                // 2. С паролем открываются все пути: страницы, счётчик, состав.
+                PdfPasswords.Remember(locked, "1234");
+                AssertEqual(1, PdfMergeService.LoadPages(locked).Count, "PdfSharp читает с паролем");
+                AssertEqual(1, PdfPageProbe.PageCount(locked), "PdfPig читает с паролем");
+                AssertTrue(PdfContentProfile.ImageShare(locked) >= 0, "состав документа тоже читается");
+
+                // 3. Полезная работа: страницы защищённого файла собираются в новый документ.
+                string result = Path.Combine(dir, "итог.pdf");
+                PdfMergeService.Merge(new List<PdfPageRef> {
+                    new PdfPageRef { SourcePath = locked, PageIndex = 0 } }, result);
+                AssertEqual(1, PdfPageProbe.PageCount(result), "результат собран и открывается без пароля");
+
+                // 4. Неверный пароль — снова отказ, и снова опознанный как парольный.
+                PdfPasswords.Remember(locked, "не тот");
+                Exception wrong = null;
+                try { PdfMergeService.LoadPages(locked); }
+                catch (Exception ex) { wrong = ex; }
+                AssertTrue(wrong != null && PdfPasswords.LooksPasswordProtected(wrong),
+                    "неверный пароль — повод спросить ещё раз");
+            }
+            finally
+            {
+                PdfPasswords.Clear();
+                try { Directory.Delete(dir, true); } catch { }
+            }
         }
 
         // ---------- Состав документа (почему не сжалось) ----------
