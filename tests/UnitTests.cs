@@ -389,6 +389,7 @@ namespace ExcelMerger.Tests
             Run("Нехватка места названа диском и остатком", TestDiskFullMessage);
             Run("Страницы без текста названы в результате", TestConvertDoneStatus);
             Run("Разделение (живое): отмена на сжатии не оставляет частей", TestSplitCancelDuringCompressionLive);
+            Run("Недавние файлы: свежие, без повторов и без исчезнувших", TestRecentFiles);
             Run("Пустая страница: формат берётся у соседа", TestBlankSheetSize);
             Run("Пустая страница (живая): обёртка нужного размера собирается в документ", TestBlankSheetLive);
             Run("Печать: предпросмотр рисует ограниченное число листов", TestPrintPreviewPageLimit);
@@ -9713,6 +9714,45 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfConvert.ShouldReplace(1000, 0), "пустой вывод оригинал не заменяет");
             // А у сжатия — строго меньше, иначе в нём нет смысла.
             AssertTrue(!PdfCompression.ShouldReplace(1000, 1200), "сжатие не применяется, если файл вырос");
+        }
+
+        // ---------- Недавние файлы ----------
+
+        /// <summary>
+        /// Список быстрого доступа: от новых к старым, без повторов и без исчезнувших файлов.
+        /// Половина списка, которая не открывается, хуже отсутствия списка, поэтому проверка
+        /// существования — часть правила, а не украшение.
+        /// </summary>
+        private static void TestRecentFiles()
+        {
+            var data = new OperationHistory.Data();
+            data.Entries.Add(new HistoryEntry { Path = @"C:\нет\старый.pdf" });
+            data.Entries.Add(new HistoryEntry { Path = @"C:\есть\первый.pdf" });
+            data.Entries.Add(new HistoryEntry { Path = @"C:\есть\второй.pdf" });
+            data.Entries.Add(new HistoryEntry { Path = @"C:\есть\первый.pdf" }); // тот же файл ещё раз
+            Func<string, bool> exists = delegate(string p) { return p.StartsWith(@"C:\есть"); };
+
+            List<string> recent = OperationHistory.RecentFiles(data, 5, exists);
+            AssertEqual(2, recent.Count, "исчезнувший файл в список не попал");
+            AssertEqual(@"C:\есть\первый.pdf", recent[0], "самый свежий — первым, и без повтора");
+            AssertEqual(@"C:\есть\второй.pdf", recent[1], "затем предыдущий");
+
+            AssertEqual(1, OperationHistory.RecentFiles(data, 1, exists).Count, "предел соблюдается");
+            AssertEqual(0, OperationHistory.RecentFiles(data, 0, exists).Count, "нулевой предел — пустой список");
+            AssertEqual(0, OperationHistory.RecentFiles(null, 3, exists).Count, "истории нет — списка нет");
+            AssertEqual(0, OperationHistory.RecentFiles(data, 3, null).Count, "нечем проверить — не показываем");
+            AssertEqual(0, OperationHistory.RecentFiles(new OperationHistory.Data(), 3, exists).Count,
+                "пустая история — пустой список");
+
+            // Записи без пути и бросающая проверка не должны ронять стартовый экран.
+            var messy = new OperationHistory.Data();
+            messy.Entries.Add(null);
+            messy.Entries.Add(new HistoryEntry { Path = null });
+            messy.Entries.Add(new HistoryEntry { Path = @"C:\есть\целый.pdf" });
+            AssertEqual(1, OperationHistory.RecentFiles(messy, 3, exists).Count, "мусорные записи пропущены");
+            AssertEqual(0, OperationHistory.RecentFiles(messy, 3,
+                delegate { throw new UnauthorizedAccessException("нет доступа"); }).Count,
+                "недоступный путь считается исчезнувшим, а не поводом упасть");
         }
 
         // ---------- Пустая страница ----------

@@ -303,5 +303,33 @@ namespace ExcelMerger
         public static void SetAutoClear(int days) { Mutate(delegate(Data d) { d.AutoClearDays = days; }); }
 
         public static void Clear() { Mutate(delegate(Data d) { d.Entries.Clear(); }); }
+
+        /// <summary>
+        /// Последние результаты, к которым имеет смысл вернуться: от новых к старым, без
+        /// повторов и без того, чего на диске уже нет. Проверка существования приходит
+        /// параметром — так правило проверяется тестом, не заводя настоящих файлов.
+        ///
+        /// Показывать путь к исчезнувшему файлу нельзя: список быстрого доступа, половина
+        /// которого не открывается, хуже отсутствия списка. Чистая — под тест.
+        /// </summary>
+        public static List<string> RecentFiles(Data data, int max, Func<string, bool> exists)
+        {
+            var result = new List<string>();
+            if (data == null || max <= 0 || exists == null)
+                return result;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = data.Entries.Count - 1; i >= 0 && result.Count < max; i--)
+            {
+                HistoryEntry entry = data.Entries[i];
+                if (entry == null || string.IsNullOrEmpty(entry.Path) || !seen.Add(entry.Path))
+                    continue;
+                bool alive;
+                try { alive = exists(entry.Path); }
+                catch { alive = false; }
+                if (alive)
+                    result.Add(entry.Path);
+            }
+            return result;
+        }
     }
 }
