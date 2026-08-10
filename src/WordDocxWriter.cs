@@ -231,6 +231,18 @@ namespace ExcelMerger
         private const int WdWord10ListBehavior = 2;
 
         /// <summary>
+        /// 0-базный уровень вложенности списка (0..8) в 1-базный индекс Word (1..9), с клампом.
+        /// Шаред с OcrLayout через ListNesting.MaxLevel — кламп чистый и под тест.
+        /// </summary>
+        internal static int WordListLevel(int level)
+        {
+            int word = level + 1;
+            if (word < 1) return 1;
+            if (word > ListNesting.MaxLevel + 1) return ListNesting.MaxLevel + 1;
+            return word;
+        }
+
+        /// <summary>
         /// Применить нативный список к текущему абзацу.
         ///  • Нумерованный — продолжаем ту же нумерацию, если номер ровно на 1 больше предыдущего
         ///    нумерованного пункта, ДАЖЕ если между ними были обычные абзацы (пункт с вложенным
@@ -262,13 +274,15 @@ namespace ExcelMerger
             bool applied = false;
             try
             {
-                sel.Range.ListFormat.ApplyListTemplateWithLevel(tmpl, continuePrev, WdListApplyToWholeList, WdWord10ListBehavior, 1);
+                int wordLevel = WordListLevel(p.ListLevel);
+
+                sel.Range.ListFormat.ApplyListTemplateWithLevel(tmpl, continuePrev, WdListApplyToWholeList, WdWord10ListBehavior, wordLevel);
                 // Список, начинающийся НЕ с «1.» («5. 6. 7.» — продолжение из другого
                 // документа): Word при рестарте всегда нумерует с единицы, поэтому стартовый
                 // номер задаётся явно. Правится шаблон ПРИМЕНЁННОГО списка (его копия в
                 // документе), а не галерея пользователя.
                 if (!continuePrev && p.ListKind == ListKind.Numbered && p.ListNumber > 1)
-                    try { sel.Range.ListFormat.ListTemplate.ListLevels.Item(1).StartAt = p.ListNumber; }
+                    try { sel.Range.ListFormat.ListTemplate.ListLevels.Item(wordLevel).StartAt = p.ListNumber; }
                     catch { } // не удалось задать старт — список остаётся с «1.», текст цел
                 applied = true;
             }

@@ -228,7 +228,7 @@ on the header while building would put it *first* and land the focus on “Home�
 | `NameTemplate.cs`, `OutputFile.cs` | Output names: pure token substitution (`[BASENAME]`, `[FILENUMBER###10]`, …) and the one place that picks a free file name. |
 | `PreviewZoom.cs` | Pure zoom and pan maths of the full-size preview: the step ladder, fit-to-window, the scroll offset that keeps the point under the cursor in place, and when a click closes the window. |
 | `BlankPages.cs` | Blank sheets: which positions need one when padding to even for duplex (pure), and writing a one-page sheet that enters the grid the way an image does — a wrapper file in the window's temporary folder, an ordinary page from there on. The sheet takes the format of its neighbour: a different size mid-document reads as a mistake. |
-| `PdfDrop.cs`, `PageRanges.cs`, `PdfProbe.cs` | Drag-and-drop extraction (PDF everywhere, PDF **and images** in More operations), `1,3-5`-style range parsing, a tiny generated PDF for self-checks. |
+| `PdfDrop.cs`, `PageRanges.cs`, `PageRangePresets.cs`, `PdfProbe.cs` | Drag-and-drop extraction (PDF everywhere, PDF **and images** in More operations), `1,3-5`-style range parsing, the generators behind the Split dropdown's ready-made ranges (all / odd / even / every N, plus the label shortening for a long list), a tiny generated PDF for self-checks. A generator returning an empty string means "no such pages in this document", and the form then does not offer that choice at all — every offered range has to parse. |
 | `ImageToPdfService.cs` | A picture becomes pages: every frame (a multi-page TIFF has several) lands on an A4 sheet with 1 cm margins, fitted whole and centred, the sheet taking the orientation of the image. Holds the format traps in one place — EXIF orientation (GDI+ does **not** apply it), transparency flattened onto white, the file read **through memory** so it is not left mapped, and a JPEG carried through **as it is** instead of re-encoded. |
 
 ### PDF Merge and Split
@@ -238,6 +238,20 @@ on the header while building would put it *first* and land the focus on “Home�
 top-level bookmarks). Both compress optionally and never modify the source. Both are
 cancellable during page assembly (the page count drives the ≥ 5 threshold), the optional
 Ghostscript compression that follows runs past the point of no return and is not interrupted.
+
+**PdfOpsForm design rationale (858 lines):**  
+More operations form hosts 11 buttons for 7-8 distinct operations. Size is justified by:
+- Grid management (drag, selection, rotation, zoom) inherited from base
+- 7 operation handlers with async workers, progress, error handling
+- Image-to-PDF conversion (`ImageToPdfService` wrapper per window)
+- Menu for DPI selection (4 choices)
+
+**Why no Command Pattern / Strategy / abstraction?**  
+Alternative architecture (interface per operation, factory, registry) would split 858 lines into 15+ files with boilerplate. Trade-offs:
+- **Current (single file):** Easy to understand, all logic visible, grep-friendly. New operation = 1 method + 1 button.
+- **Abstracted (15 files):** Testable in isolation, extensible via plugins. Overkill for 7 operations that change once per year.
+
+Verdict: YAGNI. Operations are stable, plugin system not needed. Current design chosen deliberately for simplicity.
 
 ### PDF → Word pipeline
 
@@ -252,6 +266,7 @@ Ghostscript compression that follows runs past the point of no return and is not
 | `TableDetector.cs` | Ruled tables: connected ruling components on a spatial grid, ≥2×2 cell lattice, colspan/rowspan from missing borders, per-cell text. Also turns lone rules into `____` placeholders and feeds `UnderlineDetector`. |
 | `GridDetector.cs` | Unruled label/value grids (receipt-style forms) → borderless tables with kept row spacing. |
 | `StampDetector.cs`, `ListMarker.cs`, `UnderlineDetector.cs`, `GlyphDedup.cs`, `FontNames.cs`, `MathUtil.cs`, `OcrTable.cs`, `PdfLine.cs` | Focused helpers: stamp region, list-marker recognition, underline mapping, glyph dedup, font-name normalization, medians, table/line models. |
+| `ListNesting.cs` | Nesting level of a list item from its left edge, as a **stack of open indents** — the same trick used to parse indentation-based syntax. A level is therefore the *depth* of an indent, not the ordinal of a newly seen edge: an item indented between two known levels returns to the matching one instead of claiming to be deeper than all of them, and returning to an outer indent closes the inner levels by itself (so a second list does not inherit the depth of the first, and no separate reset is needed). A step under `MinNestStepPt` (12 pt, against Word's 18 pt list step) counts as the same level, which is what keeps a flat list with a ragged left edge from being emitted as spurious nesting. One instance per layout region; `WordDocxWriter.WordListLevel` maps 0-based depth onto Word's 1-based levels with the clamp. |
 | `WordDocxWriter.cs` | Writes the `.docx` through Word COM: a section per PDF page (size, orientation, margins), zeroed Normal style, `OrderTree`-driven side-by-side bands and `CoalesceRowBands` as borderless tables, native Word lists (start value set on the document's own list template), fonts normalized with an installed-font fallback to Times New Roman (keeps Cyrillic off the East-Asian justification path), source vertical rhythm with a `FitSpacingToPages` pagination guard. |
 
 ### PDF → PowerPoint pipeline

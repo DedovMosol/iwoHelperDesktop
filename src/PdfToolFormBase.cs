@@ -197,6 +197,18 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Изменить масштаб на один шаг (Ctrl+«+»/«−», v1.18.4). Шаг — общий с колесом:
+        /// клавиши и колесо должны двигать масштаб одинаково, иначе значения разъезжаются.
+        /// </summary>
+        private void StepZoom(int direction)
+        {
+            if (_zoom == null) return;
+            int newWidth = ThumbZoom.Clamp(_zoom.Value + direction * ThumbZoom.WheelStep);
+            if (newWidth != _zoom.Value)
+                _zoom.Value = newWidth; // ValueChanged → ScheduleZoom + SyncZoomInput
+        }
+
+        /// <summary>
         /// Enter в поле «%»: зафиксировать введённое значение немедленно. Чтение
         /// <c>NumericUpDown.Value</c> при незавершённом вводе само валидирует и клампит текст в
         /// [Min..Max] (и обновляет отображение к разрешённому значению — прямое присваивание
@@ -798,7 +810,8 @@ namespace ExcelMerger
         internal enum PageKeyAction
         {
             None, Remove, MoveEarlier, MoveLater, SelectAll, Swallow,
-            Cut, Copy, Paste, GoTo, RotateRight, RotateLeft, CancelClipboard, Undo, Redo
+            Cut, Copy, Paste, GoTo, RotateRight, RotateLeft, CancelClipboard, Undo, Redo,
+            FirstPage, LastPage, ZoomIn, ZoomOut
         }
 
         internal static PageKeyAction ClassifyPageKey(Keys keyData)
@@ -820,6 +833,14 @@ namespace ExcelMerger
                 keyData == (Keys.Control | Keys.Shift | Keys.Add)) return PageKeyAction.RotateRight;
             if (keyData == (Keys.Control | Keys.Shift | Keys.OemMinus) ||
                 keyData == (Keys.Control | Keys.Shift | Keys.Subtract)) return PageKeyAction.RotateLeft;
+            // Zoom как в браузерах: Ctrl+«+»/«−» БЕЗ Shift (v1.18.4).
+            if (keyData == (Keys.Control | Keys.Oemplus) ||
+                keyData == (Keys.Control | Keys.Add)) return PageKeyAction.ZoomIn;
+            if (keyData == (Keys.Control | Keys.OemMinus) ||
+                keyData == (Keys.Control | Keys.Subtract)) return PageKeyAction.ZoomOut;
+            // Навигация Home/End — первая/последняя страница (v1.18.4).
+            if (keyData == Keys.Home) return PageKeyAction.FirstPage;
+            if (keyData == Keys.End) return PageKeyAction.LastPage;
             if (keyData == Keys.Escape) return PageKeyAction.CancelClipboard;
             if (keyData == Keys.Enter) return PageKeyAction.Swallow;
             return PageKeyAction.None;
@@ -889,6 +910,18 @@ namespace ExcelMerger
                         break;
                     case PageKeyAction.RotateLeft:
                         if (_grid.AllowRotate) { _grid.RotateSelected(-90); return true; }
+                        break;
+                    case PageKeyAction.ZoomIn:
+                        StepZoom(+1);
+                        return true;
+                    case PageKeyAction.ZoomOut:
+                        StepZoom(-1);
+                        return true;
+                    case PageKeyAction.FirstPage:
+                        _grid.SelectIndex(0);
+                        return true;
+                    case PageKeyAction.LastPage:
+                        if (_grid.Count > 0) { _grid.SelectIndex(_grid.Count - 1); return true; }
                         break;
                     case PageKeyAction.CancelClipboard:
                         if (_grid.TryCancelCut()) return true; // иначе Esc идёт дальше (диалоги и т.п.)
@@ -1036,6 +1069,7 @@ namespace ExcelMerger
             sb.AppendLine(t("shortcuts.zoom"));
             sb.AppendLine(t("shortcuts.selectAll"));
             sb.AppendLine(t("shortcuts.goto"));
+            sb.AppendLine(t("shortcuts.homeEnd"));
             if (reorder)
             {
                 sb.AppendLine(t("shortcuts.move"));
@@ -1090,7 +1124,7 @@ namespace ExcelMerger
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (_busy)
+            if (Working) // _busy ИЛИ _loading: оба должны заблокировать закрытие
             {
                 SetStatus(BusyMessage, Theme.WarnOrange);
                 e.Cancel = true; // фоновая операция занимает секунды, иначе остался бы зомби-процесс

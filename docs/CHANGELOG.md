@@ -3,6 +3,21 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.18.4] — 2026-08-08
+
+### Changed
+- **More operations UI simplified with dropdown menus.** Operation buttons grouped behind two menus: "Convert..." (Save PDF, Compress, Grayscale, Repair) and "Extract..." (Pages to images with DPI submenu, Text to .txt). Print kept as separate button (frequent operation). Same functionality, less visual clutter (11 buttons → 5).
+- **Per-Monitor DPI v2 support added for Windows 10 1703+.** The application now declares `PerMonitorV2` DPI awareness in addition to the legacy `true` flag, providing better scaling behavior when moving windows between monitors with different DPI settings. Falls back gracefully on older Windows versions.
+- **Keyboard shortcuts enhanced for thumbnail zoom and navigation.** Added Ctrl+Plus/Minus for zooming thumbnails (complementing the existing Ctrl+scroll wheel), and Home/End keys to jump to the first/last page. These shortcuts work across all PDF tools (Merge, Split, PDF → Word, PDF → PowerPoint, More operations). The keyboard step is the same one the wheel uses, and the cheat sheet (**☰ Menu → Keyboard shortcuts**) now lists both.
+- **Page range input enhanced with presets in Split/Extract.** The page range text field is now a dropdown with common presets: "All pages", "Odd pages", "Even pages", "Every 2nd", "Every 3rd", plus custom input. Select a preset and the range string (e.g., "1,3,5,7,9") is filled in automatically, ready to edit or use as-is. A preset that would be empty for the open document — there are no even pages in a one-page file — is not offered at all, and a long list is shortened in the dropdown (`1,3,5,…,499`) while the full range is what actually gets used. Opening another document rebuilds the presets: a range typed by hand is kept, one filled in from a preset is not, since `1-10` from a ten-page file means nothing in a three-page one.
+
+### Added
+- **Nested list support in PDF → Word conversion.** Lists with indentation-based hierarchy (bullet and numbered lists at multiple levels) now preserve their nesting structure in the output Word document, up to Word's nine levels. Levels are tracked as a stack of open indents, so a level is the *depth* of an indent rather than the order in which edges were met: an item indented between two known levels returns to the matching one instead of claiming to be deeper than all of them, and coming back to an outer indent closes the inner levels by itself. An indent step under 12 pt counts as the same level, which keeps a flat list with a ragged left edge — continuation lines, slight jitter in the extracted coordinates — from being emitted as a spurious multi-level list. Previously, all lists were flattened to a single level.
+
+### Fixed
+- **A tool window could be closed while a PDF was still being parsed.** The guard checked only the "operation running" flag and missed the "document loading" one, so the window closed mid-parse and the background work then reached for controls that were already gone.
+- **Settings could lose a write when two windows were closed at once.** Saving a setting is a read-modify-write of a single file, and it now runs under the same named mutex the usage counters and the operation history already used.
+
 ## [1.18.3.1] — 2026-08-04
 
 ### Changed

@@ -250,6 +250,17 @@ namespace ExcelMerger.Tests
             Run("XyCut: этаж под колонками выводится после обеих колонок", TestXyCutFloorsThenColumns);
             Run("XyCut: широкий пробел одной строки («подпись … дата») — не колонки", TestXyCutGuardSingleLine);
             Run("XyCut: крошка рядом с существенной колонкой — режется (пометка)", TestXyCutGuardThinColumn);
+            Run("PageRangePresets.Odd: нечётные страницы", TestPageRangePresetsOdd);
+            Run("PageRangePresets.Even: чётные страницы", TestPageRangePresetsEven);
+            Run("PageRangePresets.EveryNth: каждая N-я страница", TestPageRangePresetsEveryNth);
+            Run("PageRangePresets.All: все страницы", TestPageRangePresetsAll);
+            Run("PageRangePresets.Shorten: длинный перечень сокращается", TestPageRangePresetsShorten);
+            Run("PageRangePresets round-trip: preset принимается PageRanges.Parse", TestPageRangePresetsRoundTrip);
+            Run("WordDocxWriter.WordListLevel: кламп уровней списка", TestWordListLevel);
+            Run("ListNesting: три уровня по отступам (0, 1, 2)", TestListNestingThreeLevels);
+            Run("ListNesting: возврат на уровень 0 после вложенного", TestListNestingReturnToRoot);
+            Run("ListNesting: раны края плоского списка остаются на уровне 0", TestListNestingRaggedFlat);
+            Run("ListNesting: корень сдвигается влево при общем отступе", TestListNestingRootShift);
             Run("OcrLayout: двухколоночная шапка — абзацы колонок не смешаны, левая раньше", TestOcrTwoColumnsSeparated);
             Run("OcrLayout: ячейка таблицы (splitColumns=false) — «метка … число» одной строкой", TestOcrCellNoColumns);
             Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
@@ -964,6 +975,72 @@ namespace ExcelMerger.Tests
             AssertEqual(PdfToolFormBase.PageKeyAction.SelectAll, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
             AssertEqual(PdfToolFormBase.PageKeyAction.Swallow, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Enter), "Enter — не сохранять");
             AssertEqual(PdfToolFormBase.PageKeyAction.None, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Left), "просто ← — навигация");
+            // v1.18.4: зум с клавиатуры и переход на первую/последнюю страницу.
+            var Shift = System.Windows.Forms.Keys.Shift;
+            AssertEqual(PdfToolFormBase.PageKeyAction.ZoomIn, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Oemplus), "Ctrl+« + » — крупнее");
+            AssertEqual(PdfToolFormBase.PageKeyAction.ZoomIn, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Add), "Ctrl+Num« + » — крупнее");
+            AssertEqual(PdfToolFormBase.PageKeyAction.ZoomOut, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.OemMinus), "Ctrl+« − » — мельче");
+            AssertEqual(PdfToolFormBase.PageKeyAction.ZoomOut, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Subtract), "Ctrl+Num« − » — мельче");
+            AssertEqual(PdfToolFormBase.PageKeyAction.FirstPage, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Home), "Home — первая страница");
+            AssertEqual(PdfToolFormBase.PageKeyAction.LastPage, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.End), "End — последняя страница");
+            // Порядок проверок нагружен: Ctrl+Shift+«+» это ПОВОРОТ, а не зум. Перестановка
+            // двух ветвей в ClassifyPageKey молча превратила бы поворот в масштабирование.
+            AssertEqual(PdfToolFormBase.PageKeyAction.RotateRight, PdfToolFormBase.ClassifyPageKey(Ctrl | Shift | System.Windows.Forms.Keys.Oemplus), "Ctrl+Shift+« + » — поворот, не зум");
+            AssertEqual(PdfToolFormBase.PageKeyAction.RotateLeft, PdfToolFormBase.ClassifyPageKey(Ctrl | Shift | System.Windows.Forms.Keys.OemMinus), "Ctrl+Shift+« − » — поворот, не зум");
+        }
+
+        private static void TestPageRangePresetsShorten()
+        {
+            // Короткая строка не трогается.
+            AssertEqual("1-10", PageRangePresets.Shorten("1-10"), "короткая строка как есть");
+            AssertEqual("", PageRangePresets.Shorten(""), "пустая строка");
+            AssertEqual("", PageRangePresets.Shorten(null), "null → пустая строка");
+
+            // Длинный перечень сокращается и не режет число посередине.
+            string odd = PageRangePresets.Odd(500);
+            string shortened = PageRangePresets.Shorten(odd);
+            AssertTrue(shortened.Length < odd.Length, "длинный перечень сокращён");
+            AssertTrue(shortened.Length <= PageRangePresets.MaxLabelLength + 4, "сокращённая подпись коротка");
+            AssertTrue(shortened.Contains("…"), "сокращение помечено многоточием");
+            AssertTrue(shortened.StartsWith("1,3,5"), "начало перечня сохранено");
+            AssertTrue(shortened.EndsWith("499"), "конец перечня сохранён целым числом");
+        }
+
+        private static void TestPageRangePresetsRoundTrip()
+        {
+            // Каждый непустой preset должен приниматься своим единственным потребителем —
+            // PageRanges.Parse. Пустой в список не попадает (см. PdfSplitForm.AddPresetIfValid).
+            for (int pageCount = 1; pageCount <= 12; pageCount++)
+            {
+                var specs = new List<string>
+                {
+                    PageRangePresets.All(pageCount),
+                    PageRangePresets.Odd(pageCount),
+                    PageRangePresets.Even(pageCount),
+                    PageRangePresets.EveryNth(pageCount, 2),
+                    PageRangePresets.EveryNth(pageCount, 3)
+                };
+                foreach (string spec in specs)
+                {
+                    if (string.IsNullOrEmpty(spec))
+                        continue; // такой preset в список не добавляется
+                    List<PageRange> parsed = PageRanges.Parse(spec, pageCount);
+                    AssertTrue(parsed.Count > 0, "preset «" + spec + "» при " + pageCount + " стр. разобран");
+                }
+            }
+            // Ключевой случай регрессии: у одностраничного документа чётных страниц нет,
+            // и preset «Чётные» не должен ни строиться, ни доходить до разбора.
+            AssertEqual("", PageRangePresets.Even(1), "1 страница → «Чётные» пуст, preset не добавляется");
+        }
+
+        private static void TestWordListLevel()
+        {
+            // 0-базный уровень → 1-базный индекс Word, с клампом в [1..9].
+            AssertEqual(1, WordDocxWriter.WordListLevel(0), "уровень 0 → Word 1");
+            AssertEqual(2, WordDocxWriter.WordListLevel(1), "уровень 1 → Word 2");
+            AssertEqual(9, WordDocxWriter.WordListLevel(ListNesting.MaxLevel), "MaxLevel → Word 9");
+            AssertEqual(9, WordDocxWriter.WordListLevel(50), "выше предела → 9, не исключение");
+            AssertEqual(1, WordDocxWriter.WordListLevel(-1), "отрицательный → 1");
         }
 
         private static string RangeSig(System.Collections.Generic.List<PageRange> ranges)
@@ -3774,6 +3851,100 @@ namespace ExcelMerger.Tests
             AssertEqual(2, leaves.Count, "существенная колонка + крошка режутся");
         }
 
+        private static void TestListNestingThreeLevels()
+        {
+            // Три уровня вложенности: 50pt (0), 68pt (1), 86pt (2). Шаг ~18pt — больше порога.
+            var tracker = new ListNesting();
+            int level0a = tracker.LevelFor(50);
+            int level1 = tracker.LevelFor(68);
+            int level2 = tracker.LevelFor(86);
+            int level0b = tracker.LevelFor(51); // близко к корню — остаёмся на 0
+
+            AssertEqual(0, level0a, "50 открывает уровень 0");
+            AssertEqual(1, level1, "68 глубже 50 на 18pt → уровень 1");
+            AssertEqual(2, level2, "86 глубже 68 на 18pt → уровень 2");
+            AssertEqual(0, level0b, "51 близко к 50 (корень) → уровень 0");
+        }
+
+        private static void TestListNestingReturnToRoot()
+        {
+            // Возврат на корень: открыли 50-68-86, затем вернулись на 50.
+            var tracker = new ListNesting();
+            tracker.LevelFor(50);
+            tracker.LevelFor(68);
+            tracker.LevelFor(86);
+            int back = tracker.LevelFor(50);
+            AssertEqual(0, back, "возврат на 50 закрывает вложенные уровни → 0");
+        }
+
+        private static void TestListNestingRaggedFlat()
+        {
+            // Плоский список с рваным краем (OCR-шум): 50, 52, 54 — всё уровень 0, шаг меньше порога.
+            var tracker = new ListNesting();
+            int l1 = tracker.LevelFor(50);
+            int l2 = tracker.LevelFor(52);
+            int l3 = tracker.LevelFor(54);
+            int l4 = tracker.LevelFor(51);
+
+            AssertEqual(0, l1, "50 → 0");
+            AssertEqual(0, l2, "52 близко к 50 (< MinNestStepPt) → 0");
+            AssertEqual(0, l3, "54 близко к 50 → 0");
+            AssertEqual(0, l4, "51 близко к 50 → 0");
+        }
+
+        private static void TestListNestingRootShift()
+        {
+            // Весь список сдвинут влево: корень переезжает, вложенность считается от нового края.
+            var tracker = new ListNesting();
+            tracker.LevelFor(70);
+            tracker.LevelFor(88); // вложенность на 18pt → уровень 1
+            int shift = tracker.LevelFor(50); // сдвиг всего списка влево на 20pt
+            int nested = tracker.LevelFor(68); // 18pt правее нового корня
+
+            AssertEqual(0, shift, "50 левее 70 на >12pt → корень переезжает на 50, уровень 0");
+            AssertEqual(1, nested, "68 на 18pt правее нового корня 50 → уровень 1");
+        }
+
+        private static void TestPageRangePresetsOdd()
+        {
+            // Нечётные страницы: 1,3,5,7,9
+            AssertEqual("1,3,5", PageRangePresets.Odd(5), "5 страниц → 1,3,5");
+            AssertEqual("1,3,5,7,9", PageRangePresets.Odd(10), "10 страниц → 1,3,5,7,9");
+            AssertEqual("1", PageRangePresets.Odd(1), "1 страница → 1");
+            AssertEqual("1", PageRangePresets.Odd(2), "2 страницы → 1");
+            AssertEqual("", PageRangePresets.Odd(0), "0 страниц → пусто");
+        }
+
+        private static void TestPageRangePresetsEven()
+        {
+            // Чётные страницы: 2,4,6,8,10
+            AssertEqual("2,4", PageRangePresets.Even(5), "5 страниц → 2,4");
+            AssertEqual("2,4,6,8,10", PageRangePresets.Even(10), "10 страниц → 2,4,6,8,10");
+            AssertEqual("", PageRangePresets.Even(1), "1 страница → пусто");
+            AssertEqual("2", PageRangePresets.Even(2), "2 страницы → 2");
+            AssertEqual("", PageRangePresets.Even(0), "0 страниц → пусто");
+        }
+
+        private static void TestPageRangePresetsEveryNth()
+        {
+            // Каждая N-я: step=2 → 1,3,5, step=3 → 1,4,7
+            AssertEqual("1,3,5,7,9", PageRangePresets.EveryNth(10, 2), "каждая 2-я из 10 → 1,3,5,7,9");
+            AssertEqual("1,4,7,10", PageRangePresets.EveryNth(10, 3), "каждая 3-я из 10 → 1,4,7,10");
+            AssertEqual("1,6", PageRangePresets.EveryNth(10, 5), "каждая 5-я из 10 → 1,6");
+            AssertEqual("1", PageRangePresets.EveryNth(10, 20), "step > count → только 1");
+            AssertEqual("", PageRangePresets.EveryNth(0, 2), "0 страниц → пусто");
+            AssertEqual("", PageRangePresets.EveryNth(5, 0), "step=0 → пусто");
+        }
+
+        private static void TestPageRangePresetsAll()
+        {
+            // Все страницы: "1-N" или "1" для одной
+            AssertEqual("1-10", PageRangePresets.All(10), "10 страниц → 1-10");
+            AssertEqual("1-5", PageRangePresets.All(5), "5 страниц → 1-5");
+            AssertEqual("1", PageRangePresets.All(1), "1 страница → 1 (не диапазон)");
+            AssertEqual("", PageRangePresets.All(0), "0 страниц → пусто");
+        }
+
         private static void TestOcrTwoColumnsSeparated()
         {
             // Двухколоночная шапка: строки колонок на общих базовых линиях. Абзацы не должны
@@ -5672,15 +5843,18 @@ namespace ExcelMerger.Tests
                                 offenders.Add("сетка не принимает картинки перетаскиванием");
                         }
                         // Без страниц действия недоступны — нечего делать.
-                        System.Windows.Forms.Button save = FindVisibleButton(f, Loc.T("ops.btn.savePdf"));
+                        System.Windows.Forms.Button convert = FindVisibleButton(f, Loc.T("ops.btn.convert"));
+                        System.Windows.Forms.Button extract = FindVisibleButton(f, Loc.T("ops.btn.extract"));
                         System.Windows.Forms.Button addImages = FindVisibleButton(f, Loc.T("ops.btn.addImages"));
                         System.Windows.Forms.Button print = FindVisibleButton(f, Loc.T("common.btn.print"));
-                        if (save == null || addImages == null || print == null)
-                            offenders.Add("нет кнопки: сохранение/картинки/печать");
+                        if (convert == null || extract == null || addImages == null || print == null)
+                            offenders.Add("нет кнопки: преобразовать/извлечь/картинки/печать");
                         else
                         {
-                            if (save.Enabled)
-                                offenders.Add("«Сохранить PDF…» доступно на пустом наборе");
+                            if (convert.Enabled)
+                                offenders.Add("«Преобразовать…» доступно на пустом наборе");
+                            if (extract.Enabled)
+                                offenders.Add("«Извлечь…» доступно на пустом наборе");
                             if (!addImages.Enabled)
                                 offenders.Add("«Добавить картинки…» недоступно на пустом наборе");
                             if (print.Enabled)
@@ -6753,6 +6927,9 @@ namespace ExcelMerger.Tests
             AssertTrue(!plain.Contains("shortcuts.rotate") && !plain.Contains("shortcuts.cutcopy"), "минимальный набор");
             AssertTrue(!plain.Contains("shortcuts.undo"), "нечего править — нечего и откатывать");
             AssertTrue(plain.Contains("shortcuts.selectAll"), "выделить всё — общее");
+            // Навигация Home/End работает в любой сетке (только выделение) — обещать её надо
+            // и в минимальном наборе, иначе о клавише узнать негде (v1.18.4).
+            AssertTrue(plain.Contains("shortcuts.homeEnd"), "Home/End — общее, есть и в минимальном наборе");
             AssertTrue(!plain.EndsWith("\n") && !plain.EndsWith("\r"), "хвостовые переводы срезаны");
         }
 

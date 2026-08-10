@@ -137,13 +137,30 @@ namespace ExcelMerger
         /// <summary>
         /// Поменять одно поле поверх СВЕЖЕЙ загрузки. Общий приём для настроек, у которых нет
         /// окна-владельца: правится ровно названное поле, остальные попадают на диск такими,
-        /// какими их оставил их собственный владелец.
+        /// какими их оставил их собственный владелец. Мьютекс защищает от гонки при
+        /// одновременном закрытии нескольких окон (совпадает с UsageStats и OperationHistory).
         /// </summary>
         private static void Change(Action<UserSettings> change)
         {
-            UserSettings disk = Load();
-            change(disk);
-            disk.WriteAll();
+            using (var mutex = new System.Threading.Mutex(false, @"Local\iwoHelperDesktop.settings"))
+            {
+                bool held = false;
+                try { held = mutex.WaitOne(2000, false); }
+                catch (System.Threading.AbandonedMutexException) { held = true; } // прежний держатель умер
+                if (!held)
+                    return; // таймаут — не писать поверх чужой операции
+                try
+                {
+                    UserSettings disk = Load();
+                    change(disk);
+                    disk.WriteAll();
+                }
+                finally
+                {
+                    if (held)
+                        mutex.ReleaseMutex();
+                }
+            }
         }
 
         private void WriteAll()
