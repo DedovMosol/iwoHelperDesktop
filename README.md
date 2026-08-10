@@ -86,10 +86,10 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 
 |  |  |
 |:--:|:--:|
-| <img src="docs/screenshots/hub-main.png" width="400" alt="Start screen"><br>**Start screen** — pick a section | <img src="docs/screenshots/hub.png" width="400" alt="PDF tools"><br>**PDF tools** — six tools in the section |
-| <img src="docs/screenshots/pdf-merge.png" width="400" alt="PDF Merge"><br>**PDF Merge** — thumbnails & compression | <img src="docs/screenshots/pdf-split.png" width="400" alt="PDF Split"><br>**PDF Split** — modes & compression |
-| <img src="docs/screenshots/pdf-word.png" width="400" alt="PDF to Word"><br>**PDF → Word** — text & tables into an editable `.docx` | <img src="docs/screenshots/pdf-pptx.png" width="400" alt="PDF to PowerPoint"><br>**PDF → PowerPoint** — pages into slides with editable text |
-| <img src="docs/screenshots/excel.png" width="400" alt="Merge Excel"><br>**Merge Excel** — sheets of a folder into one digest | |
+| <img src="docs/screenshots/hub-main.png" width="400" alt="Start screen"><br>**Start screen** — pick a section | <img src="docs/screenshots/hub.png" width="400" alt="PDF tools"><br>**PDF tools** — five tools in the section |
+| <img src="docs/screenshots/pdf-merge.png" width="400" alt="Merge PDF"><br>**Merge PDF** — thumbnails & four levels of compression | <img src="docs/screenshots/pdf-split.png" width="400" alt="Split PDF"><br>**Split PDF** — four modes, ready page ranges |
+| <img src="docs/screenshots/pdf-ops.png" width="400" alt="More operations"><br>**More operations** — convert, extract, print, properties | <img src="docs/screenshots/pdf-word.png" width="400" alt="PDF to Word"><br>**PDF → Word** — text & tables into an editable `.docx` |
+| <img src="docs/screenshots/pdf-pptx.png" width="400" alt="PDF to PowerPoint"><br>**PDF → PowerPoint** — pages into slides with editable text | <img src="docs/screenshots/excel.png" width="400" alt="Merge Excel"><br>**Merge Excel** — sheets of a folder into one digest |
 
 ## ⬇️ Download
 
