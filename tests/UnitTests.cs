@@ -62,6 +62,7 @@ namespace ExcelMerger.Tests
             Run("PageRanges.EveryN: нарезка на равные части", TestPageRangesEveryN);
             Run("PageRanges.ToIndices: диапазоны -> индексы (порядок, повторы)", TestPageRangesToIndices);
             Run("UpdateChecker: разбор тега и сравнение версий", TestUpdateChecker);
+            Run("UpdateChecker: сводка «что нового» из whatsnew.json", TestWhatsNewNotes);
             Run("UsageStats.ShouldAutoClear: период очистки", TestShouldAutoClear);
             Run("UsageStats.Total: включает PdfToWord, исключает сжатия", TestUsageTotal);
             Run("MessageForm.ButtonX: одна по центру, две по краям", TestMessageButtonX);
@@ -1098,6 +1099,46 @@ namespace ExcelMerger.Tests
             AssertTrue(!UpdateChecker.IsNewer(new Version(1, 11, 2), new Version(1, 11, 2)), "равные — не новее");
             AssertTrue(!UpdateChecker.IsNewer(new Version(1, 11, 0), new Version(1, 11, 2)), "старее — не новее");
             AssertTrue(!UpdateChecker.IsNewer(null, new Version(1, 0, 0)), "null latest — не новее");
+        }
+
+        /// <summary>
+        /// Сводка «что нового»: выбор по версии и языку, обрезка по числу строк и живучесть
+        /// на неполном или испорченном файле. Текст приходит ИЗ СЕТИ и правке после выпуска
+        /// не подлежит, поэтому разбор обязан молча отдавать пустую строку, а не бросать:
+        /// без сводки сообщение о новой версии всё равно осмысленно.
+        /// </summary>
+        private static void TestWhatsNewNotes()
+        {
+            string json = "{\"1.18.4\":{\"ru\":\"Кратко\",\"en\":\"Short\"}}";
+            AssertEqual("Кратко", UpdateChecker.ExtractNotes(json, "1.18.4", "ru"), "русская сводка");
+            AssertEqual("Short", UpdateChecker.ExtractNotes(json, "1.18.4", "en"), "английская сводка");
+            AssertEqual("", UpdateChecker.ExtractNotes(json, "1.18.5", "ru"), "нет такой версии");
+            AssertEqual("", UpdateChecker.ExtractNotes(json, "1.18.4", "de"), "нет такого языка");
+            AssertEqual("", UpdateChecker.ExtractNotes("", "1.18.4", "ru"), "пустой файл");
+            AssertEqual("", UpdateChecker.ExtractNotes("не json", "1.18.4", "ru"), "мусор вместо файла");
+            AssertEqual("", UpdateChecker.ExtractNotes("{\"1.18.4\":{\"ru\":\"без конца", "1.18.4", "ru"),
+                "объект не закрыт");
+
+            // Скобка ВНУТРИ русского текста не должна обрывать объект: иначе английская
+            // сводка, лежащая за ней, потерялась бы.
+            string braces = "{\"1.2.3\":{\"ru\":\"текст со } скобкой\",\"en\":\"english\"}}";
+            AssertEqual("english", UpdateChecker.ExtractNotes(braces, "1.2.3", "en"), "«}» в тексте не рвёт разбор");
+
+            // Упоминание номера версии в пояснении — не ключ: ключ ищется как «"версия": {».
+            string withComment = "{\"_comment\":\"версия 1.2.3 описана ниже\",\"1.2.3\":{\"ru\":\"да\"}}";
+            AssertEqual("да", UpdateChecker.ExtractNotes(withComment, "1.2.3", "ru"), "пояснение не сходит за ключ");
+
+            AssertEqual("стр1\nстр2", UpdateChecker.ExtractNotes("{\"1.0\":{\"ru\":\"стр1\\nстр2\"}}", "1.0", "ru"),
+                "\\n разворачивается в перевод строки");
+            AssertEqual("«ёлка»", UpdateChecker.ExtractNotes("{\"1.0\":{\"ru\":\"\\u00ab\\u0451\\u043b\\u043a\\u0430\\u00bb\"}}", "1.0", "ru"),
+                "\\uXXXX разворачивается");
+
+            // Обрезка: окно фиксированной ширины растёт вниз без предела, поэтому длинную
+            // сводку укорачиваем, а не показываем кнопками за краем экрана.
+            AssertEqual("1\r\n2\r\n3", UpdateChecker.LimitNotes("1\r\n2\r\n3"), "короткая сводка не тронута");
+            AssertEqual("1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n…", UpdateChecker.LimitNotes("1\n2\n3\n4\n5\n6\n7\n8"),
+                "лишние строки заменены на «…»");
+            AssertEqual("", UpdateChecker.LimitNotes(null), "null — пустая строка");
         }
 
         /// <summary>
