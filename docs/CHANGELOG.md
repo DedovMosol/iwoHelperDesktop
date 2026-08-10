@@ -5,6 +5,14 @@ versions follow [SemVer](https://semver.org/).
 
 ## [1.18.4] — 2026-08-08
 
+**[RU]**  
+Упрощено меню «Прочие операции» (11 кнопок → 5 выпадающих меню). Добавлены пресеты диапазонов страниц в «Разделить/Извлечь». Клавиши Ctrl+Plus/Minus масштабируют миниатюры, Home/End — в начало/конец. Многоуровневые списки при конвертации PDF → Word теперь сохраняют структуру. Исправлены ошибки закрытия окна во время загрузки и потери настроек.  
+**[/RU]**
+
+**[EN]**  
+Simplified "More operations" menu (11 buttons → 5 dropdown menus). Added page range presets in Split/Extract. Ctrl+Plus/Minus zoom thumbnails, Home/End jump to first/last page. Multi-level lists in PDF → Word now preserve structure. Fixed window closing during load and settings loss bugs.  
+**[/EN]**
+
 ### Changed
 - **More operations UI simplified with dropdown menus.** Operation buttons grouped behind two menus: "Convert..." (Save PDF, Compress, Grayscale, Repair) and "Extract..." (Pages to images with DPI submenu, Text to .txt). Print kept as separate button (frequent operation). Same functionality, less visual clutter (11 buttons → 5).
 - **Per-Monitor DPI v2 support added for Windows 10 1703+.** The application now declares `PerMonitorV2` DPI awareness in addition to the legacy `true` flag, providing better scaling behavior when moving windows between monitors with different DPI settings. Falls back gracefully on older Windows versions.

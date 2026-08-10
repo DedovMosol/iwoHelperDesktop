@@ -62,20 +62,30 @@ for path in pages:
 c.save()
 
 
-def compress(preset, out):
-    """Те же аргументы, что строит программа (PdfCompression.BuildArguments)."""
+def compress(preset, out, downsample=True):
+    """Те же аргументы, что строит программа (PdfCompression.BuildArguments).
+
+    downsample=False — уровень «Очень хорошо»: пресет изображения не пересчитывает,
+    и программа подпирает это обещание тремя ключами явно. Замер обязан идти с ними,
+    иначе диаграмма покажет не то, что получит человек.
+    """
     args = [GS, "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4",
-            "-dPDFSETTINGS=" + preset, "-dNOPAUSE", "-dBATCH", "-dQUIET", "-dSAFER",
-            "-sOutputFile=" + out, src]
+            "-dPDFSETTINGS=" + preset]
+    if not downsample:
+        args += ["-dDownsampleColorImages=false", "-dDownsampleGrayImages=false",
+                 "-dDownsampleMonoImages=false"]
+    args += ["-dNOPAUSE", "-dBATCH", "-dQUIET", "-dSAFER", "-sOutputFile=" + out, src]
     subprocess.run(args, check=True, capture_output=True)
     return os.path.getsize(out)
 
 
 base = os.path.getsize(src)
+verygood = compress("/default", os.path.join(WORK, "verygood.pdf"), downsample=False)
 good = compress("/ebook", os.path.join(WORK, "good.pdf"))
 small = compress("/screen", os.path.join(WORK, "small.pdf"))
 
-result = {"none": base, "good": good, "small": small}
+# Порядок — как в окне программы (PdfCompression.Order), он же порядок столбиков.
+result = {"none": base, "verygood": verygood, "good": good, "small": small}
 io.open(os.path.join(HERE, "compression.txt"), "w", encoding="utf-8").write(
     "\n".join("%s=%d" % (k, v) for k, v in result.items()))
 for name, size in result.items():

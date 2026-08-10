@@ -232,6 +232,9 @@ def build():
           [["Excellent — no compression",
             "The file is saved as it is",
             "The default. When every detail of the image matters"],
+           ["Very good — smaller without losing sharpness",
+            "The document is rebuilt without recompressing images",
+            "When you need to reduce size while preserving picture quality"],
            ["Good — smaller size (150 dpi)",
             "Pictures are brought down to 150 dots per inch",
             "Sending by mail, publishing. Text on a scan stays legible"],
@@ -241,8 +244,12 @@ def build():
           widths=[5.0, 5.0, 6.0])
 
     p("How much that is worth is shown by a measurement on a scanned document of four pages "
-      "%s. The source file took %s MB, after “Good” — %s MB, after “Normal” — %s MB."
-      % (ref("chart"), "%.2f" % CHART[0], "%.2f" % CHART[1], "%.2f" % CHART[2]))
+      "%s. The source file took %s MB, after “Very good” — %s MB, after "
+      "“Good” — %s MB, after “Normal” — %s MB. The difference between "
+      "“Good” and “Normal” is barely visible to the eye, while “Very good” saves "
+      "the least but leaves the images themselves untouched."
+      % (ref("chart"), "%.2f" % CHART[0], "%.2f" % CHART[1], "%.2f" % CHART[2],
+         "%.2f" % CHART[3]))
     picture("chart", "The size of a scanned document at different levels of compression")
     par = p("Compression changes the contents of the file, so a digital signature on the "
             "document becomes invalid. Compress before signing, not after.")
@@ -475,6 +482,7 @@ def build():
          "white.")
 
     h2("5.4. The actions")
+    p("The “Convert” button opens a menu of operations on the assembled document:")
     bullet("Writes what is assembled into a new PDF: that is how images become a document and "
            "reordered or rotated pages become a finished file. The compression level comes from "
            "the same list at the bottom of the window.", bold_head="Save PDF. ")
@@ -489,16 +497,19 @@ def build():
            "chosen in a separate dialog, because a damaged document cannot be opened into the "
            "grid — and that is exactly when repair is needed.",
            bold_head="Repair. ")
+    p("The “Extract” button opens a menu for extracting content:")
     bullet("PNG or JPEG with a choice of resolution %s. Needed when a page has to go into a "
-           "presentation, a letter or a memo. The resolution applies to the real size of the "
-           "sheet, so a landscape insertion is not stretched. The selected pages are saved, or "
-           "all of them if nothing is selected." % ref("ops-dpi"),
+           "presentation, a letter or a memo. Available resolutions are 96, 150, 300 and 600 dots "
+           "per inch. The resolution applies to the real size of the sheet, so a landscape "
+           "insertion is not stretched. The selected pages are saved, or all of them if nothing "
+           "is selected." % ref("ops-dpi"),
            bold_head="Pages as images. ")
     picture("ops-dpi", "Choosing the resolution when saving pages as images")
     bullet("The text layer of the document is saved into a .txt file. Tables are not lost: "
            "cells are separated by tabs and paste into Excel as a table. Pages are separated by "
            "a page-break character, and the file is written in UTF-8.",
            bold_head="Text into .txt. ")
+    p("Separate buttons:")
     bullet("The selected pages (or all of them if nothing is selected) go to the printer "
            "together with the rotations assigned to them.", bold_head="Print. ")
     bullet("Title, author, subject and keywords — what any viewer shows in the properties of a "

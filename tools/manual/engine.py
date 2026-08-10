@@ -54,7 +54,8 @@ LABELS = {
         "tocHint": "Оглавление собирается автоматически. Если оно не заполнилось, "
                    "выделите документ клавишами Ctrl+A и нажмите F9.",
         "chartTitle": "Размер файла, МБ",
-        "chartLevels": ["Отлично\n(без сжатия)", "Хорошо\n(150 dpi)", "Нормально\n(72 dpi)"],
+        "chartLevels": ["Отлично\n(без сжатия)", "Очень хорошо\n(без потери чёткости)",
+                        "Хорошо\n(150 dpi)", "Нормально\n(72 dpi)"],
         "chartValue": "%.2f МБ",
         "decimal": ",",
     },
@@ -73,7 +74,8 @@ LABELS = {
         "tocHint": "The contents are collected automatically. If they came out empty, "
                    "select the document with Ctrl+A and press F9.",
         "chartTitle": "File size, MB",
-        "chartLevels": ["Excellent\n(no compression)", "Good\n(150 dpi)", "Normal\n(72 dpi)"],
+        "chartLevels": ["Excellent\n(no compression)", "Very good\n(no loss of sharpness)",
+                        "Good\n(150 dpi)", "Normal\n(72 dpi)"],
         "chartValue": "%.2f MB",
         "decimal": ".",
     },
@@ -119,9 +121,16 @@ def build_chart():
         key, value = line.strip().split("=")
         data[key] = int(value) / 1048576.0
 
-    labels = ["Отлично\n(без сжатия)", "Хорошо\n(150 dpi)", "Нормально\n(72 dpi)"]
-    values = [data["none"], data["good"], data["small"]]
-    colors = ["#8c8f94", "#0f6cbd", "#107c41"]
+    # Порядок — как в окне выбора уровня (PdfCompression.Order), подписи — на языке
+    # документа: диаграмма собирается для каждого языка отдельно.
+    keys = ["none", "verygood", "good", "small"]
+    missing = [k for k in keys if k not in data]
+    if missing:
+        raise SystemExit("в compression.txt нет замеров: %s — запустите measure_compression.py"
+                         % ", ".join(missing))
+    labels = L["chartLevels"]
+    values = [data[k] for k in keys]
+    colors = ["#8c8f94", "#4f6bed", "#0f6cbd", "#107c41"]
 
     plt.rcParams["font.family"] = FONT
     fig, ax = plt.subplots(figsize=(7.4, 3.5), dpi=200)
@@ -401,7 +410,10 @@ def finalize_toc(path):
     import shutil
     import subprocess
 
-    ascii_copy = os.path.join(HERE, "_toc_finalize.docx")
+    # Имя временной копии — с языком и номером процесса: два языка, собираемые
+    # одновременно, на общем имени затирали друг друга, и английский документ
+    # уезжал на место русского.
+    ascii_copy = os.path.join(HERE, "_toc_finalize_%s_%d.docx" % (LANG, os.getpid()))
     script = os.path.join(HERE, "finalize_toc.ps1")
     shutil.copyfile(path, ascii_copy)
     try:
