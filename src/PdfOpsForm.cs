@@ -34,9 +34,8 @@ namespace ExcelMerger
         private const int HeaderH = 16;   // заголовок группы
         private const int HeaderGap = 2;  // от заголовка до первой кнопки группы
 
-        private Button _btnOpen, _btnAddImages, _btnSave, _btnCompress, _btnGray, _btnRepair,
-            _btnImages, _btnText, _btnPrint, _btnMeta;
-        private ContextMenuStrip _dpiMenu; // не дочерний контрол — освобождаем сами
+        private Button _btnOpen, _btnAddImages, _btnConvert, _btnExtract, _btnPrint, _btnMeta;
+        private ContextMenuStrip _convertMenu, _extractMenu;
 
         // Картинки живут в наборе одностраничными PDF-обёртками: их показывает та же сетка,
         // что и страницы документа, и они попадают во все действия окна без единой особой
@@ -114,31 +113,18 @@ namespace ExcelMerger
             _btnAddImages.Click += delegate { PickAndAddImages(); };
             y += BtnH + GroupGap;
 
-            // Действия тремя группами: подряд идущие равнозначные кнопки читаются как свалка,
-            // а по заголовкам сразу видно, что делает документ, а что достаёт из него.
+            // Группа "Преобразовать документ" — одна кнопка с выпадающим меню
             y = AddGroup(Loc.T("ops.group.convert"), px, y, pw);
-            _btnSave = AddButton(Loc.T("ops.btn.savePdf"), px, y, pw, BtnH, Loc.T("ops.tip.savePdf"));
-            _btnSave.Click += delegate { SavePdf(); };
-            y += BtnH + BtnGap;
-            _btnCompress = AddButton(Loc.T("ops.btn.compress"), px, y, pw, BtnH, Loc.T("ops.tip.compress"));
-            _btnCompress.Click += delegate { CompressCopy(); };
-            y += BtnH + BtnGap;
-            _btnGray = AddButton(Loc.T("ops.btn.grayscale"), px, y, pw, BtnH, Loc.T("ops.tip.grayscale"));
-            _btnGray.Click += delegate { ConvertCopy(PdfConvertMode.Grayscale, NameSource(), true); };
-            y += BtnH + BtnGap;
-            _btnRepair = AddButton(Loc.T("ops.btn.repair"), px, y, pw, BtnH, Loc.T("ops.tip.repair"));
-            _btnRepair.Click += delegate { RepairChosenFile(); };
+            _btnConvert = AddButton(Loc.T("ops.btn.convert"), px, y, pw, BtnH, Loc.T("ops.tip.convert"));
+            _btnConvert.Click += delegate { ShowConvertMenu(); };
             y += BtnH + GroupGap;
 
+            // Группа "Извлечь из документа" — одна кнопка с выпадающим меню
             y = AddGroup(Loc.T("ops.group.extract"), px, y, pw);
-            _btnImages = AddButton(Loc.T("ops.btn.images"), px, y, pw, BtnH, Loc.T("ops.tip.images"));
-            _btnImages.Click += delegate { ShowDpiMenu(); };
+            _btnExtract = AddButton(Loc.T("ops.btn.extract"), px, y, pw, BtnH, Loc.T("ops.tip.extract"));
+            _btnExtract.Click += delegate { ShowExtractMenu(); };
             y += BtnH + BtnGap;
-            _btnText = AddButton(Loc.T("ops.btn.text"), px, y, pw, BtnH, Loc.T("ops.tip.text"));
-            _btnText.Click += delegate { ExportText(); };
-            y += BtnH + BtnGap;
-            // Печать — тоже «достать из документа», только не в файл, а на бумагу, и печатает
-            // она собранное в сетке: выделенные страницы или все, с их поворотами.
+            // Печать выносим отдельно — частая операция
             _btnPrint = AddButton(Loc.T("common.btn.print"), px, y, pw, BtnH, Loc.T("common.tip.print"));
             _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
             y += BtnH + GroupGap;
@@ -203,14 +189,8 @@ namespace ExcelMerger
             _compress.Enabled = !Working;
             _btnOpen.Enabled = !Working;
             _btnAddImages.Enabled = !Working;
-            _btnSave.Enabled = ready;
-            _btnCompress.Enabled = ready && Ghostscript.Available;
-            _btnGray.Enabled = ready && Ghostscript.Available;
-            // Починка выбирает файл сама: повреждённый документ в сетку не открывается, и
-            // требовать «сначала откройте» значило бы выключить её ровно тогда, когда она нужна.
-            _btnRepair.Enabled = !Working && Ghostscript.Available;
-            _btnImages.Enabled = ready;
-            _btnText.Enabled = ready;
+            _btnConvert.Enabled = ready;
+            _btnExtract.Enabled = ready;
             _btnPrint.Enabled = ready;
             // Свойства читаются из ОТКРЫТОГО документа: у набора из картинок их взять негде, а
             // предлагать правку пустоты — обещать то, чего не будет.
@@ -702,23 +682,44 @@ namespace ExcelMerger
 
         // ---------- извлечение ----------
 
-        /// <summary>Меню разрешений под кнопкой картинок: сохранять ли в 96, 150, 300 или 600 dpi.</summary>
-        private void ShowDpiMenu()
+        /// <summary>Меню "Преобразовать документ": Сохранить PDF, Сжать, В оттенки серого, Восстановить.</summary>
+        private void ShowConvertMenu()
         {
             if (Working || _order.Count == 0)
                 return;
-            if (_dpiMenu == null)
+            if (_convertMenu == null)
             {
-                _dpiMenu = new ContextMenuStrip();
+                _convertMenu = new ContextMenuStrip();
+                _convertMenu.Items.Add(Loc.T("ops.btn.savePdf"), null, delegate { SavePdf(); });
+                _convertMenu.Items.Add(Loc.T("ops.btn.compress"), null, delegate { CompressCopy(); });
+                _convertMenu.Items.Add(Loc.T("ops.btn.grayscale"), null, delegate { ConvertCopy(PdfConvertMode.Grayscale, NameSource(), true); });
+                _convertMenu.Items.Add(Loc.T("ops.btn.repair"), null, delegate { RepairChosenFile(); });
+            }
+            _convertMenu.Show(_btnConvert, new Point(0, _btnConvert.Height), ToolStripDropDownDirection.BelowRight);
+        }
+
+        /// <summary>Меню "Извлечь из документа": Страницы в картинки (с подменю DPI), Текст в .txt.</summary>
+        private void ShowExtractMenu()
+        {
+            if (Working || _order.Count == 0)
+                return;
+            if (_extractMenu == null)
+            {
+                _extractMenu = new ContextMenuStrip();
+
+                // Подменю для выбора DPI
+                var imagesItem = new ToolStripMenuItem(Loc.T("ops.btn.images"));
                 foreach (int dpi in PdfExportService.DpiChoices)
                 {
-                    int chosen = dpi; // копия для замыкания: иначе все пункты возьмут последнее значение
-                    _dpiMenu.Items.Add(string.Format(Loc.T("ops.menu.dpi"), chosen), null,
+                    int chosen = dpi;
+                    imagesItem.DropDownItems.Add(string.Format(Loc.T("ops.menu.dpi"), chosen), null,
                         delegate { ExportImages(chosen); });
                 }
+                _extractMenu.Items.Add(imagesItem);
+
+                _extractMenu.Items.Add(Loc.T("ops.btn.text"), null, delegate { ExportText(); });
             }
-            // Направление задаём явно: без него список раскрывается вверх и уезжает за край окна.
-            _dpiMenu.Show(_btnImages, new Point(0, _btnImages.Height), ToolStripDropDownDirection.BelowRight);
+            _extractMenu.Show(_btnExtract, new Point(0, _btnExtract.Height), ToolStripDropDownDirection.BelowRight);
         }
 
         /// <summary>
@@ -844,12 +845,11 @@ namespace ExcelMerger
 
         protected override void Dispose(bool disposing)
         {
-            // Меню разрешений назначено не дочерним контролом, а показывается вручную:
-            // само оно не освободится.
-            if (disposing && _dpiMenu != null)
+            // Меню операций не являются дочерними контролами, освобождаем вручную.
+            if (disposing)
             {
-                _dpiMenu.Dispose();
-                _dpiMenu = null;
+                if (_convertMenu != null) { _convertMenu.Dispose(); _convertMenu = null; }
+                if (_extractMenu != null) { _extractMenu.Dispose(); _extractMenu = null; }
             }
             // Папку обёрток (картинки, пустые листы) убирает база — она же её и завела.
             base.Dispose(disposing);

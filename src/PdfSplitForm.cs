@@ -24,7 +24,8 @@ namespace ExcelMerger
         private Button _btnOpen;
         private ComboBox _cmbMode;
         private Label _lblRanges;
-        private TextBox _txtRanges;
+        private ComboBox _cmbRanges; // v1.18.4: ComboBox с presets вместо TextBox
+        private string _presetText;  // последний подставленный preset — не нести в следующий документ
         private Label _lblN;
         private NumericUpDown _numN;
         private CheckBox _chkCombine;
@@ -109,11 +110,15 @@ namespace ExcelMerger
             // Поля ввода режимов (в одном месте, показываются по режиму).
             _lblRanges = Ui.Label(this, Loc.T("split.lbl.ranges"), px, m + 188, Font, Theme.TextMuted);
             _lblRanges.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _txtRanges = new TextBox();
-            _txtRanges.SetBounds(px, m + 210, pw, 27);
-            _txtRanges.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _tips.SetToolTip(_txtRanges, Loc.T("split.tip.ranges"));
-            Controls.Add(_txtRanges);
+            _cmbRanges = new ComboBox();
+            _cmbRanges.DropDownStyle = ComboBoxStyle.DropDown; // editable для custom ввода
+            _cmbRanges.SetBounds(px, m + 210, pw, 27);
+            _cmbRanges.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tips.SetToolTip(_cmbRanges, Loc.T("split.tip.ranges"));
+            // При выборе preset извлекаем range string из "(1-10)" и ставим в Text
+            _cmbRanges.SelectedIndexChanged += OnRangePresetSelected;
+            // Items заполняются в UpdateRangePresets() когда документ загружен
+            Controls.Add(_cmbRanges);
 
             _lblN = Ui.Label(this, Loc.T("split.lbl.n"), px, m + 188, Font, Theme.TextMuted);
             _lblN.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -246,12 +251,99 @@ namespace ExcelMerger
             Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("split.help.body"));
         }
 
+        /// <summary>Документ открыт — заполнить presets диапазонов (v1.18.4).</summary>
+        protected override void OnSourceLoaded()
+        {
+            UpdateRangePresets();
+            base.OnSourceLoaded();
+        }
+
+        /// <summary>
+        /// Заполнить ComboBox presets для page ranges на основе текущего pageCount.
+        /// Вызывается при загрузке документа (v1.18.4).
+        /// </summary>
+        private void UpdateRangePresets()
+        {
+            if (_pageCount < 1)
+            {
+                _cmbRanges.Items.Clear();
+                return;
+            }
+
+            // Текст переносим в новый документ ТОЛЬКО если человек вписал его сам. Диапазон,
+            // подставленный preset'ом прежнего документа, к новому не относится: «1-10» из
+            // десятистраничного файла в трёхстраничном даёт ошибку «вне диапазона».
+            // Опознать своё нельзя по SelectedIndex: присвоение Text сбрасывает его в -1,
+            // поэтому подставленную строку помним явно.
+            string currentText = _cmbRanges.Text;
+            bool isCustom = !string.IsNullOrEmpty(currentText) && currentText != _presetText;
+
+            _cmbRanges.Items.Clear();
+            AddPresetIfValid(Loc.T("split.preset.all"), PageRangePresets.All(_pageCount));
+            AddPresetIfValid(Loc.T("split.preset.odd"), PageRangePresets.Odd(_pageCount));
+            AddPresetIfValid(Loc.T("split.preset.even"), PageRangePresets.Even(_pageCount));
+            AddPresetIfValid(Loc.T("split.preset.every2"), PageRangePresets.EveryNth(_pageCount, 2));
+            AddPresetIfValid(Loc.T("split.preset.every3"), PageRangePresets.EveryNth(_pageCount, 3));
+
+            // Восстанавливаем custom текст или ставим первый preset
+            if (isCustom)
+                _cmbRanges.Text = currentText;
+            else if (_cmbRanges.Items.Count > 0)
+                _cmbRanges.SelectedIndex = 0;
+        }
+
+        /// <summary>Добавить preset в список, если генератор вернул непустую строку. Длинные
+        /// списки (500+ страниц) сокращаются: полная строка хранится в Tag.</summary>
+        private void AddPresetIfValid(string label, string rangeSpec)
+        {
+            if (string.IsNullOrEmpty(rangeSpec))
+                return;
+            _cmbRanges.Items.Add(new RangePreset
+            {
+                Label = label + " (" + PageRangePresets.Shorten(rangeSpec) + ")",
+                Spec = rangeSpec
+            });
+        }
+
+        /// <summary>
+        /// Обработка выбора preset: извлекаем range string из "(1-10)" и ставим в Text.
+        /// Это позволяет юзеру увидеть что будет использовано и отредактировать при желании.
+        /// </summary>
+        private void OnRangePresetSelected(object sender, EventArgs e)
+        {
+            if (_cmbRanges.SelectedIndex < 0)
+                return;
+
+            // Диапазон храним в Spec структуры: у длинного документа подпись сокращена
+            // («1,3,5,…,499»), и разбор её обратно вернул бы обрезанный список.
+            RangePreset preset = _cmbRanges.SelectedItem as RangePreset?
+                ?? default(RangePreset);
+            if (string.IsNullOrEmpty(preset.Spec))
+                return;
+            _presetText = preset.Spec; // подставлено нами — не переносить в следующий документ
+            // Присвоение Text сбрасывает SelectedIndex в -1: обработчик войдёт снова и выйдет
+            // на первой проверке, петли нет.
+            _cmbRanges.Text = preset.Spec;
+        }
+
+        /// <summary>
+        /// Элемент списка диапазонов: подпись для показа и полная строка диапазона. Хранить
+        /// строку отдельно нужно из-за сокращения подписи — у 500-страничного документа
+        /// «Нечётные» это 1250 символов, в выпадающем списке им не место.
+        /// </summary>
+        private struct RangePreset
+        {
+            public string Label;
+            public string Spec;
+            public override string ToString() { return Label; }
+        }
+
         // ---------- режимы ----------
 
         private void UpdateModeInputs()
         {
             int mode = _cmbMode.SelectedIndex;
-            _lblRanges.Visible = _txtRanges.Visible = mode == ModeRanges;
+            _lblRanges.Visible = _cmbRanges.Visible = mode == ModeRanges;
             _lblN.Visible = _numN.Visible = mode == ModeEveryN;
             _chkCombine.Visible = mode == ModeRanges;
             _lblHint.Visible = mode == ModeExtract || mode == ModeBookmarks;
@@ -268,7 +360,7 @@ namespace ExcelMerger
         private void FocusModeInput()
         {
             if (_cmbMode.SelectedIndex == ModeRanges)
-                _txtRanges.Focus();
+                _cmbRanges.Focus();
             else if (_cmbMode.SelectedIndex == ModeEveryN)
                 _numN.Focus();
         }
@@ -280,7 +372,7 @@ namespace ExcelMerger
             _compress.Enabled = !Working;
             _btnOpen.Enabled = !Working;
             _cmbMode.Enabled = !Working && loaded;
-            _txtRanges.Enabled = !Working && loaded;
+            _cmbRanges.Enabled = !Working && loaded;
             _numN.Enabled = !Working && loaded;
             // Галку «Объединить в один файл» гасим наравне с остальным вводом: иначе во время
             // разделения она оставалась живой и её переключение перестраивало режим на ходу.
@@ -324,7 +416,7 @@ namespace ExcelMerger
                 }
                 else
                 {
-                    try { indices = PageRanges.ToIndices(PageRanges.Parse(_txtRanges.Text, _pageCount)); }
+                    try { indices = PageRanges.ToIndices(PageRanges.Parse(_cmbRanges.Text, _pageCount)); }
                     catch (MergeException ex) { Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message); return; }
                 }
                 string outPath;
@@ -348,7 +440,7 @@ namespace ExcelMerger
             int everyN = 0;
             if (mode == ModeRanges)
             {
-                try { ranges = PageRanges.Parse(_txtRanges.Text, _pageCount); }
+                try { ranges = PageRanges.Parse(_cmbRanges.Text, _pageCount); }
                 catch (MergeException ex) { Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message); return; }
             }
             else if (mode == ModeEveryN)

@@ -22,7 +22,7 @@ namespace ExcelMerger
         private const int MaxRenderWidth = 640; // потолок памяти: страница ~640×930×4 ≈ 2,4 МБ
         private const double RenderOversample = 1.5; // запас на даунскейл HighQualityBicubic
         private const double TileAspect = 1.30; // высота = ширина × коэффициент
-        private const int WheelStep = 16;       // пикселей ширины на «щелчок» колеса
+        internal const int WheelStep = 16;      // пикселей ширины на «щелчок» колеса и Ctrl+«+»/«−»
         private const int CellPadX = 16;        // поля ячейки вокруг плитки
         private const int CellPadY = 10;
         private const int LabelBand = 20;       // полоса под номер страницы

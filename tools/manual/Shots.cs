@@ -268,7 +268,12 @@ static class Shots
             var combo = (ComboBox)Field(f, "_cmbMode");
             combo.SelectedIndex = mode;
             Pump(400);
-            if (ranges != null) SetText(f, "_txtRanges", ranges);
+            // v1.18.4: _txtRanges заменён на _cmbRanges (ComboBox с presets)
+            if (ranges != null)
+            {
+                var cmbRanges = (ComboBox)Field(f, "_cmbRanges");
+                cmbRanges.Text = ranges;
+            }
             Pump(300);
         }
         else

@@ -100,10 +100,11 @@ namespace ExcelMerger
             A("menu.stats", "Статистика", "Statistics");
             A("menu.shortcuts", "Горячие клавиши", "Keyboard shortcuts");
             A("shortcuts.title", "Клавиши в сетке страниц", "Keys in the page grid");
-            A("shortcuts.zoom", "Ctrl+колесо или поле «%» — масштаб (Ctrl+0 — сбросить в 100%)",
-                "Ctrl+Wheel or the “%” box — zoom (Ctrl+0 — reset to 100%)");
+            A("shortcuts.zoom", "Ctrl+колесо, Ctrl+«+» / «−» или поле «%» — масштаб (Ctrl+0 — сбросить в 100%)",
+                "Ctrl+Wheel, Ctrl+“+” / “−” or the “%” box — zoom (Ctrl+0 — reset to 100%)");
             A("shortcuts.selectAll", "Ctrl+A — выделить все страницы", "Ctrl+A — select all pages");
             A("shortcuts.goto", "Ctrl+G — перейти к странице", "Ctrl+G — go to page");
+            A("shortcuts.homeEnd", "Home / End — первая / последняя страница", "Home / End — first / last page");
             A("shortcuts.move", "Alt+←/→ — переместить страницу влево/вправо", "Alt+←/→ — move the page left/right");
             A("shortcuts.cutcopy", "Ctrl+X / Ctrl+C — вырезать / копировать", "Ctrl+X / Ctrl+C — cut / copy");
             A("shortcuts.paste", "Ctrl+V — вставить (по каретке или после выбранного)", "Ctrl+V — paste (at the caret or after the selection)");
@@ -297,6 +298,14 @@ namespace ExcelMerger
             A("ops.tip.addImages",
                 "Снимки и сканы (JPEG, PNG, BMP, GIF, TIFF) лягут страницами в конец набора: каждая картинка — лист A4 с полями. Их можно переставлять, поворачивать и убирать, как обычные страницы.",
                 "Photos and scans (JPEG, PNG, BMP, GIF, TIFF) are appended as pages: each image becomes an A4 sheet with margins. They can be reordered, rotated and removed like any other page.");
+            A("ops.btn.convert", "Преобразовать…", "Convert…");
+            A("ops.tip.convert",
+                "Операции над документом: сохранить собранное, сжать, в оттенки серого, восстановить повреждённый.",
+                "Operations on the document: save assembled pages, compress, convert to grayscale, repair damaged file.");
+            A("ops.btn.extract", "Извлечь…", "Extract…");
+            A("ops.tip.extract",
+                "Извлечь из документа: страницы в картинки (PNG/JPEG), текст в .txt.",
+                "Extract from the document: pages to images (PNG/JPEG), text to .txt.");
             A("ops.btn.savePdf", "Сохранить PDF…", "Save PDF…");
             A("ops.tip.savePdf",
                 "Записать собранное в сетке в новый PDF: порядок, повороты и состав страниц — как на экране. Уровень сжатия берётся из списка «Сжатие» внизу окна.",
@@ -722,6 +731,11 @@ namespace ExcelMerger
             A("split.mode.everyN", "Каждые N страниц", "Every N pages");
             A("split.mode.bookmarks", "По закладкам", "By bookmarks");
             A("split.lbl.ranges", "Диапазоны (напр. 1-3, 5, 8-):", "Ranges (e.g. 1-3, 5, 8-):");
+            A("split.preset.all", "Все страницы", "All pages");
+            A("split.preset.odd", "Нечётные", "Odd pages");
+            A("split.preset.even", "Чётные", "Even pages");
+            A("split.preset.every2", "Каждая 2-я", "Every 2nd");
+            A("split.preset.every3", "Каждая 3-я", "Every 3rd");
             A("split.lbl.n", "Страниц в части:", "Pages per part:");
             A("split.chk.combine", "Объединить в один файл", "Combine into one file");
             A("split.tip.combine", "Все указанные страницы — в один PDF, а не по файлу на диапазон",

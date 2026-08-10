@@ -99,6 +99,7 @@ namespace ExcelMerger
         public ListKind ListKind = ListKind.None;
         public int ListNumber;       // номер нумерованного пункта; 0 для маркированного/обычного
         public int ListContentStart; // сколько ведущих символов Text занимает маркер (снять при записи)
+        public int ListLevel = 0;    // уровень вложенности (0 = top-level, 1, 2, ...); 0 для не-списка
 
         public string Text
         {
@@ -449,6 +450,7 @@ namespace ExcelMerger
             }
 
             // Абзацы: раны с форматом + выравнивание; сбор отступов первых строк (исключая центрирование).
+            var listNesting = new ListNesting(); // трекер уровней вложенности списка для региона
             double maxIndent = MaxIndentFraction * width;
             for (int gi = 0; gi < groups.Count; gi++)
             {
@@ -501,6 +503,11 @@ namespace ExcelMerger
                     para.ListKind = m.Kind;
                     para.ListNumber = m.Number;
                     para.ListContentStart = m.ContentStart;
+
+                    // Детекция уровня вложенности списка (v1.18.4): стековый трекер держит
+                    // открытые уровни, присваивая их по величине отступа — не по порядку встречи.
+                    if (para.ListKind != ListKind.None)
+                        para.ListLevel = listNesting.LevelFor(para.LeftPt);
                 }
                 paragraphs.Add(para);
                 // Красную строку меряем ТОЛЬКО по нецентрированным абзацам: у центрированного блока

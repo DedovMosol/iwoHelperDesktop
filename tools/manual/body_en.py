@@ -159,7 +159,9 @@ def build():
     table("Keys for working with the page grid",
           ["Keys", "Action"],
           [["Ctrl + mouse wheel", "Change the thumbnail zoom"],
+           ["Ctrl + “+” / “−”", "Zoom the thumbnails in or out"],
            ["Ctrl + 0", "Return the zoom to 100 %"],
+           ["Home / End", "Go to the first or the last page"],
            ["Ctrl + A", "Select all pages"],
            ["Ctrl + G", "Go to a page by its number"],
            ["Alt + ← / Alt + →", "Move a page left or right"],
@@ -370,9 +372,12 @@ def build():
             "The document has bookmarks: the sections separate themselves"]],
           widths=[4.5, 5.5, 6.0])
 
-    p("“By ranges” takes numbers and ranges — “1-3, 5, 8-” %s. By default every range becomes "
-      "a separate file, and the “Combine into one file” tick box gathers all the listed pages "
-      "into a single document." % ref("split-ranges"))
+    p("“By ranges” takes numbers and ranges — “1-3, 5, 8-” %s. For the common cases the "
+      "“Ranges” field offers ready-made choices: “All pages”, “Odd pages”, “Even pages”, "
+      "“Every 2nd” and “Every 3rd”. Pick one from the list and the range is filled in for you, "
+      "ready to edit or to use as it is. By default every range becomes a separate file, and "
+      "the “Combine into one file” tick box gathers all the listed pages into a single "
+      "document." % ref("split-ranges"))
     picture("split-ranges", "The “By ranges” mode")
     p("“Every N pages” cuts the document into parts of the given size %s. A value of 1 means "
       "“every page as its own file”." % ref("split-everyn"))
