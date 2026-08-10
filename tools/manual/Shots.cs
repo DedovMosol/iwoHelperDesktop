@@ -19,6 +19,7 @@ static class Shots
     static Assembly _app;
     static Type _loc, _lang;
     static string _out, _samples;
+    static bool _en; // язык набора снимков: образцы-заполнители тоже должны быть на нём
     static readonly List<string> _log = new List<string>();
     static Rectangle _popup = Rectangle.Empty; // экранные границы раскрытого меню
     static Form _backdrop;
@@ -73,6 +74,7 @@ static class Shots
         // Язык интерфейса на снимках: в английском руководстве русские окна выглядели бы
         // так же неуместно, как английские в русском. По умолчанию — русский, как было.
         string lang = args.Length > 3 ? args[3] : "ru";
+        _en = lang.StartsWith("en", StringComparison.OrdinalIgnoreCase);
         Directory.CreateDirectory(_out);
 
         _app.GetType("ExcelMerger.AppPaths")
@@ -322,11 +324,14 @@ static class Shots
     static void OpsDpi()
     {
         Form f = Loaded("ExcelMerger.PdfOpsForm", new[] { Doc }, 0, 0);
-        var button = (Button)Field(f, "_btnImages");
+        var button = (Button)Field(f, "_btnExtract");
         button.PerformClick();
         Pump(700);
-        var menu = (ContextMenuStrip)Field(f, "_dpiMenu");
-        _popup = menu.Bounds;
+        var menu = (ContextMenuStrip)Field(f, "_extractMenu");
+        var imagesItem = (ToolStripMenuItem)menu.Items[0];
+        imagesItem.ShowDropDown();
+        Pump(400);
+        _popup = imagesItem.DropDown.Bounds;
         ScreenShot(f, "ops-dpi");
         Kill(f);
     }
@@ -389,16 +394,19 @@ static class Shots
     {
         Type meta = _app.GetType("ExcelMerger.PdfMetadata");
         object current = Activator.CreateInstance(meta);
-        Set(meta, current, "Title", "Образец документа");
-        Set(meta, current, "Author", "Иванов И. И.");
-        Set(meta, current, "Subject", "Демонстрация возможностей");
-        Set(meta, current, "Keywords", "образец, демонстрация, PDF");
+        // Заполнители — на языке набора: в английском руководстве русские «Иванов И. И.»
+        // и «Демонстрация возможностей» читаются как чужой скриншот, а не как пример.
+        Set(meta, current, "Title", _en ? "Sample document" : "Образец документа");
+        Set(meta, current, "Author", _en ? "John Smith" : "Иванов И. И.");
+        Set(meta, current, "Subject", _en ? "Feature demonstration" : "Демонстрация возможностей");
+        Set(meta, current, "Keywords", _en ? "sample, demonstration, PDF" : "образец, демонстрация, PDF");
 
         // С 1.17.9 окно называет файл, который правит, — второй аргумент конструктора.
         Type t = _app.GetType("ExcelMerger.MetadataForm");
         ConstructorInfo ctor = t.GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance,
             null, new[] { meta, typeof(string) }, null);
-        var f = (Form)ctor.Invoke(new object[] { current, "Образец документа.pdf" });
+        // Имя — у того же образца, что показан в остальных окнах, чтобы снимки не расходились.
+        var f = (Form)ctor.Invoke(new object[] { current, Path.GetFileName(Doc) });
         Place(f, 0, 0);
         Shot(f, "metadata");
         Kill(f);

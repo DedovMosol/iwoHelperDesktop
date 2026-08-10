@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
@@ -74,20 +75,88 @@ namespace ExcelMerger
         /// <summary>Запрос последнего тега с GitHub (сеть). Бросает при ошибке/недоступности.</summary>
         public static string FetchLatestTag()
         {
+            string tag, body;
+            FetchLatestRelease(out tag, out body);
+            return tag;
+        }
+
+        public static void FetchLatestRelease(out string tag, out string body)
+        {
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
             var request = (HttpWebRequest)WebRequest.Create(LatestApi);
             request.UserAgent = "iwoHelperDesktop"; // GitHub требует User-Agent
             request.Accept = "application/vnd.github+json";
             request.Timeout = 10000;
             using (var response = (HttpWebResponse)request.GetResponse())
-            using (var reader = new StreamReader(response.GetResponseStream()))
+            using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
             {
                 string json = reader.ReadToEnd();
                 Match m = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
                 if (!m.Success)
                     throw new Exception(Loc.T("update.err.parseVersion"));
-                return m.Groups[1].Value;
+                tag = m.Groups[1].Value;
+
+                m = Regex.Match(json, "\"body\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                body = m.Success ? UnescapeJson(m.Groups[1].Value) : "";
             }
+        }
+
+        private static string UnescapeJson(string s)
+        {
+            if (string.IsNullOrEmpty(s))
+                return s;
+            var sb = new StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (s[i] == '\\' && i + 1 < s.Length)
+                {
+                    char next = s[i + 1];
+                    if (next == 'n') { sb.Append('\n'); i++; }
+                    else if (next == 'r') { sb.Append('\r'); i++; }
+                    else if (next == 't') { sb.Append('\t'); i++; }
+                    else if (next == '"') { sb.Append('"'); i++; }
+                    else if (next == '\\') { sb.Append('\\'); i++; }
+                    else if (next == 'u' && i + 5 < s.Length)
+                    {
+                        string hex = s.Substring(i + 2, 4);
+                        int code;
+                        if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out code))
+                        {
+                            sb.Append((char)code);
+                            i += 5;
+                        }
+                        else
+                        {
+                            sb.Append(s[i]);
+                        }
+                    }
+                    else
+                    {
+                        sb.Append(s[i]);
+                    }
+                }
+                else
+                {
+                    sb.Append(s[i]);
+                }
+            }
+            return sb.ToString();
+        }
+
+        public static string ExtractReleaseNotes(string body, string lang)
+        {
+            if (string.IsNullOrEmpty(body))
+                return "";
+            string open = "**[" + lang.ToUpperInvariant() + "]**";
+            string close = "**[/" + lang.ToUpperInvariant() + "]**";
+            int start = body.IndexOf(open, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+                return "";
+            start += open.Length;
+            int end = body.IndexOf(close, start, StringComparison.OrdinalIgnoreCase);
+            if (end < 0)
+                return "";
+            return body.Substring(start, end - start).Trim();
         }
     }
 
@@ -124,8 +193,9 @@ namespace ExcelMerger
             Ui.RunWorker(delegate()
             {
                 string tag = null;
+                string body = null;
                 Exception error = null;
-                try { tag = UpdateChecker.FetchLatestTag(); }
+                try { UpdateChecker.FetchLatestRelease(out tag, out body); }
                 catch (Exception ex) { error = ex; }
                 Ui.OnUi(owner, delegate // общий guard: своя копия уже дважды теряла catch
                 {
@@ -133,12 +203,12 @@ namespace ExcelMerger
                     // окном: иначе она осталась бы погашенной навсегда.
                     if (done != null)
                         done();
-                    ShowOnce(delegate { ShowResult(owner, tag, error); });
+                    ShowOnce(delegate { ShowResult(owner, tag, body, error); });
                 });
             });
         }
 
-        private static void ShowResult(Form owner, string tag, Exception error)
+        private static void ShowResult(Form owner, string tag, string body, Exception error)
         {
             if (error != null)
             {
@@ -154,7 +224,7 @@ namespace ExcelMerger
                 return;
             }
             if (UpdateChecker.IsNewer(latest, current))
-                OfferUpdate(owner, latest, current, false);
+                OfferUpdate(owner, latest, current, body, false);
             else
                 Dialogs.Info(owner, Title, Loc.T("update.none.title"), string.Format(Loc.T("update.none.body"), UpdateChecker.Display(current)));
         }
@@ -172,7 +242,8 @@ namespace ExcelMerger
             Ui.RunWorker(delegate()
             {
                 string tag = null;
-                try { tag = UpdateChecker.FetchLatestTag(); }
+                string body = null;
+                try { UpdateChecker.FetchLatestRelease(out tag, out body); }
                 catch { return; } // нет сети, нет ответа, мусор в ответе — молча
                 Ui.OnUi(owner, delegate
                 {
@@ -181,7 +252,7 @@ namespace ExcelMerger
                     // Настройки перечитываем здесь, а не при запуске воркера: за десять
                     // секунд ожидания сети пользователь мог отказаться от напоминаний.
                     if (UpdateChecker.ShouldNotify(latest, current, UserSettings.Load().SkippedVersion))
-                        ShowOnce(delegate { OfferUpdate(owner, latest, current, true); });
+                        ShowOnce(delegate { OfferUpdate(owner, latest, current, body, true); });
                 });
             });
         }
@@ -192,10 +263,13 @@ namespace ExcelMerger
         /// нужен только проверке при запуске — по кнопке человек спросил сам, и предлагать
         /// ему отписаться от собственного действия незачем.
         /// </summary>
-        private static void OfferUpdate(Form owner, Version latest, Version current, bool withSkipOption)
+        private static void OfferUpdate(Form owner, Version latest, Version current, string releaseBody, bool withSkipOption)
         {
             string header = string.Format(Loc.T("update.available.title"), UpdateChecker.Display(latest));
-            string body = string.Format(Loc.T("update.available.body"), UpdateChecker.Display(current));
+            string notes = UpdateChecker.ExtractReleaseNotes(releaseBody, Loc.Code(Loc.Current));
+            string body = string.IsNullOrEmpty(notes)
+                ? string.Format(Loc.T("update.available.body"), UpdateChecker.Display(current))
+                : notes;
             // Ветки «с флажком» и «без» различаются ТОЛЬКО подписью флажка (пустая — флажка
             // нет): развилка из двух вызовов дала бы два разных значка у одного и того же
             // сообщения — синий при запуске и оранжевый по кнопке.
