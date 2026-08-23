@@ -300,13 +300,9 @@ namespace ExcelMerger
             A("review.pickRight", "Выберите позднюю версию PDF", "Choose the later PDF version");
             A("review.swap", "⇄ Поменять местами", "⇄ Swap sides");
             A("review.compare", "Сравнить", "Compare");
-            A("review.view.text", "Сравнение текста", "Text comparison");
-            A("review.view.source", "Исходный вид", "Source view");
             A("review.previous", "← Предыдущее", "← Previous");
             A("review.next", "Следующее →", "Next →");
             A("review.manualPair", "Сопоставить страницы…", "Pair pages…");
-            A("review.expand", "Развернуть всё", "Expand all");
-            A("review.collapse", "Свернуть неизменённое", "Collapse unchanged");
             A("review.manual.left", "Страница ранней версии (1–{0}):", "Earlier-version page (1–{0}):");
             A("review.manual.right", "Страница поздней версии (1–{0}):", "Later-version page (1–{0}):");
             A("review.position", "Изменение {0} из {1}", "Change {0} of {1}");
@@ -340,14 +336,14 @@ namespace ExcelMerger
                 "The file changed while it was being read. Retry with stable versions.");
             A("review.help.body",
                 "1. Самостоятельно выберите два PDF: раннюю версию слева и позднюю справа. Программа не ищет и не угадывает версии.\n" +
-                "2. Нажмите «Сравнить». Инструмент сопоставит страницы по тексту, покажет добавления, удаления и страницы, существующие только в одной версии.\n" +
+                "2. Нажмите «Сравнить». Инструмент сопоставит страницы и подсветит отличия прямо на страницах: удалённое — красным на ранней версии, добавленное — зелёным на поздней. Счётчики в строке статуса считаются из той же разметки.\n" +
                 "3. F3 / Shift+F3 переходят к следующему / предыдущему изменению. В спорном месте страницы можно сопоставить вручную.\n" +
-                "4. «Исходный вид» показывает выбранную пару страниц рядом. Файлы остаются неизменными.\n\n" +
+                "4. Файлы остаются неизменными.\n\n" +
                 "Требуется текстовый слой цифрового PDF. OCR сканов и экспорт redline в этой версии не выполняются.",
                 "1. Choose two PDFs yourself: the earlier version on the left and the later one on the right. The app does not discover or guess versions.\n" +
-                "2. Click “Compare”. The tool aligns pages by text and shows additions, removals and pages present on one side only.\n" +
+                "2. Click “Compare”. The tool aligns the pages and highlights the differences right on them: removals in red on the earlier version, additions in green on the later one. The counters in the status line come from the very same markup.\n" +
                 "3. F3 / Shift+F3 go to the next / previous change. A disputed page pair can be corrected manually.\n" +
-                "4. Source view shows the selected page pair side by side. Neither file is changed.\n\n" +
+                "4. Neither file is changed.\n\n" +
                 "A born-digital text layer is required. Scan OCR and redline export are not provided in this version.");
 
             // ops.* — окно «Прочие операции» (PdfOpsForm): семь действий над одним документом.

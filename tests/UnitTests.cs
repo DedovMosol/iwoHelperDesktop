@@ -78,8 +78,12 @@ namespace ExcelMerger.Tests
             Run("PDF Review: строка статуса между кнопками, без наложений на любой ширине", TestReviewLayoutStatusRow);
             Run("PDF Review: вставленная страница не сдвигает последующие пары", TestReviewPageAlignment);
             Run("PDF Review: diff восстанавливает обе стороны и считает изменения", TestReviewDiffReconstruction);
+            Run("PDF Review: идентичные страницы не помечаются изменёнными", TestReviewIdenticalPagesNoFalseHighlight);
+            Run("PDF Review: одна правка на большой странице подсвечивается точечно", TestReviewLargePageSingleEdit);
+            Run("PDF Review: перепад переносов без правок не создаёт изменений", TestReviewReflowNoFalseChanges);
+            Run("PDF Review: ворд-дифф точен и идёт в порядке чтения", TestReviewWordDiffExact);
+            Run("PDF Review: геометрия подсветки учитывает поворот и пиксели", TestReviewGeometryMapping);
             Run("PDF Review: ручное сопоставление держит one-to-one", TestReviewManualPair);
-            Run("PDF Review: сворачивание неизменённого сохраняет объём", TestReviewCollapse);
             Run("PDF Review (живой): пользовательская пара цифровых PDF сравнивается", TestReviewServiceLive);
             Run("PDF Review PageView: ShowPage показывает именно запрошенную страницу", TestReviewPageViewShowsRequestedPage);
             Run("PdfSplitPlan: выделение после удаления берёт исходные страницы", TestSplitPlanSelected);
@@ -1613,15 +1617,25 @@ namespace ExcelMerger.Tests
         private static PdfReviewPage ReviewPage(int index, string text)
         {
             string normalized = PdfReviewDiff.Normalize(text);
-            return new PdfReviewPage
+            var page = new PdfReviewPage
             {
                 PageIndex = index,
                 Text = text,
                 NormalizedText = normalized,
                 WidthPt = 595,
                 HeightPt = 842,
+                ViewWidthPt = 595,
+                ViewHeightPt = 842,
                 Fingerprint = PdfReviewDiff.Fingerprint(normalized, 595, 842)
             };
+            // Слова, как их собирает сервис из извлечения: одно слово — один ключ
+            // (рамки в синтетических тестах не нужны).
+            foreach (string token in normalized.Split('\n', '\t', ' '))
+            {
+                if (token.Length == 0) continue;
+                page.Words.Add(new PdfReviewWord { Text = token, Key = token });
+            }
+            return page;
         }
 
         private static PdfReviewDocument ReviewDocument(string path, params string[] pages)
@@ -1632,6 +1646,7 @@ namespace ExcelMerger.Tests
                 PdfReviewPage page = ReviewPage(i, pages[i]);
                 doc.Pages.Add(page);
                 doc.CharacterCount += page.NormalizedText.Length;
+                doc.WordCount += page.Words.Count;
             }
             return doc;
         }
@@ -1665,25 +1680,145 @@ namespace ExcelMerger.Tests
 
         private static void TestReviewDiffReconstruction()
         {
-            PdfReviewPagePair pair = PdfReviewDiff.Pair(ReviewPage(0, "Старый текст и таблица\t10"),
-                ReviewPage(0, "Новый текст и таблица\t11"), PdfReviewLimits.Default());
-            string left = "", right = "";
-            foreach (PdfReviewDiffOp op in pair.Operations)
+            PdfReviewPagePair pair = PdfReviewDiff.Pair(ReviewPage(0, "Старый текст и таблица 10"),
+                ReviewPage(0, "Новый текст и таблица 11"), PdfReviewLimits.Default());
+            var leftWords = new List<string>();
+            var rightWords = new List<string>();
+            int deleted = 0, inserted = 0;
+            foreach (PdfReviewWordOp op in pair.Operations)
             {
-                if (op.Kind != PdfReviewDiffKind.Insert) left += op.Text;
-                if (op.Kind != PdfReviewDiffKind.Delete) right += op.Text;
+                foreach (PdfReviewWord word in op.Words)
+                {
+                    if (op.Kind != PdfReviewDiffKind.Insert) leftWords.Add(word.Key);
+                    if (op.Kind != PdfReviewDiffKind.Delete) rightWords.Add(word.Key);
+                    if (op.Kind == PdfReviewDiffKind.Delete) deleted++;
+                    if (op.Kind == PdfReviewDiffKind.Insert) inserted++;
+                }
             }
-            AssertEqual("Старый текст и таблица\t10", left, "left reconstruction");
-            AssertEqual("Новый текст и таблица\t11", right, "right reconstruction");
+            AssertEqual("Старый текст и таблица 10", string.Join(" ", leftWords.ToArray()),
+                "left reconstruction");
+            AssertEqual("Новый текст и таблица 11", string.Join(" ", rightWords.ToArray()),
+                "right reconstruction");
+            AssertEqual(2, deleted, "удалено ровно два слова");
+            AssertEqual(2, inserted, "добавлено ровно два слова");
             var result = new PdfReviewResult
             {
-                Left = ReviewDocument("l", left),
-                Right = ReviewDocument("r", right)
+                Left = ReviewDocument("l", "Старый текст и таблица 10"),
+                Right = ReviewDocument("r", "Новый текст и таблица 11")
             };
             result.Pairs.Add(pair);
             PdfReviewStats stats = PdfReviewDiff.Statistics(result);
-            AssertTrue(stats.DeletedWords > 0 && stats.InsertedWords > 0, "добавления/удаления посчитаны");
+            AssertEqual(2, stats.DeletedWords, "счётчик удалённых слов из того же диффа");
+            AssertEqual(2, stats.InsertedWords, "счётчик добавленных слов из того же диффа");
+            AssertEqual(2, stats.Replacements, "замена посчитана");
             AssertTrue(stats.ChangedPercent > 0, "ненулевое изменение не округлено в 0%");
+        }
+
+        /// <summary>
+        /// Главный регресс 1.18.5: одинаковые страницы НЕ должны помечаться изменёнными,
+        /// даже когда слов больше тысячи (старый посимвольный дифф на любой полной странице
+        /// включал «изменено всё»).
+        /// </summary>
+        private static void TestReviewIdenticalPagesNoFalseHighlight()
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < 600; i++)
+                sb.Append("слово").Append(i).Append(' ');
+            string text = sb.ToString().Trim();
+            PdfReviewPagePair pair = PdfReviewDiff.Pair(ReviewPage(0, text), ReviewPage(0, text),
+                PdfReviewLimits.Default());
+            AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status, "идентичная большая страница — без изменений");
+            foreach (PdfReviewWordOp op in pair.Operations)
+                AssertEqual(PdfReviewDiffKind.Equal, op.Kind, "в идентичной паре нет операций удаления/вставки");
+        }
+
+        /// <summary>
+        /// Регресс «подсвечивает всё по сто раз»: на большой странице с одной правкой
+        /// старый дифф выдавал всю страницу целиком; новый обязан показать ровно одно
+        /// удалённое и одно добавленное слово среди длинного Equal.
+        /// </summary>
+        private static void TestReviewLargePageSingleEdit()
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < 600; i++)
+                sb.Append("слово").Append(i).Append(' ');
+            string left = sb.ToString().Trim();
+            string right = left.Replace("слово300", "правка300");
+            PdfReviewPagePair pair = PdfReviewDiff.Pair(ReviewPage(0, left), ReviewPage(0, right),
+                PdfReviewLimits.Default());
+            AssertEqual(PdfReviewPairStatus.Changed, pair.Status, "одна правка видна как изменение");
+            int deleted = 0, inserted = 0, equalWords = 0;
+            foreach (PdfReviewWordOp op in pair.Operations)
+            {
+                if (op.Kind == PdfReviewDiffKind.Delete) deleted += op.Words.Count;
+                else if (op.Kind == PdfReviewDiffKind.Insert) inserted += op.Words.Count;
+                else equalWords += op.Words.Count;
+            }
+            AssertEqual(1, deleted, "удалено ровно одно слово, а не вся страница");
+            AssertEqual(1, inserted, "добавлено ровно одно слово, а не вся страница");
+            AssertEqual(599, equalWords, "остальные слова остались без изменений");
+        }
+
+        /// <summary>
+        /// Перепад переносов/пробелов при том же тексте (перегенерированный файл) не даёт
+        /// правок: дифф идёт по словам в порядке чтения, а не по сырому тексту.
+        /// </summary>
+        private static void TestReviewReflowNoFalseChanges()
+        {
+            PdfReviewPagePair pair = PdfReviewDiff.Pair(
+                ReviewPage(0, "один два три"),
+                ReviewPage(0, "один два \nтри"),
+                PdfReviewLimits.Default());
+            AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+                "рефлоу без смысловых правок не создаёт изменений");
+        }
+
+        /// <summary>Точный ворд-дифф с рамками: удаление/вставка/замена в одном потоке операций.</summary>
+        private static void TestReviewWordDiffExact()
+        {
+            PdfReviewPagePair pair = PdfReviewDiff.Pair(
+                ReviewPage(0, "альфа бета гамма дельта"),
+                ReviewPage(0, "альфа икс гамма"),
+                PdfReviewLimits.Default());
+            var sig = new List<string>();
+            foreach (PdfReviewWordOp op in pair.Operations)
+            {
+                var words = new List<string>();
+                foreach (PdfReviewWord w in op.Words) words.Add(w.Key);
+                sig.Add(op.Kind + ":" + string.Join(",", words.ToArray()));
+            }
+            AssertEqual("Equal:альфа|Delete:бета|Insert:икс|Equal:гамма|Delete:дельта",
+                string.Join("|", sig.ToArray()), "операции идут в порядке чтения без склеек чужих видов");
+        }
+
+        /// <summary>Геометрия подсветки: повороты и перевод в пиксели растра (Y вниз).</summary>
+        private static void TestReviewGeometryMapping()
+        {
+            PdfReviewBox r0 = PdfReviewGeometry.RawToView(100, 200, 160, 216, 0, 595, 842);
+            AssertEqual("100;200;160;216", BoxSig(r0), "0° — рамка без изменений");
+            PdfReviewBox r180 = PdfReviewGeometry.RawToView(100, 200, 160, 216, 180, 595, 842);
+            AssertEqual("435;626;495;642", BoxSig(r180), "180° — зеркальная рамка");
+            PdfReviewBox r90 = PdfReviewGeometry.RawToView(100, 200, 160, 216, 90, 595, 842);
+            AssertEqual("200;435;216;495", BoxSig(r90), "90° — ось поменялась");
+            double vw, vh;
+            PdfReviewGeometry.ViewSize(595, 842, 90, out vw, out vh);
+            AssertEqual("842;595", Math.Round(vw) + ";" + Math.Round(vh), "90° — размеры меняются местами");
+            // Растра 595×842 против страницы 595×842 в пространстве отображения: масштаб 1,
+            // верх рамки (216 от верха при Y вниз для 0°) становится пиксельной ординатой.
+            var flat = new PdfReviewBox { Left = 10, Bottom = 30, Right = 60, Top = 50 };
+            System.Drawing.RectangleF px = PdfReviewGeometry.ToPixelRect(flat, 595, 842, 595, 842);
+            AssertEqual(10, (int)px.Left, "X слева");
+            AssertEqual(842 - 50, (int)px.Top, "Y перевёрнут: верх рамки ближе к верху растра");
+            AssertEqual(50, (int)px.Width, "ширина рамки");
+            AssertEqual(20, (int)px.Height, "высота рамки");
+            AssertEqual(System.Drawing.RectangleF.Empty, PdfReviewGeometry.ToPixelRect(flat, 0, 0, 100, 100),
+                "вырожденный вход — пустой результат, а не падение");
+        }
+
+        private static string BoxSig(PdfReviewBox b)
+        {
+            return Math.Round(b.Left) + ";" + Math.Round(b.Bottom) + ";" +
+                Math.Round(b.Right) + ";" + Math.Round(b.Top);
         }
 
         private static void TestReviewManualPair()
@@ -1701,21 +1836,6 @@ namespace ExcelMerger.Tests
             }
             AssertEqual(1, leftUses, "левая страница ровно в одной паре");
             AssertEqual(1, rightUses, "правая страница ровно в одной паре");
-        }
-
-        private static void TestReviewCollapse()
-        {
-            string equal = new string('x', 1200);
-            var ops = new List<PdfReviewDiffOp>
-            {
-                new PdfReviewDiffOp { Kind = PdfReviewDiffKind.Equal, Text = equal }
-            };
-            List<PdfReviewDiffOp> collapsed = PdfReviewDiff.Collapse(ops, 800, 200);
-            AssertEqual(3, collapsed.Count, "lead, marker, tail");
-            AssertTrue(collapsed[1].Collapsed, "середина помечена collapsed");
-            AssertEqual(800, collapsed[1].HiddenCharacters, "скрытый объём");
-            AssertEqual(1200, collapsed[0].Text.Length + collapsed[1].HiddenCharacters + collapsed[2].Text.Length,
-                "lead + hidden + tail = original");
         }
 
         private static void TestReviewServiceLive()
@@ -1774,14 +1894,14 @@ namespace ExcelMerger.Tests
                         var pageField = typeof(PdfReviewPageView).GetField("_page",
                             BindingFlags.Instance | BindingFlags.NonPublic);
 
-                        view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 1 }, "вторая");
+                        view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 1 }, "вторая", null);
                         AssertTrue(WaitFor(delegate
                         {
                             var p = (PdfPageRef)pageField.GetValue(view);
                             return p != null && p.PageIndex == 1;
                         }), "ShowPage показала запрошенную ВТОРУЮ страницу, а не старую/пустую");
 
-                        view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, "первая");
+                        view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, "первая", null);
                         AssertTrue(WaitFor(delegate
                         {
                             var p = (PdfPageRef)pageField.GetValue(view);

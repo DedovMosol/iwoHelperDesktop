@@ -1,6 +1,11 @@
 {
   "_comment": "Короткая сводка «что нового» для окна проверки обновлений. Текст берётся из docs/CHANGELOG.md и сжимается до 3-5 строк: в диалоге читают по диагонали. Приложение тянет ЭТОТ файл с raw.githubusercontent (ветка main), потому что описать ещё не установленную версию локальной строкой нельзя. Ключ — версия ровно как в теге, без «v».",
 
+  "1.18.5": {
+    "ru": "• Новое сравнение двух версий PDF: страницы в исходном виде бок о бок, удалённое подсвечено красным, добавленное — зелёным.\n• Подсветка и счётчики изменений считаются из одной разметки по словам — перепад переносов строк не даёт ложных правок.\n• Результаты всех PDF-операций пишутся атомарно и не затирают исходный файл.\n• «Разделить» работает с правимым порядком страниц, а запись результата поверх открытого файла отвергается везде.",
+    "en": "• New PDF version comparison: pages side by side in the original view, removals highlighted in red, additions in green.\n• Highlights and change counters come from one word-level markup — line-reflow differences no longer produce false changes.\n• Every PDF output is written atomically and never clobbers its source.\n• Split follows an editable page order, and writing a result over an open file is refused everywhere."
+  },
+
   "1.18.4": {
     "ru": "• Меню «Прочие операции» стало проще: 11 кнопок свернулись в 5.\n• В «Разделить/Извлечь» появились готовые диапазоны страниц: чётные, нечётные, каждая вторая.\n• Ctrl+Plus/Minus меняют размер миниатюр, Home/End прыгают на первую и последнюю страницу.\n• Многоуровневые списки при переводе PDF → Word сохраняют вложенность.\n• Окно инструмента больше не закрывается на середине разбора файла, а настройки не теряются при закрытии двух окон сразу.",
     "en": "• The More operations menu is simpler: 11 buttons folded into 5.\n• Split/Extract now offers ready page ranges: odd, even, every second.\n• Ctrl+Plus/Minus resize thumbnails, Home/End jump to the first and last page.\n• Nested lists keep their structure in PDF → Word.\n• A tool window no longer closes mid-parse, and settings no longer lose a write when two windows close at once."

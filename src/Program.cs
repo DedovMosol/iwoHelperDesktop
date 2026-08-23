@@ -34,6 +34,8 @@ namespace ExcelMerger
                 return RunThumbCheck();
             if (args.Length >= 1 && string.Equals(args[0], "--gscheck", StringComparison.OrdinalIgnoreCase))
                 return RunGsCheck();
+            if (args.Length >= 1 && string.Equals(args[0], "--reviewcheck", StringComparison.OrdinalIgnoreCase))
+                return RunReviewCheck();
             // PDF-команды: те же операции, что и в окнах, для пакетной обработки и сценариев.
             // Стоят рядом с режимом Excel и до создания окон — интерфейс им не нужен.
             if (PdfCli.IsCommand(args))
@@ -279,6 +281,38 @@ namespace ExcelMerger
             finally
             {
                 try { File.Delete(pdf); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Проверка входа «Сравнить» в поставленном однофайловом exe — ровно место, где был
+        /// реальный крах: ПЕРВОЕ в сеансе обращение к вшитому PdfPig. Здесь НАРОЧНО нет
+        /// <see cref="EmbeddedAssemblies.Ensure"/>: в сценарии пользователя резолвер ещё не
+        /// зарегистрирован никаким другим инструментом. Приём из --pdfcheck: несуществующий
+        /// файл. Если резолвер не встанет, JIT публичного входа упадёт
+        /// FileNotFoundException ДО тела; если встанет — получаем нашу
+        /// <see cref="PdfReviewException"/> «не читается». 0 = первый вход резолвится.
+        /// </summary>
+        private static int RunReviewCheck()
+        {
+            AttachConsole(-1);
+            try
+            {
+                PdfReviewService.Load(Path.Combine(Path.GetTempPath(),
+                    "нет_такого_" + Guid.NewGuid().ToString("N") + ".pdf"), null, null,
+                    PdfReviewLimits.Default());
+                WriteConsole("REVIEWCHECK: неожиданно без ошибки");
+                return 2;
+            }
+            catch (PdfReviewException)
+            {
+                WriteConsole("REVIEWCHECK OK"); // PdfPig резолвнулся, дошли до нашей ошибки
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                WriteConsole("REVIEWCHECK FAIL: " + ex.GetType().Name + " — " + ex.Message);
+                return 1;
             }
         }
 

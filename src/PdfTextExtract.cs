@@ -31,6 +31,15 @@ namespace ExcelMerger
         public double RightMarginPt;
         public double TopMarginPt;
         public double BottomMarginPt;
+        // Все слова страницы с рамками (пространство отображения: X вправо, Y вверх) в порядке
+        // извлечения; слова текстового штампа уже убраны. «Сравнение» строит из них порядок
+        // чтения для ворд-диффа и рамки подсветки поверх отрендеренной страницы.
+        internal List<PdfWord> Words = new List<PdfWord>();
+        // Собственный поворот страницы (/Rotate, градусы по часовой, 0/90/180/270). Извлечение
+        // держит слова в НЕповёрнутом пространстве страницы; «Сравнению» нужен этот угол, чтобы
+        // наложить рамки слов на отрендеренную страницу: системный рендерер показывает страницу
+        // повёрнутой, как в читалке.
+        internal int NativeRotation;
 
         /// <summary>Весь текст страницы: абзацы через пустую строку.</summary>
         public string Text
@@ -240,7 +249,9 @@ namespace ExcelMerger
                             WidthPt = pageW,
                             HeightPt = pageH,
                             Lines = lines,
-                            Tables = det.Tables
+                            Tables = det.Tables,
+                            Words = words,
+                            NativeRotation = (int)page.Rotation.Value
                         };
                         pt.Images = images;
                         if (stampImage != null)

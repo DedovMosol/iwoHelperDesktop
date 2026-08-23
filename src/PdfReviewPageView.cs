@@ -1,13 +1,15 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace ExcelMerger
 {
     /// <summary>
     /// Одна read-only страница для бокового просмотра Review. Рендерит в фоне,
-    /// масштабирует существующий bitmap без повторного чтения PDF и отбрасывает
-    /// поздний результат по generation. Не владеет общим grid renderer.
+    /// масштабирует существующий bitmap без повторного чтения PDF, отбрасывает
+    /// поздний результат по generation и поверх растра рисует подсветку изменений
+    /// (рамки слов из ворд-диффа). Не владеет общим grid renderer.
     /// </summary>
     internal sealed class PdfReviewPageView : UserControl
     {
@@ -28,6 +30,7 @@ namespace ExcelMerger
             public int Generation;
             public PdfPageRef Page;
             public string Caption;
+            public PdfReviewHighlight Highlight;
         }
 
         public PdfReviewPageView()
@@ -82,8 +85,9 @@ namespace ExcelMerger
             _viewport.SetBounds(0, 44, Width, Math.Max(1, Height - 44));
             PlacePicture();
         }
+
         /// <summary>Показать страницу <paramref name="page"/>; null — «страницы нет».</summary>
-        public void ShowPage(PdfPageRef page, string caption)
+        public void ShowPage(PdfPageRef page, string caption, PdfReviewHighlight highlight)
         {
             int generation = ++_generation;
             DisposeBitmap();
@@ -106,7 +110,8 @@ namespace ExcelMerger
                 {
                     Generation = generation,
                     Page = page.Clone(),
-                    Caption = caption
+                    Caption = caption,
+                    Highlight = highlight
                 };
                 if (!_renderWorker)
                 {
@@ -143,6 +148,10 @@ namespace ExcelMerger
                             request.Page.PageIndex, 1200, 20000); // ≤24 млн пикселей
                     if (rendered != null && request.Page.Rotation != 0)
                         rendered.RotateFlip(PageRotation.FlipFor(request.Page.Rotation));
+                    // Подсветка рисуется СРАЗУ на копии растра в воркере: переключение пар
+                    // и зум тогда ничего не перерисовывают (картинка уже готова).
+                    if (rendered != null)
+                        rendered = DrawHighlight(rendered, request.Highlight);
                 }
                 catch
                 {
@@ -157,6 +166,35 @@ namespace ExcelMerger
                 }))
                     if (ready != null) ready.Dispose();
             }
+        }
+
+        /// <summary>
+        /// Возвращает растр с нарисованной подсветкой (свой — входной освобождается).
+        /// Пустая подсветка возвращает входной растр без копирования.
+        /// </summary>
+        private static Bitmap DrawHighlight(Bitmap source, PdfReviewHighlight highlight)
+        {
+            if (highlight == null || highlight.Boxes.Count == 0 ||
+                highlight.ViewWidthPt <= 0 || highlight.ViewHeightPt <= 0)
+                return source;
+            var copy = new Bitmap(source);
+            source.Dispose();
+            using (Graphics g = Graphics.FromImage(copy))
+            using (var fill = new SolidBrush(Color.FromArgb(64, highlight.Color)))
+            using (var border = new Pen(Color.FromArgb(160, highlight.Color), 1f))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                foreach (PdfReviewBox box in highlight.Boxes)
+                {
+                    RectangleF rect = PdfReviewGeometry.ToPixelRect(box,
+                        highlight.ViewWidthPt, highlight.ViewHeightPt, copy.Width, copy.Height);
+                    if (rect.Width < 1 || rect.Height < 1)
+                        continue; // рамка меньше пикселя: не рисуем, чтобы не засорять растр
+                    g.FillRectangle(fill, rect);
+                    g.DrawRectangle(border, rect.X, rect.Y, rect.Width, rect.Height);
+                }
+            }
+            return copy;
         }
 
         private void ApplyRendered(int generation, PdfPageRef request, Bitmap rendered, string caption)

@@ -8,7 +8,8 @@ namespace ExcelMerger
 {
     /// <summary>
     /// Сравнение двух выбранных пользователем born-digital PDF. Инструмент read-only:
-    /// текстовый diff и исходные страницы бок о бок, без записи результата на диск.
+    /// страницы бок о бок в исходном виде, удалённое подсвечено красным на левой странице,
+    /// добавленное — зелёным на правой. Подсветка и счётчики строятся из одного ворд-диффа.
     /// </summary>
     public sealed class PdfReviewForm : PdfToolFormBase, IFileAcceptor, IUnsavedStateAware
     {
@@ -16,16 +17,13 @@ namespace ExcelMerger
 
         private TextBox _leftPath, _rightPath;
         private Button _pickLeft, _pickRight, _swap, _compare;
-        private SplitContainer _body, _textSplit, _sourceSplit;
+        private SplitContainer _body, _sourceSplit;
         private ListBox _pairs;
-        private TabControl _views;
-        private RichTextBox _leftText, _rightText;
         private PdfReviewPageView _leftSource, _rightSource;
         private Label _summary, _position;
-        private Button _previous, _next, _manual, _expand;
+        private Button _previous, _next, _manual;
         private PdfReviewResult _result;
         private int _pairIndex = -1;
-        private bool _expanded;
         private int _pathTop; // ордината ряда выбора файлов: пересчитывается в OnResize
         private string _leftFile, _rightFile;
 
@@ -70,7 +68,6 @@ namespace ExcelMerger
             InitShell(Title, new Size(1120, 760), new Size(900, 640), Theme.ReviewBlue);
             BuildReviewHeader();
             WireFileDrop(AcceptFiles);
-
             int menu = HelpMenu.Height;
             int top = menu + 88;
             _pathTop = top;
@@ -173,30 +170,12 @@ namespace ExcelMerger
             return button;
         }
 
+        /// <summary>
+        /// Единственный вид сравнения — исходные страницы бок о бок с подсветкой:
+        /// удалённое красным на левой, добавленное зелёным на правой.
+        /// </summary>
         private void BuildViews()
         {
-            _views = new TabControl();
-            _views.Dock = DockStyle.Fill;
-            _views.SelectedIndexChanged += delegate
-            {
-                if (_views.SelectedIndex == 1) RenderSources();
-            };
-            _body.Panel2.Controls.Add(_views);
-
-            var textTab = new TabPage(Loc.T("review.view.text")) { Padding = new Padding(0) };
-            var sourceTab = new TabPage(Loc.T("review.view.source")) { Padding = new Padding(0) };
-            _views.TabPages.Add(textTab);
-            _views.TabPages.Add(sourceTab);
-
-            _textSplit = new SplitContainer();
-            _textSplit.Dock = DockStyle.Fill;
-            _textSplit.Orientation = Orientation.Vertical;
-            _leftText = DiffBox(Loc.T("review.left"));
-            _rightText = DiffBox(Loc.T("review.right"));
-            _textSplit.Panel1.Controls.Add(_leftText);
-            _textSplit.Panel2.Controls.Add(_rightText);
-            textTab.Controls.Add(_textSplit);
-
             _sourceSplit = new SplitContainer();
             _sourceSplit.Dock = DockStyle.Fill;
             _sourceSplit.Orientation = Orientation.Vertical;
@@ -204,7 +183,7 @@ namespace ExcelMerger
             _rightSource = new PdfReviewPageView { Dock = DockStyle.Fill };
             _sourceSplit.Panel1.Controls.Add(_leftSource);
             _sourceSplit.Panel2.Controls.Add(_rightSource);
-            sourceTab.Controls.Add(_sourceSplit);
+            _body.Panel2.Controls.Add(_sourceSplit);
         }
 
         /// <summary>
@@ -236,29 +215,9 @@ namespace ExcelMerger
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            if (_leftPath == null || _views == null)
+            if (_leftPath == null)
                 return; // InitShell задал ClientSize до того, как контролы построены
             LayoutPathRow();
-            // WinForms не перекладывает НЕВИДИМУЮ вкладку: если окно сжали, пока открыт
-            // «Текст», вкладка «Исходный вид» остаётся при старых границах и «всплывает»
-            // больше окна при переключении (проверка минимального размера это ловит).
-            // Сажаем каждую страницу на место, которое ей выделил бы сам TabControl.
-            Rectangle display = _views.DisplayRectangle;
-            foreach (TabPage page in _views.TabPages)
-                page.Bounds = display;
-        }
-
-        private RichTextBox DiffBox(string accessible)
-        {
-            var box = new RichTextBox();
-            box.Dock = DockStyle.Fill;
-            box.ReadOnly = true;
-            box.BorderStyle = BorderStyle.None;
-            box.BackColor = Color.White;
-            box.Font = Ui.Font(10f);
-            box.AccessibleName = accessible;
-            box.DetectUrls = false;
-            return box;
         }
 
         private void BuildNavigation(int right)
@@ -270,14 +229,6 @@ namespace ExcelMerger
             _next = Secondary(180, y, 150, Loc.T("review.next"));
             _next.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             _next.Click += delegate { MoveChange(1); };
-            _expand = Secondary(right - 420, y, 180, Loc.T("review.expand"));
-            _expand.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            _expand.Click += delegate
-            {
-                _expanded = !_expanded;
-                _expand.Text = Loc.T(_expanded ? "review.collapse" : "review.expand");
-                if (_result != null && _pairIndex >= 0) ShowDiff(_result.Pairs[_pairIndex]);
-            };
             _manual = Secondary(right - 230, y, 230, Loc.T("review.manualPair"));
             _manual.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _manual.Click += delegate { ManualPair(); };
@@ -428,71 +379,64 @@ namespace ExcelMerger
                 SyncControls();
                 return;
             }
-            PdfReviewPagePair pair = _result.Pairs[index];
-            ShowDiff(pair);
-            if (_views.SelectedIndex == 1) RenderSources();
+            RenderSources();
             _position.Text = string.Format(Loc.T("review.position"), index + 1, _result.Pairs.Count);
             SyncControls();
         }
 
-        private void ShowDiff(PdfReviewPagePair pair)
-        {
-            _leftText.Clear(); _rightText.Clear();
-            if (pair.Status == PdfReviewPairStatus.LeftOnly)
-            {
-                Append(_leftText, PageText(_result.Left, pair.LeftPageIndex), Theme.ErrRed, Color.FromArgb(255, 235, 235));
-                return;
-            }
-            if (pair.Status == PdfReviewPairStatus.RightOnly)
-            {
-                Append(_rightText, PageText(_result.Right, pair.RightPageIndex), Theme.OkGreen, Color.FromArgb(232, 248, 235));
-                return;
-            }
-            IList<PdfReviewDiffOp> ops = _expanded ? pair.Operations : PdfReviewDiff.Collapse(pair.Operations);
-            foreach (PdfReviewDiffOp op in ops)
-            {
-                if (op.Kind == PdfReviewDiffKind.Equal)
-                {
-                    Append(_leftText, op.Text, Theme.TextPrimary, Color.White);
-                    Append(_rightText, op.Text, Theme.TextPrimary, Color.White);
-                }
-                else if (op.Kind == PdfReviewDiffKind.Delete)
-                    Append(_leftText, op.Text, Theme.ErrRed, Color.FromArgb(255, 235, 235));
-                else
-                    Append(_rightText, op.Text, Theme.OkGreen, Color.FromArgb(232, 248, 235));
-            }
-            _leftText.SelectionStart = 0; _rightText.SelectionStart = 0;
-        }
-
-        private static void Append(RichTextBox box, string text, Color color, Color back)
-        {
-            int start = box.TextLength;
-            box.AppendText(text ?? "");
-            box.Select(start, box.TextLength - start);
-            box.SelectionColor = color;
-            box.SelectionBackColor = back;
-            box.Select(box.TextLength, 0);
-        }
-
+        /// <summary>
+        /// Показать пару страниц с подсветкой из ТОГО ЖЕ ворд-диффа, что и счётчики:
+        /// слева — удалённые слова красным, справа — добавленные зелёным.
+        /// </summary>
         private void RenderSources()
         {
             if (_result == null || _pairIndex < 0 || _pairIndex >= _result.Pairs.Count) return;
             PdfReviewPagePair pair = _result.Pairs[_pairIndex];
-            _leftSource.ShowPage(PageRef(_result.Left, pair.LeftPageIndex), Loc.T("review.left"));
-            _rightSource.ShowPage(PageRef(_result.Right, pair.RightPageIndex), Loc.T("review.right"));
+            _leftSource.ShowPage(PageRef(_result.Left, pair.LeftPageIndex),
+                Loc.T("review.left"), HighlightFor(pair, true));
+            _rightSource.ShowPage(PageRef(_result.Right, pair.RightPageIndex),
+                Loc.T("review.right"), HighlightFor(pair, false));
+        }
+
+        /// <summary>
+        /// Подсветка одной стороны пары. Страница без пары целиком того же цвета
+        /// (вся удалена / вся добавлена); неизменённая пара — без подсветки.
+        /// </summary>
+        private PdfReviewHighlight HighlightFor(PdfReviewPagePair pair, bool leftSide)
+        {
+            var highlight = new PdfReviewHighlight
+            {
+                Color = leftSide ? Theme.ErrRed : Theme.OkGreen
+            };
+            if (pair == null || pair.Status == PdfReviewPairStatus.Unchanged)
+                return highlight;
+            PdfReviewPage page = leftSide
+                ? PdfReviewDiff.PageAt(_result.Left, pair.LeftPageIndex)
+                : PdfReviewDiff.PageAt(_result.Right, pair.RightPageIndex);
+            if (page == null) return highlight;
+            highlight.ViewWidthPt = page.ViewWidthPt;
+            highlight.ViewHeightPt = page.ViewHeightPt;
+            if (pair.Status == PdfReviewPairStatus.Changed)
+            {
+                PdfReviewDiffKind wanted = leftSide
+                    ? PdfReviewDiffKind.Delete : PdfReviewDiffKind.Insert;
+                foreach (PdfReviewWordOp op in pair.Operations)
+                    if (op.Kind == wanted)
+                        foreach (PdfReviewWord word in op.Words)
+                            highlight.Boxes.Add(word.Box);
+                return highlight;
+            }
+            // Страница без пары: всё содержимое — удаление (слева) или вставка (справа).
+            if ((leftSide && pair.Status == PdfReviewPairStatus.LeftOnly) ||
+                (!leftSide && pair.Status == PdfReviewPairStatus.RightOnly))
+                foreach (PdfReviewWord word in page.Words)
+                    highlight.Boxes.Add(word.Box);
+            return highlight;
         }
 
         private static PdfPageRef PageRef(PdfReviewDocument doc, int pageIndex)
         {
             return doc == null || pageIndex < 0 ? null : new PdfPageRef { SourcePath = doc.Path, PageIndex = pageIndex };
-        }
-
-        private static string PageText(PdfReviewDocument doc, int pageIndex)
-        {
-            if (doc != null)
-                foreach (PdfReviewPage page in doc.Pages)
-                    if (page.PageIndex == pageIndex) return page.NormalizedText ?? "";
-            return "";
         }
 
         private void MoveChange(int direction)
@@ -535,15 +479,8 @@ namespace ExcelMerger
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            CenterSplit(_textSplit);
-            CenterSplit(_sourceSplit);
-        }
-
-        private static void CenterSplit(SplitContainer split)
-        {
-            if (split == null || split.ClientSize.Width <= split.SplitterWidth)
-                return;
-            split.SplitterDistance = (split.ClientSize.Width - split.SplitterWidth) / 2;
+            if (_sourceSplit.ClientSize.Width > _sourceSplit.SplitterWidth)
+                _sourceSplit.SplitterDistance = (_sourceSplit.ClientSize.Width - _sourceSplit.SplitterWidth) / 2;
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -562,8 +499,7 @@ namespace ExcelMerger
 
         private void ClearViews()
         {
-            _leftText.Clear(); _rightText.Clear();
-            _leftSource.ShowPage(null, null); _rightSource.ShowPage(null, null);
+            _leftSource.ShowPage(null, null, null); _rightSource.ShowPage(null, null, null);
             _position.Text = "";
         }
 
@@ -580,7 +516,6 @@ namespace ExcelMerger
             _compare.Enabled = !Working && files;
             _pairs.Enabled = !Working && _result != null;
             _previous.Enabled = _next.Enabled = _result != null && _result.Pairs.Count > 0;
-            _expand.Enabled = _result != null && _pairIndex >= 0;
             _manual.Enabled = !Working && _result != null && _pairIndex >= 0;
         }
     }

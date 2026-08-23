@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace ExcelMerger
 {
@@ -50,6 +51,18 @@ namespace ExcelMerger
         }
 
         public static PdfReviewDocument Load(string path, Action<int, int> progress,
+            Func<bool> cancelled, PdfReviewLimits limits)
+        {
+            // PdfPig вшит в exe ресурсом и без перехвата разрешения не грузится: резолвер
+            // обязан быть зарегистрирован ДО JIT-компиляции ядра, в теле которого есть типы
+            // UglyToad (строка с «PdfDocument probe» одна роняла первое же сравнение
+            // в однофайловой сборке: «Не удалось загрузить файл или сборку…»).
+            EmbeddedAssemblies.Ensure();
+            return LoadCore(path, progress, cancelled, limits);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static PdfReviewDocument LoadCore(string path, Action<int, int> progress,
             Func<bool> cancelled, PdfReviewLimits limits)
         {
             string full = Canonical(path);
@@ -102,7 +115,7 @@ namespace ExcelMerger
                     doc.CharacterCount += PdfReviewDiff.CodePoints(normalized);
                     if (doc.CharacterCount > limits.MaxCharacters)
                         throw Failure(PdfReviewFailure.TooLarge, full, Loc.T("review.err.tooLarge"));
-                    doc.Pages.Add(new PdfReviewPage
+                    var reviewPage = new PdfReviewPage
                     {
                         PageIndex = page.PageIndex,
                         Text = text,
@@ -110,7 +123,15 @@ namespace ExcelMerger
                         WidthPt = page.WidthPt,
                         HeightPt = page.HeightPt,
                         Fingerprint = PdfReviewDiff.Fingerprint(normalized, page.WidthPt, page.HeightPt)
-                    });
+                    };
+                    double viewW, viewH;
+                    PdfReviewGeometry.ViewSize(page.WidthPt, page.HeightPt, page.NativeRotation,
+                        out viewW, out viewH);
+                    reviewPage.ViewWidthPt = viewW;
+                    reviewPage.ViewHeightPt = viewH;
+                    BuildWords(page, reviewPage);
+                    doc.WordCount += reviewPage.Words.Count;
+                    doc.Pages.Add(reviewPage);
                 }
                 bool any = false;
                 foreach (PdfReviewPage page in doc.Pages)
@@ -142,6 +163,34 @@ namespace ExcelMerger
         {
             public long Length;
             public long WriteTicks;
+        }
+
+        /// <summary>
+        /// Слова страницы в ПОРЯДКЕ ЧТЕНИЯ с рамками в пространстве отображения. Тот же
+        /// порядок, что и у обычного текста (строки сверху вниз, слова слева направо):
+        /// ворд-дифф сравнивает именно эту последовательность, а рамки из неё же ложатся на
+        /// отрендеренную страницу — один источник для диффа и подсветки.
+        /// </summary>
+        private static void BuildWords(PdfPageText page, PdfReviewPage reviewPage)
+        {
+            if (page.Words == null || page.Words.Count == 0)
+                return;
+            foreach (OcrLayout.Line line in OcrLayout.ToLines(page.Words))
+            {
+                foreach (PdfWord word in line.Words)
+                {
+                    string text = word.Text == null ? "" : word.Text.Trim();
+                    if (text.Length == 0)
+                        continue; // чистый пробел — не слово
+                    reviewPage.Words.Add(new PdfReviewWord
+                    {
+                        Text = word.Text,
+                        Key = text,
+                        Box = PdfReviewGeometry.RawToView(word.Left, word.Bottom, word.Right, word.Top,
+                            page.NativeRotation, page.WidthPt, page.HeightPt)
+                    });
+                }
+            }
         }
 
         private static FileStamp Stamp(string path)
