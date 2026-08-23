@@ -27,6 +27,10 @@ namespace ExcelMerger
             Action<int, int> progress = null, Func<bool> cancelled = null, Action onCommitting = null)
         {
             int units = order == null ? 0 : order.Count;
+            if (order != null)
+                foreach (PdfPageRef page in order)
+                    if (page != null && OutputFile.IsSameFile(page.SourcePath, outputPath))
+                        throw new MergeException(Loc.T("err.output.sameSource"));
 
             int withText;
             List<PdfPageText> pages = PdfPageExtraction.Load(order,
@@ -36,21 +40,19 @@ namespace ExcelMerger
             // презентация получается из одного текста (см. PageBackgrounds).
             Background[] backgrounds = PageBackgrounds.Render(order, Scaled(progress, 1, units), cancelled);
 
-            string temp = outputPath + ".tmp";
-            try
+            using (var output = new AtomicOutput(outputPath))
             {
-                PptxWriter.Write(pages, temp, DateTime.UtcNow, Scaled(progress, 2, units), cancelled,
-                    onCommitting, backgrounds);
-                Replace(temp, outputPath);
-            }
-            catch (Exception ex) when (MergeException.ShouldWrap(ex))
-            {
-                throw new MergeException(string.Format(Loc.T("err.pptx.writeFailed"),
-                    Path.GetFileName(outputPath), DiskSpace.Describe(ex, outputPath)));
-            }
-            finally
-            {
-                try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+                try
+                {
+                    PptxWriter.Write(pages, output.TempPath, DateTime.UtcNow,
+                        Scaled(progress, 2, units), cancelled, onCommitting, backgrounds);
+                    output.Commit();
+                }
+                catch (Exception ex) when (MergeException.ShouldWrap(ex))
+                {
+                    throw new MergeException(string.Format(Loc.T("err.pptx.writeFailed"),
+                        Path.GetFileName(outputPath), DiskSpace.Describe(ex, outputPath)));
+                }
             }
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
         }
@@ -68,18 +70,6 @@ namespace ExcelMerger
                 double frac = total > 0 ? (double)done / total : 1.0;
                 progress(stage * units + (int)(frac * units), 3 * units);
             };
-        }
-
-        /// <summary>
-        /// Поставить готовый файл на место результата. Перезапись существующего — через
-        /// удаление: File.Move на занятый файл откажет, а понятное сообщение об этом даст
-        /// обёртка вызывающего.
-        /// </summary>
-        private static void Replace(string temp, string outputPath)
-        {
-            if (File.Exists(outputPath))
-                File.Delete(outputPath);
-            File.Move(temp, outputPath);
         }
     }
 }

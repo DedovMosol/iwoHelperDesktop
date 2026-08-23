@@ -16,10 +16,16 @@ namespace ExcelMerger
     /// (<see cref="PdfOrderedToolFormBase"/>) или один открытый документ
     /// (<see cref="PdfSingleDocFormBase"/>).
     /// </summary>
-    public abstract class PdfPageOrderFormBase : PdfToolFormBase
+    public abstract class PdfPageOrderFormBase : PdfToolFormBase, IUnsavedStateAware
     {
         /// <summary>Порядок страниц, показанный сеткой (общие ссылки с ней).</summary>
         protected readonly PdfPageOrder _order = new PdfPageOrder();
+
+        /// <summary>
+        /// Любой набранный список страниц — рабочее состояние, которое нельзя терять при
+        /// пересборке окна из-за языка. Чистое пустое окно можно пересоздать.
+        /// </summary>
+        public bool HasUncommittedState { get { return _order.Count > 0; } }
 
         protected PdfPageOrderFormBase(Action showHub) : base(showHub) { }
 

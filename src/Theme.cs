@@ -18,6 +18,9 @@ namespace ExcelMerger
         // «PDF → Word» — фиолетовая (отличается от синей/красной/зелёной).
         public static readonly Color WordViolet = Color.FromArgb(91, 79, 191);    // #5B4FBF
         public static readonly Color WordVioletDark = Color.FromArgb(62, 52, 140);// #3E348C
+        // «Сравнить PDF» — спокойный синий: это режим рецензирования, а не преобразования.
+        public static readonly Color ReviewBlue = Color.FromArgb(32, 91, 143);       // #205B8F
+        public static readonly Color ReviewBlueDark = Color.FromArgb(20, 61, 98);    // #143D62
 
         // «PDF → PowerPoint». Полоса шапки и значок карточки НАМЕРЕННО разного тона: по полосе
         // идёт белый текст, и подпись под заголовком требует контраста 4,5:1 — яркий оранжевый

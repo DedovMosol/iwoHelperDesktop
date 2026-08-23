@@ -18,6 +18,8 @@ namespace ExcelMerger
         Pptx,
         /// <summary>«Прочие операции» с PDF — ползунки настроек на красном листе.</summary>
         Tools,
+        /// <summary>Сравнение двух цифровых PDF — две страницы бок о бок.</summary>
+        Review,
         /// <summary>Раздел «Иной функционал» — плитка приложений на синем листе.</summary>
         Other
     }
@@ -244,6 +246,7 @@ namespace ExcelMerger
             if (excel) { main = Theme.Accent; fold = Theme.AccentPressed; }
             else if (_glyph == CardGlyph.Ocr) { main = Theme.WordViolet; fold = Theme.WordVioletDark; }
             else if (_glyph == CardGlyph.Pptx) { main = Theme.PowerPointOrange; fold = Theme.PowerPointOrangeDark; }
+            else if (_glyph == CardGlyph.Review) { main = Theme.ReviewBlue; fold = Theme.ReviewBlueDark; }
             else if (_glyph == CardGlyph.Other) { main = Theme.HubBlue; fold = Theme.HubBlueDark; }
             else { main = PdfRed; fold = PdfFold; }
 
@@ -313,6 +316,20 @@ namespace ExcelMerger
                         float radius = 1.7f * s;
                         g.FillEllipse(knob, c.X - radius, c.Y - radius, 2 * radius, 2 * radius);
                     }
+                }
+            }
+            else if (_glyph == CardGlyph.Review)
+            {
+                // Две версии бок о бок и связь сравнения между ними.
+                using (var pen = new Pen(Color.White, 1.35f * s))
+                {
+                    pen.LineJoin = LineJoin.Round;
+                    PointF left = p(6.5f, 10.5f), right = p(13.3f, 10.5f);
+                    g.DrawRectangle(pen, left.X, left.Y, 4.2f * s, 7.8f * s);
+                    g.DrawRectangle(pen, right.X, right.Y, 4.2f * s, 7.8f * s);
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    g.DrawLine(pen, p(10.8f, 14.4f), p(13.2f, 14.4f));
                 }
             }
             else if (_glyph == CardGlyph.Other)

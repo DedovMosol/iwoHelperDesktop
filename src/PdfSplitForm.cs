@@ -68,8 +68,8 @@ namespace ExcelMerger
             int gridBottom = ClientSize.Height - 152;
 
             _grid = new PdfPageGrid();
-            _grid.AllowReorder = false; // разделение не меняет порядок исходника
-            _grid.AllowRotate = true;   // но поворот страниц в ИТОГОВЫХ файлах — можно
+            _grid.AllowReorder = true;  // Split редактирует рабочий порядок, источник не меняется
+            _grid.AllowRotate = true;   // поворот страниц в ИТОГОВЫХ файлах — можно
             // ShowPositionNumbers = false: под плиткой — номер исходной страницы.
             _grid.SetBounds(20, m + 84, right - 20 - panelW, gridBottom - (m + 84));
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
@@ -396,29 +396,50 @@ namespace ExcelMerger
             int mode = _cmbMode.SelectedIndex;
             bool combine = mode == ModeRanges && _chkCombine.Checked;
             string src = _sourcePath;
-            CompressionLevel level = _compress.Level; // с UI-потока до старта воркера
-            int[] rotations = CurrentRotations();     // снимок поворотов — тоже до старта воркера
-            Func<bool> cancel = CancelToken();        // кооперативная отмена длинной операции
+            CompressionLevel level = _compress.Level; // с UI-системы до старта воркера
+            List<PdfPageRef> working = PdfSplitPlan.ClonePages(_order.ToList());
+            Func<bool> cancel = CancelToken();
 
-            // Один файл: «Извлечь выбранные» ИЛИ «По диапазонам» + объединить.
+            if (working.Count == 0)
+            {
+                Dialogs.Error(this, Title, Loc.T("split.err.noPages.title"),
+                    Loc.T("split.err.noPages.body"));
+                return;
+            }
+
+            // Один файл: «Извлечь выбранные» либо диапазоны + «Объединить в один файл».
             if (mode == ModeExtract || combine)
             {
-                List<int> indices;
+                List<PdfPageRef> pages;
                 if (mode == ModeExtract)
                 {
-                    int[] sel = _grid.GetSelectedIndices();
-                    if (sel.Length == 0)
+                    int[] selected = _grid.GetSelectedIndices();
+                    if (selected.Length == 0)
                     {
-                        Dialogs.Error(this, Title, Loc.T("split.err.noPages.title"), Loc.T("split.err.noPages.body"));
+                        Dialogs.Error(this, Title, Loc.T("split.err.noPages.title"),
+                            Loc.T("split.err.noPages.body"));
                         return;
                     }
-                    indices = new List<int>(sel);
+                    pages = PdfSplitPlan.Selected(working, selected);
                 }
                 else
                 {
-                    try { indices = PageRanges.ToIndices(PageRanges.Parse(_cmbRanges.Text, _pageCount)); }
-                    catch (MergeException ex) { Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message); return; }
+                    IList<PageRange> ranges;
+                    try { ranges = PageRanges.Parse(_cmbRanges.Text, _pageCount); }
+                    catch (MergeException ex)
+                    {
+                        Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message);
+                        return;
+                    }
+                    pages = FlattenParts(PdfSplitPlan.ByRanges(working, ranges));
                 }
+                if (pages.Count == 0)
+                {
+                    Dialogs.Error(this, Title, Loc.T("split.err.noPages.title"),
+                        Loc.T("split.err.noPages.body"));
+                    return;
+                }
+
                 string outPath;
                 using (var dialog = new SaveFileDialog())
                 {
@@ -430,22 +451,32 @@ namespace ExcelMerger
                         return;
                     outPath = dialog.FileName;
                 }
-                RunSplit(delegate(Action<int, int> pr) { PdfSplitService.Extract(src, indices, outPath, pr, rotations, cancel); return new List<string> { outPath }; },
-                    level, outPath, false, UsageStats.RecordPdfExtract, indices.Count);
+                RunSplit(delegate(Action<int, int> pr)
+                {
+                    PdfSplitService.ExtractPlanned(src, pages, outPath, pr, cancel);
+                    return new List<string> { outPath };
+                }, level, outPath, false, UsageStats.RecordPdfExtract, pages.Count);
                 return;
             }
 
             // Несколько файлов: диапазоны (без объединения) / каждые N / закладки.
-            IList<PageRange> ranges = null;
+            IList<PdfSplitPart> plannedParts = null;
             int everyN = 0;
             if (mode == ModeRanges)
             {
+                IList<PageRange> ranges;
                 try { ranges = PageRanges.Parse(_cmbRanges.Text, _pageCount); }
-                catch (MergeException ex) { Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message); return; }
+                catch (MergeException ex)
+                {
+                    Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message);
+                    return;
+                }
+                plannedParts = PdfSplitPlan.ByRanges(working, ranges);
             }
             else if (mode == ModeEveryN)
             {
                 everyN = (int)_numN.Value;
+                plannedParts = PdfSplitPlan.EveryN(working, everyN);
             }
 
             // Даём выбрать и папку, и базовое имя: к нему добавятся номера/метки.
@@ -465,50 +496,54 @@ namespace ExcelMerger
                     baseName = Path.GetFileNameWithoutExtension(src);
             }
 
-            string template = _txtNameTemplate.Text.Trim(); // с UI-потока до старта воркера
+            string template = _txtNameTemplate.Text.Trim(); // снимок UI до старта воркера
             Func<Action<int, int>, List<string>> work;
             Action record;
+            int workUnits = working.Count;
             switch (mode)
             {
                 case ModeRanges:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByRanges(src, ranges, dir, baseName, pr, rotations, cancel, template); };
+                    work = delegate(Action<int, int> pr)
+                    {
+                        return PdfSplitService.SplitPlanned(src, plannedParts, dir, baseName,
+                            pr, cancel, template);
+                    };
                     record = UsageStats.RecordPdfSplitRanges;
                     break;
                 case ModeEveryN:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitEveryN(src, everyN, dir, baseName, pr, rotations, cancel, template); };
+                    work = delegate(Action<int, int> pr)
+                    {
+                        return PdfSplitService.SplitPlanned(src, plannedParts, dir, baseName,
+                            pr, cancel, template);
+                    };
                     record = UsageStats.RecordPdfSplitEveryN;
                     break;
                 case ModeBookmarks:
-                    work = delegate(Action<int, int> pr) { return PdfSplitService.SplitByBookmarks(src, dir, baseName, pr, rotations, cancel, template); };
+                    work = delegate(Action<int, int> pr)
+                    {
+                        return PdfSplitService.SplitByBookmarksPlanned(src, working, dir,
+                            baseName, pr, cancel, template);
+                    };
                     record = UsageStats.RecordPdfSplitBookmarks;
                     break;
                 default:
                     return;
             }
-            RunSplit(work, level, dir, true, record, _pageCount);
+            RunSplit(work, level, dir, true, record, workUnits);
         }
 
-        /// <summary>
-        /// Карта поворотов по индексу исходной страницы (для всех режимов записи);
-        /// null — поворотов нет. Снимается на UI-потоке ДО старта воркера, а во время
-        /// операции сетка заблокирована (Locked) — карта не меняется под ногами.
-        /// </summary>
-        private int[] CurrentRotations()
+        /// <summary>Собрать страницы частей в один файл в порядке заданных диапазонов.</summary>
+        private static List<PdfPageRef> FlattenParts(IList<PdfSplitPart> parts)
         {
-            List<PdfPageRef> pages = _order.ToList();
-            if (pages.Count == 0)
-                return null;
-            bool any = false;
-            var rotations = new int[_pageCount];
-            foreach (PdfPageRef page in pages)
-                if (page.PageIndex >= 0 && page.PageIndex < rotations.Length && page.Rotation != 0)
-                {
-                    rotations[page.PageIndex] = page.Rotation;
-                    any = true;
-                }
-            return any ? rotations : null;
+            var result = new List<PdfPageRef>();
+            if (parts == null)
+                return result;
+            foreach (PdfSplitPart part in parts)
+                if (part != null)
+                    foreach (PdfPageRef page in part.Pages)
+                        result.Add(page.Clone());
+            return result;
         }
-
         /// <summary>
         /// Выполнить работу в фоне; сжать полученные файлы (на этом же воркере, до
         /// открытия результата); по завершении — статус, счётчик, открытие результата.

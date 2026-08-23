@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml/badge.svg)](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/DedovMosol/iwoHelperDesktop?label=release&color=0F6CBD)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Privacy: offline‑only](https://img.shields.io/badge/Privacy-offline--only-5B4FBF)](docs/PRIVACY.md)
 
-**Free, offline office tools in a single Windows app — merge Excel sheets, merge/split/compress PDFs at Acrobat‑level quality, and turn born‑digital PDFs back into editable Word. No subscription, no admin rights, no network.**
+**Free, offline-first office tools in a single Windows app — merge Excel sheets, merge/split/compress and compare PDFs, and turn born-digital PDFs back into editable Word. No subscription, no admin rights; document processing stays local.**
 
 📐 [Architecture](docs/ARCHITECTURE.md) · 🤝 [Contributing](CONTRIBUTING.md) · 📋 [Changelog](docs/CHANGELOG.md) · 🔒 [Privacy](docs/PRIVACY.md)
 
@@ -86,7 +86,7 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 
 |  |  |
 |:--:|:--:|
-| <img src="docs/screenshots/hub-main.png" width="400" alt="Start screen"><br>**Start screen** — pick a section | <img src="docs/screenshots/hub.png" width="400" alt="PDF tools"><br>**PDF tools** — five tools in the section |
+| <img src="docs/screenshots/hub-main.png" width="400" alt="Start screen"><br>**Start screen** — pick a section | <img src="docs/screenshots/hub.png" width="400" alt="PDF tools"><br>**PDF tools** — six tools in the section |
 | <img src="docs/screenshots/pdf-merge.png" width="400" alt="Merge PDF"><br>**Merge PDF** — thumbnails & four levels of compression | <img src="docs/screenshots/pdf-split.png" width="400" alt="Split PDF"><br>**Split PDF** — four modes, ready page ranges |
 | <img src="docs/screenshots/pdf-ops.png" width="400" alt="More operations"><br>**More operations** — convert, extract, print, properties | <img src="docs/screenshots/pdf-word.png" width="400" alt="PDF to Word"><br>**PDF → Word** — text & tables into an editable `.docx` |
 | <img src="docs/screenshots/pdf-pptx.png" width="400" alt="PDF to PowerPoint"><br>**PDF → PowerPoint** — pages into slides with editable text | <img src="docs/screenshots/excel.png" width="400" alt="Merge Excel"><br>**Merge Excel** — sheets of a folder into one digest |

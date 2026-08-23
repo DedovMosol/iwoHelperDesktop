@@ -132,7 +132,7 @@ are conceptual.
 |---|---|
 | `Program.cs` | Entry point. Parses CLI flags, installs `CrashReport`, initializes `Loc`, then runs the GUI (`ShellContext`) — or a headless mode: `--cli` (scripted Excel Digest), `--selftest` (create every window unshown), `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded-dependency probes used by CI). Headless modes leave via `FastExit.Now`. The GUI path first claims the single-instance slot (`SingleInstance`); headless modes are checked earlier and always run, however many at a time. |
 | `SingleInstance.cs` | One GUI process per user session. A named `Local\` mutex taken **without ownership** (nothing to abandon on a crash, and the name lives only as long as a handle is held) marks the running instance; a second launch broadcasts a `RegisterWindowMessage` signal and exits, so Task Manager shows one app instead of two. The signal is received by a hidden top-level window (`WS_EX_TOOLWINDOW`, never shown) — a message-only window would not do, broadcasts never reach those. The newly started process calls `AllowSetForegroundWindow` before signalling, otherwise Windows lets the running instance restore its window but not raise it. Any failure degrades to “start normally”. |
-| `ShellContext.cs` | `ApplicationContext` that owns the hub and all tool windows (independent, non-modal). Reopens the hub, focuses an already-open tool, rebuilds windows on language change (active window last, busy windows deferred, each window put back through `WindowPlacement.Snapshot`/`ShowAt` so a minimized or maximized one returns exactly as it was), exits when the last window closes. Knows which **hub section** each tool was opened from (`HubLevel`) and hands it to the tool as its `Home` action, so “Home” returns to that section and not to the top screen — and carries the section over when the hub is rebuilt on a language change. Owns the `SingleInstance` listener (created before the first window, so a launch that follows immediately still finds it) and answers the signal with `ShowHub`, which is idempotent. |
+| `ShellContext.cs` | `ApplicationContext` that owns the hub and all tool windows (independent, non-modal). Reopens the hub, focuses an already-open tool, rebuilds windows on language change (active window last, busy or unsaved-state windows skipped — `IBusyAware.IsBusy` or `IUnsavedStateAware.HasUncommittedState` — and the count of skipped ones reported in a dialog, each rebuilt window put back through `WindowPlacement.Snapshot`/`ShowAt` so a minimized or maximized one returns exactly as it was), exits when the last window closes. Knows which **hub section** each tool was opened from (`HubLevel`) and hands it to the tool as its `Home` action, so “Home” returns to that section and not to the top screen — and carries the section over when the hub is rebuilt on a language change. Owns the `SingleInstance` listener (created before the first window, so a launch that follows immediately still finds it) and answers the signal with `ShowHub`, which is idempotent. |
 | `ToolRegistry.cs` | Live-window registry keyed by tool id, prevents duplicate windows. |
 | `StartForm.cs` | The hub, two levels deep (`HubLevel`): the main screen offers two sections, inside them live the tool cards (`pdf`, `split`, `ops`, `ocr`, `pptx` and `excel`) — the PDF section is laid out in three columns, because a third row would not fit a 1366×768 screen while a third column fits easily. The bottom row carries two icon buttons (gear → Settings, circled question mark → About): glyphs are drawn with grayscale antialiasing, since subpixel rendering fringes a small glyph on white, and each keeps a tooltip and an `AccessibleName` — an icon-only button has no other way to say what it does. The levels are **panels of one window**, not separate windows — `ShellContext` keeps a single hub and everything is wired to it. The window size is the same on every level so it never jumps, “Back” and `Esc` return to the top, and the focus is moved to the first card explicitly (otherwise it stays on a hidden control and the keyboard loses its place). PDFs dropped on the section card are held until a tool is picked (`_pending`, cleared on every exit from the section — a stuck set would open the next tool with someone else's files). |
 | `IBusyAware.cs` | Marker for windows running a long operation (skipped by the language rebuild). |
@@ -223,6 +223,12 @@ on the header while building would put it *first* and land the focus on “Home�
 | `PdfColorProbe.cs` | “Did the colour actually go?” — the check of a grayscale run. Looks at what a person sees rather than at the file structure: a sample of pages is rendered through the same WinRT renderer as the thumbnails and searched for saturated pixels, because colour arrives through ICC profiles, palettes and transparency groups and no list of switches covers all of them in advance. The probe can only **disprove**: a page that will not render is not “still coloured”, or the feature would break on the machines where it used to work. |
 | `PageRasterizer.cs` | Renders a page region to PNG via gs — the raster fallback used for soft-masked images and rasterized regions. |
 | `PdfExportService.cs`, `PlainText.cs` | Export out of PDF: pages to PNG/JPEG at a chosen dpi through the same renderer as the thumbnails, and the text layer to `.txt`. Images are the one export that writes a file per page, so it runs inside `Cancellation.NoPartialOutput`. `PlainText` is the pure half — it merges paragraphs **and tables** back into reading order by vertical position, because the analysis moves table words out of the paragraph stream and a naive dump loses them. |
+| `PdfReviewForm.cs`, `PdfReviewPageView.cs` | The Compare tool window: pick a left and a right file, compare on a worker, then two views — a text-diff tab (pair list, previous/next pair, manual pairing) and an original-view tab (both pages rendered side by side, background-rendered with a generation counter so a late render never overwrites a newer request). The file-pick row lays out from measured widths in one `OnResize`, and hidden tabs are re-pinned after a resize: WinForms does not re-layout a tab page nobody is looking at, so a window shrunk while the text tab is open would leave the original tab at its old bounds. |
+| `PdfReviewService.cs`, `PdfReviewModel.cs` | Compare orchestration: guardrails before any heavy work (`PdfReviewLimits` — per-file size, pages, characters, tokens, diff cells), PdfPig extraction, per-page normalization and fingerprint, an in-memory LRU of four successfully extracted documents (re-comparing the same pair is instant), then the pure diff. All results are plain model types, so unit tests run real comparisons without ever opening a window. |
+| `PdfReviewDiff.cs` | The pure text diff: code-point tokenization, page/segment alignment by similarity, pair building (unchanged / changed / left-only / right-only). Pure functions over strings — no IO, no UI — and covered by tests against hand-crafted inputs. |
+| `AtomicOutput.cs` | The write transaction for one result: the caller writes to a uniquely named temporary file in the destination folder, `Commit` moves it into place (backing the previous target up first when it exists), and disposing without a commit deletes only this transaction's own files. Shared by merge, split, text export, metadata and both converters — a crash, an error or a cancel leaves nothing half-written and never replaces a previous result mid-write. |
+| `IUnsavedStateAware.cs` | Marker for windows holding uncommitted work (a typed page list, loaded files, a comparison in progress); the hub's language rebuild skips such windows and reports how many stayed on the previous language. |
+| `PdfSplitPlan.cs` | The pure split model without PDFsharp: `ClonePages` takes the edited working order off the grid, and parts carry pages from that order while labels and bookmark titles keep their original semantics — so Split follows the user's edits without the source ever being the thing that is reordered. |
 | `PdfConvert.cs`, `GsRewrite.cs` | Grayscale and repair through Ghostscript. `GsRewrite` is the pipeline both they and compression share, and it runs four checks in a deliberate order — cheapest first, each only for what passed the previous: the engine really worked (`EngineSucceeded` — its exit code lies on a file it cannot read), the document kept its pages (`PdfPageProbe`), the caller's size policy (`replace`), and an optional check of the output itself (`verify` — grayscale looks with `PdfColorProbe` whether the colour is gone). The original is restored on any failure. Compression replaces only a **smaller** file, the conversions replace any sound one. Grayscale passes `-sColorConversionStrategy=Gray` **alone**: pairing it with `ProcessColorModel` is what the pdfwrite documentation asks not to do (since 9.11 the strategy sets the model itself) and is the subject of bug 693074. |
 | `PageInterleave.cs` | Pure interleaving of the page order — assembling the two stacks a single-sided scanner produces (fronts, and backs in reverse). |
 | `NameTemplate.cs`, `OutputFile.cs` | Output names: pure token substitution (`[BASENAME]`, `[FILENUMBER###10]`, …) and the one place that picks a free file name. |
@@ -238,6 +244,11 @@ on the header while building would put it *first* and land the focus on “Home�
 top-level bookmarks). Both compress optionally and never modify the source. Both are
 cancellable during page assembly (the page count drives the ≥ 5 threshold), the optional
 Ghostscript compression that follows runs past the point of no return and is not interrupted.
+Split edits a **working copy** of the page order (`PdfSplitPlan.ClonePages`): the grid
+allows reordering, every split mode follows the edited order, and part names/bookmarks keep
+their original semantics. Every writer goes through `AtomicOutput` — a result lands as a
+unique temporary file and is committed whole, so a crash, an error or a cancel never leaves
+a half-written file and never replaces the previous one mid-write.
 
 **PdfOpsForm design rationale (858 lines):**  
 More operations form hosts 11 buttons for 7-8 distinct operations. Size is justified by:
@@ -252,6 +263,28 @@ Alternative architecture (interface per operation, factory, registry) would spli
 - **Abstracted (15 files):** Testable in isolation, extensible via plugins. Overkill for 7 operations that change once per year.
 
 Verdict: YAGNI. Operations are stable, plugin system not needed. Current design chosen deliberately for simplicity.
+
+### PDF Compare (Review)
+
+```mermaid
+flowchart TB
+    A["Pick left + right PDF"] --> B{"Guardrails<br>(PdfReviewLimits)"}
+    B -->|"size / pages / characters / tokens / diff cells"| C["PdfPig extraction<br>+ normalization + fingerprint"]
+    C --> D["LruCache of 4<br>extracted documents"]
+    D --> E["PdfReviewDiff: token alignment<br>→ page pairs → diff pairs"]
+    E --> F["Text-diff tab<br>(pair list, prev/next, manual pairing)"]
+    E --> G["Original-view tab<br>(side-by-side renders, generation-guarded)"]
+    B -->|"scanned / protected / same file"| H["Refused with an explanation"]
+```
+
+The feature compares two explicitly chosen digital PDFs page by page. Extraction is the
+expensive step, so it is guarded up front (`MaxFileBytes` 200 MB, `MaxPages` 500,
+`MaxCharacters` 2 M, `MaxTokens` 250 k, `MaxDiffCells` 1 M) and cached per canonical path;
+the diff itself is pure string work in `PdfReviewDiff` — scanned pages (no text layer) and
+password-protected files fail the guardrail checks rather than producing a meaningless diff.
+The window (`PdfReviewForm`) is its own layout rather than a page-grid tool: a diff list with
+pair navigation and an original-view tab rendering both pages side by side, where renders run
+on a worker under a generation counter so a late bitmap never wins over a newer request.
 
 ### PDF → Word pipeline
 
@@ -516,7 +549,7 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` (370 tests, custom exe runner, zero
+1. **Unit tests** — `tests/UnitTests.cs` (420 tests, custom exe runner, zero
    dependencies, no Office) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
    zoom percentage and wheel-step chaining, the number-strip hit-test and double-click

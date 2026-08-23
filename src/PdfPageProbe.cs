@@ -53,10 +53,16 @@ namespace ExcelMerger
         /// единственное, где помнят про пароль. Защищённый файл без пароля PdfPig не
         /// открывает вовсе, так что забыть подставить его здесь значило бы получить
         /// «файл не читается» на каждом шаге разбора.
+        ///
+        /// <see cref="EmbeddedAssemblies.Ensure"/> зовётся ЗДЕСЬ, а не только в публичных
+        /// обёртках: иначе прямой вызов (например, из сравнения версий, если оно первое
+        /// коснулось PdfPig в сеансе) падал «сборка не найдена» — вшита она ресурсом и без
+        /// перехвата разрешения не загружается.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static UglyToad.PdfPig.PdfDocument OpenPig(string path)
         {
+            EmbeddedAssemblies.Ensure();
             string password = PdfPasswords.For(path);
             if (string.IsNullOrEmpty(password))
                 return UglyToad.PdfPig.PdfDocument.Open(path);

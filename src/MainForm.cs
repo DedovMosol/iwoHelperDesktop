@@ -9,7 +9,7 @@ using System.Windows.Forms;
 
 namespace ExcelMerger
 {
-    public class MainForm : Form, IBusyAware
+    public class MainForm : Form, IBusyAware, IUnsavedStateAware
     {
         private const string AppTitle = "iwo Helper Desktop";
         private const int MenuHeight = HelpMenu.Height;
@@ -69,6 +69,12 @@ namespace ExcelMerger
         public bool IsBusy
         {
             get { return _running || _noteBusy; }
+        }
+
+        /// <summary>Набранный список или готовый результат нельзя терять при смене языка.</summary>
+        public bool HasUncommittedState
+        {
+            get { return _files.Count > 0 || _lastResult != null; }
         }
         private bool _closeRequested; // пользователь закрыл окно во время объединения
         private bool _isFreshRun;     // прогон — новый свод (не дослияние), для счётчика статистики

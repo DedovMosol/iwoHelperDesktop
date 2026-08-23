@@ -34,11 +34,11 @@ namespace ExcelMerger
         ///    ею, что цвет действительно ушёл). Она последняя, потому что самая дорогая, и
         ///    незачем платить за неё, если результат всё равно не применяется.
         /// </summary>
-        public static bool Run(string path, string args, int timeoutMs,
+        public static bool Run(string path, string tempOutput, string args, int timeoutMs,
             Func<long, long, bool> replace, Func<string, bool> verify = null)
         {
-            string tmp = path + ".gstmp";
-            string bak = path + ".gsbak";
+            string tmp = tempOutput;
+            string bak = path + ".iwo-gs-" + Guid.NewGuid().ToString("N") + ".bak";
             try
             {
                 long origSize = new FileInfo(path).Length;
@@ -72,10 +72,10 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Путь к временному выходу для переданного файла (его же и подставит <see cref="Run"/>).</summary>
+        /// <summary>Путь к временному выходу; уникален для параллельных headless-запусков.</summary>
         public static string TempOutput(string path)
         {
-            return path + ".gstmp";
+            return path + ".iwo-gs-" + Guid.NewGuid().ToString("N") + ".tmp";
         }
 
         /// <summary>

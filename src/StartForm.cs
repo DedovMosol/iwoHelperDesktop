@@ -172,6 +172,7 @@ namespace ExcelMerger
             // Раздел PDF: четыре инструмента сеткой 2×2.
             Func<Action, Form> ocrFactory = delegate(Action back) { return new OcrForm(back); };
             Func<Action, Form> pptxFactory = delegate(Action back) { return new PptxForm(back); };
+            Func<Action, Form> reviewFactory = delegate(Action back) { return new PdfReviewForm(back); };
             Func<Action, Form> opsFactory = delegate(Action back) { return new PdfOpsForm(back); };
             // Мост в «Прочие операции»: им пользуются и «Разделение» (открытый документ), и
             // «Объединение» (собранный файл). Фабрику окна знает стартовый экран — он же и
@@ -200,6 +201,8 @@ namespace ExcelMerger
                 ocrFactory, Pad, Row2, CardW);
             AddTool(_levelPdf, CardGlyph.Pptx, "pptx", "hub.pptx.name", "hub.pptx.desc",
                 pptxFactory, Col2, Row2, CardW);
+            AddTool(_levelPdf, CardGlyph.Review, "review", "hub.review.name", "hub.review.desc",
+                reviewFactory, Col3, Row2, CardW);
 
             // Иной функционал: пока один инструмент, место под следующие размечено той же
             // сеткой, что и в разделе PDF.

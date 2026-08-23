@@ -72,11 +72,18 @@ namespace ExcelMerger
         {
             if (order == null || order.Count == 0)
                 throw new MergeException(Loc.T("err.pdf.noPages"));
+            foreach (PdfPageRef page in order)
+                if (page != null && OutputFile.IsSameFile(page.SourcePath, outputPath))
+                    throw new MergeException(Loc.T("err.output.sameSource"));
             string lockError = MergeService.CheckOutputWritable(outputPath);
             if (lockError != null)
                 throw new MergeException(Loc.T("err.pdf.fileBusy"));
             EmbeddedAssemblies.Ensure();
-            MergeCore(order, outputPath, progress, cancelled, padToEven);
+            using (var output = new AtomicOutput(outputPath))
+            {
+                MergeCore(order, output.TempPath, progress, cancelled, padToEven);
+                output.Commit();
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

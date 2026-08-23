@@ -30,6 +30,10 @@ namespace ExcelMerger
             Func<bool> cancelled = null, Action onCommitting = null)
         {
             int writeUnits = order == null ? 0 : order.Count; // страниц к записи — вторая половина шкалы
+            if (order != null)
+                foreach (PdfPageRef page in order)
+                    if (page != null && OutputFile.IsSameFile(page.SourcePath, outputPath))
+                        throw new MergeException(Loc.T("err.output.sameSource"));
             Action<int, int> extractCb = progress == null ? null : (Action<int, int>)delegate(int d, int t)
             {
                 progress(d, 2 * t); // разбор — первая половина шкалы
@@ -43,7 +47,11 @@ namespace ExcelMerger
                 double frac = t > 0 ? (double)d / t : 1.0;
                 progress(writeUnits + (int)(frac * writeUnits), 2 * writeUnits);
             };
-            WordDocxWriter.Write(pages, outputPath, writeCb, cancelled, onCommitting);
+            using (var output = new AtomicOutput(outputPath))
+            {
+                WordDocxWriter.Write(pages, output.TempPath, writeCb, cancelled, onCommitting);
+                output.Commit();
+            }
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
         }
     }

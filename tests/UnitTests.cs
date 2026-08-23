@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Reflection;
 using System.Text;
 using System.Xml.Linq;
 using ExcelMerger;
@@ -67,6 +68,25 @@ namespace ExcelMerger.Tests
             Run("UsageStats.Total: включает PdfToWord, исключает сжатия", TestUsageTotal);
             Run("MessageForm.ButtonX: одна по центру, две по краям", TestMessageButtonX);
             Run("PdfSplitService.Sanitize: недопустимые символы", TestSanitize);
+            Run("AtomicOutput: сбой сохраняет прежний target, commit заменяет", TestAtomicOutput);
+            Run("StartupSweep: старые сироты .iwo-* убираются, живые файлы не трогаются", TestStartupSweep);
+            Run("Ghostscript: отсутствие не кэшируется навсегда", TestGhostscriptReprobe);
+            Run("Сервисы: результат поверх источника отвергается", TestServiceSameSourceGuards);
+            Run("PDF Review: нормализация Unicode, пробелов и переводов строк", TestReviewNormalize);
+            Run("PDF Review: CodePoints считает суррогатную пару одним знаком", TestReviewCodePoints);
+            Run("PDF Review Load: истинные причины ошибок, парольный файл даёт «нужен пароль»", TestReviewLoadErrorReasons);
+            Run("PDF Review: строка статуса между кнопками, без наложений на любой ширине", TestReviewLayoutStatusRow);
+            Run("PDF Review: вставленная страница не сдвигает последующие пары", TestReviewPageAlignment);
+            Run("PDF Review: diff восстанавливает обе стороны и считает изменения", TestReviewDiffReconstruction);
+            Run("PDF Review: ручное сопоставление держит one-to-one", TestReviewManualPair);
+            Run("PDF Review: сворачивание неизменённого сохраняет объём", TestReviewCollapse);
+            Run("PDF Review (живой): пользовательская пара цифровых PDF сравнивается", TestReviewServiceLive);
+            Run("PDF Review PageView: ShowPage показывает именно запрошенную страницу", TestReviewPageViewShowsRequestedPage);
+            Run("PdfSplitPlan: выделение после удаления берёт исходные страницы", TestSplitPlanSelected);
+            Run("PdfSplitPlan: диапазоны фильтруют рабочий набор, сохраняя порядок", TestSplitPlanRanges);
+            Run("PdfSplitPlan: каждые N страниц режут рабочий порядок", TestSplitPlanEveryN);
+            Run("PdfSplitPlan: закладки фильтруют рабочий набор и пустые главы", TestSplitPlanBookmarks);
+            Run("PdfSplit (живой): рабочий порядок после удаления и перестановки", TestPdfSplitWorkingSetLive);
             Run("PdfSplit (живой): извлечение, диапазоны, каждые N, закладки", TestPdfSplitLive);
             Run("PdfPageGrid.ClampWindow: окно видимых с буфером", TestClampWindow);
             Run("Theme.ToBgr: упаковка цвета 0x00BBGGRR", TestThemeToBgr);
@@ -834,8 +854,8 @@ namespace ExcelMerger.Tests
             AssertEqual("b|c|a|d", string.Join("|", l.ToArray()), "перенос a перед позицией 3");
             ListReorder.Move(l, 2, 0);
             AssertEqual("a|b|c|d", string.Join("|", l.ToArray()), "перенос обратно");
-            ListReorder.RemoveAt(l, new[] { 3, 1 });
-            AssertEqual("a|c", string.Join("|", l.ToArray()), "удаление набора индексов");
+            ListReorder.RemoveAt(l, new[] { 3, 1, 1, -1, 99 });
+            AssertEqual("a|c", string.Join("|", l.ToArray()), "удаление набора индексов без дублей");
         }
 
         // ---------- SourceFileList ----------
@@ -1354,6 +1374,559 @@ namespace ExcelMerger.Tests
             return string.Join(",", parts.ToArray());
         }
 
+        private static void TestAtomicOutput()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_atomic_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            string target = Path.Combine(dir, "result.txt");
+            try
+            {
+                File.WriteAllText(target, "old");
+                using (var output = new AtomicOutput(target))
+                    File.WriteAllText(output.TempPath, "unfinished"); // без Commit
+                AssertEqual("old", File.ReadAllText(target), "старый target пережил незавершённую запись");
+
+                using (var output = new AtomicOutput(target))
+                {
+                    File.WriteAllText(output.TempPath, "new");
+                    output.Commit();
+                }
+                AssertEqual("new", File.ReadAllText(target), "commit заменил target");
+                AssertEqual(1, Directory.GetFiles(dir).Length, "temp/backup не остались");
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        /// <summary>
+        /// Регрессия на CWE-459: сироты «.iwo-*» от аварийно прерванного сеанса должны
+        /// убираться при старте, а живые и посторонние файлы — не страдать.
+        /// </summary>
+        private static void TestStartupSweep()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_sweep_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string orphanAtomic = Path.Combine(dir, "doc.iwo-" + new string('a', 32) + ".pdf");
+                string orphanGs = Path.Combine(dir, "doc.pdf.iwo-gs-" + new string('b', 32) + ".tmp");
+                string freshOrphan = Path.Combine(dir, "doc2.iwo-" + new string('c', 32) + ".pdf");
+                string userLookalike = Path.Combine(dir, "report.iwo-notes.txt");
+                string normal = Path.Combine(dir, "normal.pdf");
+                File.WriteAllText(orphanAtomic, "x");
+                File.WriteAllText(orphanGs, "x");
+                File.WriteAllText(freshOrphan, "x");
+                File.WriteAllText(userLookalike, "x");
+                File.WriteAllText(normal, "x");
+
+                DateTime now = DateTime.UtcNow;
+                File.SetLastWriteTimeUtc(orphanAtomic, now.AddHours(-2));
+                File.SetLastWriteTimeUtc(orphanGs, now.AddHours(-2));
+                // freshOrphan только что создан: возраст нулевой, трогать нельзя.
+
+                int removed = StartupSweep.Sweep(new[] { dir }, now);
+                AssertEqual(2, removed, "удалены только старые сироты обоих видов");
+                AssertTrue(!File.Exists(orphanAtomic), "старая сирота AtomicOutput удалена");
+                AssertTrue(!File.Exists(orphanGs), "старая сирота GsRewrite удалена");
+                AssertTrue(File.Exists(freshOrphan), "свежий файл не тронут (запас по возрасту)");
+                AssertTrue(File.Exists(userLookalike), "файл пользователя с похожим именем не тронут");
+                AssertTrue(File.Exists(normal), "обычный файл не тронут");
+
+                AssertEqual(0, StartupSweep.Sweep(new[] { dir }, now), "повторный прогон ничего не находит");
+                AssertEqual(0, StartupSweep.Sweep(new[] { null, "", dir + "_нет" }, now),
+                    "плохие папки переносятся тихо");
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        /// <summary>Единый подсчёт знаков: суррогатная пара (эмодзи) — одна кодовая точка.</summary>
+        private static void TestReviewCodePoints()
+        {
+            AssertEqual(0, PdfReviewDiff.CodePoints(null), "null — ноль знаков");
+            AssertEqual(0, PdfReviewDiff.CodePoints(""), "пусто — ноль знаков");
+            AssertEqual(5, PdfReviewDiff.CodePoints("abcde"), "обычный текст — по числу букв");
+            // «🙂» — одна кодовая точка из двух char (D83D DE42)
+            AssertEqual(3, PdfReviewDiff.CodePoints("a\U0001F642b"), "эмодзи считается одним знаком");
+        }
+
+        /// <summary>
+        /// Регрессия на «Файл не удалось прочитать как PDF» на ровном месте: ошибки чтения
+        /// обязаны называть истинную причину (а не безликое сообщение), а защищённый паролем
+        /// файл — давать отдельный исход «нужен пароль», чтобы форма показала диалог пароля.
+        /// Раньше подсчёт страниц глотал любое исключение в «-1», и до диалога не доходило.
+        /// </summary>
+        private static void TestReviewLoadErrorReasons()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_reviewerr_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                // Мусор вместо PDF: честная причина в тексте, а не общий тупик
+                string junk = Path.Combine(dir, "мусор.pdf");
+                File.WriteAllText(junk, "это вовсе не PDF");
+                try
+                {
+                    PdfReviewService.Load(junk, null, null, PdfReviewLimits.Default());
+                    AssertTrue(false, "мусор не должен читаться");
+                }
+                catch (PdfReviewException ex)
+                {
+                    AssertEqual(PdfReviewFailure.Unreadable, ex.Reason, "мусор — «не читается»");
+                    AssertTrue(ex.Message.Length > 0, "у мусора есть сообщение");
+                }
+
+                // Несуществующий файл
+                try
+                {
+                    PdfReviewService.Load(Path.Combine(dir, "нет.pdf"), null, null, PdfReviewLimits.Default());
+                    AssertTrue(false, "несуществующий файл не должен читаться");
+                }
+                catch (PdfReviewException ex)
+                {
+                    AssertEqual(PdfReviewFailure.Unreadable, ex.Reason, "нет файла — «не читается»");
+                }
+
+                // Парольный файл: отдельный исход, чтобы форма показала диалог пароля.
+                // Шифрует Ghostscript (он же вендорится в продукт); без него подпроверка пропускается.
+                if (Ghostscript.Available)
+                {
+                    string plain = Path.Combine(dir, "plain.pdf");
+                    WriteReviewPdf(plain, new[] { "Секретный текст" });
+                    string secret = Path.Combine(dir, "secret.pdf");
+                    string args = "-sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dQUIET -dSAFER" +
+                        " -dOwnerPassword=ownerpw -dUserPassword=qwerty" +
+                        " -sOutputFile=\"" + secret + "\" \"" + plain + "\"";
+                    string stderr;
+                    Ghostscript.Run(args, 60000, out stderr);
+                    if (File.Exists(secret))
+                    {
+                        try
+                        {
+                            PdfReviewService.Load(secret, null, null, PdfReviewLimits.Default());
+                            AssertTrue(false, "парольный файл не должен открыться без пароля");
+                        }
+                        catch (PdfReviewException ex)
+                        {
+                            AssertEqual(PdfReviewFailure.PasswordRequired, ex.Reason,
+                                "парольный файл даёт «нужен пароль», а не тупиковую ошибку");
+                        }
+                        PdfPasswords.Remember(secret, "qwerty");
+                        try
+                        {
+                            PdfReviewDocument doc = PdfReviewService.Load(secret, null, null,
+                                PdfReviewLimits.Default());
+                            AssertEqual(1, doc.Pages.Count, "с верным паролем файл читается");
+                        }
+                        finally { PdfPasswords.Remember(secret, null); }
+                    }
+                }
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        /// <summary>
+        /// Регрессия на наложение строки статуса на кнопку: статус обязан лежать СТРОГО между
+        /// «Поменять местами» слева и «Сравнить» справа при любой ширине окна (включая
+        /// минимальную). Раньше он начинался на фиксированном 184 и залезал под кнопку.
+        /// </summary>
+        private static void TestReviewLayoutStatusRow()
+        {
+            InIsolatedSettings("iwo_reviewlayout_", delegate
+            {
+                foreach (int width in new[] { 1120, 1000, 900 })
+                {
+                    using (var form = new PdfReviewForm(null))
+                    {
+                        form.Show();
+                        form.ClientSize = new System.Drawing.Size(width, form.ClientSize.Height);
+                        form.PerformLayout();
+                        var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+                        var swap = (System.Windows.Forms.Control)form.GetType().GetField("_swap", flags).GetValue(form);
+                        var compare = (System.Windows.Forms.Control)form.GetType().GetField("_compare", flags).GetValue(form);
+                        var summary = (System.Windows.Forms.Control)form.GetType().GetField("_summary", flags).GetValue(form);
+                        AssertTrue(summary.Left > swap.Right,
+                            "статус правее кнопки «Поменять местами» (ширина " + width + ")");
+                        AssertTrue(summary.Right < compare.Left,
+                            "статус левее кнопки «Сравнить» (ширина " + width + ")");
+                        AssertTrue(!summary.Bounds.IntersectsWith(swap.Bounds) &&
+                                   !summary.Bounds.IntersectsWith(compare.Bounds),
+                            "нет наложений строки статуса (ширина " + width + ")");
+                        form.Close();
+                    }
+                }
+            });
+        }
+
+        private static void TestGhostscriptReprobe()
+        {
+            int calls = 0;
+            Ghostscript.ResetResolutionForTests();
+            try
+            {
+                Ghostscript.ResolveForTests = delegate
+                {
+                    calls++;
+                    return calls < 2 ? null : @"C:\fake\gswin64c.exe";
+                };
+                AssertEqual(null, Ghostscript.Exe, "первый поиск ничего не нашёл");
+                AssertEqual(@"C:\fake\gswin64c.exe", Ghostscript.Exe, "null не помешал повторному поиску");
+                AssertEqual(2, calls, "resolver вызван повторно после null");
+            }
+            finally { Ghostscript.ResetResolutionForTests(); }
+        }
+
+        private static void TestServiceSameSourceGuards()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_same_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string pdf = Path.Combine(dir, "same.pdf");
+                PdfProbe.WriteOnePagePdf(pdf);
+                byte[] before = File.ReadAllBytes(pdf);
+                try
+                {
+                    PdfMergeService.Merge(new[] { new PdfPageRef { SourcePath = pdf, PageIndex = 0 } }, pdf);
+                    AssertTrue(false, "merge поверх source должен быть отвергнут");
+                }
+                catch (MergeException) { }
+                AssertEqual(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "merge не тронул source");
+
+                try
+                {
+                    PdfSplitService.Extract(pdf, new[] { 0 }, pdf);
+                    AssertTrue(false, "extract поверх source должен быть отвергнут");
+                }
+                catch (MergeException) { }
+                AssertEqual(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "split не тронул source");
+
+                try
+                {
+                    PdfExportService.ToText(pdf, pdf);
+                    AssertTrue(false, "text export поверх source должен быть отвергнут");
+                }
+                catch (MergeException) { }
+                AssertEqual(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "text export не тронул source");
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        private static PdfReviewPage ReviewPage(int index, string text)
+        {
+            string normalized = PdfReviewDiff.Normalize(text);
+            return new PdfReviewPage
+            {
+                PageIndex = index,
+                Text = text,
+                NormalizedText = normalized,
+                WidthPt = 595,
+                HeightPt = 842,
+                Fingerprint = PdfReviewDiff.Fingerprint(normalized, 595, 842)
+            };
+        }
+
+        private static PdfReviewDocument ReviewDocument(string path, params string[] pages)
+        {
+            var doc = new PdfReviewDocument { Path = path };
+            for (int i = 0; i < pages.Length; i++)
+            {
+                PdfReviewPage page = ReviewPage(i, pages[i]);
+                doc.Pages.Add(page);
+                doc.CharacterCount += page.NormalizedText.Length;
+            }
+            return doc;
+        }
+
+        private static void TestReviewNormalize()
+        {
+            AssertEqual("é a b\nrow\tcell", PdfReviewDiff.Normalize("é  a  b \r\nrow\tcell  "),
+                "NFC, пробелы, NBSP, CRLF и хвост строки");
+            string smile = "A\U0001F642B";
+            AssertTrue(PdfReviewDiff.Normalize(smile).Contains("\U0001F642"), "суррогатная пара не потеряна");
+            AssertEqual(PdfReviewDiff.Fingerprint("abc", 595, 842),
+                PdfReviewDiff.Fingerprint("abc", 595, 842), "fingerprint детерминирован");
+        }
+
+        private static string PairSig(IList<PdfReviewPagePair> pairs)
+        {
+            var list = new List<string>();
+            foreach (PdfReviewPagePair pair in pairs)
+                list.Add(pair.LeftPageIndex + ":" + pair.RightPageIndex + ":" + pair.Status);
+            return string.Join("|", list.ToArray());
+        }
+
+        private static void TestReviewPageAlignment()
+        {
+            PdfReviewDocument left = ReviewDocument("left.pdf", "alpha common", "beta common", "gamma common");
+            PdfReviewDocument right = ReviewDocument("right.pdf", "alpha common", "inserted unique page", "beta common", "gamma common");
+            List<PdfReviewPagePair> pairs = PdfReviewDiff.Align(left.Pages, right.Pages, PdfReviewLimits.Default());
+            AssertEqual("0:0:Unchanged|-1:1:RightOnly|1:2:Unchanged|2:3:Unchanged", PairSig(pairs),
+                "вставка стала right-only, последующие страницы снова сопоставлены");
+        }
+
+        private static void TestReviewDiffReconstruction()
+        {
+            PdfReviewPagePair pair = PdfReviewDiff.Pair(ReviewPage(0, "Старый текст и таблица\t10"),
+                ReviewPage(0, "Новый текст и таблица\t11"), PdfReviewLimits.Default());
+            string left = "", right = "";
+            foreach (PdfReviewDiffOp op in pair.Operations)
+            {
+                if (op.Kind != PdfReviewDiffKind.Insert) left += op.Text;
+                if (op.Kind != PdfReviewDiffKind.Delete) right += op.Text;
+            }
+            AssertEqual("Старый текст и таблица\t10", left, "left reconstruction");
+            AssertEqual("Новый текст и таблица\t11", right, "right reconstruction");
+            var result = new PdfReviewResult
+            {
+                Left = ReviewDocument("l", left),
+                Right = ReviewDocument("r", right)
+            };
+            result.Pairs.Add(pair);
+            PdfReviewStats stats = PdfReviewDiff.Statistics(result);
+            AssertTrue(stats.DeletedWords > 0 && stats.InsertedWords > 0, "добавления/удаления посчитаны");
+            AssertTrue(stats.ChangedPercent > 0, "ненулевое изменение не округлено в 0%");
+        }
+
+        private static void TestReviewManualPair()
+        {
+            PdfReviewDocument left = ReviewDocument("l", "one", "two");
+            PdfReviewDocument right = ReviewDocument("r", "two", "one");
+            List<PdfReviewPagePair> pairs = PdfReviewDiff.Align(left.Pages, right.Pages, PdfReviewLimits.Default());
+            List<PdfReviewPagePair> fixedPairs = PdfReviewDiff.ApplyManualPair(pairs, left, right, 0, 1,
+                PdfReviewLimits.Default());
+            int leftUses = 0, rightUses = 0;
+            foreach (PdfReviewPagePair pair in fixedPairs)
+            {
+                if (pair.LeftPageIndex == 0) leftUses++;
+                if (pair.RightPageIndex == 1) rightUses++;
+            }
+            AssertEqual(1, leftUses, "левая страница ровно в одной паре");
+            AssertEqual(1, rightUses, "правая страница ровно в одной паре");
+        }
+
+        private static void TestReviewCollapse()
+        {
+            string equal = new string('x', 1200);
+            var ops = new List<PdfReviewDiffOp>
+            {
+                new PdfReviewDiffOp { Kind = PdfReviewDiffKind.Equal, Text = equal }
+            };
+            List<PdfReviewDiffOp> collapsed = PdfReviewDiff.Collapse(ops, 800, 200);
+            AssertEqual(3, collapsed.Count, "lead, marker, tail");
+            AssertTrue(collapsed[1].Collapsed, "середина помечена collapsed");
+            AssertEqual(800, collapsed[1].HiddenCharacters, "скрытый объём");
+            AssertEqual(1200, collapsed[0].Text.Length + collapsed[1].HiddenCharacters + collapsed[2].Text.Length,
+                "lead + hidden + tail = original");
+        }
+
+        private static void TestReviewServiceLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_review_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string leftPath = Path.Combine(dir, "early.pdf");
+                string rightPath = Path.Combine(dir, "late.pdf");
+                WriteReviewPdf(leftPath, new[] { "Общий текст", "Старая редакция", "Последняя общая" });
+                WriteReviewPdf(rightPath, new[] { "Общий текст", "Вставленная страница", "Новая редакция", "Последняя общая" });
+                PdfReviewResult result = PdfReviewService.Compare(leftPath, rightPath);
+                AssertEqual(leftPath, result.Left.Path, "левую сторону выбрал пользователь");
+                AssertEqual(rightPath, result.Right.Path, "правую сторону выбрал пользователь");
+                AssertTrue(result.Pairs.Count >= 4, "вставленная страница видна отдельной парой");
+                AssertTrue(result.Stats.ChangedPages > 0 || result.Stats.RightOnlyPages > 0,
+                    "изменения найдены");
+                try
+                {
+                    PdfReviewService.Compare(leftPath, leftPath);
+                    AssertTrue(false, "один файл на обе стороны должен быть отвергнут");
+                }
+                catch (PdfReviewException ex)
+                {
+                    AssertTrue(ex.Message.Length > 0, "понятная ошибка одинакового файла");
+                }
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        /// <summary>
+        /// Регрессия на баг 1.18.5: ShowPage(page) обязан показывать именно ПЕРЕДАННУЮ
+        /// страницу, а не старое поле _page (раньше параметр игнорировался — аналог
+        /// CA1801, в просмотре «застревала» одна страница). Проверяем живым рендером:
+        /// создаём двухстраничный PDF, показываем вторую страницу, потом первую —
+        /// _page обязан следовать за аргументом в обоих шагах.
+        /// </summary>
+        private static void TestReviewPageViewShowsRequestedPage()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_pageview_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string pdf = Path.Combine(dir, "doc.pdf");
+                WriteReviewPdf(pdf, new[] { "page one", "page two" });
+                RunSta(delegate
+                {
+                    using (var view = new PdfReviewPageView())
+                    {
+                        IntPtr handle = view.Handle; // создать ручку для BeginInvoke из воркера
+                        AssertTrue(handle != IntPtr.Zero, "ручка просмотра создалась");
+                        var pageField = typeof(PdfReviewPageView).GetField("_page",
+                            BindingFlags.Instance | BindingFlags.NonPublic);
+
+                        view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 1 }, "вторая");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            var p = (PdfPageRef)pageField.GetValue(view);
+                            return p != null && p.PageIndex == 1;
+                        }), "ShowPage показала запрошенную ВТОРУЮ страницу, а не старую/пустую");
+
+                        view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, "первая");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            var p = (PdfPageRef)pageField.GetValue(view);
+                            return p != null && p.PageIndex == 0;
+                        }), "ShowPage переключилась на запрошенную ПЕРВУЮ страницу");
+                    }
+                });
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void WriteReviewPdf(string path, string[] pages)
+        {
+            using (var doc = new PdfDocument())
+            {
+                var font = new XFont("Times New Roman", 14);
+                foreach (string text in pages)
+                {
+                    PdfPage page = doc.AddPage();
+                    using (XGraphics g = XGraphics.FromPdfPage(page))
+                        g.DrawString(text, font, XBrushes.Black, new XPoint(50, 100));
+                }
+                doc.Save(path);
+            }
+        }
+        private static List<PdfPageRef> TestWorkingPages(params int[] indexes)
+        {
+            var pages = new List<PdfPageRef>();
+            foreach (int index in indexes)
+                pages.Add(new PdfPageRef { SourcePath = "x.pdf", PageIndex = index });
+            return pages;
+        }
+
+        private static string PageIndexSig(IList<PdfPageRef> pages)
+        {
+            var values = new List<string>();
+            foreach (PdfPageRef page in pages)
+                values.Add(page.PageIndex.ToString());
+            return string.Join(",", values.ToArray());
+        }
+
+        private static void TestSplitPlanSelected()
+        {
+            List<PdfPageRef> working = TestWorkingPages(1, 2, 4, 0);
+            working[1].Rotation = 90;
+            List<PdfPageRef> selected = PdfSplitPlan.Selected(working, new[] { 0, 2, 2, 99 });
+            AssertEqual("1,4", PageIndexSig(selected), "grid-позиции разрешены через рабочий порядок");
+            AssertEqual(0, selected[0].Rotation, "поворот первой страницы");
+            AssertEqual(2, selected.Count, "дубль grid-позиции не дублирует страницу");
+
+            selected = PdfSplitPlan.Selected(working, new[] { 1 });
+            AssertEqual(90, selected[0].Rotation, "поворот путешествует с PdfPageRef");
+            selected[0].Rotation = 180;
+            AssertEqual(90, working[1].Rotation, "план держит независимый снимок");
+        }
+
+        private static void TestSplitPlanRanges()
+        {
+            List<PdfPageRef> working = TestWorkingPages(4, 1, 3, 0, 6);
+            var ranges = new List<PageRange> { new PageRange(0, 3), new PageRange(5, 5) };
+            List<PdfSplitPart> parts = PdfSplitPlan.ByRanges(working, ranges);
+            AssertEqual(1, parts.Count, "пустой диапазон не создаёт пустой файл");
+            AssertEqual("1,3,0", PageIndexSig(parts[0].Pages),
+                "диапазон выбирает исходные номера, порядок берёт рабочий");
+            AssertEqual("1-4", parts[0].Label, "метка сохраняет исходный диапазон");
+        }
+
+        private static void TestSplitPlanEveryN()
+        {
+            List<PdfPageRef> working = TestWorkingPages(5, 1, 8, 2, 0);
+            List<PdfSplitPart> parts = PdfSplitPlan.EveryN(working, 2);
+            AssertEqual(3, parts.Count, "пять страниц по две дают три части");
+            AssertEqual("5,1", PageIndexSig(parts[0].Pages), "первая часть — рабочий порядок");
+            AssertEqual("8,2", PageIndexSig(parts[1].Pages), "вторая часть — рабочий порядок");
+            AssertEqual("0", PageIndexSig(parts[2].Pages), "хвост");
+        }
+
+        private static void TestSplitPlanBookmarks()
+        {
+            List<PdfPageRef> working = TestWorkingPages(8, 1, 2, 6, 0);
+            var marks = new List<PdfSplitBookmark>
+            {
+                new PdfSplitBookmark { PageIndex = 0, Title = "A" },
+                new PdfSplitBookmark { PageIndex = 3, Title = "B" },
+                new PdfSplitBookmark { PageIndex = 7, Title = "C" }
+            };
+            List<PdfSplitPart> parts = PdfSplitPlan.ByBookmarks(working, marks, 10);
+            AssertEqual(3, parts.Count, "три непустые главы");
+            AssertEqual("1,2,0", PageIndexSig(parts[0].Pages), "глава A в рабочем порядке");
+            AssertEqual("6", PageIndexSig(parts[1].Pages), "глава B без удалённых страниц");
+            AssertEqual("8", PageIndexSig(parts[2].Pages), "глава C");
+
+            working = TestWorkingPages(0, 1, 8);
+            parts = PdfSplitPlan.ByBookmarks(working, marks, 10);
+            AssertEqual(2, parts.Count, "пустая средняя глава пропущена");
+            AssertEqual("A", parts[0].BookmarkTitle, "первая живая глава");
+            AssertEqual("C", parts[1].BookmarkTitle, "следующая живая глава");
+        }
+
+        private static void TestPdfSplitWorkingSetLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_split_plan_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string src = Path.Combine(dir, "source.pdf");
+                using (var doc = new PdfDocument())
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        PdfPage page = doc.AddPage();
+                        page.Width = 500 + i;
+                        page.Height = 700;
+                    }
+                    doc.Save(src);
+                }
+                var working = new List<PdfPageRef>
+                {
+                    new PdfPageRef { SourcePath = src, PageIndex = 3 },
+                    new PdfPageRef { SourcePath = src, PageIndex = 1, Rotation = 90 },
+                    new PdfPageRef { SourcePath = src, PageIndex = 4 }
+                };
+                string extracted = Path.Combine(dir, "working.pdf");
+                PdfSplitService.ExtractPlanned(src, working, extracted);
+                using (PdfDocument result = PdfReader.Open(extracted, PdfDocumentOpenMode.Import))
+                {
+                    AssertEqual(3, result.PageCount, "страниц рабочего набора");
+                    AssertEqual(503, (int)Math.Round(result.Pages[0].Width.Point), "первая — исходная 4");
+                    AssertEqual(90, result.Pages[1].Rotate, "поворот второй retained page");
+                    AssertEqual(504, (int)Math.Round(result.Pages[2].Width.Point), "последняя — исходная 5");
+                }
+
+                List<PdfSplitPart> parts = PdfSplitPlan.EveryN(working, 2);
+                List<string> files = PdfSplitService.SplitPlanned(src, parts, dir, "part");
+                AssertEqual("2,1", PageCounts(files), "части по рабочему порядку");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
         private static void TestPdfSplitLive()
         {
             string dir = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N"));
@@ -1553,10 +2126,27 @@ namespace ExcelMerger.Tests
                     Loc.Init(lang);
                     using (var about = new AboutForm())
                     {
+                        about.Show();
                         if (about.Handle == IntPtr.Zero) { failure = "окно не создалось"; return; }
                         var box = FindSelectable(about, Loc.T("about.desc"));
                         if (box == null) { failure = "описание не найдено выделяемым полем"; return; }
                         if (box.Bottom > about.ClientSize.Height) { failure = "описание не влезает в окно"; return; }
+
+                        if (about.ProjectToggle == null || about.SupportToggle == null)
+                        { failure = "раскрывающиеся секции не найдены"; return; }
+                        if (about.ProjectPanel.Visible || about.SupportPanel.Visible)
+                        { failure = "редкие секции должны быть свёрнуты по умолчанию"; return; }
+                        about.ProjectToggle.PerformClick();
+                        about.SupportToggle.PerformClick();
+                        if (!about.ProjectPanel.Visible || !about.SupportPanel.Visible)
+                        { failure = "секции не раскрылись независимо"; return; }
+                        System.Windows.Forms.TextBoxBase account = FindSelectable(about, AboutForm.DonationAccount);
+                        System.Windows.Forms.TextBoxBase bank = FindSelectable(about, AboutForm.DonationBank);
+                        if (account == null || bank == null || !account.ReadOnly || !bank.ReadOnly)
+                        { failure = "реквизиты не выделяемые read-only поля"; return; }
+                        if (about.Controls.Find("aboutManual", true).Length != 1 ||
+                            about.Controls.Find("aboutPrivacy", true).Length != 1)
+                        { failure = "руководство или privacy скрыты"; return; }
 
                         // Владелец просил описание ВЫКЛЮЧЕННЫМ ПО ШИРИНЕ, а такого выравнивания
                         // WinForms не предлагает — оно выставлено формату абзаца напрямую.
@@ -1579,7 +2169,7 @@ namespace ExcelMerger.Tests
 
                         System.Windows.Forms.Label license = null;
                         int lowestOther = 0;
-                        foreach (System.Windows.Forms.Control c in about.Controls)
+                        foreach (System.Windows.Forms.Control c in AllControls(about))
                         {
                             var lbl = c as System.Windows.Forms.Label;
                             if (lbl != null && lbl.Text == Loc.T("about.license")) { license = lbl; continue; }
@@ -1617,6 +2207,16 @@ namespace ExcelMerger.Tests
             AssertTrue(SingleInstance.TryAcquire(name, out third), "после выхода имя снова свободно");
             if (third != null)
                 third.Close();
+        }
+
+        private static IEnumerable<System.Windows.Forms.Control> AllControls(System.Windows.Forms.Control root)
+        {
+            foreach (System.Windows.Forms.Control c in root.Controls)
+            {
+                yield return c;
+                foreach (System.Windows.Forms.Control child in AllControls(c))
+                    yield return child;
+            }
         }
 
         /// <summary>
@@ -8661,6 +9261,42 @@ namespace ExcelMerger.Tests
                 for (int j = i + 1; j < items.Count; j++)
                     if (items[i].Bounds.IntersectsWith(items[j].Bounds))
                         offenders.Add(where + " → " + Describe(items[i]) + " накрывает " + Describe(items[j]));
+            CheckLabelsNotUnderInteractive(parent, where, offenders);
+        }
+
+        /// <summary>
+        /// Метка не должна залезать ПОД соседнюю кнопку или поле ввода: подписи
+        /// пропускаются проверкой выше, но именно так строка статуса спряталась под
+        /// кнопку «Поменять местами» — текст читался обрезанным, а дефект не ловился.
+        /// Подписи-соседи двух меток по-прежнему не проверяем (фон делить можно).
+        /// </summary>
+        private static void CheckLabelsNotUnderInteractive(System.Windows.Forms.Control parent, string where, List<string> offenders)
+        {
+            var labels = new List<System.Windows.Forms.Control>();
+            var interactive = new List<System.Windows.Forms.Control>();
+            foreach (System.Windows.Forms.Control c in parent.Controls)
+            {
+                if (!c.Visible) continue;
+                if (IsPlainTextLabel(c)) labels.Add(c);
+                else if (IsInteractive(c)) interactive.Add(c);
+            }
+            foreach (System.Windows.Forms.Control label in labels)
+            {
+                if (string.IsNullOrEmpty(label.Text))
+                    continue; // пустую метку не видно — наложение без последствий
+                foreach (System.Windows.Forms.Control target in interactive)
+                {
+                    System.Drawing.Rectangle inter = System.Drawing.Rectangle.Intersect(label.Bounds, target.Bounds);
+                    if (inter.Width > 1 && inter.Height > 1)
+                        offenders.Add(where + " → метка " + Describe(label) + " залезла под " + Describe(target));
+                }
+            }
+        }
+
+        /// <summary>Обычная текстовая метка (не ссылка: ссылки сами интерактивны).</summary>
+        private static bool IsPlainTextLabel(System.Windows.Forms.Control c)
+        {
+            return c is System.Windows.Forms.Label && !(c is System.Windows.Forms.LinkLabel);
         }
 
         /// <summary>Кнопки одного контейнера не перекрываются — включая пока скрытые.</summary>
@@ -8777,7 +9413,7 @@ namespace ExcelMerger.Tests
             return new System.Windows.Forms.Form[]
             {
                 new MainForm(back), new PdfMergeForm(back), new PdfSplitForm(back), new OcrForm(back),
-                new PptxForm(back), new PdfOpsForm(back)
+                new PptxForm(back), new PdfReviewForm(back), new PdfOpsForm(back)
             };
         }
 
@@ -9161,8 +9797,8 @@ namespace ExcelMerger.Tests
                         if (hub.Level != HubLevel.Pdf)
                             failures.Add("раздел не сохранился: " + hub.Level);
                         int cards = VisibleCards(hub);
-                        if (cards != 5)
-                            failures.Add("в разделе PDF карточек " + cards + ", а должно быть 5");
+                        if (cards != 6)
+                            failures.Add("в разделе PDF карточек " + cards + ", а должно быть 6");
                         if (!hub.Visible)
                             failures.Add("главный экран не показан");
                     }
@@ -9197,7 +9833,7 @@ namespace ExcelMerger.Tests
 
                     ClickCard(FirstVisibleCard(hub)); // карточка «PDF»
                     Check(hub.Level == HubLevel.Pdf, "клик по разделу PDF открыл его", failures);
-                    Check(VisibleCards(hub) == 5, "в разделе PDF пять инструментов", failures);
+                    Check(VisibleCards(hub) == 6, "в разделе PDF шесть инструментов", failures);
                     Check(BackButton(hub).Visible, "в разделе есть «Назад»", failures);
 
                     BackButton(hub).PerformClick();
@@ -9268,12 +9904,12 @@ namespace ExcelMerger.Tests
                     {
                         // Порядок — как в сетке хаба: верхний ряд операций, нижний — переводы.
                         typeof(PdfMergeForm), typeof(PdfSplitForm), typeof(PdfOpsForm),
-                        typeof(OcrForm), typeof(PptxForm)
+                        typeof(OcrForm), typeof(PptxForm), typeof(PdfReviewForm)
                     };
                     hub.ShowLevel(HubLevel.Pdf);
                     var cards = new List<ChoiceCard>();
                     CollectCards(hub, cards);
-                    if (cards.Count != 5) { failures.Add("карточек в разделе PDF: " + cards.Count); return; }
+                    if (cards.Count != 6) { failures.Add("карточек в разделе PDF: " + cards.Count); return; }
                     for (int i = 0; i < cards.Count; i++)
                     {
                         ClickCard(cards[i]);
@@ -10261,7 +10897,7 @@ namespace ExcelMerger.Tests
 
                 IDisposable renderer;
                 using (System.Drawing.Printing.PrintDocument doc =
-                    PdfPrintService.CreateDocument(pages, null, null, null, out renderer))
+                    PdfPrintService.CreateDocument(pages, LivePrinter(), null, null, out renderer))
                 using (renderer)
                 {
                     AssertTrue(doc != null, "задание печати собрано");
@@ -10294,6 +10930,30 @@ namespace ExcelMerger.Tests
                 return controller.GetPreviewPageInfo().Length;
             }
             finally { doc.PrintController = saved; }
+        }
+
+        /// <summary>
+        /// Годные настройки принтера для живого теста. На системный дефолт полагаться нельзя:
+        /// политика «Разрешить Windows управлять принтером по умолчанию» (стандарт с Win10)
+        /// оставляет сессию вообще без принтера по умолчанию, и .NET бросает
+        /// InvalidPrinterException даже на перечисление листов. Продукту это не мешает — он
+        /// всегда получает настройки из диалога печати; тесту нужен свой источник. Виртуальные
+        /// принтеры в приоритете: ничего не уедет на сетевой офисный.
+        /// </summary>
+        private static System.Drawing.Printing.PrinterSettings LivePrinter()
+        {
+            string[] virtuals = { "Microsoft Print to PDF", "Microsoft XPS Document Writer", "Adobe PDF" };
+            foreach (string name in virtuals)
+            {
+                var candidate = new System.Drawing.Printing.PrinterSettings { PrinterName = name };
+                if (candidate.IsValid) return candidate;
+            }
+            foreach (string name in System.Drawing.Printing.PrinterSettings.InstalledPrinters)
+            {
+                var candidate = new System.Drawing.Printing.PrinterSettings { PrinterName = name };
+                if (candidate.IsValid) return candidate;
+            }
+            throw new Exception("на машине для теста нет ни одного доступного принтера");
         }
 
         // ---------- Командная строка для PDF ----------

@@ -121,6 +121,10 @@ namespace ExcelMerger
 
             // lang.* — выбор языка на главной (глобус)
             A("lang.tooltip", "Язык интерфейса / Interface language", "Язык интерфейса / Interface language");
+            A("lang.deferred.title", "Язык применён не ко всем окнам", "Language deferred for some windows");
+            A("lang.deferred.body",
+                "Окон с незаписанной работой: {0}. Они оставлены как есть, чтобы не потерять страницы и файлы; новый язык появится в них после закрытия и следующего открытия.",
+                "Windows with unsaved work: {0}. They were left intact to protect pages and files; the new language will appear after they are closed and opened again.");
 
             // shell.* — оболочка окон
             A("shell.toolOpen.title", "Инструмент уже открыт", "Tool already open");
@@ -161,6 +165,10 @@ namespace ExcelMerger
             A("hub.pptx.desc",
                 "Перенести страницы цифрового PDF в презентацию *.pptx. Отсканированные страницы пока не переносятся.",
                 "Turn the pages of a born‑digital PDF into a *.pptx presentation. Scanned pages are not carried over yet.");
+            A("hub.review.name", "Сравнение PDF", "Compare PDF");
+            A("hub.review.desc",
+                "Сравнить две выбранные версии цифрового PDF: найти добавленный и удалённый текст, сопоставить страницы и посмотреть обе версии рядом.",
+                "Compare two chosen versions of a born-digital PDF: find added and removed text, align pages and view both versions side by side.");
             A("hub.ops.name", "Прочие операции", "More operations");
             A("hub.ops.desc",
                 "Сжать документ, сохранить страницы картинками, извлечь текст, напечатать, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
@@ -283,6 +291,64 @@ namespace ExcelMerger
             A("split.tip.ops",
                 "Сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа. Откроется отдельное окно, и открытый здесь документ уедет туда сам.",
                 "Compression, images, text, grayscale, repair, editing the document properties. A separate window opens, and the document you have open here goes there with it.");
+
+            A("review.header.subtitle", "Сравнение двух выбранных цифровых PDF без изменения файлов.",
+                "Compare two chosen born-digital PDFs without changing either file.");
+            A("review.left", "Ранняя версия · слева", "Earlier version · left");
+            A("review.right", "Поздняя версия · справа", "Later version · right");
+            A("review.pickLeft", "Выберите раннюю версию PDF", "Choose the earlier PDF version");
+            A("review.pickRight", "Выберите позднюю версию PDF", "Choose the later PDF version");
+            A("review.swap", "⇄ Поменять местами", "⇄ Swap sides");
+            A("review.compare", "Сравнить", "Compare");
+            A("review.view.text", "Сравнение текста", "Text comparison");
+            A("review.view.source", "Исходный вид", "Source view");
+            A("review.previous", "← Предыдущее", "← Previous");
+            A("review.next", "Следующее →", "Next →");
+            A("review.manualPair", "Сопоставить страницы…", "Pair pages…");
+            A("review.expand", "Развернуть всё", "Expand all");
+            A("review.collapse", "Свернуть неизменённое", "Collapse unchanged");
+            A("review.manual.left", "Страница ранней версии (1–{0}):", "Earlier-version page (1–{0}):");
+            A("review.manual.right", "Страница поздней версии (1–{0}):", "Later-version page (1–{0}):");
+            A("review.position", "Изменение {0} из {1}", "Change {0} of {1}");
+            A("review.stats", "Изменено страниц: {0} · только слева: {1} · только справа: {2} · слов −{3} / +{4} · изменено {5}%",
+                "Changed pages: {0} · left only: {1} · right only: {2} · words −{3} / +{4} · {5}% changed");
+            A("review.status.pickBoth", "Выберите два PDF: раннюю версию слева и позднюю справа.",
+                "Choose two PDFs: the earlier version on the left and the later one on the right.");
+            A("review.status.comparing", "Сравнение документов…", "Comparing documents…");
+            A("review.status.ready", "Сопоставлено страниц: {0}, изменено пар: {1}.",
+                "Page pairs: {0}, changed pairs: {1}.");
+            A("review.status.failed", "Сравнение не выполнено.", "Comparison failed.");
+            A("review.source.missing", "На другой стороне соответствующей страницы нет.",
+                "There is no corresponding page on this side.");
+            A("review.err.failed", "Не удалось сравнить документы", "Could not compare the documents");
+            A("review.err.pickBoth", "Выберите оба документа для сравнения.", "Choose both documents to compare.");
+            A("review.err.sameFile.title", "Выбрана одна и та же версия", "The same version was selected");
+            A("review.err.sameFile", "Слева и справа должен быть два разных файла PDF.",
+                "The left and right sides must be two different PDF files.");
+            A("review.err.tooMany.title", "Нужно выбрать два PDF", "Choose two PDFs");
+            A("review.err.tooMany.body", "Перетащено больше двух файлов. Выберите раннюю и позднюю версии отдельно — программа не угадывает пару сама.",
+                "More than two files were dropped. Choose the earlier and later versions explicitly — the app does not guess the pair.");
+            A("review.err.unreadable", "Файл не удалось прочитать как PDF.", "The file could not be read as a PDF.");
+            A("review.err.unreadableFile", "Не удалось прочитать «{0}»: {1}", "Could not read “{0}”: {1}");
+            A("review.err.password", "Для сравнения нужен правильный пароль к защищённому PDF.",
+                "A correct password is required to compare this protected PDF.");
+            A("review.err.noText", "В документе нет извлекаемого текста. Сравнение работает только с цифровыми PDF, не со сканами.",
+                "The document has no extractable text. Comparison works with born-digital PDFs, not scans.");
+            A("review.err.tooLarge", "Документ или число изменений слишком велико для безопасного подробного сравнения.",
+                "The document or the number of changes is too large for a safe detailed comparison.");
+            A("review.err.changedDuringRead", "Файл изменился во время чтения. Повторите сравнение с устойчивыми версиями.",
+                "The file changed while it was being read. Retry with stable versions.");
+            A("review.help.body",
+                "1. Самостоятельно выберите два PDF: раннюю версию слева и позднюю справа. Программа не ищет и не угадывает версии.\n" +
+                "2. Нажмите «Сравнить». Инструмент сопоставит страницы по тексту, покажет добавления, удаления и страницы, существующие только в одной версии.\n" +
+                "3. F3 / Shift+F3 переходят к следующему / предыдущему изменению. В спорном месте страницы можно сопоставить вручную.\n" +
+                "4. «Исходный вид» показывает выбранную пару страниц рядом. Файлы остаются неизменными.\n\n" +
+                "Требуется текстовый слой цифрового PDF. OCR сканов и экспорт redline в этой версии не выполняются.",
+                "1. Choose two PDFs yourself: the earlier version on the left and the later one on the right. The app does not discover or guess versions.\n" +
+                "2. Click “Compare”. The tool aligns pages by text and shows additions, removals and pages present on one side only.\n" +
+                "3. F3 / Shift+F3 go to the next / previous change. A disputed page pair can be corrected manually.\n" +
+                "4. Source view shows the selected page pair side by side. Neither file is changed.\n\n" +
+                "A born-digital text layer is required. Scan OCR and redline export are not provided in this version.");
 
             // ops.* — окно «Прочие операции» (PdfOpsForm): семь действий над одним документом.
             // До 1.17.9 они были спрятаны в меню «Доп. действия» внутри «Разделения PDF», где их
@@ -483,6 +549,8 @@ namespace ExcelMerger
                 "Текст и вектор сохраняются. У подписанных PDF подпись станет недействительной.",
                 "“Good”/“Normal” reduce the size by downsampling images (as in Acrobat).\n" +
                 "Text and vectors are preserved. A signed PDF’s signature becomes invalid.");
+            A("err.output.sameSource", "Результат нельзя записать поверх исходного файла.",
+                "The output cannot be written over a source file.");
             // err.pdf.* — сообщения PDF-сервисов (объединение/разделение/загрузка), показываются в диалогах
             A("err.pdf.noPages", "Нет страниц для объединения.", "No pages to merge.");
             A("err.pdf.fileBusy", "Файл PDF недоступен для записи — возможно, открыт в другой программе.",
@@ -567,8 +635,8 @@ namespace ExcelMerger
                 "Программа спросит GitHub номер последней версии и промолчит, если она у вас уже стоит",
                 "The app asks GitHub for the latest version number and stays quiet if you already have it");
             A("settings.hint.updates",
-                "Единственное обращение в сеть. Передаётся только запрос номера версии, файлы и любые ваши данные не отправляются никогда.",
-                "The only network request. It asks for a version number and nothing else — your files and data are never sent.");
+                "Единственное обращение в сеть: GitHub сообщает номер последней версии и, только если она новее, короткий список изменений. Файлы, их имена и любые ваши данные не отправляются.",
+                "The only network activity: GitHub provides the latest version number and, only when it is newer, a short change summary. Your files, file names and personal data are never sent.");
             A("settings.btn.checkNow", "Проверить сейчас", "Check now");
             A("settings.btn.unskip", "Снова напоминать о {0}", "Remind me about {0} again");
             A("settings.section.history", "История и статистика", "History and statistics");
@@ -678,19 +746,19 @@ namespace ExcelMerger
             // about.* — окно «О программе» (AboutForm)
             A("about.version", "Версия {0}", "Version {0}");
             A("about.desc",
-                "Офисные инструменты: свод листов Excel, объединение, разделение и сжатие PDF, " +
-                "конвертация цифрового PDF в Word (отсканированные документы пока не поддерживаются).",
-                "Office tools: Excel sheet digest, merge, split and compress PDFs, " +
-                "convert a born‑digital PDF to Word (scanned documents are not supported yet).");
+                "Офисные инструменты для Excel и PDF: сборка и разделение страниц, сравнение цифровых версий, сжатие, прочие операции и перевод цифрового PDF в Word или PowerPoint. Для текста отсканированных документов требуется OCR — он пока не выполняется.",
+                "Office tools for Excel and PDF: assemble and split pages, compare born-digital versions, compress, run more operations, and turn born-digital PDF into Word or PowerPoint. Text in scanned documents needs OCR, which is not provided yet.");
             A("about.author", "Автор: Dodonov Andrey (DedovMosol)", "Author: Dodonov Andrey (DedovMosol)");
             A("about.manual", "Инструкция по работе с программой:", "User guide:");
             A("about.manual.open", "открыть", "open");
             A("about.license", "© 2026 · Лицензия MIT", "© 2026 · MIT License");
             A("about.privacy", "Политика конфиденциальности", "Privacy Policy");
-            A("about.privacyNote", "(данные не покидают ваш ПК)", "(your data never leaves your PC)");
-            // Подпись над реквизитами — авторская, одинаковая на обоих языках (это не перевод,
-            // а обращение автора), поэтому в проверке «нет кириллицы в английском» её нет нужды.
-            A("about.donate", "Are you metal \\m/ ? +++", "Are you metal \\m/ ? +++");
+            A("about.privacyNote", "(документы обрабатываются локально; проверка обновлений обращается к GitHub)",
+                "(documents are processed locally; update checks contact GitHub)");
+            A("about.project", "Проект и контакты", "Project and contacts");
+            A("about.donate", "Поддержать проект", "Support the project");
+            A("about.copyHint", "Реквизиты можно выделить и скопировать.",
+                "The details can be selected and copied.");
             A("about.account", "Счёт:", "Account:");
             A("about.bank", "Банк:", "Bank:");
 

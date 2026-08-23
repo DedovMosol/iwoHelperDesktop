@@ -92,17 +92,12 @@ namespace ExcelMerger
             return result;
         }
 
-        /// <summary>Удаление набора элементов по индексам (в любом порядке).</summary>
+        /// <summary>Удаление набора элементов по индексам (в любом порядке, дубли игнорируются).</summary>
         public static void RemoveAt<T>(IList<T> items, IList<int> indices)
         {
-            var sorted = new List<int>(indices);
-            sorted.Sort();
+            List<int> sorted = NormalizeIndices(indices, items.Count);
             for (int i = sorted.Count - 1; i >= 0; i--)
-            {
-                int index = sorted[i];
-                if (index >= 0 && index < items.Count)
-                    items.RemoveAt(index);
-            }
+                items.RemoveAt(sorted[i]);
         }
 
         private static void Swap<T>(IList<T> items, int a, int b)

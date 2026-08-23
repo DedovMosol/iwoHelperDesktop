@@ -168,14 +168,17 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Ссылка, открывающая URL в браузере по умолчанию.</summary>
+        /// <summary>
+        /// Ссылка, открывающая URL через общий честный путь: явный клик не должен молча
+        /// исчезать, если браузер не запустился. Владельцем служит ближайшая форма.
+        /// </summary>
         public static LinkLabel UrlLink(Control parent, string text, int x, int y, string url)
         {
             LinkLabel l = Link(parent, text, x, y);
             l.LinkClicked += delegate
             {
-                try { using (Process.Start(url)) { } }
-                catch { } // нет браузера/ассоциации — молча, ссылку видно текстом
+                Form owner = parent == null ? null : parent.FindForm();
+                OpenUrlOrShow(owner, owner == null ? "iwo Helper Desktop" : owner.Text, url);
             };
             return l;
         }

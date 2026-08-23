@@ -76,6 +76,10 @@ namespace ExcelMerger
                 SetupLanguage.Consume();
                 UserSettings.Load().Save();
             }
+            // Уборка осиротевших временных файлов после прошлого аварийного сеанса.
+            // Стоит после мьютекса единственного экземпляра: живых «своих» файлов нет,
+            // второй процесс запущен быть не может (см. StartupSweep).
+            StartupSweep.Sweep(StartupSweep.DirectoriesToSweep(startup), DateTime.UtcNow);
             var shell = new ShellContext(); // хаб + инструменты как независимые окна
             // Проверка обновлений идёт ФОНОМ и показа окна не задерживает: запрос уходит
             // с таймаутом 10 с, а ответ доставляется в UI-поток уже работающего хаба.
@@ -191,6 +195,12 @@ namespace ExcelMerger
                 using (var pptx = new PptxForm(noop))
                 {
                     IntPtr handle = pptx.Handle;
+                    if (handle == IntPtr.Zero)
+                        return 3;
+                }
+                using (var review = new PdfReviewForm(noop))
+                {
+                    IntPtr handle = review.Handle;
                     if (handle == IntPtr.Zero)
                         return 3;
                 }

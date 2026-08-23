@@ -98,8 +98,9 @@ namespace ExcelMerger
         {
             if (!Ghostscript.Available)
                 return false;
-            string args = BuildArguments(path, GsRewrite.TempOutput(path), mode, Ghostscript.BundledRoot);
-            return GsRewrite.Run(path, args, TimeoutMs, ShouldReplace,
+            string temp = GsRewrite.TempOutput(path);
+            string args = BuildArguments(path, temp, mode, Ghostscript.BundledRoot);
+            return GsRewrite.Run(path, temp, args, TimeoutMs, ShouldReplace,
                 delegate(string produced) { return Verify(produced, mode); });
         }
 

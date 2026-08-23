@@ -144,12 +144,19 @@ namespace ExcelMerger
         public static string ToText(string sourcePath, string outPath,
             Action<int, int> progress = null, Func<bool> cancelled = null)
         {
+            if (OutputFile.IsSameFile(sourcePath, outPath))
+                throw new MergeException(Loc.T("err.output.sameSource"));
             List<PdfPageText> pages = PdfTextExtract.Extract(sourcePath, progress, null, cancelled);
             Cancellation.ThrowIf(cancelled);
             string text = PlainText.Document(pages).Replace("\n", Environment.NewLine);
             try
             {
-                File.WriteAllText(outPath, text, System.Text.Encoding.UTF8);
+                using (var output = new AtomicOutput(outPath))
+                {
+                    File.WriteAllText(output.TempPath, text, System.Text.Encoding.UTF8);
+                    Cancellation.ThrowIf(cancelled);
+                    output.Commit();
+                }
             }
             catch (Exception ex) when (MergeException.ShouldWrap(ex))
             {

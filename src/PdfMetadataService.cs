@@ -32,11 +32,17 @@ namespace ExcelMerger
         {
             if (meta == null)
                 throw new ArgumentNullException("meta");
+            if (OutputFile.IsSameFile(sourcePath, outputPath))
+                throw new MergeException(Loc.T("err.output.sameSource"));
             string lockError = MergeService.CheckOutputWritable(outputPath);
             if (lockError != null)
                 throw new MergeException(Loc.T("err.pdf.fileBusy"));
             EmbeddedAssemblies.Ensure();
-            WriteCore(sourcePath, outputPath, meta);
+            using (var output = new AtomicOutput(outputPath))
+            {
+                WriteCore(sourcePath, output.TempPath, meta);
+                output.Commit();
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

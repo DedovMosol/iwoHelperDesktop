@@ -23,12 +23,41 @@ namespace ExcelMerger
         /// <summary>Официальная страница загрузки GPL Ghostscript (Windows 64-bit installer).</summary>
         public const string DownloadPage = "https://ghostscript.com/releases/gsdnld.html";
 
-        private static readonly Lazy<string> _exe = new Lazy<string>(
-            delegate { return PickFirstExisting(Candidates(), File.Exists); },
-            LazyThreadSafetyMode.ExecutionAndPublication);
+        private static readonly object ExeGate = new object();
+        private static string _resolvedExe;
+        // Тесты подменяют только resolver, production всегда использует настоящий список кандидатов.
+        internal static Func<string> ResolveForTests;
 
-        /// <summary>Полный путь к gswin*c.exe или null, если Ghostscript не найден.</summary>
-        public static string Exe { get { return _exe.Value; } }
+        /// <summary>
+        /// Полный путь к gswin*c.exe или null. Успех кэшируется, а null — нет: если человек
+        /// установил Ghostscript после подсказки, следующая операция найдёт его без перезапуска.
+        /// </summary>
+        public static string Exe
+        {
+            get
+            {
+                lock (ExeGate)
+                {
+                    if (_resolvedExe != null && File.Exists(_resolvedExe))
+                        return _resolvedExe;
+                    string found = ResolveForTests != null
+                        ? ResolveForTests()
+                        : PickFirstExisting(Candidates(), File.Exists);
+                    if (!string.IsNullOrEmpty(found))
+                        _resolvedExe = found;
+                    return found;
+                }
+            }
+        }
+
+        internal static void ResetResolutionForTests()
+        {
+            lock (ExeGate)
+            {
+                _resolvedExe = null;
+                ResolveForTests = null;
+            }
+        }
 
         /// <summary>Доступно ли сжатие (найден ли Ghostscript).</summary>
         public static bool Available { get { return Exe != null; } }

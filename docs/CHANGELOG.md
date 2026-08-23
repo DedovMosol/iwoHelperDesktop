@@ -3,6 +3,24 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [SemVer](https://semver.org/).
 
+## [1.18.5] — 2026-08-22
+
+### Added
+- **Compare two versions of a PDF side by side.** A new tool card in the PDF section: pick a left and a right file, and the window shows a page-by-page text diff (unchanged / changed / only-in-one-side, with previous/next pair navigation and manual pairing) alongside an “original view” of both pages rendered side by side. Digital PDFs only: scanned pages (no text layer) and password-protected files are refused with an explanation instead of a meaningless diff. Guardrails are checked before any heavy work — 200 MB per file, 500 pages, 2 M characters, 1 M diff cells — and a successful extraction stays in an in-memory LRU cache (4 documents), so a second look at the same pair is instant.
+- **Atomic result writes for every PDF output.** Each operation now writes to a uniquely named temporary file in the destination folder and moves it into place only when the result is complete (`AtomicOutput`): a crash, an error or a cancel deletes only that operation's own temporary files and never leaves a half-written result or replaces a previous file mid-write. Merge, split, text export, metadata editing, PDF → Word and PDF → PowerPoint all share the one transaction; the PDF → PowerPoint path's private `.tmp`+replace dance was removed with it.
+- **Writing a result onto its own source is now refused everywhere.** Merge, split, text export, metadata editing and both converters check the output path against every file they read and fail with a clear message before touching anything — previously such a choice destroyed the document mid-operation.
+
+### Changed
+- **Split now edits a working page order.** The page grid allows reordering (it was fixed before), and every split mode — selected pages, ranges, every N, bookmark chapters — follows the edited order. The source file is never the thing being reordered: the work happens on a cloned working copy (`PdfSplitPlan`), which is also what keeps part names and bookmark titles tied to the original pages.
+- **The “About” window is a compact card.** Version, user manual and privacy note up front; project details and support-the-project details fold out on request, so the window fits on one screen instead of scrolling. One reflow point lays the content out from measured sizes.
+- **A language switch keeps more windows alive.** Windows mid-operation were already skipped by the rebuild; windows with unsaved work — a typed page list, loaded files, a comparison in progress — are now skipped too (`IUnsavedStateAware`), and the hub reports how many windows stayed on the previous language.
+
+### Fixed
+- **Ghostscript installed after first use is now found without a restart.** The engine lookup cached its first answer forever, including “not found”; a successful path is still cached, but a miss is retried on the next operation.
+- **Two Ghostscript conversions running at once no longer fight over one temporary file.** The rewrite pipeline used a fixed `.gstmp` name next to the document; each run now gets its own unique temporary/backup pair, so parallel operations (or a crash in one) cannot corrupt the other's intermediate state.
+- **Opening a link no longer fails silently.** The “About” window used to swallow a missing browser; links now go through the shared honest path that shows the address when no browser can be started.
+- **Deleting duplicate list entries no longer removes the wrong items.** The reorder helper normalizes the index set first (duplicates ignored, out-of-range rejected), instead of removing one by one at positions that shift under its feet.
+
 ## [1.18.4] — 2026-08-08
 
 ### Changed

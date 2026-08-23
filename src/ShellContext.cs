@@ -227,7 +227,8 @@ namespace ExcelMerger
                 // Хаб пересоздаётся ДО активного инструмента (и после неактивных); если активен
                 // был сам хаб — он в самом конце, как раньше.
                 bool hubRebuilt = false;
-                Form busyActive = null; // активное занятое окно не пересоздаётся — поднимем его
+                Form busyActive = null; // активное непересозданное окно — поднимем его
+                int deferred = 0;       // dirty/busy окна останутся на прежнем языке
                 foreach (ToolSnapshot t in snap)
                 {
                     if (hubOpen && !hubRebuilt && !hubWasActive && t.WasActive)
@@ -238,11 +239,14 @@ namespace ExcelMerger
                     Form old;
                     if (_tools.TryGetOpen(t.Key, out old) && old != null && !old.IsDisposed)
                     {
-                        // Занятое окно не трогаем вовсе: его Close() показал бы модальный вопрос
-                        // «Прервать операцию?» посреди смены языка (а «Да» отменил бы работу).
+                        // Занятое или dirty-окно не трогаем: пересборка без state-transfer
+                        // потеряла бы выполняемую работу либо набранные страницы/файлы.
                         var busy = old as IBusyAware;
-                        if (busy != null && busy.IsBusy)
+                        var dirty = old as IUnsavedStateAware;
+                        if ((busy != null && busy.IsBusy) ||
+                            (dirty != null && dirty.HasUncommittedState))
                         {
+                            deferred++;
                             if (t.WasActive)
                                 busyActive = old; // остаётся на прежнем языке, но наверху
                             continue;
@@ -264,6 +268,9 @@ namespace ExcelMerger
                 if (hubOpen && !hubRebuilt)
                     RebuildHub(hubPlace, hubLevel);
                 BringToFront(busyActive); // null-безопасно: активное непересозданное окно — наверх
+                if (deferred > 0)
+                    Dialogs.Info(busyActive ?? _hub, AppTitle, Loc.T("lang.deferred.title"),
+                        string.Format(Loc.T("lang.deferred.body"), deferred));
             }
             finally
             {
