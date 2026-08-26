@@ -37,8 +37,8 @@ $tx = 470
 $arrow = [char]0x2192  # -> без не-ASCII в исходнике (PS 5.1 ломается на не-ASCII в строках)
 $dot = [char]0x00B7
 $g.DrawString('iwo Helper Desktop', $fName, $white, [single]$tx, [single]252)
-$g.DrawString("Excel merge   $dot   PDF merge / split / compress   $dot   PDF $arrow Word", $fTag, $soft, [single]($tx + 3), [single]334)
-$g.DrawString("offline & free   $dot   no subscription   $dot   no admin", $fSub, $soft, [single]($tx + 3), [single]368)
+$g.DrawString("Excel merge   $dot   PDF merge / split / compare", $fTag, $soft, [single]($tx + 3), [single]334)
+$g.DrawString("PDF $arrow Word / PPTX   $dot   More operations   $dot   offline & free", $fSub, $soft, [single]($tx + 3), [single]368)
 
 $g.Dispose(); $banner.Dispose(); $probe.Dispose()
 $out = Join-Path $root 'docs\screenshots\social-preview.png'

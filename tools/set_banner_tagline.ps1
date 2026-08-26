@@ -3,13 +3,13 @@
 # нового инструмента строка устаревает, а перерисовывать баннер целиком значит подбирать
 # заново градиент и плитку логотипа.
 #
-# Фон под строкой не «заливается похожим цветом», а ВОССТАНАВЛИВАЕТСЯ: каждый пиксель полосы
-# берётся линейной интерполяцией между чистыми строками выше и ниже неё. Градиент баннера
-# при этом воспроизводится точно, каким бы он ни был, — формулу знать не нужно.
+# Фон под строкой не «заливается похожим цветом», а ВОССТАНАВЛИВАЕТСЯ: каждая строка
+# интерполируется между чистыми точками слева и справа от текстовой зоны. Так удаляются и
+# старый текст, и его длинные полупрозрачные тени, не оставляя зеркальных букв.
 #
 # Usage: tools\set_banner_tagline.ps1 -Text "Excel merge | ... | offline & free"
 param(
-    [string]$Text = 'Excel merge  |  PDF merge / split / compress  |  PDF → Word / PowerPoint  |  offline & free',
+    [string]$Text = 'Excel merge  |  PDF merge / split / compare / more  |  PDF → Word / PPTX  |  offline & free',
     [int]$Quality = 90
 )
 $ErrorActionPreference = 'Stop'
@@ -17,8 +17,8 @@ Add-Type -AssemblyName System.Drawing
 
 $path = Join-Path $PSScriptRoot '..\docs\screenshots\banner.jpg'
 # Полоса строки возможностей — измерена по самой картинке (светлые пиксели правее логотипа).
-$bandTop = 256
-$bandBottom = 296
+$bandTop = 238
+$bandBottom = 320
 
 # Грузим из копии в памяти: иначе файл остаётся замапленным и в него же не записать.
 $bytes = [System.IO.File]::ReadAllBytes($path)
@@ -27,22 +27,19 @@ $src = [System.Drawing.Image]::FromStream($ms)
 $bmp = New-Object System.Drawing.Bitmap $src
 $src.Dispose(); $ms.Dispose()
 
-$above = $bandTop - 6
-$below = $bandBottom + 6
-if ($above -lt 0 -or $below -ge $bmp.Height) { throw "Полоса выходит за пределы баннера" }
-
-# Восстанавливаем фон ТОЛЬКО правее плитки логотипа: полоса пересекает плитку по высоте, и
-# интерполяция размазала бы по ней буквы логотипа сверху вниз. Правый край плитки измерен
-# по самой картинке (яркий синий 0,102,255): 389 px, плюс запас.
 $fromX = 400
-for ($x = $fromX; $x -lt $bmp.Width; $x++) {
-    $top = $bmp.GetPixel($x, $above)
-    $bottom = $bmp.GetPixel($x, $below)
-    for ($y = $bandTop; $y -le $bandBottom; $y++) {
-        $t = ($y - $above) / [double]($below - $above)
-        $r = [int][math]::Round($top.R + ($bottom.R - $top.R) * $t)
-        $g = [int][math]::Round($top.G + ($bottom.G - $top.G) * $t)
-        $b = [int][math]::Round($top.B + ($bottom.B - $top.B) * $t)
+$toX = $bmp.Width - 3
+if ($fromX -ge $toX -or $bandTop -lt 0 -or $bandBottom -ge $bmp.Height) {
+    throw "Полоса выходит за пределы баннера"
+}
+for ($y = $bandTop; $y -le $bandBottom; $y++) {
+    $left = $bmp.GetPixel($fromX, $y)
+    $right = $bmp.GetPixel($toX, $y)
+    for ($x = $fromX; $x -le $toX; $x++) {
+        $t = ($x - $fromX) / [double]($toX - $fromX)
+        $r = [int][math]::Round($left.R + ($right.R - $left.R) * $t)
+        $g = [int][math]::Round($left.G + ($right.G - $left.G) * $t)
+        $b = [int][math]::Round($left.B + ($right.B - $left.B) * $t)
         $bmp.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($r, $g, $b))
     }
 }
