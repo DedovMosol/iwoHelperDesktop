@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
 using System.Text;
+using System.Windows.Forms;
 using System.Xml.Linq;
 using ExcelMerger;
 using PdfSharp.Drawing;
@@ -75,17 +77,100 @@ namespace ExcelMerger.Tests
             Run("PDF Review: нормализация Unicode, пробелов и переводов строк", TestReviewNormalize);
             Run("PDF Review: CodePoints считает суррогатную пару одним знаком", TestReviewCodePoints);
             Run("PDF Review Load: истинные причины ошибок, парольный файл даёт «нужен пароль»", TestReviewLoadErrorReasons);
-            Run("PDF Review: строка статуса между кнопками, без наложений на любой ширине", TestReviewLayoutStatusRow);
+            Run("PDF Review Input: typed/pasted путь нормализуется и проверяется", TestReviewInputValidation);
+            Run("PDF Review Input: защищённый PDF остаётся выбираемым", TestReviewInputPasswordProtected);
+            Run("PDF Review Drop: все маршруты одного, двух и лишних файлов детерминированы", TestReviewDropPlans);
+            Run("PDF Review Form: ввод, Leave, Enter, инвалидация, same-file и swap согласованы", TestReviewSourceLifecycleLive);
+            Run("PDF Review Form: drag-and-drop подключён ко всему дереву и точно выбирает сторону", TestReviewDropWiringLive);
+            Run("PDF Review: строка статуса и легенды не перекрываются на любой ширине", TestReviewLayoutStatusRow);
             Run("PDF Review: вставленная страница не сдвигает последующие пары", TestReviewPageAlignment);
             Run("PDF Review: diff восстанавливает обе стороны и считает изменения", TestReviewDiffReconstruction);
             Run("PDF Review: идентичные страницы не помечаются изменёнными", TestReviewIdenticalPagesNoFalseHighlight);
             Run("PDF Review: одна правка на большой странице подсвечивается точечно", TestReviewLargePageSingleEdit);
             Run("PDF Review: перепад переносов без правок не создаёт изменений", TestReviewReflowNoFalseChanges);
+            Run("PDF Review: границы физических страниц не участвуют в document-wide diff", TestReviewDocumentWideRepagination);
+            Run("PDF Review: повторные колонтитулы выбирают глобально равный page-path", TestReviewRepeatedContentPagePreference);
+            Run("PDF Review: ранняя вставка при новом разбиении не сдвигает весь документ", TestReviewRepaginatedEarlyInsertion);
+            Run("PDF Review: замена через границу страниц сохраняет физических владельцев", TestReviewCrossPageReplacementOwnership);
+            Run("PDF Review: вставка и перестановка текстовой страницы видны глобально", TestReviewTextPageStructure);
+            Run("PDF Review: структурная пустая страница видна без текстовых рамок", TestReviewBlankPageStructure);
+            Run("PDF Review: Myers fallback сохраняет длинный общий поток после ранней вставки", TestReviewGlobalFallbackNoCascade);
+            Run("PDF Review: исчерпание matrix/Myers сохраняет консервативный word-diff", TestReviewDiffWorkBudgetConservative);
+            Run("PDF Review: размеры matrix и work-budget защищены от переполнения", TestReviewDiffBoundsValidation);
+            Run("PDF Review: отмена semantic diff откатывает ownership и допускает чистый повтор", TestReviewDiffCancellationRetry);
+            Run("PDF Review: повторные ключи зеркально сохраняют фактические пары", TestReviewRepeatedKeyReverseSymmetry);
             Run("PDF Review: ворд-дифф точен и идёт в порядке чтения", TestReviewWordDiffExact);
+            Run("PDF Review: каноническое слово склеивает только невидимые границы PdfPig", TestReviewCanonicalWords);
+            Run("PDF Review: совпадающие raw-слова образуют один видимый экземпляр", TestReviewOverlayWordCanonicalization);
+            Run("PDF Review: пробелы, пустые фрагменты и строки остаются границами", TestReviewCanonicalBoundaries);
+            Run("PDF Review: text layer доказывает точные пробельные границы", TestReviewSourceWhitespaceEvidence);
+            Run("PDF Review: сомнительный text layer не выдумывает пробелы", TestReviewSourceWhitespaceAbstention);
+            Run("PDF Review: пробелы краёв относятся только ко всему документу", TestReviewDocumentEdgeWhitespaceEvidence);
+            Run("PDF Review: литеральные пробелы сравниваются отдельной семантикой", TestReviewLiteralWhitespaceComparison);
+            Run("PDF Review: пробельный diff воздерживается без Exact-доказательства", TestReviewWhitespaceComparisonAbstention);
+            Run("PDF Review: пробельная проекция и статистика идемпотентны", TestReviewWhitespaceProjectionAndStats);
+            Run("PDF Review: отмена проекции сохраняет целый опубликованный snapshot", TestReviewProjectionPublicationAtomic);
+            Run("PDF Review: исчерпание пробельного diff ничего частично не публикует", TestReviewWhitespaceWorkBudgetAtomic);
+            Run("PDF Review: exact-индекс и commit сохраняют прежнюю пробельную публикацию", TestReviewWhitespacePublishedStateAtomic);
+            Run("PDF Review: отмена внутри atom-proof не публикует пробельный полуфабрикат", TestReviewWhitespaceProofCancellationAtomic);
+            Run("PDF Review: split/join — только source-backed пробельная семантика", TestReviewSplitJoinWhitespace);
+            Run("PDF Review: split/join требует два Exact-anchor и надёжный source", TestReviewSplitJoinSourceSafety);
+            Run("PDF Review: split/join отвергает геометрию, scope и Unicode-неясность", TestReviewSplitJoinConservativeGates);
+            Run("PDF Review: исчерпание split/join сохраняет исходные Delete/Insert", TestReviewSplitJoinWorkBudgetAtomic);
+            Run("PDF Review: длинный split/join proof ограничен бюджетом и отменяем", TestReviewSplitJoinLongWorkBudgetAtomic);
+            Run("PDF Review: перестановка extraction-order снимается только по геометрии", TestReviewOrderArtifactReconciliation);
+            Run("PDF Review: неоднозначность и настоящее перемещение не скрываются", TestReviewOrderArtifactAmbiguity);
+            Run("PDF Review: reconciliation соблюдает границы страницы, размера и регистрации", TestReviewOrderArtifactSafetyGates);
+            Run("PDF Review: cross-pair Exact делит окно, не теряя локальную перестановку", TestReviewOrderArtifactAdjacentCrossPairBarrier);
+            Run("PDF Review: trusted block доказывает локальный сдвиг независимо от соседней строки", TestReviewOrderArtifactInternalBlockCluster);
+            Run("PDF Review: повторный Exact-якорь перепривязывается только по trusted block-кластеру", TestReviewRepeatedExactAnchorRepair);
+            Run("PDF Review: cross-pair Exact не поглощается циклом номера страницы", TestReviewOrderArtifactCrossPairExactBarrier);
+            Run("PDF Review: исчерпание и отмена reconciliation не публикуют частичный Equal", TestReviewReconciliationWorkBudgetAtomic);
+            Run("PDF Review: reconciliation не ищет пару за ограниченным seed-окном", TestReviewReconciliationSeedWindowBounded);
+            Run("PDF Review: латинский перенос строки снимается узко и симметрично", TestReviewLatinLineEndHyphenation);
+            Run("PDF Review: общий суффикс и ownership устойчивы при разной длине", TestReviewDiffSuffixAndOwnership);
+            Run("PDF Review: внутрисловная правка целая, пустые стороны и fallback безопасны", TestReviewDiffWholeWordsAndLimits);
+            Run("PDF Review: канонические слова участвуют в сопоставлении страниц", TestReviewCanonicalPageAlignment);
+            Run("PDF Review: операции, счётчики и UI-подсветка имеют один источник", TestReviewOperationsStatsHighlights);
+            Run("PDF Review Fill: бумага, glyph edges, ink и alpha компонуются детерминированно", TestReviewHighlightPixelComposition);
+            Run("PDF Review Fill: clipping, overlap и геометрические разрывы ограничены word-box", TestReviewHighlightIntervals);
+            Run("PDF Review Fill: bitmap ownership транзакционен для пустой и готовой проекции", TestReviewHighlightBitmapLifecycle);
+            Run("PDF Review Selection: допускается только trusted source и диапазон нормализуется", TestReviewTextSelectionTrustAndRanges);
+            Run("PDF Review Selection: точные source-пробелы, NBSP, tab и line break копируются", TestReviewTextSelectionExactWhitespace);
+            Run("PDF Review Selection: неоднозначность даёт один явный fallback-пробел", TestReviewTextSelectionFallback);
+            Run("PDF Review Clipboard: UnicodeText и bounded retry contract заданы явно", TestReviewClipboardUnicodeContract);
+            Run("PDF Review Surface: Ctrl+A/C, Escape и lifecycle слоя работают read-only", TestReviewPageSurfaceCommands);
+            Run("PDF Review Surface: mouse drag и потеря capture завершаются безопасно", TestReviewPageSurfacePointerLifecycle);
+            Run("PDF Review Surface: левая и правая selection/clipboard независимы", TestReviewPageSurfaceIsolation);
+            Run("PDF Review: визуально равный кандидат снимает обе рамки", TestReviewVisualEquivalentCandidate);
+            Run("PDF Review: локальная регистрация ограничена и снимает только малый сдвиг", TestReviewVisualRegistrationBounded);
+            Run("PDF Review: регистрация не скрывает добавленные видимые чернила", TestReviewVisualRegistrationKeepsAddedInk);
+            Run("PDF Review: настоящая растровая правка сохраняет обе рамки", TestReviewVisualRealChange);
+            Run("PDF Review: визуальная проверка снимает только артефакты", TestReviewVisualMixedCandidates);
+            Run("PDF Review: Equal разделяет соседние визуальные группы", TestReviewVisualOperationGroups);
+            Run("PDF Review: визуально равная фрагментированная замена снимается целиком", TestReviewVisualRelatedCandidatesEquivalent);
+            Run("PDF Review: связанная замена снимается только целиком", TestReviewVisualRelatedCandidatesAtomic);
+            Run("PDF Review: production-refinement пропускает только безопасные hunks", TestReviewVisualRefineSafetyGates);
+            Run("PDF Review: общий raster-budget сохраняет поздний кандидат", TestReviewVisualSharedSampleBudget);
+            Run("PDF Review: общий relation-budget имеет точный консервативный потолок", TestReviewVisualRelationBudget);
+            Run("PDF Review: поздняя отмена не публикует ранний visual-refinement", TestReviewVisualRefineCancellationAtomic);
+            Run("PDF Review (живой): визуально одинаковые Unicode-глифы не считаются правкой", TestReviewEquivalentUnicodeGlyphsLive);
+            Run("PDF Review (живой): разная PdfPig-сегментация не даёт ложной правки", TestReviewFragmentedPdfLive);
             Run("PDF Review: геометрия подсветки учитывает поворот и пиксели", TestReviewGeometryMapping);
             Run("PDF Review: ручное сопоставление держит one-to-one", TestReviewManualPair);
+            Run("PDF Review (живой): сложный сгенерированный корпус сравнивается точно", TestReviewGeneratedComplexCorpusLive);
+            Run("PDF Review (живой): смысловые правки и перестановки проходят production-путь", TestReviewGeneratedSemanticMatrixLive);
+            Run("PDF Review (живой): матрица PDF-представлений сохраняет только видимые правки", TestReviewGeneratedRepresentationMatrixLive);
+            Run("PDF Review (живой): шрифт, кегль, начертание и цвет не являются правкой", TestReviewFormattingDifferencesIgnoredLive);
             Run("PDF Review (живой): пользовательская пара цифровых PDF сравнивается", TestReviewServiceLive);
+            Run("PDF Review (локальный образец): 1.pdf и 2.pdf без ложных строк формы", TestReviewRootFixturesLive);
             Run("PDF Review PageView: ShowPage показывает именно запрошенную страницу", TestReviewPageViewShowsRequestedPage);
+            Run("PDF Review PageView: явные состояния не показывают белое полотно без страницы", TestReviewPageViewStates);
+            Run("PDF Review PageView: поздний растр не возвращает отменённую страницу", TestReviewPageViewRejectsStaleRender);
+            Run("PDF Review PageView: content revision атомарно связывает raster и trusted text", TestReviewPageViewContentRevision);
+            Run("PDF Review PageView: wheel и Ctrl+wheel прокручивают и масштабируют локально", TestReviewPageViewWheel);
+            Run("PDF Review Form: физические страницы независимы и не меняют semantic result", TestReviewPhysicalPageNavigationLive);
+            Run("PDF Review Form: wheel маршрутизируется по указателю, фильтр снимается", TestReviewWheelRoutingLive);
             Run("PdfSplitPlan: выделение после удаления берёт исходные страницы", TestSplitPlanSelected);
             Run("PdfSplitPlan: диапазоны фильтруют рабочий набор, сохраняя порядок", TestSplitPlanRanges);
             Run("PdfSplitPlan: каждые N страниц режут рабочий порядок", TestSplitPlanEveryN);
@@ -463,15 +548,15 @@ namespace ExcelMerger.Tests
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
-            // Нижняя граница числа тестов: без неё удалённая строка Run(...) проходит незаметно —
-            // прогон остаётся зелёным, просто проверок становится меньше. Растёт вместе с набором.
-            const int MinTests = 359;
+            // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
+            // не должна проходить незаметно. Обновляется осознанно вместе с набором.
+            const int ExactTests = 511;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
-            if (total < MinTests)
+            if (total != ExactTests)
             {
-                Console.WriteLine("ОШИБКА: тестов " + total + ", а должно быть не меньше " + MinTests +
-                    " — из прогона пропала проверка.");
+                Console.WriteLine("ОШИБКА: тестов " + total + ", а зарегистрировано должно быть ровно " +
+                    ExactTests + " — проверьте список Run(...).");
                 code = 1;
             }
             // Выходим ЖЁСТКО, как и само приложение (см. FastExit): живые тесты открывают
@@ -1527,10 +1612,423 @@ namespace ExcelMerger.Tests
             finally { Directory.Delete(dir, true); }
         }
 
+        private static void TestReviewInputValidation()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_input_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string pdf = Path.Combine(dir, "typed source.PDF");
+                WriteReviewPdf(pdf, new[] { "Visible born digital text" });
+                string text = Path.Combine(dir, "not pdf.txt");
+                File.WriteAllText(text, "text");
+                string junk = Path.Combine(dir, "unreadable.pdf");
+                File.WriteAllText(junk, "this is not a PDF");
+
+                PdfReviewSourceResult resolved = PdfReviewInput.Resolve("  \"" + pdf + "\"  ");
+                AssertTrue(resolved.IsValid, "кавычки и внешние пробелы разрешены");
+                AssertEqual(Path.GetFullPath(pdf), resolved.Path,
+                    "в поле возвращается канонический полный путь");
+                AssertEqual(PdfReviewSourceError.Empty, PdfReviewInput.Resolve("   ").Error,
+                    "пустое поле отличимо");
+                AssertEqual(PdfReviewSourceError.InvalidPath, PdfReviewInput.Resolve("bad\0path.pdf").Error,
+                    "синтаксически невозможный путь отличим");
+                AssertEqual(PdfReviewSourceError.Missing,
+                    PdfReviewInput.Resolve(Path.Combine(dir, "missing.pdf")).Error,
+                    "несуществующий PDF отличим");
+                AssertEqual(PdfReviewSourceError.NotPdf, PdfReviewInput.Resolve(text).Error,
+                    "существующий файл другого типа отвергнут");
+
+                PdfReviewSourceResult validProbe = PdfReviewInput.Probe(resolved);
+                AssertTrue(validProbe.IsValid, "обычный born-digital PDF проходит лёгкую пробу");
+                AssertEqual(resolved.Path, validProbe.Path, "проба не меняет выбранный путь");
+                AssertEqual(PdfReviewSourceError.Unreadable,
+                    PdfReviewInput.Probe(PdfReviewInput.Resolve(junk)).Error,
+                    "мусор с расширением PDF не становится источником");
+                AssertEqual(PdfReviewSourceError.InvalidPath, PdfReviewInput.Probe(null).Error,
+                    "null не роняет пробу");
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        private static void TestReviewInputPasswordProtected()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_input_password_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            PdfPasswords.Clear();
+            try
+            {
+                string locked = Path.Combine(dir, "locked.pdf");
+                MakeProtectedPdf(locked);
+                PdfReviewSourceResult resolved = PdfReviewInput.Resolve(locked);
+                AssertTrue(resolved.IsValid, "защищённый файл существует и имеет тип PDF");
+                PdfReviewSourceResult probed = PdfReviewInput.Probe(resolved);
+                AssertTrue(probed.IsValid,
+                    "password-required остаётся допустимым выбором для штатного запроса пароля");
+                AssertEqual(Path.GetFullPath(locked), probed.Path,
+                    "путь защищённого источника не потерян");
+            }
+            finally
+            {
+                PdfPasswords.Clear();
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void TestReviewDropPlans()
+        {
+            AssertReviewDrop(PdfReviewDropAction.None, null, null,
+                PdfReviewInput.PlanDrop(null, PdfReviewDropTarget.Neutral, false, false),
+                "null — ничего не назначать");
+            AssertReviewDrop(PdfReviewDropAction.None, null, null,
+                PdfReviewInput.PlanDrop(new string[0], PdfReviewDropTarget.Left, false, false),
+                "пустой набор — ничего не назначать");
+            AssertReviewDrop(PdfReviewDropAction.TooMany, null, null,
+                PdfReviewInput.PlanDrop(new[] { "1.pdf", "2.pdf", "3.pdf" },
+                    PdfReviewDropTarget.Right, false, false),
+                "более двух — явный отказ");
+
+            AssertReviewDrop(PdfReviewDropAction.AssignBoth, "first.pdf", "second.pdf",
+                PdfReviewInput.PlanDrop(new[] { "first.pdf", "second.pdf" },
+                    PdfReviewDropTarget.Right, true, true),
+                "два файла всегда сохраняют исходный порядок left/right");
+            AssertReviewDrop(PdfReviewDropAction.AssignLeft, "one.pdf", null,
+                PdfReviewInput.PlanDrop(new[] { "one.pdf" }, PdfReviewDropTarget.Left, true, true),
+                "явная левая цель заменяет левую сторону");
+            AssertReviewDrop(PdfReviewDropAction.AssignRight, null, "one.pdf",
+                PdfReviewInput.PlanDrop(new[] { "one.pdf" }, PdfReviewDropTarget.Right, true, true),
+                "явная правая цель заменяет правую сторону");
+            AssertReviewDrop(PdfReviewDropAction.AssignLeft, "one.pdf", null,
+                PdfReviewInput.PlanDrop(new[] { "one.pdf" }, PdfReviewDropTarget.Neutral, false, false),
+                "нейтральный drop сначала заполняет пустую левую сторону");
+            AssertReviewDrop(PdfReviewDropAction.AssignRight, null, "one.pdf",
+                PdfReviewInput.PlanDrop(new[] { "one.pdf" }, PdfReviewDropTarget.Neutral, true, false),
+                "после левой нейтральный drop заполняет правую");
+            AssertReviewDrop(PdfReviewDropAction.AssignLeft, "one.pdf", null,
+                PdfReviewInput.PlanDrop(new[] { "one.pdf" }, PdfReviewDropTarget.Neutral, false, true),
+                "если пуста только левая, она имеет приоритет");
+            AssertReviewDrop(PdfReviewDropAction.NeedExplicitSide, null, null,
+                PdfReviewInput.PlanDrop(new[] { "one.pdf" }, PdfReviewDropTarget.Neutral, true, true),
+                "обе заполнены — нейтральный drop не перезаписывает молча");
+        }
+
+        private static void AssertReviewDrop(PdfReviewDropAction action, string left, string right,
+            PdfReviewDropPlan actual, string context)
+        {
+            AssertTrue(actual != null, context + ": план создан");
+            AssertEqual(action, actual.Action, context + ": действие");
+            AssertEqual(left, actual.LeftPath, context + ": левая сторона");
+            AssertEqual(right, actual.RightPath, context + ": правая сторона");
+        }
+
+        private static void TestReviewSourceLifecycleLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_source_ui_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string first = Path.Combine(dir, "first.pdf");
+                string second = Path.Combine(dir, "second.pdf");
+                WriteReviewPdf(first, new[] { "First source" });
+                WriteReviewPdf(second, new[] { "Second source" });
+                InIsolatedSettings("iwo_reviewsource_settings_", delegate
+                {
+                    using (var form = new PdfReviewForm(null))
+                    {
+                        form.Show();
+                        Application.DoEvents();
+                        TextBox left = ReviewPrivateField<TextBox>(form, "_leftPath");
+                        TextBox right = ReviewPrivateField<TextBox>(form, "_rightPath");
+                        Button compare = ReviewPrivateField<Button>(form, "_compare");
+                        Button swap = ReviewPrivateField<Button>(form, "_swap");
+                        AssertTrue(!left.ReadOnly && !right.ReadOnly,
+                            "оба пути можно печатать и вставлять вручную");
+                        AssertTrue(!compare.Enabled, "до двух проверенных источников Compare выключена");
+
+                        left.Focus();
+                        left.Text = "  \"" + first + "\"  ";
+                        right.Focus(); // Leave левого поля — тот же commit, что у browse/drop
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
+                                Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
+                        }), "Leave проверил и нормализовал вручную введённый левый путь");
+                        AssertEqual(Path.GetFullPath(first), left.Text,
+                            "после Leave поле показывает канонический путь");
+
+                        right.Text = second;
+                        right.Focus();
+                        bool enterHandled = InvokeReviewProcessCmdKey(form, Keys.Enter);
+                        AssertTrue(enterHandled, "Enter в поле перехвачен до AcceptButton");
+                        AssertTrue(ReviewPrivateField<bool>(form, "_rightSourceChecking"),
+                            "на время асинхронной пробы сторона помечена checking");
+                        AssertTrue(!compare.Enabled, "во время пробы Compare неактивна");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                                Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase);
+                        }), "Enter проверил правый путь");
+                        AssertTrue(compare.Enabled, "два разных проверенных PDF включают Compare");
+
+                        right.Text = first;
+                        AssertTrue(ReviewPrivateField<string>(form, "_rightFile") == null,
+                            "редактирование сразу стирает скрытый старый источник");
+                        AssertTrue(!compare.Enabled, "после первого же изменения текста Compare выключена");
+                        InvokeReviewProcessCmdKey(form, Keys.Enter);
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                                Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
+                        }), "повторный Enter завершил проверку");
+                        AssertTrue(!compare.Enabled, "один файл на обе стороны Compare не включает");
+                        AssertEqual(Loc.T("review.err.sameFile"),
+                            ReviewPrivateField<Label>(form, "_summary").Text,
+                            "same-file объяснён в строке состояния");
+
+                        string missing = Path.Combine(dir, "missing.pdf");
+                        left.Focus();
+                        left.Text = missing;
+                        AssertTrue(ReviewPrivateField<string>(form, "_leftFile") == null,
+                            "ручная правка инвалидирует модель до потери фокуса");
+                        InvokeReviewProcessCmdKey(form, Keys.Enter);
+                        AssertEqual(PdfReviewSourceError.Missing,
+                            ReviewPrivateField<PdfReviewSourceError>(form, "_leftSourceError"),
+                            "несуществующий typed path остаётся видимым, но не становится источником");
+                        AssertEqual(missing, left.Text, "ошибочный ввод не стирается без ведома пользователя");
+
+                        right.Focus();
+                        right.Text = second;
+                        InvokeReviewProcessCmdKey(form, Keys.Enter);
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                                Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase);
+                        }), "валидная правая проба завершилась рядом с ошибкой слева");
+                        AssertEqual(Loc.T("review.err.source.missing"),
+                            ReviewPrivateField<Label>(form, "_summary").Text,
+                            "успешный callback одной стороны не скрывает ошибку другой");
+
+                        left.Focus();
+                        left.Text = first;
+                        InvokeReviewProcessCmdKey(form, Keys.Enter);
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
+                                Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
+                        }), "левый источник восстановлен после ошибки");
+                        right.Focus();
+                        right.Text = second;
+                        InvokeReviewProcessCmdKey(form, Keys.Enter);
+                        AssertTrue(WaitFor(delegate { return compare.Enabled; }),
+                            "после исправления обеих сторон Compare снова доступна");
+
+                        swap.PerformClick();
+                        AssertEqual(Path.GetFullPath(second), left.Text,
+                            "swap сразу меняет видимые поля");
+                        AssertEqual(Path.GetFullPath(first), right.Text,
+                            "swap сохраняет вторую сторону");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
+                                       Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase) &&
+                                   string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                                       Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
+                        }), "swap провёл обе стороны через общий validation route");
+                        AssertTrue(compare.Enabled, "после swap разные проверенные PDF готовы к сравнению");
+
+                        string sourceBeforeClose = ReviewPrivateField<string>(form, "_leftFile");
+                        int generationBeforeClose = ReviewPrivateField<int>(form,
+                            "_leftSourceGeneration");
+                        form.Close();
+                        AssertTrue(ReviewPrivateField<bool>(form, "_sourceCallbacksStopped"),
+                            "закрытие явно останавливает source callbacks");
+                        int closedGeneration = ReviewPrivateField<int>(form,
+                            "_leftSourceGeneration");
+                        AssertTrue(closedGeneration > generationBeforeClose,
+                            "закрытие инвалидирует уже поставленную в очередь пробу");
+                        InvokeReviewCompleteSource(form, true, closedGeneration,
+                            new PdfReviewSourceResult { Path = first });
+                        AssertEqual(sourceBeforeClose,
+                            ReviewPrivateField<string>(form, "_leftFile"),
+                            "callback не меняет модель закрытой формы даже с текущим generation");
+                    }
+                });
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        private static void TestReviewDropWiringLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_drop_ui_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string first = Path.Combine(dir, "first.pdf");
+                string second = Path.Combine(dir, "second.pdf");
+                WriteReviewPdf(first, new[] { "First drop" });
+                WriteReviewPdf(second, new[] { "Second drop" });
+                InIsolatedSettings("iwo_reviewdrop_settings_", delegate
+                {
+                    using (var form = new PdfReviewForm(null))
+                    {
+                        form.Show();
+                        Application.DoEvents();
+                        AssertEqual(ReviewControlTreeCount(form), form.DropWiredControlCount,
+                            "каждый существующий дочерний control подписан на drop");
+
+                        TextBox leftPath = ReviewPrivateField<TextBox>(form, "_leftPath");
+                        Button rightPick = ReviewPrivateField<Button>(form, "_pickRight");
+                        Button swap = ReviewPrivateField<Button>(form, "_swap");
+                        PdfReviewPageView leftView = ReviewPrivateField<PdfReviewPageView>(form, "_leftSource");
+                        PdfReviewPageView rightView = ReviewPrivateField<PdfReviewPageView>(form, "_rightSource");
+                        AssertEqual(PdfReviewDropTarget.Left,
+                            form.ReviewDropTargetAt(ReviewScreenCenter(leftPath)),
+                            "поле левого пути — явная левая цель");
+                        AssertEqual(PdfReviewDropTarget.Right,
+                            form.ReviewDropTargetAt(ReviewScreenCenter(rightPick)),
+                            "правая кнопка browse — явная правая цель");
+                        AssertEqual(PdfReviewDropTarget.Left,
+                            form.ReviewDropTargetAt(ReviewScreenCenter(leftView)),
+                            "любой дочерний слой левого viewer маршрутизируется влево");
+                        AssertEqual(PdfReviewDropTarget.Right,
+                            form.ReviewDropTargetAt(ReviewScreenCenter(rightView)),
+                            "любой дочерний слой правого viewer маршрутизируется вправо");
+                        AssertEqual(PdfReviewDropTarget.Neutral,
+                            form.ReviewDropTargetAt(ReviewScreenCenter(swap)),
+                            "общая кнопка остаётся нейтральной поверхностью");
+
+                        int before = form.DropWiredControlCount;
+                        var latePanel = new Panel();
+                        var lateChild = new Label();
+                        latePanel.Controls.Add(lateChild);
+                        leftView.Controls.Add(latePanel);
+                        AssertTrue(latePanel.AllowDrop && lateChild.AllowDrop,
+                            "поздно добавленная поверхность и её ребёнок тоже принимают drop");
+                        AssertEqual(before + 2, form.DropWiredControlCount,
+                            "ControlAdded рекурсивно подключил ровно два новых control");
+
+                        form.SetDropCue(PdfReviewInput.PlanDrop(new[] { first },
+                            PdfReviewDropTarget.Neutral, false, false));
+                        AssertEqual(PdfReviewPageViewState.DropTarget, leftView.ViewState,
+                            "neutral single-drop заранее подсвечивает первую пустую сторону");
+                        AssertEqual(PdfReviewPageViewState.Empty, rightView.ViewState,
+                            "neutral single-drop не обещает назначить обе стороны");
+                        form.ClearDropCueOutside(ReviewScreenCenter(lateChild));
+                        AssertEqual(PdfReviewPageViewState.DropTarget, leftView.ViewState,
+                            "DragLeave вложенного слоя не мигает cue внутри окна");
+                        form.ClearDropCueOutside(form.PointToScreen(new Point(
+                            form.ClientSize.Width + 20, form.ClientSize.Height + 20)));
+                        AssertEqual(PdfReviewPageViewState.Empty, leftView.ViewState,
+                            "cue снимается после фактического ухода указателя с окна");
+                        form.SetDropCue(PdfReviewInput.PlanDrop(new[] { second },
+                            PdfReviewDropTarget.Neutral, true, false));
+                        AssertEqual(PdfReviewPageViewState.Empty, leftView.ViewState,
+                            "после заполнения левой cue с неё снят");
+                        AssertEqual(PdfReviewPageViewState.DropTarget, rightView.ViewState,
+                            "следующий neutral single-drop подсказывает правую сторону");
+                        form.SetDropCue(PdfReviewInput.PlanDrop(new[] { first, second },
+                            PdfReviewDropTarget.Left, true, true));
+                        AssertEqual(PdfReviewPageViewState.DropTarget, leftView.ViewState,
+                            "two-file drop подсвечивает левую сторону");
+                        AssertEqual(PdfReviewPageViewState.DropTarget, rightView.ViewState,
+                            "two-file drop одновременно подсвечивает правую сторону");
+                        form.SetDropCue(PdfReviewInput.PlanDrop(new[] { first },
+                            PdfReviewDropTarget.Neutral, true, true));
+                        AssertEqual(PdfReviewPageViewState.Empty, leftView.ViewState,
+                            "ambiguous neutral drop не показывает ложную замену слева");
+                        AssertEqual(PdfReviewPageViewState.Empty, rightView.ViewState,
+                            "ambiguous neutral drop не показывает ложную замену справа");
+                        form.SetDropCue(null);
+
+                        form.AcceptFiles(new[] { first });
+                        AssertEqual(first, leftPath.Text,
+                            "первый neutral single-drop заполнил левую сторону");
+                        form.AcceptFiles(new[] { second });
+                        AssertEqual(second, ReviewPrivateField<TextBox>(form, "_rightPath").Text,
+                            "второй neutral single-drop заполнил правую сторону");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return ReviewPrivateField<string>(form, "_leftFile") != null &&
+                                   ReviewPrivateField<string>(form, "_rightFile") != null;
+                        }), "оба dropped PDF прошли асинхронную пробу");
+
+                        form.AcceptFiles(new[] { second, first });
+                        AssertEqual(second, leftPath.Text,
+                            "two-file drop сохранил первый файл слева");
+                        AssertEqual(first, ReviewPrivateField<TextBox>(form, "_rightPath").Text,
+                            "two-file drop сохранил второй файл справа");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
+                                       Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase) &&
+                                   string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                                       Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
+                        }), "two-file drop назначил стороны в исходном порядке");
+                        form.Close();
+                    }
+                });
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        private static T ReviewPrivateField<T>(object target, string name)
+        {
+            Type type = target.GetType();
+            while (type != null)
+            {
+                FieldInfo field = type.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+                if (field != null)
+                    return (T)field.GetValue(target);
+                type = type.BaseType;
+            }
+            throw new Exception("нет поля " + name);
+        }
+
+        private static bool InvokeReviewProcessCmdKey(PdfReviewForm form, Keys key)
+        {
+            MethodInfo method = typeof(PdfReviewForm).GetMethod("ProcessCmdKey",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var args = new object[] { new Message(), key };
+            return (bool)method.Invoke(form, args);
+        }
+
+        private static void InvokeReviewApplyResult(PdfReviewForm form,
+            PdfReviewResult result)
+        {
+            MethodInfo method = typeof(PdfReviewForm).GetMethod("ApplyResult",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            method.Invoke(form, new object[] { result });
+        }
+
+        private static void InvokeReviewCompleteSource(PdfReviewForm form, bool left,
+            int generation, PdfReviewSourceResult source)
+        {
+            MethodInfo method = typeof(PdfReviewForm).GetMethod("CompleteSource",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            method.Invoke(form, new object[] { left, generation, source });
+        }
+
+        private static int ReviewControlTreeCount(Control root)
+        {
+            int count = 1;
+            foreach (Control child in root.Controls)
+                count += ReviewControlTreeCount(child);
+            return count;
+        }
+
+        private static Point ReviewScreenCenter(Control control)
+        {
+            return control.PointToScreen(new Point(
+                Math.Max(0, control.ClientSize.Width / 2),
+                Math.Max(0, control.ClientSize.Height / 2)));
+        }
         /// <summary>
-        /// Регрессия на наложение строки статуса на кнопку: статус обязан лежать СТРОГО между
-        /// «Поменять местами» слева и «Сравнить» справа при любой ширине окна (включая
-        /// минимальную). Раньше он начинался на фиксированном 184 и залезал под кнопку.
+        /// Строка статуса остаётся строго между кнопками, а ownership-легенды — ниже
+        /// навигаторов и поверх собственного layout-слоя при нормальной и минимальной ширине.
         /// </summary>
         private static void TestReviewLayoutStatusRow()
         {
@@ -1543,6 +2041,7 @@ namespace ExcelMerger.Tests
                         form.Show();
                         form.ClientSize = new System.Drawing.Size(width, form.ClientSize.Height);
                         form.PerformLayout();
+                        Application.DoEvents();
                         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
                         var swap = (System.Windows.Forms.Control)form.GetType().GetField("_swap", flags).GetValue(form);
                         var compare = (System.Windows.Forms.Control)form.GetType().GetField("_compare", flags).GetValue(form);
@@ -1554,10 +2053,50 @@ namespace ExcelMerger.Tests
                         AssertTrue(!summary.Bounds.IntersectsWith(swap.Bounds) &&
                                    !summary.Bounds.IntersectsWith(compare.Bounds),
                             "нет наложений строки статуса (ширина " + width + ")");
+
+                        AssertReviewLegendUnobscured(
+                            ReviewPrivateField<Label>(form, "_leftLegend"),
+                            ReviewPrivateField<Label>(form, "_leftWhitespaceLegend"),
+                            ReviewPrivateField<TextBox>(form, "_leftPageInput"),
+                            width, "левая");
+                        AssertReviewLegendUnobscured(
+                            ReviewPrivateField<Label>(form, "_rightLegend"),
+                            ReviewPrivateField<Label>(form, "_rightWhitespaceLegend"),
+                            ReviewPrivateField<TextBox>(form, "_rightPageInput"),
+                            width, "правая");
                         form.Close();
                     }
                 }
             });
+        }
+
+        private static void AssertReviewLegendUnobscured(Label ownership, Label whitespace,
+            TextBox pageInput, int width, string side)
+        {
+            Control legendLayer = ownership.Parent;
+            Control navigator = pageInput.Parent;
+            Control top = legendLayer == null ? null : legendLayer.Parent;
+            AssertTrue(top != null && navigator != null &&
+                       ReferenceEquals(top, navigator.Parent),
+                side + " легенда и навигатор имеют общий layout (ширина " + width + ")");
+
+            Rectangle ownershipRect = ownership.RectangleToScreen(ownership.ClientRectangle);
+            Rectangle whitespaceRect = whitespace.RectangleToScreen(whitespace.ClientRectangle);
+            Rectangle navigatorRect = navigator.RectangleToScreen(navigator.ClientRectangle);
+            AssertTrue(ownership.Visible && ownershipRect.Width > 20 &&
+                       ownershipRect.Height >= ownership.Font.Height,
+                side + " ownership-легенда имеет видимую область (ширина " + width + ")");
+            AssertTrue(!ownershipRect.IntersectsWith(navigatorRect),
+                side + " ownership-легенда не закрыта навигатором (ширина " + width + ")");
+            AssertTrue(!ownershipRect.IntersectsWith(whitespaceRect),
+                side + " ownership и whitespace-легенды не перекрываются (ширина " + width + ")");
+
+            Point center = new Point(ownershipRect.Left + ownershipRect.Width / 2,
+                ownershipRect.Top + ownershipRect.Height / 2);
+            Control topmost = top.GetChildAtPoint(top.PointToClient(center),
+                GetChildAtPointSkip.Invisible);
+            AssertTrue(ReferenceEquals(legendLayer, topmost),
+                side + " ownership-легенда находится в верхнем layout-слое (ширина " + width + ")");
         }
 
         private static void TestGhostscriptReprobe()
@@ -1633,7 +2172,12 @@ namespace ExcelMerger.Tests
             foreach (string token in normalized.Split('\n', '\t', ' '))
             {
                 if (token.Length == 0) continue;
-                page.Words.Add(new PdfReviewWord { Text = token, Key = token });
+                page.Words.Add(new PdfReviewWord
+                {
+                    Text = token,
+                    Key = token,
+                    PageIndex = index
+                });
             }
             return page;
         }
@@ -1680,12 +2224,13 @@ namespace ExcelMerger.Tests
 
         private static void TestReviewDiffReconstruction()
         {
-            PdfReviewPagePair pair = PdfReviewDiff.Pair(ReviewPage(0, "Старый текст и таблица 10"),
-                ReviewPage(0, "Новый текст и таблица 11"), PdfReviewLimits.Default());
+            PdfReviewDocument left = ReviewDocument("l", "Старый текст и таблица 10");
+            PdfReviewDocument right = ReviewDocument("r", "Новый текст и таблица 11");
+            PdfReviewResult result = PdfReviewDiff.Compare(left, right, PdfReviewLimits.Default());
             var leftWords = new List<string>();
             var rightWords = new List<string>();
             int deleted = 0, inserted = 0;
-            foreach (PdfReviewWordOp op in pair.Operations)
+            foreach (PdfReviewWordOp op in result.Operations)
             {
                 foreach (PdfReviewWord word in op.Words)
                 {
@@ -1701,17 +2246,10 @@ namespace ExcelMerger.Tests
                 "right reconstruction");
             AssertEqual(2, deleted, "удалено ровно два слова");
             AssertEqual(2, inserted, "добавлено ровно два слова");
-            var result = new PdfReviewResult
-            {
-                Left = ReviewDocument("l", "Старый текст и таблица 10"),
-                Right = ReviewDocument("r", "Новый текст и таблица 11")
-            };
-            result.Pairs.Add(pair);
-            PdfReviewStats stats = PdfReviewDiff.Statistics(result);
-            AssertEqual(2, stats.DeletedWords, "счётчик удалённых слов из того же диффа");
-            AssertEqual(2, stats.InsertedWords, "счётчик добавленных слов из того же диффа");
-            AssertEqual(2, stats.Replacements, "замена посчитана");
-            AssertTrue(stats.ChangedPercent > 0, "ненулевое изменение не округлено в 0%");
+            AssertEqual(2, result.Stats.DeletedWords, "счётчик удалённых слов из того же диффа");
+            AssertEqual(2, result.Stats.InsertedWords, "счётчик добавленных слов из того же диффа");
+            AssertEqual(2, result.Stats.Replacements, "замена посчитана");
+            AssertTrue(result.Stats.ChangedPercent > 0, "ненулевое изменение не округлено в 0%");
         }
 
         /// <summary>
@@ -1725,11 +2263,14 @@ namespace ExcelMerger.Tests
             for (int i = 0; i < 600; i++)
                 sb.Append("слово").Append(i).Append(' ');
             string text = sb.ToString().Trim();
-            PdfReviewPagePair pair = PdfReviewDiff.Pair(ReviewPage(0, text), ReviewPage(0, text),
+            PdfReviewResult result = PdfReviewDiff.Compare(
+                ReviewDocument("left.pdf", text), ReviewDocument("right.pdf", text),
                 PdfReviewLimits.Default());
-            AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status, "идентичная большая страница — без изменений");
-            foreach (PdfReviewWordOp op in pair.Operations)
-                AssertEqual(PdfReviewDiffKind.Equal, op.Kind, "в идентичной паре нет операций удаления/вставки");
+            AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+                "идентичная большая страница — без изменений");
+            foreach (PdfReviewWordOp op in result.Operations)
+                AssertEqual(PdfReviewDiffKind.Equal, op.Kind,
+                    "в идентичной паре нет операций удаления/вставки");
         }
 
         /// <summary>
@@ -1744,11 +2285,13 @@ namespace ExcelMerger.Tests
                 sb.Append("слово").Append(i).Append(' ');
             string left = sb.ToString().Trim();
             string right = left.Replace("слово300", "правка300");
-            PdfReviewPagePair pair = PdfReviewDiff.Pair(ReviewPage(0, left), ReviewPage(0, right),
+            PdfReviewResult result = PdfReviewDiff.Compare(
+                ReviewDocument("left.pdf", left), ReviewDocument("right.pdf", right),
                 PdfReviewLimits.Default());
-            AssertEqual(PdfReviewPairStatus.Changed, pair.Status, "одна правка видна как изменение");
+            AssertEqual(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
+                "одна правка видна как изменение");
             int deleted = 0, inserted = 0, equalWords = 0;
-            foreach (PdfReviewWordOp op in pair.Operations)
+            foreach (PdfReviewWordOp op in result.Operations)
             {
                 if (op.Kind == PdfReviewDiffKind.Delete) deleted += op.Words.Count;
                 else if (op.Kind == PdfReviewDiffKind.Insert) inserted += op.Words.Count;
@@ -1773,15 +2316,885 @@ namespace ExcelMerger.Tests
                 "рефлоу без смысловых правок не создаёт изменений");
         }
 
+        /// <summary>
+        /// Границы физических страниц не входят в семантический ключ: одна и та же сквозная
+        /// последовательность даёт только Equal, даже если viewer вынужден добавить one-sided row.
+        /// </summary>
+        private static void TestReviewDocumentWideRepagination()
+        {
+            PdfReviewDocument left = ReviewDocument("left.pdf",
+                "north alpha beta", "gamma delta epsilon", "zeta eta theta iota");
+            PdfReviewDocument right = ReviewDocument("right.pdf",
+                "north", "alpha beta gamma delta", "epsilon zeta", "eta theta iota");
+
+            AssertReviewRepagination(PdfReviewDiff.Compare(left, right,
+                PdfReviewLimits.Default()), "новое разбиение, прямо");
+            AssertReviewRepagination(PdfReviewDiff.Compare(right, left,
+                PdfReviewLimits.Default()), "новое разбиение, обратно");
+        }
+
+        private static void AssertReviewRepagination(PdfReviewResult result, string context)
+        {
+            AssertTrue(result.Operations.Count == 1 &&
+                       result.Operations[0].Kind == PdfReviewDiffKind.Equal,
+                context + ": весь документ представлен одной Equal-операцией");
+            AssertEqual(result.Left.WordCount, result.Operations[0].Words.Count,
+                context + ": Equal охватывает все слова документа");
+            AssertEqual(0, result.Stats.DeletedWords,
+                context + ": переносы страниц не создают Delete");
+            AssertEqual(0, result.Stats.InsertedWords,
+                context + ": переносы страниц не создают Insert");
+            AssertEqual(result.Pairs.Count,
+                ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+                context + ": все строки viewer проецируются как неизменённые");
+
+            int oneSided = 0;
+            foreach (PdfReviewPagePair pair in result.Pairs)
+                if (pair.LeftPageIndex < 0 || pair.RightPageIndex < 0)
+                {
+                    oneSided++;
+                    AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+                        context + ": непустая one-sided строка re-pagination не является правкой");
+                }
+            AssertTrue(oneSided > 0,
+                context + ": fixture действительно создала разные физические разбиения");
+            AssertReviewSyntheticProjection(result, context);
+        }
+
+        /// <summary>
+        /// Повторный header/footer допускает несколько LCS одинаковой максимальной длины.
+        /// Viewer pairing вправе выбрать из них физически согласованный путь, но не вправе
+        /// сократить LCS или запустить локальный diff: вся вставленная страница должна остаться
+        /// одним глобальным кандидатом в прямом и обратном направлениях.
+        /// </summary>
+        private static void TestReviewRepeatedContentPagePreference()
+        {
+            PdfReviewDocument baseline = ReviewDocument("baseline.pdf",
+                "header alpha footer", "header beta footer", "header gamma footer");
+            PdfReviewDocument inserted = ReviewDocument("inserted.pdf",
+                "header alpha footer", "header inserted footer",
+                "header beta footer", "header gamma footer");
+
+            AssertReviewRepeatedContentPagePreference(PdfReviewDiff.Compare(baseline,
+                inserted, PdfReviewLimits.Default()), true,
+                "повторные колонтитулы, вставка");
+            AssertReviewRepeatedContentPagePreference(PdfReviewDiff.Compare(inserted,
+                baseline, PdfReviewLimits.Default()), false,
+                "повторные колонтитулы, удаление");
+        }
+
+        private static void AssertReviewRepeatedContentPagePreference(PdfReviewResult result,
+            bool extraOnRight, string context)
+        {
+            PdfReviewDiffKind kind = extraOnRight
+                ? PdfReviewDiffKind.Insert : PdfReviewDiffKind.Delete;
+            PdfReviewDiffKind absent = extraOnRight
+                ? PdfReviewDiffKind.Delete : PdfReviewDiffKind.Insert;
+            string expectedPairs = extraOnRight
+                ? "0:0:Unchanged|-1:1:RightOnly|1:2:Unchanged|2:3:Unchanged"
+                : "0:0:Unchanged|1:-1:LeftOnly|2:1:Unchanged|3:2:Unchanged";
+            string expectedOperations = extraOnRight
+                ? "Equal:header,alpha,footer|Insert:header,inserted,footer|" +
+                    "Equal:header,beta,footer,header,gamma,footer"
+                : "Equal:header,alpha,footer|Delete:header,inserted,footer|" +
+                    "Equal:header,beta,footer,header,gamma,footer";
+
+            AssertEqual(expectedPairs, PairSig(result.Pairs),
+                context + ": физические страницы сопоставлены только для viewer");
+            AssertEqual(expectedOperations, ReviewOpsSig(result.Operations),
+                context + ": единственный global diff сохраняет страницу целым hunk");
+            AssertEqual(3, ReviewOperationWordCount(result.Operations, kind, 1),
+                context + ": header, body и footer принадлежат вставленной странице");
+            AssertEqual(3, ReviewOperationWordCount(result.Operations, kind, -1),
+                context + ": нет широкой ложной подсветки");
+            AssertEqual(0, ReviewOperationWordCount(result.Operations, absent, -1),
+                context + ": нет зеркальных кандидатов");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+                context + ": совпавшие физические пары не объявлены изменёнными");
+            AssertEqual(1, ReviewStatusCount(result, extraOnRight
+                ? PdfReviewPairStatus.RightOnly : PdfReviewPairStatus.LeftOnly),
+                context + ": ровно одна структурная строка содержит изменение");
+            AssertEqual(0, result.Stats.Replacements,
+                context + ": чистая вставка/удаление страницы не является replacement");
+
+            List<PdfReviewWord> leftWords = PdfReviewDiff.Flatten(result.Left);
+            List<PdfReviewWord> rightWords = PdfReviewDiff.Flatten(result.Right);
+            AssertTrue(ReviewMaximumLcsPathCount(leftWords, rightWords, 2) >= 2,
+                context + ": fixture имеет не менее двух разных максимальных LCS-сопоставлений");
+            List<PdfReviewWordOp> unpreferred = PdfReviewDiff.DiffWords(
+                leftWords, rightWords, PdfReviewLimits.Default());
+            AssertEqual(ReviewOperationWordCount(unpreferred, PdfReviewDiffKind.Equal, -1),
+                ReviewOperationWordCount(result.Operations, PdfReviewDiffKind.Equal, -1),
+                context + ": page preference не сокращает глобальный LCS");
+            int escapedPageCandidates = 0;
+            foreach (PdfReviewWordOp op in unpreferred)
+                if (op.Kind == kind)
+                    foreach (PdfReviewWord word in op.Words)
+                        if (word.PageIndex != 1)
+                            escapedPageCandidates++;
+            AssertTrue(escapedPageCandidates > 0,
+                context + ": нейтральный LCS-path действительно расходится по ownership страниц");
+
+            AssertReviewSyntheticProjection(result, context);
+        }
+
+        private static int ReviewMaximumLcsPathCount(IList<PdfReviewWord> left,
+            IList<PdfReviewWord> right, int cap)
+        {
+            int n = left == null ? 0 : left.Count;
+            int m = right == null ? 0 : right.Count;
+            var lengths = new int[n + 1, m + 1];
+            for (int i = n - 1; i >= 0; i--)
+                for (int j = m - 1; j >= 0; j--)
+                    lengths[i, j] = PdfReviewDiff.WordKey(left[i]) ==
+                        PdfReviewDiff.WordKey(right[j])
+                        ? lengths[i + 1, j + 1] + 1
+                        : Math.Max(lengths[i + 1, j], lengths[i, j + 1]);
+            var counts = new int[n + 1, m + 1];
+            for (int i = 0; i <= n; i++)
+                for (int j = 0; j <= m; j++)
+                    counts[i, j] = -1;
+            return ReviewMaximumLcsPathCount(left, right, lengths, counts,
+                0, 0, Math.Max(1, cap));
+        }
+
+        private static int ReviewMaximumLcsPathCount(IList<PdfReviewWord> left,
+            IList<PdfReviewWord> right, int[,] lengths, int[,] counts,
+            int leftStart, int rightStart, int cap)
+        {
+            if (lengths[leftStart, rightStart] == 0)
+                return 1;
+            if (counts[leftStart, rightStart] >= 0)
+                return counts[leftStart, rightStart];
+
+            int total = 0;
+            for (int i = leftStart; i < left.Count && total < cap; i++)
+                for (int j = rightStart; j < right.Count && total < cap; j++)
+                    if (PdfReviewDiff.WordKey(left[i]) == PdfReviewDiff.WordKey(right[j]) &&
+                        lengths[i + 1, j + 1] + 1 == lengths[leftStart, rightStart])
+                    {
+                        total += ReviewMaximumLcsPathCount(left, right, lengths, counts,
+                            i + 1, j + 1, cap);
+                        if (total > cap) total = cap;
+                    }
+            counts[leftStart, rightStart] = total;
+            return total;
+        }
+
+
+        private static void TestReviewRepaginatedEarlyInsertion()
+        {
+            PdfReviewDocument baseline = ReviewDocument("baseline.pdf",
+                "w00 w01 w02 w03", "w04 w05 w06 w07", "w08 w09 w10 w11");
+            PdfReviewDocument revised = ReviewDocument("revised.pdf",
+                "added w00", "w01 w02 w03 w04 w05", "w06 w07",
+                "w08 w09 w10 w11");
+
+            PdfReviewResult forward = PdfReviewDiff.Compare(baseline, revised,
+                PdfReviewLimits.Default());
+            AssertEqual(0, forward.Stats.DeletedWords,
+                "ранняя вставка, прямо: нет ложных Delete");
+            AssertEqual(1, forward.Stats.InsertedWords,
+                "ранняя вставка, прямо: найдено только добавленное слово");
+            AssertEqual("added", ReviewChangedWordsAcrossPairs(forward,
+                PdfReviewDiffKind.Insert),
+                "ранняя вставка, прямо: точный глобальный кандидат");
+            AssertEqual(12, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Equal, -1),
+                "ранняя вставка, прямо: весь общий хвост остался Equal");
+            AssertEqual(1, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Insert, 0),
+                "ранняя вставка принадлежит первой физической странице справа");
+            AssertEqual(1, ReviewStatusCount(forward, PdfReviewPairStatus.RightOnly),
+                "ранняя вставка, прямо: отдельная строка находится справа");
+            AssertReviewSyntheticProjection(forward, "ранняя вставка, прямо");
+
+            PdfReviewResult reverse = PdfReviewDiff.Compare(revised, baseline,
+                PdfReviewLimits.Default());
+            AssertEqual(1, reverse.Stats.DeletedWords,
+                "ранняя вставка, обратно: найден единственный Delete");
+            AssertEqual(0, reverse.Stats.InsertedWords,
+                "ранняя вставка, обратно: нет ложных Insert");
+            AssertEqual("added", ReviewChangedWordsAcrossPairs(reverse,
+                PdfReviewDiffKind.Delete),
+                "ранняя вставка, обратно: точный глобальный кандидат");
+            AssertEqual(1, ReviewOperationWordCount(reverse.Operations,
+                PdfReviewDiffKind.Delete, 0),
+                "обратный Delete принадлежит первой физической странице слева");
+            AssertEqual(1, ReviewStatusCount(reverse, PdfReviewPairStatus.LeftOnly),
+                "ранняя вставка, обратно: отдельная строка находится слева");
+            AssertReviewSyntheticProjection(reverse, "ранняя вставка, обратно");
+        }
+
+        /// <summary>
+        /// Одна глобальная замена может пересекать физическую границу: старое слово остаётся
+        /// владельцем левой страницы 0, новое — правой страницы 1, и рамки не мигрируют к соседям.
+        /// </summary>
+        private static void TestReviewCrossPageReplacementOwnership()
+        {
+            PdfReviewDocument left = ReviewDocument("left.pdf", "start old", "tail finish");
+            PdfReviewDocument right = ReviewDocument("right.pdf", "start", "new tail finish");
+
+            PdfReviewResult forward = PdfReviewDiff.Compare(left, right,
+                PdfReviewLimits.Default());
+            AssertEqual("Equal:start|Delete:old|Insert:new|Equal:tail,finish",
+                ReviewOpsSig(forward.Operations),
+                "замена через границу страниц имеет точный сквозной diff");
+            AssertEqual(1, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Delete, 0),
+                "старое слово принадлежит левой странице 0");
+            AssertEqual(0, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Delete, 1),
+                "Delete не проецируется на соседнюю левую страницу");
+            AssertEqual(0, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Insert, 0),
+                "Insert не проецируется на соседнюю правую страницу");
+            AssertEqual(1, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Insert, 1),
+                "новое слово принадлежит правой странице 1");
+            AssertEqual(2, forward.Stats.ChangedPages,
+                "обе физические страницы-владельца отмечены в viewer");
+            AssertEqual(1, forward.Stats.Replacements,
+                "межстраничная Delete/Insert-группа считается одной заменой");
+            AssertReviewSyntheticProjection(forward, "замена через границу, прямо");
+
+            PdfReviewResult reverse = PdfReviewDiff.Compare(right, left,
+                PdfReviewLimits.Default());
+            AssertEqual("Equal:start|Delete:new|Insert:old|Equal:tail,finish",
+                ReviewOpsSig(reverse.Operations),
+                "замена через границу симметрична в обратном направлении");
+            AssertEqual(1, ReviewOperationWordCount(reverse.Operations,
+                PdfReviewDiffKind.Delete, 1),
+                "обратный Delete остаётся на левой странице 1");
+            AssertEqual(1, ReviewOperationWordCount(reverse.Operations,
+                PdfReviewDiffKind.Insert, 0),
+                "обратный Insert остаётся на правой странице 0");
+            AssertEqual(1, reverse.Stats.Replacements,
+                "обратная межстраничная группа — одна замена");
+            AssertReviewSyntheticProjection(reverse, "замена через границу, обратно");
+        }
+
+        /// <summary>
+        /// Настоящая текстовая страница остаётся видимой как вставка/удаление, а перестановка —
+        /// как прежняя и новая позиция одного неизменённого блока, не как правки соседних страниц.
+        /// </summary>
+        private static void TestReviewTextPageStructure()
+        {
+            PdfReviewDocument baseline = ReviewDocument("baseline.pdf",
+                "intro anchor", "tail close");
+            PdfReviewDocument inserted = ReviewDocument("inserted.pdf",
+                "intro anchor", "exhibit added unique", "tail close");
+            AssertReviewTextPageInsertion(PdfReviewDiff.Compare(baseline, inserted,
+                PdfReviewLimits.Default()), PdfReviewPairStatus.RightOnly,
+                "текстовая страница, вставка");
+            AssertReviewTextPageInsertion(PdfReviewDiff.Compare(inserted, baseline,
+                PdfReviewLimits.Default()), PdfReviewPairStatus.LeftOnly,
+                "текстовая страница, удаление");
+
+            PdfReviewDocument ordered = ReviewDocument("ordered.pdf",
+                "a0 a1 a2", "b0 b1 b2", "c0 c1 c2");
+            PdfReviewDocument reordered = ReviewDocument("reordered.pdf",
+                "b0 b1 b2", "a0 a1 a2", "c0 c1 c2");
+            AssertReviewTextPageReorder(PdfReviewDiff.Compare(ordered, reordered,
+                PdfReviewLimits.Default()),
+                "0:-1:LeftOnly|1:0:Unchanged|-1:1:RightOnly|2:2:Unchanged",
+                "a0|a1|a2", "перестановка страниц, прямо");
+            AssertReviewTextPageReorder(PdfReviewDiff.Compare(reordered, ordered,
+                PdfReviewLimits.Default()),
+                "-1:0:RightOnly|0:1:Unchanged|1:-1:LeftOnly|2:2:Unchanged",
+                "a0|a1|a2", "перестановка страниц, обратно");
+        }
+
+        private static void AssertReviewTextPageInsertion(PdfReviewResult result,
+            PdfReviewPairStatus extraStatus, string context)
+        {
+            PdfReviewDiffKind kind = extraStatus == PdfReviewPairStatus.RightOnly
+                ? PdfReviewDiffKind.Insert : PdfReviewDiffKind.Delete;
+            PdfReviewDiffKind absent = kind == PdfReviewDiffKind.Insert
+                ? PdfReviewDiffKind.Delete : PdfReviewDiffKind.Insert;
+            AssertEqual(1, ReviewStatusCount(result, extraStatus),
+                context + ": ровно одна структурная строка");
+            AssertEqual(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+                context + ": соседние страницы не изменены");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+                context + ": вставка страницы не стала правкой соседней пары");
+            AssertEqual("added|exhibit|unique",
+                ReviewChangedWordsAcrossPairs(result, kind),
+                context + ": вся добавленная/удалённая страница принадлежит одной стороне");
+            AssertEqual(0, ReviewOperationWordCount(result.Operations, absent, -1),
+                context + ": нет зеркальных ложных кандидатов");
+            AssertEqual(0, result.Stats.Replacements,
+                context + ": чистая страница не считается заменой");
+            AssertReviewSyntheticProjection(result, context);
+        }
+
+        private static void AssertReviewTextPageReorder(PdfReviewResult result,
+            string expectedPairs, string expectedWords, string context)
+        {
+            AssertEqual(expectedPairs, PairSig(result.Pairs),
+                context + ": детерминированное отображение перестановки");
+            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
+                context + ": прежняя позиция видна слева");
+            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
+                context + ": новая позиция видна справа");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+                context + ": соседние пары не получили ложных правок");
+            AssertEqual(expectedWords, ReviewChangedWordsAcrossPairs(result,
+                PdfReviewDiffKind.Delete), context + ": точный удалённый блок");
+            AssertEqual(expectedWords, ReviewChangedWordsAcrossPairs(result,
+                PdfReviewDiffKind.Insert), context + ": точный вставленный блок");
+            AssertEqual(3, result.Stats.DeletedWords,
+                context + ": старая позиция содержит три слова");
+            AssertEqual(3, result.Stats.InsertedWords,
+                context + ": новая позиция содержит три слова");
+            AssertEqual(0, result.Stats.Replacements,
+                context + ": перестановка не считается заменой");
+            AssertReviewSyntheticProjection(result, context);
+        }
+
+        /// <summary>
+        /// Пустая физическая страница не имеет слов и рамок, но остаётся настоящей структурной
+        /// вставкой/удалением в списке страниц в обоих направлениях.
+        /// </summary>
+        private static void TestReviewBlankPageStructure()
+        {
+            PdfReviewDocument withBlank = ReviewDocument("with-blank.pdf",
+                "alpha anchor", "", "omega close");
+            PdfReviewDocument compact = ReviewDocument("compact.pdf",
+                "alpha anchor", "omega close");
+            AssertReviewBlankPage(PdfReviewDiff.Compare(withBlank, compact,
+                PdfReviewLimits.Default()), PdfReviewPairStatus.LeftOnly,
+                "пустая страница, удаление");
+            AssertReviewBlankPage(PdfReviewDiff.Compare(compact, withBlank,
+                PdfReviewLimits.Default()), PdfReviewPairStatus.RightOnly,
+                "пустая страница, вставка");
+        }
+
+        private static void AssertReviewBlankPage(PdfReviewResult result,
+            PdfReviewPairStatus expectedStatus, string context)
+        {
+            AssertTrue(result.Operations.Count == 1 &&
+                       result.Operations[0].Kind == PdfReviewDiffKind.Equal,
+                context + ": текстовый поток полностью равен");
+            AssertEqual(0, result.Stats.DeletedWords,
+                context + ": у пустой страницы нет Delete-слов");
+            AssertEqual(0, result.Stats.InsertedWords,
+                context + ": у пустой страницы нет Insert-слов");
+            AssertEqual(1, ReviewStatusCount(result, expectedStatus),
+                context + ": структурная пустая страница сохранена в viewer");
+            AssertEqual(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+                context + ": непустые соседи остались неизменными");
+
+            PdfReviewPagePair blank = null;
+            foreach (PdfReviewPagePair pair in result.Pairs)
+                if (pair.Status == expectedStatus)
+                    blank = pair;
+            AssertTrue(blank != null, context + ": строка пустой страницы найдена");
+            AssertEqual(0, PdfReviewForm.BuildHighlight(result, blank, true).Boxes.Count,
+                context + ": слева нет выдуманной рамки");
+            AssertEqual(0, PdfReviewForm.BuildHighlight(result, blank, false).Boxes.Count,
+                context + ": справа нет выдуманной рамки");
+            AssertReviewSyntheticProjection(result, context);
+        }
+
+        /// <summary>
+        /// Принудительно проходит linear-space Myers fallback: вставка в самом начале и замена
+        /// ближе к концу не должны превращать длинную общую последовательность в каскад правок.
+        /// Дополнительная детерминированная выборка сверяет длину LCS с точным алгоритмом.
+        /// </summary>
+        private static void TestReviewGlobalFallbackNoCascade()
+        {
+            const int wordCount = 1200;
+            const int replacedIndex = 1000;
+            var leftText = new StringBuilder();
+            var rightText = new StringBuilder("added");
+            for (int i = 0; i < wordCount; i++)
+            {
+                string token = "w" + i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
+                if (leftText.Length > 0) leftText.Append(' ');
+                leftText.Append(token);
+                rightText.Append(' ').Append(i == replacedIndex ? "revised" : token);
+            }
+            PdfReviewDocument left = ReviewDocument("left.pdf", leftText.ToString());
+            PdfReviewDocument right = ReviewDocument("right.pdf", rightText.ToString());
+            var limits = PdfReviewLimits.Default();
+            limits.MaxDiffCells = 4;
+
+            PdfReviewResult forward = PdfReviewDiff.Compare(left, right, limits);
+            AssertEqual(wordCount - 1, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Equal, -1),
+                "Myers fallback сохранил все общие слова как Equal");
+            AssertEqual("w1000", ReviewChangedWordsAcrossPairs(forward,
+                PdfReviewDiffKind.Delete),
+                "Myers fallback удалил только заменённое слово");
+            AssertEqual("added|revised", ReviewChangedWordsAcrossPairs(forward,
+                PdfReviewDiffKind.Insert),
+                "Myers fallback вставил только раннее и заменяющее слова");
+            AssertEqual(ReviewDocumentKeys(left), RebuildReviewSide(forward.Operations, true),
+                "Myers fallback точно восстанавливает длинную левую сторону");
+            AssertEqual(ReviewDocumentKeys(right), RebuildReviewSide(forward.Operations, false),
+                "Myers fallback точно восстанавливает длинную правую сторону");
+            AssertEqual(ReviewOpsSig(forward.Operations), ReviewOpsSig(
+                PdfReviewDiff.Compare(left, right, limits).Operations),
+                "Myers fallback детерминирован на длинном документе");
+            AssertReviewSyntheticProjection(forward, "Myers fallback, прямо");
+
+            PdfReviewResult reverse = PdfReviewDiff.Compare(right, left, limits);
+            AssertEqual(wordCount - 1, ReviewOperationWordCount(reverse.Operations,
+                PdfReviewDiffKind.Equal, -1),
+                "обратный Myers fallback сохраняет общий поток");
+            AssertEqual("added|revised", ReviewChangedWordsAcrossPairs(reverse,
+                PdfReviewDiffKind.Delete),
+                "обратный Myers fallback удаляет только реальные кандидаты");
+            AssertEqual("w1000", ReviewChangedWordsAcrossPairs(reverse,
+                PdfReviewDiffKind.Insert),
+                "обратный Myers fallback возвращает заменённое слово");
+            AssertReviewSyntheticProjection(reverse, "Myers fallback, обратно");
+
+            var random = new Random(731927);
+            var exactLimits = PdfReviewLimits.Default();
+            for (int sample = 0; sample < 240; sample++)
+            {
+                int leftLength = random.Next(2, 24);
+                int rightLength = random.Next(2, 24);
+                var a = new List<PdfReviewWord>();
+                var b = new List<PdfReviewWord>();
+                for (int i = 0; i < leftLength; i++)
+                {
+                    string key = "k" + random.Next(0, 8);
+                    a.Add(new PdfReviewWord { Text = key, Key = key });
+                }
+                for (int i = 0; i < rightLength; i++)
+                {
+                    string key = "k" + random.Next(0, 8);
+                    b.Add(new PdfReviewWord { Text = key, Key = key });
+                }
+                List<PdfReviewWordOp> exact = PdfReviewDiff.DiffWords(a, b, exactLimits);
+                List<PdfReviewWordOp> bounded = PdfReviewDiff.DiffWords(a, b, limits);
+                string caseName = "Myers sample " + sample;
+                AssertEqual(ReviewOperationWordCount(exact, PdfReviewDiffKind.Equal, -1),
+                    ReviewOperationWordCount(bounded, PdfReviewDiffKind.Equal, -1),
+                    caseName + ": fallback сохраняет оптимальную длину LCS");
+                AssertEqual(ReviewWordKeys(a), RebuildReviewSide(bounded, true),
+                    caseName + ": fallback восстанавливает левую выборку");
+                AssertEqual(ReviewWordKeys(b), RebuildReviewSide(bounded, false),
+                    caseName + ": fallback восстанавливает правую выборку");
+            }
+        }
+
+        private static void TestReviewDiffBoundsValidation()
+        {
+            int rows;
+            int columns;
+            long cells;
+            AssertTrue(PdfReviewDiff.TryGetMatrixSize(3, 3, 16,
+                out rows, out columns, out cells),
+                "допустимая matrix-размерность принимается");
+            AssertEqual(4, rows, "matrix rows считаются после безопасного widening");
+            AssertEqual(4, columns, "matrix columns считаются после безопасного widening");
+            AssertEqual(16L, cells, "matrix cells не теряют точное произведение");
+
+            AssertTrue(!PdfReviewDiff.TryGetMatrixSize(3, 3, 15,
+                out rows, out columns, out cells),
+                "matrix выше пользовательского потолка отклоняется до allocation");
+            AssertTrue(!PdfReviewDiff.TryGetMatrixSize(1000000, 0, int.MaxValue,
+                out rows, out columns, out cells),
+                "конфигурированный int.MaxValue не обходит абсолютный matrix-потолок");
+            AssertTrue(PdfReviewDiff.TryGetMatrixSize(999999, 0, int.MaxValue,
+                out rows, out columns, out cells),
+                "ровно абсолютный matrix-потолок остаётся допустимым");
+            AssertEqual(1000000, rows,
+                "одномерная matrix достигает потолка без переполнения rows");
+            AssertEqual(1, columns,
+                "одномерная matrix сохраняет второй размер");
+            AssertEqual(1000000L, cells,
+                "одномерная matrix сохраняет точное число cells");
+
+            AssertTrue(!PdfReviewDiff.TryGetMatrixSize(int.MaxValue, 0,
+                int.MaxValue, out rows, out columns, out cells),
+                "int.MaxValue + 1 не переполняет размерность и безопасно отклоняется");
+            AssertTrue(!PdfReviewDiff.TryGetMatrixSize(0, int.MaxValue,
+                int.MaxValue, out rows, out columns, out cells),
+                "переполнение второй размерности безопасно отклоняется");
+            AssertTrue(!PdfReviewDiff.TryGetMatrixSize(-1, 1, 16,
+                out rows, out columns, out cells),
+                "отрицательная размерность не принимается");
+            AssertEqual(0L, cells,
+                "отклонённая matrix не оставляет частичный размер в out-параметре");
+
+            Type contextType = typeof(PdfReviewDiff).GetNestedType("DiffContext",
+                BindingFlags.NonPublic);
+            ConstructorInfo constructor = contextType.GetConstructor(
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, new[] { typeof(PdfReviewLimits), typeof(Func<bool>) }, null);
+            MethodInfo reserve = contextType.GetMethod("TryReserve",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            PropertyInfo exhausted = contextType.GetProperty("WorkExhausted",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            AssertTrue(contextType != null && constructor != null && reserve != null &&
+                exhausted != null,
+                "закрытый DiffContext сохраняет проверяемый work-budget контракт");
+
+            var exactLimits = PdfReviewLimits.Default();
+            exactLimits.MaxDiffWork = 5;
+            object exactContext = constructor.Invoke(new object[] { exactLimits, null });
+            AssertTrue((bool)reserve.Invoke(exactContext, new object[] { 5L }),
+                "потребление ровно оставшегося work-budget разрешено");
+            AssertTrue(!(bool)exhausted.GetValue(exactContext, null),
+                "ровно исчерпанный budget не помечается как ошибочный");
+            AssertTrue((bool)reserve.Invoke(exactContext, new object[] { 0L }),
+                "нулевая резервация после exact boundary остаётся допустимой");
+            AssertTrue(!(bool)reserve.Invoke(exactContext, new object[] { 1L }),
+                "следующая положительная работа после exact boundary отклоняется");
+            AssertTrue((bool)exhausted.GetValue(exactContext, null),
+                "выход за exact boundary помечает work exhaustion");
+
+            var invalidLimits = PdfReviewLimits.Default();
+            invalidLimits.MaxDiffWork = 5;
+            object invalidContext = constructor.Invoke(new object[] { invalidLimits, null });
+            AssertTrue(!(bool)reserve.Invoke(invalidContext, new object[] { -1L }),
+                "отрицательная work-резервация не считается бесплатной");
+            AssertTrue((bool)exhausted.GetValue(invalidContext, null),
+                "некорректная отрицательная резервация консервативно закрывает proof");
+        }
+
+        private static void TestReviewDiffWorkBudgetConservative()
+        {
+            List<PdfReviewWord> left = ReviewWords("a", "b", "c");
+            List<PdfReviewWord> right = ReviewWords("x", "b", "y");
+
+            var matrixSuccessLimits = PdfReviewLimits.Default();
+            matrixSuccessLimits.MaxDiffCells = 16;
+            matrixSuccessLimits.MaxDiffWork = 22;
+            List<PdfReviewWordOp> matrixSuccess = PdfReviewDiff.DiffWords(left, right,
+                matrixSuccessLimits);
+            AssertEqual(1, ReviewOperationWordCount(matrixSuccess,
+                PdfReviewDiffKind.Equal, -1),
+                "matrix при точном бюджете 16 cells + 6 слов доказывает общий b");
+            AssertEqual("a b c", RebuildReviewSide(matrixSuccess, true),
+                "успешная matrix точно восстанавливает левую сторону");
+            AssertEqual("x b y", RebuildReviewSide(matrixSuccess, false),
+                "успешная matrix точно восстанавливает правую сторону");
+
+            var matrixExhaustedLimits = PdfReviewLimits.Default();
+            matrixExhaustedLimits.MaxDiffCells = 16;
+            matrixExhaustedLimits.MaxDiffWork = 21;
+            List<PdfReviewWordOp> matrixExhausted = PdfReviewDiff.DiffWords(left, right,
+                matrixExhaustedLimits);
+            AssertEqual(0, ReviewOperationWordCount(matrixExhausted,
+                PdfReviewDiffKind.Equal, -1),
+                "на единицу ниже matrix-бюджета не публикуется частичный Equal");
+            AssertEqual("Delete:a,b,c|Insert:x,b,y", ReviewOpsSig(matrixExhausted),
+                "непроверенная matrix-середина целиком остаётся Delete/Insert");
+            AssertEqual("a b c", RebuildReviewSide(matrixExhausted, true),
+                "matrix exhaustion не теряет ни одного левого слова");
+            AssertEqual("x b y", RebuildReviewSide(matrixExhausted, false),
+                "matrix exhaustion не теряет ни одного правого слова");
+            AssertEqual(ReviewOpsSig(matrixExhausted), ReviewOpsSig(
+                PdfReviewDiff.DiffWords(left, right, matrixExhaustedLimits)),
+                "matrix exhaustion детерминирован при повторном запуске");
+
+            var myersSuccessLimits = PdfReviewLimits.Default();
+            myersSuccessLimits.MaxDiffCells = 15;
+            List<PdfReviewWordOp> myersSuccess = PdfReviewDiff.DiffWords(left, right,
+                myersSuccessLimits);
+            AssertEqual(1, ReviewOperationWordCount(myersSuccess,
+                PdfReviewDiffKind.Equal, -1),
+                "15 cells принудительно направляют тот же диапазон в Myers");
+
+            var myersExhaustedLimits = PdfReviewLimits.Default();
+            myersExhaustedLimits.MaxDiffCells = 15;
+            myersExhaustedLimits.MaxDiffWork = 6;
+            List<PdfReviewWordOp> myersExhausted = PdfReviewDiff.DiffWords(left, right,
+                myersExhaustedLimits);
+            AssertEqual(0, ReviewOperationWordCount(myersExhausted,
+                PdfReviewDiffKind.Equal, -1),
+                "без семи единиц на Myers-вектор общий b не объявляется доказанным");
+            AssertEqual("Delete:a,b,c|Insert:x,b,y", ReviewOpsSig(myersExhausted),
+                "Myers exhaustion сохраняет консервативный исходный hunk");
+            AssertEqual("a b c", RebuildReviewSide(myersExhausted, true),
+                "Myers exhaustion восстанавливает левую сторону");
+            AssertEqual("x b y", RebuildReviewSide(myersExhausted, false),
+                "Myers exhaustion восстанавливает правую сторону");
+
+            var fullLimits = PdfReviewLimits.Default();
+            fullLimits.MaxDiffWork = 0;
+            PdfReviewResult full = PdfReviewDiff.Compare(
+                ReviewDocument("budget-left.pdf", "a b c"),
+                ReviewDocument("budget-right.pdf", "x b y"), fullLimits);
+            AssertEqual(0, ReviewOperationWordCount(full.Operations,
+                PdfReviewDiffKind.Equal, -1),
+                "нулевой общий бюджет не выдумывает Equal после отказа alignment");
+            AssertEqual("a b c", RebuildReviewSide(full.Operations, true),
+                "полный Compare при exhaustion сохраняет весь левый документ");
+            AssertEqual("x b y", RebuildReviewSide(full.Operations, false),
+                "полный Compare при exhaustion сохраняет весь правый документ");
+            AssertTrue(full.Stats != null,
+                "исчерпание не возвращает частичный result без статистики");
+            AssertEqual(3, full.Stats.DeletedWords,
+                "консервативная проекция считает все левые слова Delete");
+            AssertEqual(3, full.Stats.InsertedWords,
+                "консервативная проекция считает все правые слова Insert");
+            AssertEqual(full.Pairs.Count, full.Stats.PagePairs,
+                "viewer-пары и статистика достроены даже после exhaustion");
+            AssertEqual(0, full.WhitespaceChanges.Count,
+                "исчерпание до whitespace ничего частично не публикует");
+        }
+
+        private static void TestReviewDiffCancellationRetry()
+        {
+            var leftText = new StringBuilder();
+            var rightText = new StringBuilder();
+            for (int i = 0; i < 600; i++)
+            {
+                if (i > 0)
+                {
+                    leftText.Append(' ');
+                    rightText.Append(' ');
+                }
+                string token = "token" + i.ToString("D3",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                leftText.Append(token);
+                rightText.Append(i == 420 ? "revised420" : token);
+            }
+            PdfReviewDocument left = ReviewDocument("cancel-left.pdf", leftText.ToString());
+            PdfReviewDocument right = ReviewDocument("cancel-right.pdf", rightText.ToString());
+            left.Pages[0].PageIndex = 17;
+            right.Pages[0].PageIndex = 29;
+            for (int i = 0; i < left.Pages[0].Words.Count; i++)
+            {
+                left.Pages[0].Words[i].PageIndex = -1000 - i;
+                right.Pages[0].Words[i].PageIndex = 1000 + i;
+            }
+            PdfReviewWord firstLeft = left.Pages[0].Words[0];
+            PdfReviewWord firstRight = right.Pages[0].Words[0];
+
+            int cancellationChecks = 0;
+            bool ownershipWasApplied = false;
+            bool thrown = false;
+            PdfReviewResult partial = null;
+            try
+            {
+                partial = PdfReviewDiff.Compare(left, right, PdfReviewLimits.Default(),
+                    delegate
+                    {
+                        cancellationChecks++;
+                        bool applied = firstLeft.PageIndex == left.Pages[0].PageIndex &&
+                            firstRight.PageIndex == right.Pages[0].PageIndex;
+                        if (applied)
+                            ownershipWasApplied = true;
+                        return applied;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                thrown = true;
+            }
+            AssertTrue(thrown,
+                "cooperative cancellation после ownership-commit не маскируется");
+            AssertTrue(ownershipWasApplied && cancellationChecks >= 3,
+                "отмена действительно произошла во время semantic diff после commit");
+            AssertTrue(partial == null,
+                "отменённый Compare не возвращает частичный semantic result");
+            for (int i = 0; i < left.Pages[0].Words.Count; i++)
+            {
+                AssertEqual(-1000 - i, left.Pages[0].Words[i].PageIndex,
+                    "rollback вернул точный исходный left ownership " + i);
+                AssertEqual(1000 + i, right.Pages[0].Words[i].PageIndex,
+                    "rollback вернул точный исходный right ownership " + i);
+            }
+            AssertTrue(ReferenceEquals(firstLeft, left.Pages[0].Words[0]) &&
+                       ReferenceEquals(firstRight, right.Pages[0].Words[0]),
+                "rollback не заменяет caller-owned объекты слов");
+
+            PdfReviewResult expected = PdfReviewDiff.Compare(left, right,
+                PdfReviewLimits.Default());
+            foreach (PdfReviewWord word in left.Pages[0].Words)
+                AssertEqual(17, word.PageIndex,
+                    "успешный Compare закрепляет физического left-владельца");
+            foreach (PdfReviewWord word in right.Pages[0].Words)
+                AssertEqual(29, word.PageIndex,
+                    "успешный Compare закрепляет физического right-владельца");
+            AssertTrue(expected.Operations.Count > 0 &&
+                       ReferenceEquals(firstLeft, expected.Operations[0].LeftWords[0]) &&
+                       ReferenceEquals(firstRight, expected.Operations[0].RightWords[0]),
+                "успешный Compare сохраняет identity канонических слов");
+
+            PdfReviewResult retried = PdfReviewDiff.Compare(left, right,
+                PdfReviewLimits.Default());
+            AssertEqual(ReviewOrderMatchSig(expected), ReviewOrderMatchSig(retried),
+                "после отмены чистый повтор строит те же операции и provenance");
+            AssertEqual(PairSig(expected.Pairs), PairSig(retried.Pairs),
+                "после отмены чистый повтор строит те же viewer-пары");
+            AssertEqual(expected.Stats.DeletedWords, retried.Stats.DeletedWords,
+                "повтор после отмены не теряет Delete-статистику");
+            AssertEqual(expected.Stats.InsertedWords, retried.Stats.InsertedWords,
+                "повтор после отмены не теряет Insert-статистику");
+            AssertEqual(ReviewDocumentKeys(left), RebuildReviewSide(retried.Operations, true),
+                "повтор после отмены точно восстанавливает левый документ");
+            AssertEqual(ReviewDocumentKeys(right), RebuildReviewSide(retried.Operations, false),
+                "повтор после отмены точно восстанавливает правый документ");
+
+            var shared = new PdfReviewWord
+            {
+                Text = "shared",
+                Key = "shared",
+                PageIndex = 73
+            };
+            var firstPage = ReviewPage(3, "shared");
+            var secondPage = ReviewPage(4, "shared");
+            firstPage.Words.Clear();
+            secondPage.Words.Clear();
+            firstPage.Words.Add(shared);
+            secondPage.Words.Add(shared);
+            var ambiguous = new PdfReviewDocument { Path = "ambiguous-owner.pdf" };
+            ambiguous.Pages.Add(firstPage);
+            ambiguous.Pages.Add(secondPage);
+            bool ambiguousRejected = false;
+            try
+            {
+                PdfReviewDiff.Compare(ambiguous,
+                    ReviewDocument("other.pdf", "shared"),
+                    PdfReviewLimits.Default());
+            }
+            catch (InvalidOperationException)
+            {
+                ambiguousRejected = true;
+            }
+            AssertTrue(ambiguousRejected,
+                "один объект слова на двух физических страницах отклоняется");
+            AssertEqual(73, shared.PageIndex,
+                "ambiguous ownership отклонён до изменения caller-owned слова");
+        }
+
+        private static string ReviewObjectMatchSig(IList<PdfReviewWordOp> operations,
+            IList<PdfReviewWord> originalLeft, IList<PdfReviewWord> originalRight,
+            bool mirrored)
+        {
+            var parts = new List<string>();
+            foreach (PdfReviewWordOp operation in operations)
+            {
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                {
+                    if (match == null)
+                        continue;
+                    PdfReviewWord left = mirrored ? match.Right : match.Left;
+                    PdfReviewWord right = mirrored ? match.Left : match.Right;
+                    int leftIndex = originalLeft.IndexOf(left);
+                    int rightIndex = originalRight.IndexOf(right);
+                    if (leftIndex < 0 || rightIndex < 0)
+                        throw new Exception("match владеет объектом чужой стороны");
+                    parts.Add(leftIndex + ">" + rightIndex + ":" + match.Kind);
+                }
+            }
+            parts.Sort(StringComparer.Ordinal);
+            return string.Join("|", parts.ToArray());
+        }
+
+        private static void TestReviewRepeatedKeyReverseSymmetry()
+        {
+            List<PdfReviewWord> left = ReviewWords("start", "dup", "a", "dup",
+                "b", "dup", "end");
+            List<PdfReviewWord> right = ReviewWords("start", "dup", "b", "dup",
+                "a", "dup", "end");
+            foreach (int maxCells in new[] { 1000000, 4 })
+            {
+                var limits = PdfReviewLimits.Default();
+                limits.MaxDiffCells = maxCells;
+                string context = maxCells == 4 ? "Myers" : "matrix";
+                List<PdfReviewWordOp> forward = PdfReviewDiff.DiffWords(left, right, limits);
+                List<PdfReviewWordOp> reverse = PdfReviewDiff.DiffWords(right, left, limits);
+
+                AssertEqual(ReviewWordKeys(left), RebuildReviewSide(forward, true),
+                    context + ": прямой diff сохраняет исходные объекты слева");
+                AssertEqual(ReviewWordKeys(right), RebuildReviewSide(forward, false),
+                    context + ": прямой diff сохраняет исходные объекты справа");
+                AssertEqual(ReviewWordKeys(right), RebuildReviewSide(reverse, true),
+                    context + ": обратный diff сохраняет новую левую последовательность");
+                AssertEqual(ReviewWordKeys(left), RebuildReviewSide(reverse, false),
+                    context + ": обратный diff сохраняет новую правую последовательность");
+
+                string forwardPairs = ReviewObjectMatchSig(forward, left, right, false);
+                string reversePairs = ReviewObjectMatchSig(reverse, left, right, true);
+                AssertTrue(forwardPairs.Length > 0,
+                    context + ": неоднозначные повторные ключи всё же имеют доказанные пары");
+                AssertEqual(forwardPairs, reversePairs,
+                    context + ": A↔B выбирает те же фактические объекты с зеркальным ownership");
+                AssertEqual(forwardPairs, ReviewObjectMatchSig(
+                    PdfReviewDiff.DiffWords(left, right, limits), left, right, false),
+                    context + ": повторный запуск сохраняет идентичность выбранных дублей");
+            }
+        }
+
+        private static string ReviewWordKeys(IList<PdfReviewWord> words)
+        {
+            var keys = new List<string>();
+            foreach (PdfReviewWord word in words)
+                keys.Add(word.Key);
+            return string.Join(" ", keys.ToArray());
+        }
+
+        /// <summary>
+        /// Для синтетических моделей геометрия рамок нулевая, поэтому здесь проверяются число,
+        /// сторона и статус проекции; production-геометрию отдельно покрывают live fixtures.
+        /// </summary>
+        private static void AssertReviewSyntheticProjection(PdfReviewResult result, string context)
+        {
+            AssertReviewOperationOwnership(result, context);
+            AssertReviewPairReconstruction(result, context);
+            foreach (PdfReviewPagePair pair in result.Pairs)
+            {
+                int deleted = pair.LeftPageIndex < 0 ? 0 :
+                    ReviewOperationWordCount(result.Operations,
+                        PdfReviewDiffKind.Delete, pair.LeftPageIndex);
+                int inserted = pair.RightPageIndex < 0 ? 0 :
+                    ReviewOperationWordCount(result.Operations,
+                        PdfReviewDiffKind.Insert, pair.RightPageIndex);
+                AssertEqual(deleted,
+                    PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+                    context + ": красные рамки принадлежат только показанной левой странице");
+                AssertEqual(inserted,
+                    PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+                    context + ": зелёные рамки принадлежат только показанной правой странице");
+
+                PdfReviewPairStatus expected;
+                if (pair.LeftPageIndex >= 0 && pair.RightPageIndex >= 0)
+                    expected = deleted > 0 || inserted > 0
+                        ? PdfReviewPairStatus.Changed : PdfReviewPairStatus.Unchanged;
+                else if (pair.LeftPageIndex >= 0)
+                {
+                    PdfReviewPage page = PdfReviewDiff.PageAt(result.Left, pair.LeftPageIndex);
+                    expected = deleted > 0 || (page != null && page.Words.Count == 0)
+                        ? PdfReviewPairStatus.LeftOnly : PdfReviewPairStatus.Unchanged;
+                }
+                else if (pair.RightPageIndex >= 0)
+                {
+                    PdfReviewPage page = PdfReviewDiff.PageAt(result.Right, pair.RightPageIndex);
+                    expected = inserted > 0 || (page != null && page.Words.Count == 0)
+                        ? PdfReviewPairStatus.RightOnly : PdfReviewPairStatus.Unchanged;
+                }
+                else
+                    expected = PdfReviewPairStatus.Unchanged;
+                AssertEqual(expected, pair.Status,
+                    context + ": статус строки получен из глобальных операций");
+            }
+            AssertEqual(ReviewOperationWordCount(result.Operations,
+                    PdfReviewDiffKind.Delete, -1), result.Stats.DeletedWords,
+                context + ": статистика Delete получена из глобальных операций");
+            AssertEqual(ReviewOperationWordCount(result.Operations,
+                    PdfReviewDiffKind.Insert, -1), result.Stats.InsertedWords,
+                context + ": статистика Insert получена из глобальных операций");
+        }
+
         /// <summary>Точный ворд-дифф с рамками: удаление/вставка/замена в одном потоке операций.</summary>
         private static void TestReviewWordDiffExact()
         {
-            PdfReviewPagePair pair = PdfReviewDiff.Pair(
-                ReviewPage(0, "альфа бета гамма дельта"),
-                ReviewPage(0, "альфа икс гамма"),
+            List<PdfReviewWordOp> operations = PdfReviewDiff.DiffWords(
+                ReviewPage(0, "альфа бета гамма дельта").Words,
+                ReviewPage(0, "альфа икс гамма").Words,
                 PdfReviewLimits.Default());
             var sig = new List<string>();
-            foreach (PdfReviewWordOp op in pair.Operations)
+            foreach (PdfReviewWordOp op in operations)
             {
                 var words = new List<string>();
                 foreach (PdfReviewWord w in op.Words) words.Add(w.Key);
@@ -1789,6 +3202,5294 @@ namespace ExcelMerger.Tests
             }
             AssertEqual("Equal:альфа|Delete:бета|Insert:икс|Equal:гамма|Delete:дельта",
                 string.Join("|", sig.ToArray()), "операции идут в порядке чтения без склеек чужих видов");
+        }
+
+        private static PdfReviewPage ReviewPageFromWords(int index, params PdfWord[] words)
+        {
+            var extracted = new PdfPageText
+            {
+                PageIndex = index,
+                WidthPt = 200,
+                HeightPt = 200,
+                NativeRotation = 0
+            };
+            foreach (PdfWord word in words)
+                extracted.Words.Add(word);
+            var page = new PdfReviewPage
+            {
+                PageIndex = index,
+                WidthPt = 200,
+                HeightPt = 200,
+                ViewWidthPt = 200,
+                ViewHeightPt = 200
+            };
+            PdfReviewService.BuildWords(extracted, page);
+            var text = new StringBuilder();
+            foreach (PdfReviewWord word in page.Words)
+            {
+                if (text.Length > 0) text.Append(' ');
+                text.Append(word.Key);
+            }
+            page.Text = text.ToString();
+            page.NormalizedText = PdfReviewDiff.Normalize(page.Text);
+            page.Fingerprint = PdfReviewDiff.Fingerprint(page.NormalizedText, page.WidthPt, page.HeightPt);
+            return page;
+        }
+
+        private static List<PdfReviewWord> ReviewWords(params string[] keys)
+        {
+            var result = new List<PdfReviewWord>();
+            foreach (string key in keys)
+                result.Add(new PdfReviewWord { Text = key, Key = key });
+            return result;
+        }
+
+        private static string ReviewOpsSig(IList<PdfReviewWordOp> operations)
+        {
+            var result = new List<string>();
+            foreach (PdfReviewWordOp op in operations)
+            {
+                var words = new List<string>();
+                foreach (PdfReviewWord word in op.Words)
+                    words.Add(word.Key);
+                result.Add(op.Kind + ":" + string.Join(",", words.ToArray()));
+            }
+            return string.Join("|", result.ToArray());
+        }
+
+        private static string RebuildReviewSide(IList<PdfReviewWordOp> operations, bool leftSide)
+        {
+            var result = new List<string>();
+            foreach (PdfReviewWordOp op in operations)
+            {
+                IList<PdfReviewWord> words = leftSide
+                    ? (IList<PdfReviewWord>)op.LeftWords : op.RightWords;
+                foreach (PdfReviewWord word in words)
+                    result.Add(word.Key);
+            }
+            return string.Join(" ", result.ToArray());
+        }
+
+        /// <summary>
+        /// Production-регрессия границы PdfPig → Review: несколько почти касающихся raw-слов
+        /// становятся одним видимым словом с NFC-ключом и одной union-рамкой.
+        /// </summary>
+        private static void TestReviewCanonicalWords()
+        {
+            const string visible = "café\U0001F642";
+            PdfReviewPage whole = ReviewPageFromWords(0,
+                W(visible, 10, 100, 34, 10));
+            PdfReviewPage fragmented = ReviewPageFromWords(0,
+                W("\U0001F642", 33.6, 100, 10, 10),
+                W("caf", 10, 100, 15, 10),
+                W("é", 25.3, 100, 8, 10));
+
+            AssertEqual(1, fragmented.Words.Count, "три raw-фрагмента стали одним видимым словом");
+            AssertEqual(visible, fragmented.Words[0].Key,
+                "NFC и supplementary Unicode сохранены после склейки");
+            PdfReviewBox box = fragmented.Words[0].Box;
+            AssertTrue(Math.Abs(box.Left - 10) < 0.001 && Math.Abs(box.Bottom - 100) < 0.001 &&
+                       Math.Abs(box.Right - 43.6) < 0.001 && Math.Abs(box.Top - 110) < 0.001,
+                "рамка канонического слова — точный union raw-рамок");
+
+            PdfReviewPagePair pair = PdfReviewDiff.Pair(whole, fragmented, null);
+            AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+                "один raw-токен и три его фрагмента — одна видимая последовательность");
+            AssertEqual(1.0, pair.Similarity, "канонически равные страницы имеют similarity 1");
+            List<PdfReviewWordOp> operations = PdfReviewDiff.DiffWords(
+                whole.Words, fragmented.Words, null);
+            AssertTrue(operations.Count == 1 && operations[0].LeftWords.Count == 1 &&
+                       operations[0].RightWords.Count == 1 &&
+                       ReferenceEquals(operations[0].LeftWords[0], whole.Words[0]) &&
+                       ReferenceEquals(operations[0].RightWords[0], fragmented.Words[0]) &&
+                       operations[0].Matches.Count == 1 &&
+                       operations[0].Matches[0].Kind == PdfReviewMatchKind.Exact,
+                "Equal хранит фактические канонические слова обеих страниц");
+        }
+
+        /// <summary>
+        /// Два raw-слова с одним NFC-текстом и практически одной рамкой — это один
+        /// отрисованный экземпляр, а не два смысловых слова. Отдельные повторы и иной
+        /// текст даже в той же области не подавляются.
+        /// </summary>
+        private static void TestReviewOverlayWordCanonicalization()
+        {
+            PdfWord firstOverlay = W("café", 10, 100, 25, 10);
+            PdfWord secondOverlay = W("café", 10.2, 99.8, 25.4, 10.3);
+            PdfReviewPage overlaid = ReviewPageFromWords(0, firstOverlay, secondOverlay);
+            AssertEqual(1, overlaid.Words.Count,
+                "два совпадающих raw-слова стали одним видимым экземпляром");
+            AssertEqual("café", overlaid.Words[0].Key,
+                "overlay-сравнение использует тот же NFC-ключ, что word-diff");
+            PdfReviewBox union = overlaid.Words[0].Box;
+            AssertTrue(Math.Abs(union.Left - 10) < 0.001 &&
+                       Math.Abs(union.Bottom - 99.8) < 0.001 &&
+                       Math.Abs(union.Right - 35.6) < 0.001 &&
+                       Math.Abs(union.Top - 110.1) < 0.001,
+                "единственная подсветка хранит union двух совпадающих рамок");
+            AssertTrue(Math.Abs(firstOverlay.Right - 35) < 0.001 &&
+                       Math.Abs(secondOverlay.Left - 10.2) < 0.001,
+                "review-канонизация не меняет extraction-модель");
+
+            PdfReviewPage reversedOverlay = ReviewPageFromWords(0,
+                W("café", 10.2, 99.8, 25.4, 10.3),
+                W("café", 10, 100, 25, 10));
+            AssertEqual(overlaid.Words[0].Key, reversedOverlay.Words[0].Key,
+                "результат overlay-канонизации не зависит от порядка content operations");
+            AssertEqual(BoxSig(overlaid.Words[0].Box), BoxSig(reversedOverlay.Words[0].Box),
+                "union-рамка не зависит от порядка content operations");
+
+            PdfReviewPage repeated = ReviewPageFromWords(0,
+                W("echo", 10, 100, 20, 10),
+                W("echo", 40, 100, 20, 10));
+            AssertEqual(2, repeated.Words.Count,
+                "одинаковый текст в разных видимых местах не схлопнут");
+
+            PdfReviewPage different = ReviewPageFromWords(0,
+                W("north", 10, 100, 25, 10),
+                W("south", 10.1, 100, 25, 10));
+            AssertEqual(1, different.Words.Count,
+                "перекрывающиеся фрагменты без пробела остаются одним видимым токеном");
+            AssertEqual("northsouth", different.Words[0].Key,
+                "разный текст в совпадающей области сохранён, а не принят за дубль");
+
+            PdfReviewPage differentSize = ReviewPageFromWords(0,
+                W("echo", 10, 100, 20, 10),
+                W("echo", 5, 97.5, 30, 15));
+            AssertEqual("echoecho", differentSize.Words[0].Key,
+                "одинаковый текст с заметно разными рамками не подавлен как overlay-дубль");
+
+            PdfReviewPage drift = ReviewPageFromWords(0,
+                W("trail", 10, 100, 20, 10),
+                W("trail", 11.2, 100, 20, 10),
+                W("trail", 12.4, 100, 20, 10));
+            AssertEqual("trailtrail", drift.Words[0].Key,
+                "union не расширяет anchor и не схлопывает цепочку транзитивно");
+
+            PdfReviewPage leftPage = ReviewPageFromWords(0,
+                W("anchor", 10, 100, 28, 10),
+                W("old", 55, 100, 15, 10),
+                W("old", 55.2, 99.9, 15, 10),
+                W("stable", 90, 100, 28, 10));
+            PdfReviewPage rightPage = ReviewPageFromWords(0,
+                W("anchor", 10, 100, 28, 10),
+                W("new", 55, 100, 15, 10),
+                W("new", 55.2, 99.9, 15, 10),
+                W("stable", 90, 100, 28, 10));
+            var left = new PdfReviewDocument { Path = "overlay-left.pdf" };
+            var right = new PdfReviewDocument { Path = "overlay-right.pdf" };
+            left.Pages.Add(leftPage);
+            right.Pages.Add(rightPage);
+            left.WordCount = leftPage.Words.Count;
+            right.WordCount = rightPage.Words.Count;
+
+            PdfReviewResult forward = PdfReviewDiff.Compare(left, right, null);
+            PdfReviewPagePair forwardPair = forward.Pairs[0];
+            AssertEqual("Equal:anchor|Delete:old|Insert:new|Equal:stable",
+                ReviewOpsSig(forward.Operations),
+                "overlay-замена даёт одну пару операций в прямом направлении");
+            AssertEqual(1, forward.Stats.DeletedWords,
+                "overlay-замена считается одним удалением");
+            AssertEqual(1, forward.Stats.InsertedWords,
+                "overlay-замена считается одной вставкой");
+            AssertEqual(1, forward.Stats.Replacements,
+                "overlay-замена считается одной заменой");
+            AssertEqual(1, PdfReviewForm.BuildHighlight(forward, forwardPair, true).Boxes.Count,
+                "слева построена одна красная рамка");
+            AssertEqual(1, PdfReviewForm.BuildHighlight(forward, forwardPair, false).Boxes.Count,
+                "справа построена одна зелёная рамка");
+
+            PdfReviewResult reverse = PdfReviewDiff.Compare(right, left, null);
+            PdfReviewPagePair reversePair = reverse.Pairs[0];
+            AssertEqual("Equal:anchor|Delete:new|Insert:old|Equal:stable",
+                ReviewOpsSig(reverse.Operations),
+                "overlay-замена симметрична в обратном направлении");
+            AssertEqual(1, reverse.Stats.DeletedWords,
+                "обратная overlay-замена считает одно удаление");
+            AssertEqual(1, reverse.Stats.InsertedWords,
+                "обратная overlay-замена считает одну вставку");
+            AssertEqual(1, PdfReviewForm.BuildHighlight(reverse, reversePair, true).Boxes.Count,
+                "обратное сравнение строит одну рамку слева");
+            AssertEqual(1, PdfReviewForm.BuildHighlight(reverse, reversePair, false).Boxes.Count,
+                "обратное сравнение строит одну рамку справа");
+        }
+
+        /// <summary>
+        /// Канонизация не превращается в separator-free сравнение: реальный зазор, пустой
+        /// raw-фрагмент и новая строка всегда сохраняют видимую границу слова.
+        /// </summary>
+        private static void TestReviewCanonicalBoundaries()
+        {
+            PdfReviewPage page = ReviewPageFromWords(0,
+                W("tail", 10.2, 80, 15, 10),
+                W("two", 46.5, 100, 15, 10),
+                W("c", 10.5, 100, 5, 10),
+                W(" ", 10.2, 100, 0.2, 10),
+                W("one", 30, 100, 15, 10),
+                W("ab", 0, 100, 10, 10));
+            var keys = new List<string>();
+            foreach (PdfReviewWord word in page.Words) keys.Add(word.Key);
+            AssertEqual("ab|c|one|two|tail", string.Join("|", keys.ToArray()),
+                "пустой фрагмент, настоящий пробел и граница строки не склеены");
+
+            PdfReviewPage belowThreshold = ReviewPageFromWords(0,
+                W("a", 0, 100, 5, 10), W("b", 5.79, 100, 5, 10));
+            PdfReviewPage aboveThreshold = ReviewPageFromWords(0,
+                W("a", 0, 100, 5, 10), W("b", 5.81, 100, 5, 10));
+            AssertEqual(1, belowThreshold.Words.Count, "зазор 0.079em — артефакт сегментации");
+            AssertEqual(2, aboveThreshold.Words.Count, "зазор 0.081em — настоящий видимый пробел");
+
+            PdfReviewPage left = ReviewPageFromWords(0,
+                W("ab", 0, 100, 10, 10), W("c", 12, 100, 5, 10));
+            PdfReviewPage right = ReviewPageFromWords(0,
+                W("a", 0, 100, 4, 10), W("bc", 6, 100, 9, 10));
+            AssertEqual("abc", left.Words[0].Key + left.Words[1].Key,
+                "контроль: separator-free поток слева");
+            AssertEqual("abc", right.Words[0].Key + right.Words[1].Key,
+                "контроль: separator-free поток справа");
+            AssertEqual(PdfReviewPairStatus.Changed,
+                PdfReviewDiff.Pair(left, right, PdfReviewLimits.Default()).Status,
+                "разные видимые границы слов не маскируются общей строкой без разделителей");
+        }
+
+        private static PdfWord ReviewSourceWord(ICollection<PdfSourceTextUnit> units,
+            string text, double left, double bottom, double width, double height,
+            int blockId)
+        {
+            int start = units.Count;
+            for (int i = 0; i < text.Length; i++)
+                units.Add(new PdfSourceTextUnit
+                {
+                    Text = text.Substring(i, 1),
+                    Trusted = true
+                });
+            PdfWord word = W(text, left, bottom, width, height);
+            word.BlockId = blockId;
+            word.SourceStart = start;
+            word.SourceEnd = units.Count - 1;
+            word.SourceText = text;
+            word.SourceTrusted = text.Length > 0;
+            return word;
+        }
+
+        private static void ReviewSourceUnits(ICollection<PdfSourceTextUnit> units,
+            string text, bool trusted)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+            for (int i = 0; i < text.Length; i++)
+                units.Add(new PdfSourceTextUnit
+                {
+                    Text = text.Substring(i, 1),
+                    Trusted = trusted
+                });
+        }
+
+        private static PdfReviewPage ReviewPageFromSourceBoundary(int index,
+            string leading, string boundary, string trailing, bool boundaryTrusted,
+            int leftBlock, int rightBlock, double rightLeft)
+        {
+            var extracted = new PdfPageText
+            {
+                PageIndex = index,
+                WidthPt = 200,
+                HeightPt = 200,
+                NativeRotation = 0
+            };
+            ReviewSourceUnits(extracted.SourceUnits, leading, true);
+            PdfWord left = ReviewSourceWord(extracted.SourceUnits, "alpha",
+                0, 100, 25, 10, leftBlock);
+            ReviewSourceUnits(extracted.SourceUnits, boundary, boundaryTrusted);
+            PdfWord right = ReviewSourceWord(extracted.SourceUnits, "beta",
+                rightLeft, 100, 20, 10, rightBlock);
+            ReviewSourceUnits(extracted.SourceUnits, trailing, true);
+            extracted.Words.Add(left);
+            extracted.Words.Add(right);
+
+            var page = new PdfReviewPage
+            {
+                PageIndex = index,
+                WidthPt = 200,
+                HeightPt = 200,
+                ViewWidthPt = 200,
+                ViewHeightPt = 200
+            };
+            PdfReviewService.BuildWords(extracted, page);
+            return page;
+        }
+
+        private static PdfReviewWhitespaceEvidence ReviewInternalBoundary(
+            PdfReviewPage page)
+        {
+            foreach (PdfReviewWhitespaceEvidence evidence in page.WhitespaceBoundaries)
+                if (evidence != null && !evidence.AtPageStart && !evidence.AtPageEnd)
+                    return evidence;
+            return null;
+        }
+
+        private static PdfReviewWhitespaceEvidence ReviewEdgeBoundary(
+            PdfReviewPage page, bool start)
+        {
+            foreach (PdfReviewWhitespaceEvidence evidence in page.WhitespaceBoundaries)
+                if (evidence != null && (start ? evidence.AtPageStart : evidence.AtPageEnd))
+                    return evidence;
+            return null;
+        }
+
+        /// <summary>
+        /// Literal whitespace comes only from decoded source units. Empty adjacency is retained
+        /// as positive evidence too; CRLF and CR have one logical line-break without losing raw data.
+        /// </summary>
+        private static void TestReviewSourceWhitespaceEvidence()
+        {
+            string[] raw = { "", " ", "  ", " ", "\t", "\r\n", "\r", "\n", " " };
+            string[] logical = { "", " ", "  ", " ", "\t", "\n", "\n", "\n", " " };
+            for (int i = 0; i < raw.Length; i++)
+            {
+                PdfReviewPage page = ReviewPageFromSourceBoundary(i, null, raw[i],
+                    null, true, 7, 7, 55);
+                PdfReviewWhitespaceEvidence evidence = ReviewInternalBoundary(page);
+                AssertTrue(evidence != null, "source boundary " + i + ": граница доказана");
+                AssertEqual(raw[i], evidence.RawText,
+                    "source boundary " + i + ": raw whitespace сохранён точно");
+                AssertEqual(logical[i], evidence.LogicalText,
+                    "source boundary " + i + ": логический перевод строки нормализован узко");
+                AssertTrue(ReferenceEquals(evidence.Before, page.Words[0]) &&
+                           ReferenceEquals(evidence.After, page.Words[1]),
+                    "source boundary " + i + ": свидетельство привязано к retained-словам");
+            }
+
+            PdfReviewPage tight = ReviewPageFromSourceBoundary(0, null, " ", null,
+                true, 3, 3, 25.1);
+            AssertEqual(2, tight.Words.Count,
+                "явный source-space сохраняет границу при почти нулевом геометрическом зазоре");
+            AssertEqual(" ", ReviewInternalBoundary(tight).RawText,
+                "тесная граница хранит литеральный source-space");
+
+            PdfReviewPage edged = ReviewPageFromSourceBoundary(0, "  ", " ",
+                "\t\r\n", true, 4, 4, 55);
+            PdfReviewWhitespaceEvidence start = ReviewEdgeBoundary(edged, true);
+            PdfReviewWhitespaceEvidence end = ReviewEdgeBoundary(edged, false);
+            AssertTrue(start != null && end != null,
+                "source units до первого и после последнего слова дают доказанные края");
+            AssertEqual("  ", start.RawText, "leading whitespace сохранён буквально");
+            AssertEqual("\t\r\n", end.RawText, "trailing whitespace сохранён буквально");
+            AssertEqual("\t\n", end.LogicalText,
+                "trailing CRLF представлен одним логическим переносом");
+        }
+
+        /// <summary>
+        /// Геометрия, неизвестные source-unit, чужой tagged-block и преобразованные слова не
+        /// становятся свидетельством пробела. Неуверенность оставляет границу неописанной.
+        /// </summary>
+        private static void TestReviewSourceWhitespaceAbstention()
+        {
+            PdfReviewPage geometryOnly = ReviewPageFromWords(0,
+                W("alpha", 0, 100, 25, 10), W("beta", 55, 100, 20, 10));
+            AssertTrue(ReviewInternalBoundary(geometryOnly) == null,
+                "большой box-gap без source provenance не доказывает пробел");
+
+            PdfReviewPage untrusted = ReviewPageFromSourceBoundary(0, null, " ", null,
+                false, 1, 1, 55);
+            AssertTrue(ReviewInternalBoundary(untrusted) == null,
+                "недоверенный decoded unit не используется как whitespace evidence");
+
+            PdfReviewPage visibleUnit = ReviewPageFromSourceBoundary(0, null, "X", null,
+                true, 1, 1, 55);
+            AssertTrue(ReviewInternalBoundary(visibleUnit) == null,
+                "не-whitespace source unit между retained-словами инвалидирует границу");
+
+            PdfReviewPage crossBlock = ReviewPageFromSourceBoundary(0, null, " ", null,
+                true, 10, 11, 55);
+            AssertTrue(ReviewInternalBoundary(crossBlock) == null,
+                "разные trusted structure blocks не связываются одной границей");
+
+            var overlaidRaw = new PdfPageText
+            {
+                PageIndex = 0,
+                WidthPt = 200,
+                HeightPt = 200,
+                NativeRotation = 0
+            };
+            PdfWord overlayOne = ReviewSourceWord(overlaidRaw.SourceUnits, "echo",
+                0, 100, 20, 10, 2);
+            ReviewSourceUnits(overlaidRaw.SourceUnits, " ", true);
+            PdfWord overlayTwo = ReviewSourceWord(overlaidRaw.SourceUnits, "echo",
+                0.2, 99.9, 20, 10, 2);
+            ReviewSourceUnits(overlaidRaw.SourceUnits, " ", true);
+            PdfWord tail = ReviewSourceWord(overlaidRaw.SourceUnits, "tail",
+                50, 100, 15, 10, 2);
+            overlaidRaw.Words.Add(overlayOne);
+            overlaidRaw.Words.Add(overlayTwo);
+            overlaidRaw.Words.Add(tail);
+            var overlaid = new PdfReviewPage
+            {
+                PageIndex = 0,
+                WidthPt = 200,
+                HeightPt = 200,
+                ViewWidthPt = 200,
+                ViewHeightPt = 200
+            };
+            PdfReviewService.BuildWords(overlaidRaw, overlaid);
+            AssertTrue(overlaid.Words.Count == 2 && !overlaid.Words[0].SourceTrusted,
+                "union overlay word intentionally loses ambiguous source span");
+            AssertTrue(ReviewInternalBoundary(overlaid) == null,
+                "overlay union cannot anchor a literal whitespace claim");
+
+            var joinedRaw = new PdfPageText
+            {
+                PageIndex = 0,
+                WidthPt = 200,
+                HeightPt = 200,
+                NativeRotation = 0
+            };
+            joinedRaw.Words.Add(ReviewSourceWord(joinedRaw.SourceUnits, "inter-",
+                10, 100, 30, 10, 6));
+            joinedRaw.Words.Add(ReviewSourceWord(joinedRaw.SourceUnits, "national",
+                10, 80, 40, 10, 6));
+            var joined = new PdfReviewPage
+            {
+                PageIndex = 0,
+                WidthPt = 200,
+                HeightPt = 200,
+                ViewWidthPt = 200,
+                ViewHeightPt = 200
+            };
+            PdfReviewService.BuildWords(joinedRaw, joined);
+            AssertTrue(joined.Words.Count == 1 &&
+                       joined.Words[0].Key == "international" &&
+                       !joined.Words[0].SourceTrusted,
+                "reconstructed Latin line-end join abstains from source whitespace semantics");
+            AssertEqual(0, joined.WhitespaceBoundaries.Count,
+                "invalidated joined word cannot prove leading or trailing whitespace");
+        }
+
+        private static void TestReviewDocumentEdgeWhitespaceEvidence()
+        {
+            var document = new PdfReviewDocument { Path = "edges.pdf" };
+            for (int i = 0; i < 3; i++)
+                document.Pages.Add(ReviewPageFromSourceBoundary(i, " ", " ", "\t",
+                    true, 1, 1, 55));
+            PdfReviewService.RetainDocumentEdgeWhitespace(document);
+
+            AssertTrue(ReviewEdgeBoundary(document.Pages[0], true) != null &&
+                       ReviewEdgeBoundary(document.Pages[0], false) == null,
+                "только первая текстовая страница сохраняет document-leading evidence");
+            AssertTrue(ReviewEdgeBoundary(document.Pages[1], true) == null &&
+                       ReviewEdgeBoundary(document.Pages[1], false) == null,
+                "внутренняя страница не превращает page break в document edge");
+            AssertTrue(ReviewEdgeBoundary(document.Pages[2], true) == null &&
+                       ReviewEdgeBoundary(document.Pages[2], false) != null,
+                "только последняя текстовая страница сохраняет document-trailing evidence");
+            AssertTrue(ReviewInternalBoundary(document.Pages[0]) != null &&
+                       ReviewInternalBoundary(document.Pages[1]) != null &&
+                       ReviewInternalBoundary(document.Pages[2]) != null,
+                "фильтр краёв не удаляет внутренние source-backed границы");
+
+            var single = new PdfReviewDocument { Path = "single-edge.pdf" };
+            single.Pages.Add(ReviewPageFromSourceBoundary(0, " ", "", "\t",
+                true, 1, 1, 55));
+            PdfReviewService.RetainDocumentEdgeWhitespace(single);
+            AssertTrue(ReviewEdgeBoundary(single.Pages[0], true) != null &&
+                       ReviewEdgeBoundary(single.Pages[0], false) != null,
+                "единственная текстовая страница одновременно владеет обоими краями документа");
+        }
+
+        private static long FindMinimumReviewWork(Func<long, bool> succeeds,
+            string stage)
+        {
+            if (succeeds == null)
+                throw new ArgumentNullException("succeeds");
+            if (succeeds(0))
+                return 0;
+
+            long maximum = PdfReviewLimits.Default().MaxDiffWork;
+            long lower = 0;
+            long upper = 1;
+            bool found = false;
+            while (upper <= maximum)
+            {
+                if (succeeds(upper))
+                {
+                    found = true;
+                    break;
+                }
+                lower = upper;
+                if (upper == maximum)
+                    break;
+                upper = upper > maximum / 2 ? maximum : upper * 2;
+            }
+            if (!found)
+                throw new Exception(stage +
+                    ": успешный детерминированный work-budget не найден");
+
+            while (upper - lower > 1)
+            {
+                long middle = lower + (upper - lower) / 2;
+                if (succeeds(middle))
+                    upper = middle;
+                else
+                    lower = middle;
+            }
+            return upper;
+        }
+
+        private static PdfReviewResult ReviewWhitespaceStageFixture()
+        {
+            PdfReviewDocument left = ReviewWhitespaceDocument("whitespace-left.pdf",
+                "", " ", "", true);
+            PdfReviewDocument right = ReviewWhitespaceDocument("whitespace-right.pdf",
+                "\t", "  ", "\r\n", true);
+            var result = new PdfReviewResult { Left = left, Right = right };
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            for (int i = 0; i < left.Pages[0].Words.Count; i++)
+                PdfReviewDiff.AppendEqual(result.Operations, left.Pages[0].Words[i],
+                    right.Pages[0].Words[i], PdfReviewMatchKind.Exact);
+            return result;
+        }
+
+        private static bool ReviewWhitespaceStageSucceeds(long work)
+        {
+            PdfReviewResult result = ReviewWhitespaceStageFixture();
+            var limits = PdfReviewLimits.Default();
+            limits.MaxDiffWork = work;
+            PdfReviewDiff.CompareWhitespace(result, limits);
+            return result.WhitespaceChanges.Count == 3;
+        }
+
+        private static void TestReviewWhitespaceWorkBudgetAtomic()
+        {
+            long minimum = FindMinimumReviewWork(ReviewWhitespaceStageSucceeds,
+                "whitespace");
+            AssertTrue(minimum > 0,
+                "whitespace semantic proof действительно расходует work-budget");
+
+            PdfReviewResult successful = ReviewWhitespaceStageFixture();
+            var successfulLimits = PdfReviewLimits.Default();
+            successfulLimits.MaxDiffWork = minimum;
+            PdfReviewDiff.CompareWhitespace(successful, successfulLimits);
+            AssertEqual(3, successful.WhitespaceChanges.Count,
+                "минимальный успешный бюджет публикует все три доказанные границы");
+
+            PdfReviewResult exhausted = ReviewWhitespaceStageFixture();
+            string originalOperations = ReviewOrderMatchSig(exhausted);
+            var exhaustedLimits = PdfReviewLimits.Default();
+            exhaustedLimits.MaxDiffWork = minimum - 1;
+            PdfReviewDiff.CompareWhitespace(exhausted, exhaustedLimits);
+            AssertEqual(0, exhausted.WhitespaceChanges.Count,
+                "на единицу ниже успеха не публикуется частичный whitespace diff");
+            AssertEqual(originalOperations, ReviewOrderMatchSig(exhausted),
+                "whitespace exhaustion не меняет authoritative word operations");
+
+            PdfReviewDiff.Project(exhausted);
+            AssertTrue(exhausted.Stats != null,
+                "после abstention проекция всё равно строит полную статистику");
+            AssertEqual(0, exhausted.Stats.DeletedWords,
+                "whitespace abstention не создаёт word Delete");
+            AssertEqual(0, exhausted.Stats.InsertedWords,
+                "whitespace abstention не создаёт word Insert");
+            AssertEqual(0, exhausted.Stats.WhitespaceChanges,
+                "статистика не видит отброшенный частичный whitespace diff");
+            AssertEqual(PdfReviewPairStatus.Unchanged, exhausted.Pairs[0].Status,
+                "без полностью доказанной пробельной правки page-pair консервативно unchanged");
+
+            PdfReviewDiff.CompareWhitespace(exhausted, successfulLimits);
+            PdfReviewDiff.Project(exhausted);
+            AssertEqual(3, exhausted.WhitespaceChanges.Count,
+                "тот же result допускает чистый полный повтор после exhaustion");
+            AssertEqual(3, exhausted.Stats.WhitespaceChanges,
+                "повтор после exhaustion проецирует все три границы, без накопления");
+            AssertEqual(PdfReviewPairStatus.Changed, exhausted.Pairs[0].Status,
+                "полный повтор возвращает whitespace-only pair в Changed");
+        }
+
+        private const int ReviewExactIndexPairCount = 320;
+
+        private static PdfReviewResult ReviewExactIndexStageFixture(int pairCount,
+            out PdfReviewWhitespaceChange published)
+        {
+            if (pairCount < 0)
+                throw new ArgumentOutOfRangeException("pairCount");
+            var result = new PdfReviewResult
+            {
+                Left = new PdfReviewDocument { Path = "exact-index-left.pdf" },
+                Right = new PdfReviewDocument { Path = "exact-index-right.pdf" }
+            };
+            for (int i = 0; i < pairCount; i++)
+            {
+                string key = "exact-" + i.ToString("D4",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                var left = new PdfReviewWord
+                {
+                    Text = key,
+                    Key = key,
+                    PageIndex = 0
+                };
+                var right = new PdfReviewWord
+                {
+                    Text = key,
+                    Key = key,
+                    PageIndex = 0
+                };
+                PdfReviewDiff.AppendEqual(result.Operations, left, right,
+                    PdfReviewMatchKind.Exact);
+            }
+            published = new PdfReviewWhitespaceChange();
+            result.WhitespaceChanges.Add(published);
+            return result;
+        }
+
+        private static bool ReviewExactIndexStageSucceeds(int pairCount, long work)
+        {
+            PdfReviewWhitespaceChange published;
+            PdfReviewResult result = ReviewExactIndexStageFixture(pairCount,
+                out published);
+            var limits = PdfReviewLimits.Default();
+            limits.MaxDiffWork = work;
+            PdfReviewDiff.CompareWhitespace(result, limits);
+            return result.WhitespaceChanges.Count == 0;
+        }
+
+        private static void TestReviewWhitespacePublishedStateAtomic()
+        {
+            long emptyMinimum = FindMinimumReviewWork(delegate(long work)
+            {
+                return ReviewExactIndexStageSucceeds(0, work);
+            }, "empty exact index");
+            long minimum = FindMinimumReviewWork(delegate(long work)
+            {
+                return ReviewExactIndexStageSucceeds(ReviewExactIndexPairCount, work);
+            }, "large exact index");
+            AssertTrue(minimum - emptyMinimum >= ReviewExactIndexPairCount * 6L,
+                "каждая Exact-пара расходует собственный детерминированный work-budget");
+
+            PdfReviewWhitespaceChange published;
+            PdfReviewResult beforePublication = ReviewExactIndexStageFixture(
+                ReviewExactIndexPairCount, out published);
+            var proofOnlyLimits = PdfReviewLimits.Default();
+            proofOnlyLimits.MaxDiffWork = minimum - 2;
+            PdfReviewDiff.CompareWhitespace(beforePublication, proofOnlyLimits);
+            AssertEqual(1, beforePublication.WhitespaceChanges.Count,
+                "нулевой остаток перед двухединичным commit не очищает прежний результат");
+            AssertTrue(ReferenceEquals(published,
+                    beforePublication.WhitespaceChanges[0]),
+                "exhaustion сохраняет сам ранее опубликованный whitespace-объект");
+
+            PdfReviewResult successful = ReviewExactIndexStageFixture(
+                ReviewExactIndexPairCount, out published);
+            var successfulLimits = PdfReviewLimits.Default();
+            successfulLimits.MaxDiffWork = minimum;
+            PdfReviewDiff.CompareWhitespace(successful, successfulLimits);
+            AssertEqual(0, successful.WhitespaceChanges.Count,
+                "полный бюджет атомарно заменяет прежнюю публикацию новым пустым результатом");
+
+            PdfReviewResult cancelled = ReviewExactIndexStageFixture(
+                ReviewExactIndexPairCount, out published);
+            int cancellationChecks = 0;
+            bool thrown = false;
+            try
+            {
+                PdfReviewDiff.CompareWhitespace(cancelled, PdfReviewLimits.Default(),
+                    delegate
+                    {
+                        cancellationChecks++;
+                        return cancellationChecks >= 2;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                thrown = true;
+            }
+            AssertTrue(thrown && cancellationChecks == 2,
+                "отмена достигает periodic checkpoint внутри большого Exact-индекса");
+            AssertTrue(cancelled.WhitespaceChanges.Count == 1 &&
+                       ReferenceEquals(published, cancelled.WhitespaceChanges[0]),
+                "отмена Exact-индекса сохраняет прежнюю пробельную публикацию");
+
+            PdfReviewDiff.CompareWhitespace(cancelled, successfulLimits);
+            AssertEqual(0, cancelled.WhitespaceChanges.Count,
+                "после отмены тот же result допускает чистую атомарную замену");
+        }
+
+        private static PdfReviewResult ReviewLongWhitespaceStageFixture(int atomCount,
+            out PdfReviewWhitespaceChange published)
+        {
+            if (atomCount < 1)
+                throw new ArgumentOutOfRangeException("atomCount");
+            string boundary = new string(' ', atomCount);
+            PdfReviewDocument left = ReviewWhitespaceDocument(
+                "long-atoms-left.pdf", null, boundary, null, true);
+            PdfReviewDocument right = ReviewWhitespaceDocument(
+                "long-atoms-right.pdf", null, boundary, null, true);
+            left.Pages[0].WhitespaceBoundaries.RemoveAll(
+                delegate(PdfReviewWhitespaceEvidence evidence)
+                {
+                    return evidence == null || evidence.AtPageStart || evidence.AtPageEnd;
+                });
+            right.Pages[0].WhitespaceBoundaries.RemoveAll(
+                delegate(PdfReviewWhitespaceEvidence evidence)
+                {
+                    return evidence == null || evidence.AtPageStart || evidence.AtPageEnd;
+                });
+            var result = new PdfReviewResult { Left = left, Right = right };
+            for (int i = 0; i < left.Pages[0].Words.Count; i++)
+                PdfReviewDiff.AppendEqual(result.Operations, left.Pages[0].Words[i],
+                    right.Pages[0].Words[i], PdfReviewMatchKind.Exact);
+            published = new PdfReviewWhitespaceChange();
+            result.WhitespaceChanges.Add(published);
+            return result;
+        }
+
+        private static void TestReviewWhitespaceProofCancellationAtomic()
+        {
+            const int AtomCount = 4096;
+            PdfReviewWhitespaceChange published;
+            PdfReviewResult probe = ReviewLongWhitespaceStageFixture(AtomCount,
+                out published);
+            int probeChecks = 0;
+            PdfReviewDiff.CompareWhitespace(probe, PdfReviewLimits.Default(),
+                delegate
+                {
+                    probeChecks++;
+                    return false;
+                });
+            AssertEqual(0, probe.WhitespaceChanges.Count,
+                "равные длинные atom-последовательности полностью заменяют sentinel");
+            AssertTrue(probeChecks > 10,
+                "fixture проходит несколько periodic checkpoints в atom-proof");
+
+            PdfReviewResult scanCancelled = ReviewLongWhitespaceStageFixture(AtomCount,
+                out published);
+            string originalOperations = ReviewOrderMatchSig(scanCancelled);
+            int scanChecks = 0;
+            bool scanThrown = false;
+            try
+            {
+                PdfReviewDiff.CompareWhitespace(scanCancelled,
+                    PdfReviewLimits.Default(), delegate
+                    {
+                        scanChecks++;
+                        return scanChecks >= 2;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                scanThrown = true;
+            }
+            AssertTrue(scanThrown && scanChecks == 2,
+                "первая periodic-отмена срабатывает внутри длинного raw atom scan");
+            AssertTrue(scanCancelled.WhitespaceChanges.Count == 1 &&
+                       ReferenceEquals(published,
+                           scanCancelled.WhitespaceChanges[0]),
+                "отмена raw atom scan не очищает прежнюю публикацию");
+            AssertEqual(originalOperations, ReviewOrderMatchSig(scanCancelled),
+                "отмена raw atom scan не меняет authoritative word operations");
+
+            PdfReviewResult sequenceCancelled = ReviewLongWhitespaceStageFixture(
+                AtomCount, out published);
+            int sequenceChecks = 0;
+            int cancelAt = probeChecks - 1;
+            bool sequenceThrown = false;
+            try
+            {
+                PdfReviewDiff.CompareWhitespace(sequenceCancelled,
+                    PdfReviewLimits.Default(), delegate
+                    {
+                        sequenceChecks++;
+                        return sequenceChecks >= cancelAt;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                sequenceThrown = true;
+            }
+            AssertTrue(sequenceThrown && sequenceChecks == cancelAt,
+                "поздняя periodic-отмена достигает сравнения длинных atom-последовательностей");
+            AssertTrue(sequenceCancelled.WhitespaceChanges.Count == 1 &&
+                       ReferenceEquals(published,
+                           sequenceCancelled.WhitespaceChanges[0]),
+                "поздняя отмена atom-proof оставляет публикацию целиком прежней");
+
+            PdfReviewDiff.CompareWhitespace(sequenceCancelled,
+                PdfReviewLimits.Default());
+            AssertEqual(0, sequenceCancelled.WhitespaceChanges.Count,
+                "чистый повтор после поздней отмены завершает atom-proof без накопления");
+        }
+
+        private static PdfReviewDocument ReviewWhitespaceDocument(string path,
+            string leading, string boundary, string trailing, bool boundaryTrusted)
+        {
+            var document = new PdfReviewDocument { Path = path };
+            PdfReviewPage page = ReviewPageFromSourceBoundary(0, leading, boundary,
+                trailing, boundaryTrusted, 1, 1, 55);
+            document.Pages.Add(page);
+            document.WordCount = page.Words.Count;
+            document.CharacterCount = (leading ?? "").Length +
+                (boundary ?? "").Length + (trailing ?? "").Length + 9;
+            PdfReviewService.RetainDocumentEdgeWhitespace(document);
+            return document;
+        }
+
+        private static PdfReviewResult ReviewWhitespaceComparison(string left,
+            string right)
+        {
+            return PdfReviewDiff.Compare(
+                ReviewWhitespaceDocument("left.pdf", null, left, null, true),
+                ReviewWhitespaceDocument("right.pdf", null, right, null, true),
+                PdfReviewLimits.Default());
+        }
+
+        private static void TestReviewLiteralWhitespaceComparison()
+        {
+            PdfReviewResult added = ReviewWhitespaceComparison("", " ");
+            AssertEqual(1, added.WhitespaceChanges.Count,
+                "trusted empty boundary and one U+0020 form one whitespace change");
+            PdfReviewWhitespaceChange change = added.WhitespaceChanges[0];
+            AssertEqual(0, change.DeletedAtoms.Count,
+                "empty → space has no fabricated deleted atom");
+            AssertEqual(1, change.InsertedAtoms.Count,
+                "empty → space inserts exactly one atom");
+            AssertEqual(PdfReviewWhitespaceAtomKind.Space,
+                change.InsertedAtoms[0].Kind, "ordinary space has its own atom kind");
+            AssertEqual(" ", change.InsertedAtoms[0].RawText,
+                "ordinary-space raw form is retained");
+            AssertEqual("", change.Left.RawText,
+                "left empty evidence remains positive evidence, not missing data");
+            AssertEqual(" ", change.Right.RawText,
+                "right evidence retains the complete source run");
+
+            PdfReviewResult removed = ReviewWhitespaceComparison(" ", "");
+            AssertEqual(1, removed.WhitespaceChanges.Count,
+                "reverse comparison retains the same boundary");
+            AssertEqual(1, removed.WhitespaceChanges[0].DeletedAtoms.Count,
+                "reverse comparison owns removed space on the earlier/left side");
+            AssertEqual(0, removed.WhitespaceChanges[0].InsertedAtoms.Count,
+                "reverse comparison does not create a right-side atom");
+
+            PdfReviewResult multiple = ReviewWhitespaceComparison(" ", "  ");
+            AssertEqual(1, multiple.WhitespaceChanges.Count,
+                "one and two ordinary spaces differ");
+            AssertEqual(0, multiple.WhitespaceChanges[0].DeletedAtoms.Count,
+                "shared ordinary space is not highlighted as deleted");
+            AssertEqual(1, multiple.WhitespaceChanges[0].InsertedAtoms.Count,
+                "only the additional ordinary space is highlighted");
+
+            PdfReviewResult nbsp = ReviewWhitespaceComparison(" ", " ");
+            AssertEqual(1, nbsp.WhitespaceChanges.Count,
+                "NBSP is not compatibility-folded to an ordinary space");
+            AssertEqual(PdfReviewWhitespaceAtomKind.Space,
+                nbsp.WhitespaceChanges[0].DeletedAtoms[0].Kind,
+                "ordinary space is the deleted side of space → NBSP");
+            AssertEqual(PdfReviewWhitespaceAtomKind.NoBreakSpace,
+                nbsp.WhitespaceChanges[0].InsertedAtoms[0].Kind,
+                "NBSP is the inserted side of space → NBSP");
+
+            PdfReviewResult tab = ReviewWhitespaceComparison("\t", "");
+            AssertEqual(PdfReviewWhitespaceAtomKind.Tab,
+                tab.WhitespaceChanges[0].DeletedAtoms[0].Kind,
+                "tab removal is literal and separately typed");
+
+            AssertEqual(0, ReviewWhitespaceComparison("\r\n", "\n")
+                .WhitespaceChanges.Count,
+                "CRLF and LF are the deliberately narrow logical equivalent");
+            AssertEqual(0, ReviewWhitespaceComparison("\r", "\r\n")
+                .WhitespaceChanges.Count,
+                "CR and CRLF both represent one logical line break");
+
+            PdfReviewResult lineBreak = ReviewWhitespaceComparison("", "\r\n");
+            AssertEqual(PdfReviewWhitespaceAtomKind.LineBreak,
+                lineBreak.WhitespaceChanges[0].InsertedAtoms[0].Kind,
+                "explicit decoded CRLF is one inserted line-break atom");
+            AssertEqual("\r\n", lineBreak.WhitespaceChanges[0].InsertedAtoms[0].RawText,
+                "line-break atom preserves its raw source form");
+
+            PdfReviewResult other = ReviewWhitespaceComparison("", " ");
+            AssertEqual(PdfReviewWhitespaceAtomKind.Other,
+                other.WhitespaceChanges[0].InsertedAtoms[0].Kind,
+                "other Unicode whitespace remains distinct and literal");
+            AssertEqual(" ", other.WhitespaceChanges[0].InsertedAtoms[0].RawText,
+                "other Unicode whitespace preserves its code point");
+        }
+
+        private static void TestReviewWhitespaceComparisonAbstention()
+        {
+            var geometryDocument = new PdfReviewDocument { Path = "geometry.pdf" };
+            geometryDocument.Pages.Add(ReviewPageFromWords(0,
+                W("alpha", 0, 100, 25, 10), W("beta", 55, 100, 20, 10)));
+            PdfReviewResult geometryOnly = PdfReviewDiff.Compare(geometryDocument,
+                ReviewWhitespaceDocument("source.pdf", null, " ", null, true),
+                PdfReviewLimits.Default());
+            AssertEqual(0, geometryOnly.WhitespaceChanges.Count,
+                "a box gap on either side cannot substitute for decoded source evidence");
+
+            PdfReviewResult untrusted = PdfReviewDiff.Compare(
+                ReviewWhitespaceDocument("left.pdf", null, "", null, true),
+                ReviewWhitespaceDocument("right.pdf", null, " ", null, false),
+                PdfReviewLimits.Default());
+            AssertEqual(0, untrusted.WhitespaceChanges.Count,
+                "an untrusted source unit causes abstention rather than inferred whitespace");
+
+            PdfReviewDocument changedAnchorLeft = ReviewWhitespaceDocument(
+                "left.pdf", null, "", null, true);
+            PdfReviewDocument changedAnchorRight = ReviewWhitespaceDocument(
+                "right.pdf", null, " ", null, true);
+            PdfReviewWord changedAnchor = changedAnchorRight.Pages[0].Words[1];
+            changedAnchor.Text = "gamma";
+            changedAnchor.Key = "gamma";
+            changedAnchor.SourceText = "gamma";
+            PdfReviewResult nonExact = PdfReviewDiff.Compare(changedAnchorLeft,
+                changedAnchorRight, PdfReviewLimits.Default());
+            AssertEqual(0, nonExact.WhitespaceChanges.Count,
+                "a boundary beside a changed word has no two-sided Exact anchor");
+
+            PdfReviewDocument malformedLeft = ReviewWhitespaceDocument(
+                "left.pdf", null, "", null, true);
+            PdfReviewDocument malformedRight = ReviewWhitespaceDocument(
+                "right.pdf", null, " ", null, true);
+            PdfReviewWhitespaceEvidence malformed =
+                ReviewInternalBoundary(malformedRight.Pages[0]);
+            malformed.RawText = "X";
+            malformed.LogicalText = "X";
+            PdfReviewResult invalidSource = PdfReviewDiff.Compare(malformedLeft,
+                malformedRight, PdfReviewLimits.Default());
+            AssertEqual(0, invalidSource.WhitespaceChanges.Count,
+                "non-whitespace content cannot enter a whitespace atom stream");
+
+            PdfReviewDocument duplicateLeft = ReviewWhitespaceDocument(
+                "left.pdf", null, "", null, true);
+            PdfReviewDocument duplicateRight = ReviewWhitespaceDocument(
+                "right.pdf", null, " ", null, true);
+            PdfReviewWhitespaceEvidence duplicated =
+                ReviewInternalBoundary(duplicateRight.Pages[0]);
+            duplicateRight.Pages[0].WhitespaceBoundaries.Add(duplicated);
+            PdfReviewResult ambiguous = PdfReviewDiff.Compare(duplicateLeft,
+                duplicateRight, PdfReviewLimits.Default());
+            AssertEqual(0, ambiguous.WhitespaceChanges.Count,
+                "duplicate evidence for one boundary is rejected as ambiguous");
+
+            PdfReviewDocument reconciledLeft = ReviewWhitespaceDocument(
+                "left.pdf", null, "", null, true);
+            PdfReviewDocument reconciledRight = ReviewWhitespaceDocument(
+                "right.pdf", null, " ", null, true);
+            var reconciled = new PdfReviewResult
+            {
+                Left = reconciledLeft,
+                Right = reconciledRight
+            };
+            reconciled.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            for (int i = 0; i < 2; i++)
+                PdfReviewDiff.AppendEqual(reconciled.Operations,
+                    reconciledLeft.Pages[0].Words[i], reconciledRight.Pages[0].Words[i],
+                    PdfReviewMatchKind.ReconciledOrder);
+            PdfReviewDiff.CompareWhitespace(reconciled, PdfReviewLimits.Default());
+            AssertEqual(0, reconciled.WhitespaceChanges.Count,
+                "geometry-reconciled correspondence is deliberately not a whitespace anchor");
+
+            PdfReviewResult pageBreaks = PdfReviewDiff.Compare(
+                ReviewDocument("left.pdf", "alpha", "beta"),
+                ReviewDocument("right.pdf", "alpha", "beta"),
+                PdfReviewLimits.Default());
+            AssertEqual(0, pageBreaks.WhitespaceChanges.Count,
+                "physical page transitions never synthesize line-break evidence");
+        }
+
+        private static void TestReviewWhitespaceProjectionAndStats()
+        {
+            PdfReviewDocument left = ReviewWhitespaceDocument("left.pdf", "", " ",
+                "", true);
+            PdfReviewDocument right = ReviewWhitespaceDocument("right.pdf", "\t", " ",
+                "\r\n", true);
+            PdfReviewResult result = PdfReviewDiff.Compare(left, right,
+                PdfReviewLimits.Default());
+
+            AssertEqual(2, result.WhitespaceChanges.Count,
+                "document-leading tab and trailing CRLF are separate proven runs");
+            AssertEqual(2, result.Stats.WhitespaceChanges,
+                "statistics count semantic whitespace runs separately from words");
+            AssertEqual(0, result.Stats.DeletedWhitespaceAtoms,
+                "leading/trailing additions do not create deleted atoms");
+            AssertEqual(2, result.Stats.InsertedWhitespaceAtoms,
+                "tab and logical line break are two inserted atoms");
+            AssertEqual(0, result.Stats.DeletedWords,
+                "whitespace changes do not alter deleted-word statistics");
+            AssertEqual(0, result.Stats.InsertedWords,
+                "whitespace changes do not alter inserted-word statistics");
+            AssertEqual(0, result.Stats.Replacements,
+                "whitespace changes do not masquerade as word replacements");
+            AssertEqual(0, result.Stats.ChangedPercent,
+                "word-based changed percentage remains zero for whitespace-only edits");
+            AssertEqual(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
+                "a whitespace-only page pair is visibly changed");
+            AssertTrue(!result.DeletedWhitespaceByPage.ContainsKey(0),
+                "no left marker exists when no whitespace atom was removed");
+            AssertTrue(result.InsertedWhitespaceByPage.ContainsKey(0),
+                "right page owns inserted whitespace markers");
+            AssertEqual(2, result.InsertedWhitespaceByPage[0].Count,
+                "each proven changed boundary projects one marker");
+            AssertTrue(result.InsertedWhitespaceByPage[0][0].Text.StartsWith("+ ") &&
+                       result.InsertedWhitespaceByPage[0][1].Text.StartsWith("+ "),
+                "right-side markers communicate addition without colour");
+            AssertTrue(!string.IsNullOrEmpty(
+                result.InsertedWhitespaceByPage[0][0].AccessibleDescription),
+                "projected marker has an accessible semantic description");
+
+            PdfReviewDiff.Project(result);
+            PdfReviewDiff.Project(result);
+            AssertEqual(2, result.InsertedWhitespaceByPage[0].Count,
+                "repeated projection rebuilds markers instead of accumulating them");
+            AssertEqual(2, result.Stats.WhitespaceChanges,
+                "repeated projection leaves authoritative statistics stable");
+            AssertEqual(1, result.Stats.ChangedPages,
+                "repeated projection leaves page status stable");
+
+            PdfReviewResult reverse = PdfReviewDiff.Compare(right, left,
+                PdfReviewLimits.Default());
+            AssertEqual(2, reverse.Stats.DeletedWhitespaceAtoms,
+                "reverse comparison swaps whitespace atom ownership");
+            AssertEqual(0, reverse.Stats.InsertedWhitespaceAtoms,
+                "reverse comparison has no spurious inserted atoms");
+            AssertEqual(2, reverse.DeletedWhitespaceByPage[0].Count,
+                "reverse markers live only on the earlier/left page");
+            AssertTrue(!reverse.InsertedWhitespaceByPage.ContainsKey(0),
+                "reverse right page has no addition marker");
+        }
+
+        private static void TestReviewProjectionPublicationAtomic()
+        {
+            const int WordCount = 600;
+            PdfReviewDocument left = ReviewDocument("projection-left.pdf", "");
+            PdfReviewDocument right = ReviewDocument("projection-right.pdf", "");
+            PdfReviewPage leftPage = left.Pages[0];
+            PdfReviewPage rightPage = right.Pages[0];
+            var replacement = new List<PdfReviewWordOp>(WordCount);
+            for (int i = 0; i < WordCount; i++)
+            {
+                string key = "word-" + i.ToString("D4",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                var leftWord = new PdfReviewWord
+                {
+                    Text = key,
+                    Key = key,
+                    PageIndex = 0,
+                    Box = new PdfReviewBox
+                    {
+                        Left = 20 + i % 20 * 20,
+                        Bottom = 700 - i / 20 * 12,
+                        Right = 38 + i % 20 * 20,
+                        Top = 710 - i / 20 * 12
+                    }
+                };
+                var rightWord = new PdfReviewWord
+                {
+                    Text = key,
+                    Key = key,
+                    PageIndex = 0,
+                    Box = leftWord.Box
+                };
+                leftPage.Words.Add(leftWord);
+                rightPage.Words.Add(rightWord);
+                var equal = new PdfReviewWordOp
+                {
+                    Kind = PdfReviewDiffKind.Equal,
+                    MatchKind = PdfReviewMatchKind.Exact
+                };
+                equal.LeftWords.Add(leftWord);
+                equal.RightWords.Add(rightWord);
+                equal.Matches.Add(new PdfReviewWordMatch
+                {
+                    Left = leftWord,
+                    Right = rightWord,
+                    Kind = PdfReviewMatchKind.Exact
+                });
+                replacement.Add(equal);
+            }
+            left.WordCount = right.WordCount = WordCount;
+
+            var result = new PdfReviewResult { Left = left, Right = right };
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            var deletion = new PdfReviewWordOp { Kind = PdfReviewDiffKind.Delete };
+            deletion.LeftWords.AddRange(leftPage.Words);
+            result.Operations.Add(deletion);
+            var whitespace = new PdfReviewWhitespaceChange
+            {
+                Left = new PdfReviewWhitespaceEvidence
+                {
+                    PageIndex = 0,
+                    Before = leftPage.Words[0],
+                    After = leftPage.Words[1],
+                    MarkerBox = new PdfReviewBox
+                    {
+                        Left = 38,
+                        Bottom = 700,
+                        Right = 40,
+                        Top = 710
+                    }
+                }
+            };
+            whitespace.DeletedAtoms.Add(new PdfReviewWhitespaceAtom
+            {
+                Kind = PdfReviewWhitespaceAtomKind.Space,
+                RawText = " "
+            });
+            result.WhitespaceChanges.Add(whitespace);
+            PdfReviewDiff.Project(result);
+
+            List<PdfReviewWordOp> oldOperations = result.Operations;
+            List<PdfReviewWhitespaceChange> oldWhitespace = result.WhitespaceChanges;
+            Dictionary<int, List<PdfReviewWord>> oldDeletedWords =
+                result.DeletedWordsByPage;
+            Dictionary<int, List<PdfReviewWord>> oldInsertedWords =
+                result.InsertedWordsByPage;
+            Dictionary<int, List<PdfReviewWhitespaceMarker>> oldDeletedWhitespace =
+                result.DeletedWhitespaceByPage;
+            Dictionary<int, List<PdfReviewWhitespaceMarker>> oldInsertedWhitespace =
+                result.InsertedWhitespaceByPage;
+            List<PdfReviewWord> oldDeletedPageWords = oldDeletedWords[0];
+            List<PdfReviewWhitespaceMarker> oldDeletedMarkers =
+                oldDeletedWhitespace[0];
+            PdfReviewStats oldStats = result.Stats;
+            PdfReviewPairStatus oldStatus = result.Pairs[0].Status;
+            var replacementWhitespace = new List<PdfReviewWhitespaceChange>();
+
+            int cancellationChecks = 0;
+            bool thrown = false;
+            try
+            {
+                PdfReviewDiff.PublishProjection(result, replacement,
+                    replacementWhitespace, delegate
+                    {
+                        cancellationChecks++;
+                        return cancellationChecks >= 2;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                thrown = true;
+            }
+            AssertTrue(thrown && cancellationChecks == 2,
+                "отмена достигает periodic checkpoint внутри candidate projection");
+            AssertTrue(ReferenceEquals(oldOperations, result.Operations) &&
+                       ReferenceEquals(oldWhitespace, result.WhitespaceChanges),
+                "отмена сохраняет обе authoritative semantic snapshot-ссылки");
+            AssertTrue(ReferenceEquals(oldDeletedWords, result.DeletedWordsByPage) &&
+                       ReferenceEquals(oldInsertedWords, result.InsertedWordsByPage) &&
+                       ReferenceEquals(oldDeletedWhitespace,
+                           result.DeletedWhitespaceByPage) &&
+                       ReferenceEquals(oldInsertedWhitespace,
+                           result.InsertedWhitespaceByPage),
+                "отмена не публикует ни один частично пересобранный индекс");
+            AssertTrue(ReferenceEquals(oldDeletedPageWords,
+                           result.DeletedWordsByPage[0]) &&
+                       ReferenceEquals(oldDeletedMarkers,
+                           result.DeletedWhitespaceByPage[0]),
+                "вложенные списки прежней проекции также сохраняют identity");
+            AssertTrue(ReferenceEquals(oldStats, result.Stats),
+                "отмена сохраняет целый прежний объект статистики");
+            AssertEqual(oldStatus, result.Pairs[0].Status,
+                "отмена не меняет status физической пары");
+            AssertEqual(WordCount, oldDeletedPageWords.Count,
+                "прежний word-индекс не очищен и не усечён");
+            AssertEqual(1, oldDeletedMarkers.Count,
+                "прежний whitespace-marker не потерян");
+            AssertEqual(WordCount, result.Stats.DeletedWords,
+                "прежние word-счётчики остаются согласованы с индексом");
+            AssertEqual(1, result.Stats.DeletedWhitespaceAtoms,
+                "прежний whitespace-счётчик остаётся согласован с marker");
+            AssertTrue(!ReferenceEquals(replacement, result.Operations) &&
+                       !ReferenceEquals(replacementWhitespace,
+                           result.WhitespaceChanges),
+                "candidate semantic lists не публикуются до завершения проекции");
+
+            var invalidWhitespace = new PdfReviewWhitespaceChange
+            {
+                Left = whitespace.Left
+            };
+            invalidWhitespace.DeletedAtoms.Add(new PdfReviewWhitespaceAtom
+            {
+                Kind = PdfReviewWhitespaceAtomKind.Other,
+                RawText = "\uD800"
+            });
+            bool projectionFailed = false;
+            try
+            {
+                PdfReviewDiff.PublishProjection(result, replacement,
+                    new List<PdfReviewWhitespaceChange> { invalidWhitespace }, null);
+            }
+            catch (ArgumentException)
+            {
+                projectionFailed = true;
+            }
+            AssertTrue(projectionFailed,
+                "ошибка построения marker прерывает candidate projection");
+            AssertTrue(ReferenceEquals(oldOperations, result.Operations) &&
+                       ReferenceEquals(oldWhitespace, result.WhitespaceChanges) &&
+                       ReferenceEquals(oldDeletedWords, result.DeletedWordsByPage) &&
+                       ReferenceEquals(oldInsertedWords, result.InsertedWordsByPage) &&
+                       ReferenceEquals(oldDeletedWhitespace,
+                           result.DeletedWhitespaceByPage) &&
+                       ReferenceEquals(oldInsertedWhitespace,
+                           result.InsertedWhitespaceByPage) &&
+                       ReferenceEquals(oldStats, result.Stats),
+                "ошибка проекции сохраняет весь ранее опубликованный snapshot");
+            AssertEqual(oldStatus, result.Pairs[0].Status,
+                "ошибка проекции не меняет status физической пары");
+
+            PdfReviewDiff.PublishProjection(result, replacement,
+                replacementWhitespace, null);
+            AssertTrue(ReferenceEquals(replacement, result.Operations) &&
+                       ReferenceEquals(replacementWhitespace,
+                           result.WhitespaceChanges),
+                "успех публикует exact candidate semantic snapshot");
+            AssertTrue(!ReferenceEquals(oldDeletedWords, result.DeletedWordsByPage) &&
+                       !ReferenceEquals(oldInsertedWords, result.InsertedWordsByPage) &&
+                       !ReferenceEquals(oldDeletedWhitespace,
+                           result.DeletedWhitespaceByPage) &&
+                       !ReferenceEquals(oldInsertedWhitespace,
+                           result.InsertedWhitespaceByPage),
+                "все четыре derived index заменены готовыми snapshot-ссылками");
+            AssertTrue(!ReferenceEquals(oldStats, result.Stats),
+                "статистика заменена тем же единым commit");
+            AssertEqual(0, result.DeletedWordsByPage.Count,
+                "Exact candidate не оставляет старых Delete в новой проекции");
+            AssertEqual(0, result.InsertedWordsByPage.Count,
+                "Exact candidate не создаёт Insert в новой проекции");
+            AssertEqual(0, result.DeletedWhitespaceByPage.Count,
+                "пустой whitespace candidate снимает старые маркеры");
+            AssertEqual(0, result.Stats.DeletedWords,
+                "новая статистика соответствует Exact candidate");
+            AssertEqual(0, result.Stats.WhitespaceChanges,
+                "новая статистика соответствует пустому whitespace candidate");
+            AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+                "status пары меняется вместе с новой проекцией");
+            AssertTrue(oldOperations.Count == 1 &&
+                       oldOperations[0].LeftWords.Count == WordCount &&
+                       oldWhitespace.Count == 1 &&
+                       ReferenceEquals(whitespace, oldWhitespace[0]) &&
+                       oldDeletedPageWords.Count == WordCount &&
+                       oldDeletedMarkers.Count == 1,
+                "успешная замена не очищает сохранённые объекты старого snapshot");
+
+            Dictionary<int, List<PdfReviewWord>> publishedDeletedWords =
+                result.DeletedWordsByPage;
+            Dictionary<int, List<PdfReviewWord>> publishedInsertedWords =
+                result.InsertedWordsByPage;
+            Dictionary<int, List<PdfReviewWhitespaceMarker>> publishedDeletedWhitespace =
+                result.DeletedWhitespaceByPage;
+            Dictionary<int, List<PdfReviewWhitespaceMarker>> publishedInsertedWhitespace =
+                result.InsertedWhitespaceByPage;
+            PdfReviewStats publishedStats = result.Stats;
+            int reprojectChecks = 0;
+            bool reprojectThrown = false;
+            try
+            {
+                PdfReviewDiff.Project(result, delegate
+                {
+                    reprojectChecks++;
+                    return reprojectChecks >= 2;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                reprojectThrown = true;
+            }
+            AssertTrue(reprojectThrown && reprojectChecks == 2,
+                "derived-only re-projection тоже отменяется на periodic checkpoint");
+            AssertTrue(ReferenceEquals(replacement, result.Operations) &&
+                       ReferenceEquals(replacementWhitespace,
+                           result.WhitespaceChanges) &&
+                       ReferenceEquals(publishedDeletedWords,
+                           result.DeletedWordsByPage) &&
+                       ReferenceEquals(publishedInsertedWords,
+                           result.InsertedWordsByPage) &&
+                       ReferenceEquals(publishedDeletedWhitespace,
+                           result.DeletedWhitespaceByPage) &&
+                       ReferenceEquals(publishedInsertedWhitespace,
+                           result.InsertedWhitespaceByPage) &&
+                       ReferenceEquals(publishedStats, result.Stats),
+                "отмена re-projection сохраняет весь успешно опубликованный snapshot");
+            AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+                "отмена re-projection не трогает опубликованный status пары");
+        }
+
+        private static PdfReviewDocument ReviewSourceFlowDocument(string path,
+            string beforeText, string[] middleTexts, string afterText,
+            string[] boundaries, bool[] boundaryTrusted, int[] middleBlocks,
+            double[] middleLefts, double[] middleWidths)
+        {
+            if (middleTexts == null || middleTexts.Length == 0 ||
+                boundaries == null || boundaries.Length != middleTexts.Length + 1 ||
+                boundaryTrusted == null || boundaryTrusted.Length != boundaries.Length ||
+                middleBlocks == null || middleBlocks.Length != middleTexts.Length ||
+                middleLefts == null || middleLefts.Length != middleTexts.Length ||
+                middleWidths == null || middleWidths.Length != middleTexts.Length)
+                throw new InvalidOperationException("invalid source-flow fixture");
+
+            var extracted = new PdfPageText
+            {
+                PageIndex = 0,
+                WidthPt = 240,
+                HeightPt = 200,
+                NativeRotation = 0
+            };
+            PdfWord before = ReviewSourceWord(extracted.SourceUnits, beforeText,
+                5, 100, 20, 10, 1);
+            extracted.Words.Add(before);
+            for (int i = 0; i < middleTexts.Length; i++)
+            {
+                ReviewSourceUnits(extracted.SourceUnits, boundaries[i],
+                    boundaryTrusted[i]);
+                extracted.Words.Add(ReviewSourceWord(extracted.SourceUnits,
+                    middleTexts[i], middleLefts[i], 100, middleWidths[i], 10,
+                    middleBlocks[i]));
+            }
+            ReviewSourceUnits(extracted.SourceUnits,
+                boundaries[boundaries.Length - 1],
+                boundaryTrusted[boundaryTrusted.Length - 1]);
+            extracted.Words.Add(ReviewSourceWord(extracted.SourceUnits, afterText,
+                190, 100, 30, 10, 1));
+
+            var page = new PdfReviewPage
+            {
+                PageIndex = 0,
+                WidthPt = 240,
+                HeightPt = 200,
+                ViewWidthPt = 240,
+                ViewHeightPt = 200
+            };
+            PdfReviewService.BuildWords(extracted, page);
+            var text = new StringBuilder();
+            foreach (PdfReviewWord word in page.Words)
+            {
+                if (text.Length > 0) text.Append(' ');
+                text.Append(word.Text);
+            }
+            page.Text = text.ToString();
+            page.NormalizedText = PdfReviewDiff.Normalize(page.Text);
+            page.Fingerprint = PdfReviewDiff.Fingerprint(page.NormalizedText,
+                page.WidthPt, page.HeightPt);
+
+            var document = new PdfReviewDocument { Path = path };
+            document.Pages.Add(page);
+            document.WordCount = page.Words.Count;
+            foreach (PdfSourceTextUnit unit in extracted.SourceUnits)
+                if (unit != null && unit.Text != null)
+                    document.CharacterCount += unit.Text.Length;
+            PdfReviewService.RetainDocumentEdgeWhitespace(document);
+            return document;
+        }
+
+        private static PdfReviewDocument ReviewSplitSourceDocument(string path,
+            string before, string first, string second, string after,
+            string separator, bool separatorTrusted, int firstBlock, int secondBlock,
+            double firstLeft, double secondLeft)
+        {
+            return ReviewSourceFlowDocument(path, before,
+                new[] { first, second }, after,
+                new[] { " ", separator, " " },
+                new[] { true, separatorTrusted, true },
+                new[] { firstBlock, secondBlock },
+                new[] { firstLeft, secondLeft },
+                new[] { 20.0, 22.0 });
+        }
+
+        private static PdfReviewDocument ReviewJoinedSourceDocument(string path,
+            string before, string joined, string after, int block, double left)
+        {
+            return ReviewSourceFlowDocument(path, before, new[] { joined }, after,
+                new[] { " ", " " }, new[] { true, true }, new[] { block },
+                new[] { left }, new[] { 45.0 });
+        }
+
+        private static PdfReviewWordOp ReviewSplitJoinOperation(PdfReviewResult result)
+        {
+            PdfReviewWordOp found = null;
+            foreach (PdfReviewWordOp operation in result.Operations)
+            {
+                if (operation == null || operation.Kind != PdfReviewDiffKind.Equal ||
+                    operation.MatchKind != PdfReviewMatchKind.SplitJoin)
+                    continue;
+                if (found != null)
+                    throw new Exception("ожидалась одна SplitJoin-операция");
+                found = operation;
+            }
+            return found;
+        }
+
+        private static void AssertSplitJoinAbstained(PdfReviewResult result,
+            string message)
+        {
+            PdfReviewWordOp splitJoin = ReviewSplitJoinOperation(result);
+            var diagnostic = new List<string>();
+            if (splitJoin != null)
+            {
+                foreach (PdfReviewWord word in splitJoin.LeftWords)
+                    diagnostic.Add("L:" + word.Key + "@" + word.PageIndex);
+                foreach (PdfReviewWord word in splitJoin.RightWords)
+                    diagnostic.Add("R:" + word.Key + "@" + word.PageIndex);
+            }
+            AssertTrue(splitJoin == null, message +
+                ": SplitJoin не создан [" + string.Join(",", diagnostic.ToArray()) + "]");
+            AssertTrue(ReviewOperationWordCount(result.Operations,
+                           PdfReviewDiffKind.Delete, -1) > 0 &&
+                       ReviewOperationWordCount(result.Operations,
+                           PdfReviewDiffKind.Insert, -1) > 0,
+                message + ": исходные word Delete/Insert сохранены");
+            AssertEqual(0, result.WhitespaceChanges.Count,
+                message + ": пробельная семантика не выдумана");
+        }
+
+        private static PdfReviewResult ReviewSplitJoinPositive(bool reverse)
+        {
+            PdfReviewDocument split = ReviewSplitSourceDocument("split.pdf",
+                "before-anchor", "alpha", "beta", "after-anchor", " ", true,
+                7, 7, 35, 58);
+            PdfReviewDocument joined = ReviewJoinedSourceDocument("joined.pdf",
+                "before-anchor", "alphabeta", "after-anchor", 7, 35);
+            return reverse
+                ? PdfReviewDiff.Compare(joined, split, PdfReviewLimits.Default())
+                : PdfReviewDiff.Compare(split, joined, PdfReviewLimits.Default());
+        }
+
+        private static void TestReviewSplitJoinWhitespace()
+        {
+            PdfReviewResult removed = ReviewSplitJoinPositive(false);
+            PdfReviewWordOp operation = ReviewSplitJoinOperation(removed);
+            AssertTrue(operation != null,
+                "доказанный foo bar → foobar классифицирован как один SplitJoin");
+            AssertEqual(2, operation.LeftWords.Count,
+                "split-сторона сохраняет оба физических левых слова");
+            AssertEqual(1, operation.RightWords.Count,
+                "joined-сторона сохраняет одно физическое правое слово");
+            AssertEqual("before-anchor alpha beta after-anchor",
+                RebuildReviewSide(removed.Operations, true),
+                "SplitJoin не меняет документный порядок ранней стороны");
+            AssertEqual("before-anchor alphabeta after-anchor",
+                RebuildReviewSide(removed.Operations, false),
+                "SplitJoin не подменяет физическое joined-слово");
+            AssertTrue(operation.SplitJoinLeftBoundary != null &&
+                       operation.SplitJoinLeftBoundary.Before == operation.LeftWords[0] &&
+                       operation.SplitJoinLeftBoundary.After == operation.LeftWords[1],
+                "левая граница ссылается на source-backed split-слова");
+            AssertTrue(operation.SplitJoinRightBoundary != null &&
+                       operation.SplitJoinRightBoundary.Within == operation.RightWords[0] &&
+                       operation.SplitJoinRightBoundary.TextOffset == 5 &&
+                       operation.SplitJoinRightBoundary.RawText == "",
+                "правая граница доказывает пустое соседство внутри joined-source");
+            AssertEqual(1, removed.WhitespaceChanges.Count,
+                "SplitJoin создаёт ровно одно отдельное whitespace-изменение");
+            AssertEqual(1, removed.WhitespaceChanges[0].DeletedAtoms.Count,
+                "foo bar → foobar удаляет один пробел только слева");
+            AssertEqual(0, removed.WhitespaceChanges[0].InsertedAtoms.Count,
+                "удаление границы не создаёт правый пробельный атом");
+            AssertEqual(PdfReviewWhitespaceAtomKind.Space,
+                removed.WhitespaceChanges[0].DeletedAtoms[0].Kind,
+                "удалённый split-separator остаётся обычным U+0020");
+            AssertEqual(0, removed.Stats.DeletedWords,
+                "доказанный split/join не считается удалёнными словами");
+            AssertEqual(0, removed.Stats.InsertedWords,
+                "доказанный split/join не считается вставленными словами");
+            AssertEqual(0, removed.Stats.Replacements,
+                "доказанный split/join не считается word replacement");
+            AssertEqual(0, removed.Stats.ChangedPercent,
+                "пробельная правка не меняет word-based процент");
+            AssertEqual(PdfReviewPairStatus.Changed, removed.Pairs[0].Status,
+                "split/join whitespace делает page-pair изменённой");
+            AssertEqual(1, removed.DeletedWhitespaceByPage[0].Count,
+                "маркер удаления принадлежит только ранней левой странице");
+            AssertTrue(!removed.InsertedWhitespaceByPage.ContainsKey(0),
+                "на joined-правой стороне нет ложного addition-маркера");
+
+            PdfReviewResult inserted = ReviewSplitJoinPositive(true);
+            PdfReviewWordOp reverseOperation = ReviewSplitJoinOperation(inserted);
+            AssertTrue(reverseOperation != null && reverseOperation.LeftWords.Count == 1 &&
+                       reverseOperation.RightWords.Count == 2,
+                "обратное сравнение зеркально сохраняет 1→2 ownership");
+            AssertEqual(0, inserted.WhitespaceChanges[0].DeletedAtoms.Count,
+                "foobar → foo bar не создаёт удалённый atom");
+            AssertEqual(1, inserted.WhitespaceChanges[0].InsertedAtoms.Count,
+                "foobar → foo bar добавляет пробел только справа");
+            AssertTrue(!inserted.DeletedWhitespaceByPage.ContainsKey(0) &&
+                       inserted.InsertedWhitespaceByPage[0].Count == 1,
+                "обратный whitespace-marker принадлежит поздней правой странице");
+            AssertEqual(ReviewOrderMatchSig(inserted),
+                ReviewOrderMatchSig(ReviewSplitJoinPositive(true)),
+                "повторный запуск SplitJoin детерминирован");
+        }
+
+        private static void TestReviewSplitJoinSourceSafety()
+        {
+            PdfReviewDocument regularSplit = ReviewSplitSourceDocument("split.pdf",
+                "before-anchor", "alpha", "beta", "after-anchor", " ", true,
+                7, 7, 35, 58);
+            PdfReviewDocument regularJoined = ReviewJoinedSourceDocument("joined.pdf",
+                "before-anchor", "alphabeta", "after-anchor", 7, 35);
+
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("left-no-before.pdf", "left-start",
+                    "alpha", "beta", "after-anchor", " ", true, 7, 7, 35, 58),
+                ReviewJoinedSourceDocument("right-no-before.pdf", "right-start",
+                    "alphabeta", "after-anchor", 7, 35), PdfReviewLimits.Default()),
+                "без устойчивого Exact-anchor до hunk");
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("left-no-after.pdf", "before-anchor",
+                    "alpha", "beta", "left-end", " ", true, 7, 7, 35, 58),
+                ReviewJoinedSourceDocument("right-no-after.pdf", "before-anchor",
+                    "alphabeta", "right-end", 7, 35), PdfReviewLimits.Default()),
+                "без устойчивого Exact-anchor после hunk");
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("empty-separator.pdf", "before-anchor",
+                    "alpha", "beta", "after-anchor", "", true, 7, 7, 35, 58),
+                regularJoined, PdfReviewLimits.Default()),
+                "пустой separator на split-стороне");
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("untrusted-separator.pdf", "before-anchor",
+                    "alpha", "beta", "after-anchor", " ", false, 7, 7, 35, 58),
+                regularJoined, PdfReviewLimits.Default()),
+                "недоверенный separator source-unit");
+
+            PdfReviewDocument untrustedJoined = ReviewJoinedSourceDocument(
+                "untrusted-joined.pdf", "before-anchor", "alphabeta",
+                "after-anchor", 7, 35);
+            untrustedJoined.Pages[0].Words[1].SourceTrusted = false;
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(regularSplit,
+                untrustedJoined, PdfReviewLimits.Default()),
+                "joined-слово без trusted source-span");
+
+            PdfReviewDocument ambiguousJoined = ReviewJoinedSourceDocument(
+                "ambiguous-joined.pdf", "before-anchor", "alphabeta",
+                "after-anchor", 7, 35);
+            ambiguousJoined.Pages[0].Words[1].SourceEnd--;
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(regularSplit,
+                ambiguousJoined, PdfReviewLimits.Default()),
+                "joined source-unit нельзя однозначно разрезать в UTF-16 offset");
+
+            PdfReviewDocument wrongSource = ReviewJoinedSourceDocument(
+                "wrong-source.pdf", "before-anchor", "alphabeta",
+                "after-anchor", 7, 35);
+            wrongSource.Pages[0].Words[1].SourceText = "alphaXeta";
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(regularSplit,
+                wrongSource, PdfReviewLimits.Default()),
+                "joined SourceText не совпадает с видимым текстом");
+        }
+
+        private static void TestReviewSplitJoinConservativeGates()
+        {
+            PdfReviewDocument regularJoined = ReviewJoinedSourceDocument("joined.pdf",
+                "before-anchor", "alphabeta", "after-anchor", 7, 35);
+
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("blocks.pdf", "before-anchor", "alpha",
+                    "beta", "after-anchor", " ", true, 7, 7, 35, 58),
+                ReviewJoinedSourceDocument("other-block.pdf", "before-anchor",
+                    "alphabeta", "after-anchor", 8, 35), PdfReviewLimits.Default()),
+                "несовместимые trusted structure blocks");
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("geometry.pdf", "before-anchor", "alpha",
+                    "beta", "after-anchor", " ", true, 7, 7, 35, 58),
+                ReviewJoinedSourceDocument("moved.pdf", "before-anchor",
+                    "alphabeta", "after-anchor", 7, 120), PdfReviewLimits.Default()),
+                "реальное геометрическое перемещение");
+
+            PdfReviewDocument crossPage = ReviewSplitSourceDocument("cross-page.pdf",
+                "before-anchor", "alpha", "beta", "after-anchor", " ", true,
+                7, 7, 35, 58);
+            PdfReviewPage firstPage = crossPage.Pages[0];
+            var secondPage = new PdfReviewPage
+            {
+                PageIndex = 1,
+                WidthPt = firstPage.WidthPt,
+                HeightPt = firstPage.HeightPt,
+                ViewWidthPt = firstPage.ViewWidthPt,
+                ViewHeightPt = firstPage.ViewHeightPt
+            };
+            for (int i = firstPage.Words.Count - 1; i >= 0; i--)
+                if (firstPage.Words[i].Key == "beta" ||
+                    firstPage.Words[i].Key == "after-anchor")
+                {
+                    secondPage.Words.Insert(0, firstPage.Words[i]);
+                    firstPage.Words.RemoveAt(i);
+                }
+            firstPage.Text = "before-anchor alpha";
+            firstPage.NormalizedText = PdfReviewDiff.Normalize(firstPage.Text);
+            firstPage.Fingerprint = PdfReviewDiff.Fingerprint(firstPage.NormalizedText,
+                firstPage.WidthPt, firstPage.HeightPt);
+            secondPage.Text = "beta after-anchor";
+            secondPage.NormalizedText = PdfReviewDiff.Normalize(secondPage.Text);
+            secondPage.Fingerprint = PdfReviewDiff.Fingerprint(secondPage.NormalizedText,
+                secondPage.WidthPt, secondPage.HeightPt);
+            crossPage.Pages.Add(secondPage);
+            AssertEqual(2, firstPage.Words.Count,
+                "cross-page fixture оставляет before/alpha на первой странице");
+            AssertEqual(2, secondPage.Words.Count,
+                "cross-page fixture переносит beta/after на вторую страницу");
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(crossPage, regularJoined,
+                PdfReviewLimits.Default()), "candidate пересекает физическую страницу");
+
+            PdfReviewDocument threeParts = ReviewSourceFlowDocument("three-parts.pdf",
+                "before-anchor", new[] { "al", "pha", "beta" }, "after-anchor",
+                new[] { " ", " ", " ", " " },
+                new[] { true, true, true, true }, new[] { 7, 7, 7 },
+                new[] { 35.0, 52.0, 72.0 }, new[] { 14.0, 17.0, 22.0 });
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(threeParts, regularJoined,
+                PdfReviewLimits.Default()), "scope шире строгого 3↔1 запрещён");
+
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("combining-split.pdf", "before-anchor", "a",
+                    "́b", "after-anchor", " ", true, 7, 7, 35, 58),
+                ReviewJoinedSourceDocument("combining-joined.pdf", "before-anchor",
+                    "áb", "after-anchor", 7, 35), PdfReviewLimits.Default()),
+                "combining sequence не разрезается эвристически");
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("surrogate-split.pdf", "before-anchor", "🙂",
+                    "x", "after-anchor", " ", true, 7, 7, 35, 58),
+                ReviewJoinedSourceDocument("surrogate-joined.pdf", "before-anchor",
+                    "🙂x", "after-anchor", 7, 35), PdfReviewLimits.Default()),
+                "surrogate source не объявляется однозначной границей");
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("ligature-split.pdf", "before-anchor", "ﬁ",
+                    "x", "after-anchor", " ", true, 7, 7, 35, 58),
+                ReviewJoinedSourceDocument("ligature-joined.pdf", "before-anchor",
+                    "ﬁx", "after-anchor", 7, 35), PdfReviewLimits.Default()),
+                "compatibility ligature не складывается через NFKC");
+            AssertSplitJoinAbstained(PdfReviewDiff.Compare(
+                ReviewSplitSourceDocument("true-edit.pdf", "before-anchor", "alpha",
+                    "beta", "after-anchor", " ", true, 7, 7, 35, 58),
+                ReviewJoinedSourceDocument("true-edit-right.pdf", "before-anchor",
+                    "alphagamma", "after-anchor", 7, 35), PdfReviewLimits.Default()),
+                "несовпадающая конкатенация остаётся настоящей word-правкой");
+        }
+
+        private static PdfReviewResult ReviewSplitJoinStageFixture()
+        {
+            PdfReviewDocument split = ReviewSplitSourceDocument("budget-split.pdf",
+                "before-anchor", "alpha", "beta", "after-anchor", " ", true,
+                7, 7, 35, 58);
+            PdfReviewDocument joined = ReviewJoinedSourceDocument("budget-joined.pdf",
+                "before-anchor", "alphabeta", "after-anchor", 7, 35);
+            var result = new PdfReviewResult { Left = split, Right = joined };
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            result.Operations.AddRange(PdfReviewDiff.DiffWords(
+                split.Pages[0].Words, joined.Pages[0].Words,
+                PdfReviewLimits.Default()));
+            return result;
+        }
+
+        private static bool ReviewSplitJoinStageSucceeds(long work)
+        {
+            PdfReviewResult result = ReviewSplitJoinStageFixture();
+            var limits = PdfReviewLimits.Default();
+            limits.MaxDiffWork = work;
+            PdfReviewDiff.ClassifySplitJoin(result, limits, null);
+            return ReviewSplitJoinOperation(result) != null;
+        }
+
+        private static void TestReviewSplitJoinWorkBudgetAtomic()
+        {
+            long minimum = FindMinimumReviewWork(ReviewSplitJoinStageSucceeds,
+                "split/join");
+            AssertTrue(minimum > 0,
+                "split/join semantic proof действительно расходует work-budget");
+
+            PdfReviewResult successful = ReviewSplitJoinStageFixture();
+            var successfulLimits = PdfReviewLimits.Default();
+            successfulLimits.MaxDiffWork = minimum;
+            PdfReviewDiff.ClassifySplitJoin(successful, successfulLimits, null);
+            AssertTrue(ReviewSplitJoinOperation(successful) != null,
+                "минимальный успешный бюджет атомарно публикует SplitJoin Equal");
+
+            PdfReviewResult exhausted = ReviewSplitJoinStageFixture();
+            string originalOperations = ReviewOrderMatchSig(exhausted);
+            int originalDeletes = ReviewOperationWordCount(exhausted.Operations,
+                PdfReviewDiffKind.Delete, -1);
+            int originalInserts = ReviewOperationWordCount(exhausted.Operations,
+                PdfReviewDiffKind.Insert, -1);
+            AssertTrue(originalDeletes > 0 && originalInserts > 0,
+                "fixture до классификации содержит консервативный Delete/Insert hunk");
+            var exhaustedLimits = PdfReviewLimits.Default();
+            exhaustedLimits.MaxDiffWork = minimum - 1;
+            PdfReviewDiff.ClassifySplitJoin(exhausted, exhaustedLimits, null);
+
+            AssertTrue(ReviewSplitJoinOperation(exhausted) == null,
+                "на единицу ниже успеха частичный SplitJoin Equal не публикуется");
+            AssertEqual(originalOperations, ReviewOrderMatchSig(exhausted),
+                "split/join exhaustion оставляет исходные операции побайтно по provenance");
+            AssertEqual(originalDeletes, ReviewOperationWordCount(exhausted.Operations,
+                PdfReviewDiffKind.Delete, -1),
+                "split/join exhaustion сохраняет все исходные Delete");
+            AssertEqual(originalInserts, ReviewOperationWordCount(exhausted.Operations,
+                PdfReviewDiffKind.Insert, -1),
+                "split/join exhaustion сохраняет все исходные Insert");
+
+            PdfReviewDiff.Project(exhausted);
+            AssertEqual(originalDeletes, exhausted.Stats.DeletedWords,
+                "после exhaustion проекция полностью считает консервативные Delete");
+            AssertEqual(originalInserts, exhausted.Stats.InsertedWords,
+                "после exhaustion проекция полностью считает консервативные Insert");
+            AssertEqual(PdfReviewPairStatus.Changed, exhausted.Pairs[0].Status,
+                "непроверенный split/join остаётся видимой word-правкой");
+
+            PdfReviewDiff.ClassifySplitJoin(exhausted, successfulLimits, null);
+            AssertTrue(ReviewSplitJoinOperation(exhausted) != null,
+                "тот же result допускает чистый повтор после split/join exhaustion");
+            AssertEqual("before-anchor alpha beta after-anchor",
+                RebuildReviewSide(exhausted.Operations, true),
+                "повтор не теряет физические слова split-стороны");
+            AssertEqual("before-anchor alphabeta after-anchor",
+                RebuildReviewSide(exhausted.Operations, false),
+                "повтор не подменяет joined-слово");
+        }
+
+        private static PdfReviewResult ReviewLongSplitJoinStageFixture(int partLength)
+        {
+            if (partLength < 1)
+                throw new ArgumentOutOfRangeException("partLength");
+            string first = new string('a', partLength);
+            string second = new string('b', partLength);
+            PdfReviewDocument split = ReviewSplitSourceDocument(
+                "long-budget-split.pdf", "before-anchor", first, second,
+                "after-anchor", " ", true, 7, 7, 35, 58);
+            PdfReviewDocument joined = ReviewJoinedSourceDocument(
+                "long-budget-joined.pdf", "before-anchor", first + second,
+                "after-anchor", 7, 35);
+            var result = new PdfReviewResult { Left = split, Right = joined };
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            result.Operations.AddRange(PdfReviewDiff.DiffWords(
+                split.Pages[0].Words, joined.Pages[0].Words,
+                PdfReviewLimits.Default()));
+            return result;
+        }
+
+        private static bool ReviewLongSplitJoinStageSucceeds(int partLength,
+            long work)
+        {
+            PdfReviewResult result = ReviewLongSplitJoinStageFixture(partLength);
+            var limits = PdfReviewLimits.Default();
+            limits.MaxDiffWork = work;
+            PdfReviewDiff.ClassifySplitJoin(result, limits, null);
+            return ReviewSplitJoinOperation(result) != null;
+        }
+
+        private static void TestReviewSplitJoinLongWorkBudgetAtomic()
+        {
+            const int PartLength = 1024;
+            long shortMinimum = FindMinimumReviewWork(ReviewSplitJoinStageSucceeds,
+                "short split/join");
+            long minimum = FindMinimumReviewWork(delegate(long work)
+            {
+                return ReviewLongSplitJoinStageSucceeds(PartLength, work);
+            }, "long split/join");
+            AssertTrue(minimum - shortMinimum >= PartLength * 16L,
+                "source, Unicode, normalization и equality scan длинного текста входят в budget");
+
+            PdfReviewResult successful = ReviewLongSplitJoinStageFixture(PartLength);
+            var successfulLimits = PdfReviewLimits.Default();
+            successfulLimits.MaxDiffWork = minimum;
+            PdfReviewDiff.ClassifySplitJoin(successful, successfulLimits, null);
+            PdfReviewWordOp operation = ReviewSplitJoinOperation(successful);
+            AssertTrue(operation != null && operation.LeftWords.Count == 2 &&
+                       operation.RightWords.Count == 1,
+                "минимальный полный бюджет публикует длинный доказанный SplitJoin");
+            AssertEqual(PartLength * 2, operation.RightWords[0].Text.Length,
+                "длинный joined-source не сокращён и не нормализован с потерями");
+
+            PdfReviewResult exhausted = ReviewLongSplitJoinStageFixture(PartLength);
+            string originalOperations = ReviewOrderMatchSig(exhausted);
+            var exhaustedLimits = PdfReviewLimits.Default();
+            exhaustedLimits.MaxDiffWork = minimum - 1;
+            PdfReviewDiff.ClassifySplitJoin(exhausted, exhaustedLimits, null);
+            AssertTrue(ReviewSplitJoinOperation(exhausted) == null,
+                "на единицу ниже полного proof длинный Equal не публикуется");
+            AssertEqual(originalOperations, ReviewOrderMatchSig(exhausted),
+                "исчерпание длинного proof сохраняет исходные Delete/Insert с provenance");
+
+            PdfReviewResult scanCancelled = ReviewLongSplitJoinStageFixture(PartLength);
+            string scanOriginal = ReviewOrderMatchSig(scanCancelled);
+            int scanChecks = 0;
+            bool scanThrown = false;
+            try
+            {
+                PdfReviewDiff.ClassifySplitJoin(scanCancelled,
+                    PdfReviewLimits.Default(), delegate
+                    {
+                        scanChecks++;
+                        return scanChecks >= 2;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                scanThrown = true;
+            }
+            AssertTrue(scanThrown && scanChecks == 2,
+                "periodic-отмена срабатывает внутри длинного Unicode/source proof");
+            AssertEqual(scanOriginal, ReviewOrderMatchSig(scanCancelled),
+                "отмена внутри длинного proof не публикует частичный Equal");
+
+            PdfReviewResult probe = ReviewLongSplitJoinStageFixture(PartLength);
+            int probeChecks = 0;
+            PdfReviewDiff.ClassifySplitJoin(probe, PdfReviewLimits.Default(),
+                delegate
+                {
+                    probeChecks++;
+                    return false;
+                });
+            AssertTrue(ReviewSplitJoinOperation(probe) != null && probeChecks > 10,
+                "успешный длинный proof проходит periodic и предcommit checkpoints");
+
+            PdfReviewResult commitCancelled = ReviewLongSplitJoinStageFixture(
+                PartLength);
+            string commitOriginal = ReviewOrderMatchSig(commitCancelled);
+            int commitChecks = 0;
+            bool commitThrown = false;
+            try
+            {
+                PdfReviewDiff.ClassifySplitJoin(commitCancelled,
+                    PdfReviewLimits.Default(), delegate
+                    {
+                        commitChecks++;
+                        return commitChecks >= probeChecks;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                commitThrown = true;
+            }
+            AssertTrue(commitThrown && commitChecks == probeChecks,
+                "последняя отмена достигает guard непосредственно перед Operations commit");
+            AssertEqual(commitOriginal, ReviewOrderMatchSig(commitCancelled),
+                "предcommit-отмена оставляет authoritative Operations без мутации");
+
+            PdfReviewDiff.ClassifySplitJoin(commitCancelled, successfulLimits, null);
+            AssertTrue(ReviewSplitJoinOperation(commitCancelled) != null,
+                "после предcommit-отмены чистый повтор атомарно публикует SplitJoin");
+        }
+
+        private static PdfReviewWord ReviewGeometryWord(string text, int pageIndex,
+            double left, double bottom, double width, int blockId = -1,
+            double height = 10)
+        {
+            return new PdfReviewWord
+            {
+                Text = text,
+                Key = text.Normalize(NormalizationForm.FormC),
+                PageIndex = pageIndex,
+                BlockId = blockId,
+                Box = new PdfReviewBox
+                {
+                    Left = left,
+                    Bottom = bottom,
+                    Right = left + width,
+                    Top = bottom + height
+                }
+            };
+        }
+
+        private static PdfReviewPage ReviewGeometryPage(int pageIndex,
+            params PdfReviewWord[] words)
+        {
+            var page = new PdfReviewPage
+            {
+                PageIndex = pageIndex,
+                WidthPt = 200,
+                HeightPt = 200,
+                ViewWidthPt = 200,
+                ViewHeightPt = 200
+            };
+            var text = new StringBuilder();
+            foreach (PdfReviewWord word in words)
+            {
+                if (text.Length > 0) text.Append(' ');
+                text.Append(word.Key);
+                page.Words.Add(word);
+            }
+            page.Text = text.ToString();
+            page.NormalizedText = PdfReviewDiff.Normalize(page.Text);
+            page.Fingerprint = PdfReviewDiff.Fingerprint(page.NormalizedText,
+                page.WidthPt, page.HeightPt);
+            return page;
+        }
+
+        private static PdfReviewDocument ReviewGeometryDocument(string path,
+            params PdfReviewPage[] pages)
+        {
+            var document = new PdfReviewDocument { Path = path };
+            foreach (PdfReviewPage page in pages)
+            {
+                document.Pages.Add(page);
+                document.WordCount += page.Words.Count;
+                document.CharacterCount += page.NormalizedText == null
+                    ? 0 : page.NormalizedText.Length;
+            }
+            return document;
+        }
+
+        private static int ReviewMatchCount(PdfReviewResult result,
+            PdfReviewMatchKind kind)
+        {
+            int count = 0;
+            foreach (PdfReviewWordOp operation in result.Operations)
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                    if (match != null && match.Kind == kind)
+                        count++;
+            return count;
+        }
+
+        private static string ReviewOrderMatchSig(PdfReviewResult result)
+        {
+            var parts = new List<string>();
+            foreach (PdfReviewWordOp operation in result.Operations)
+            {
+                var left = new List<string>();
+                var right = new List<string>();
+                var matches = new List<string>();
+                foreach (PdfReviewWord word in operation.LeftWords) left.Add(word.Key);
+                foreach (PdfReviewWord word in operation.RightWords) right.Add(word.Key);
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                    matches.Add(match.Left.Key + ">" + match.Right.Key + ":" + match.Kind);
+                parts.Add(operation.Kind + "/" + operation.MatchKind + ":" +
+                    string.Join(",", left.ToArray()) + "/" +
+                    string.Join(",", right.ToArray()) + "/" +
+                    string.Join(",", matches.ToArray()));
+            }
+            return string.Join("|", parts.ToArray());
+        }
+
+        private static void ReviewOrderPermutationDocuments(
+            out PdfReviewDocument left, out PdfReviewDocument right)
+        {
+            PdfReviewPage leftPage = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-anchor", 0, 5, 180, 42, 10),
+                ReviewGeometryWord("alpha", 0, 10, 140, 25, 11),
+                ReviewGeometryWord("beta", 0, 70, 140, 22, 11),
+                ReviewGeometryWord("gamma", 0, 10, 110, 28, 12),
+                ReviewGeometryWord("after-anchor", 0, 5, 40, 40, 10));
+            PdfReviewPage rightPage = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-anchor", 0, 5, 180, 42, 90),
+                ReviewGeometryWord("gamma", 0, 10, 110, 28, 92),
+                ReviewGeometryWord("alpha", 0, 10, 140, 25, 91),
+                ReviewGeometryWord("beta", 0, 70, 140, 22, 91),
+                ReviewGeometryWord("after-anchor", 0, 5, 40, 40, 90));
+            left = ReviewGeometryDocument("order-left.pdf", leftPage);
+            right = ReviewGeometryDocument("order-right.pdf", rightPage);
+        }
+
+        private static PdfReviewResult ReviewOrderPermutationStageFixture()
+        {
+            PdfReviewDocument left;
+            PdfReviewDocument right;
+            ReviewOrderPermutationDocuments(out left, out right);
+            var result = new PdfReviewResult { Left = left, Right = right };
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            result.Operations.AddRange(PdfReviewDiff.DiffWords(
+                left.Pages[0].Words, right.Pages[0].Words,
+                PdfReviewLimits.Default()));
+            return result;
+        }
+
+        private static bool ReviewReconciliationStageSucceeds(long work)
+        {
+            PdfReviewResult result = ReviewOrderPermutationStageFixture();
+            var limits = PdfReviewLimits.Default();
+            limits.MaxDiffWork = work;
+            PdfReviewDiff.ReconcileOrderArtifacts(result, limits, null);
+            return ReviewMatchCount(result, PdfReviewMatchKind.ReconciledOrder) == 1 &&
+                ReviewOperationWordCount(result.Operations,
+                    PdfReviewDiffKind.Delete, -1) == 0 &&
+                ReviewOperationWordCount(result.Operations,
+                    PdfReviewDiffKind.Insert, -1) == 0;
+        }
+
+        private static PdfReviewResult ReviewLargeOrderPermutationStageFixture()
+        {
+            var leftWords = new List<PdfReviewWord>();
+            var rightWords = new List<PdfReviewWord>();
+            leftWords.Add(ReviewGeometryWord("large-before", 0, 5, 180, 45, 10));
+            rightWords.Add(ReviewGeometryWord("large-before", 0, 5, 180, 45, 90));
+            for (int i = 0; i < 20; i++)
+            {
+                string key = "cell-" + i.ToString("D2",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                double x = 12 + (i % 5) * 34;
+                double y = 145 - (i / 5) * 14;
+                leftWords.Add(ReviewGeometryWord(key, 0, x, y, 12, 11));
+            }
+            for (int i = 19; i >= 0; i--)
+            {
+                string key = "cell-" + i.ToString("D2",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                double x = 12 + (i % 5) * 34;
+                double y = 145 - (i / 5) * 14;
+                rightWords.Add(ReviewGeometryWord(key, 0, x, y, 12, 91));
+            }
+            leftWords.Add(ReviewGeometryWord("large-after", 0, 5, 40, 42, 10));
+            rightWords.Add(ReviewGeometryWord("large-after", 0, 5, 40, 42, 90));
+
+            PdfReviewDocument left = ReviewGeometryDocument("large-order-left.pdf",
+                ReviewGeometryPage(0, leftWords.ToArray()));
+            PdfReviewDocument right = ReviewGeometryDocument("large-order-right.pdf",
+                ReviewGeometryPage(0, rightWords.ToArray()));
+            var result = new PdfReviewResult { Left = left, Right = right };
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            result.Operations.AddRange(PdfReviewDiff.DiffWords(
+                left.Pages[0].Words, right.Pages[0].Words,
+                PdfReviewLimits.Default()));
+            return result;
+        }
+
+        private static void TestReviewReconciliationWorkBudgetAtomic()
+        {
+            long minimum = FindMinimumReviewWork(ReviewReconciliationStageSucceeds,
+                "reconciliation");
+            AssertTrue(minimum > 0,
+                "reconciliation semantic proof действительно расходует work-budget");
+
+            PdfReviewResult successful = ReviewOrderPermutationStageFixture();
+            var successfulLimits = PdfReviewLimits.Default();
+            successfulLimits.MaxDiffWork = minimum;
+            PdfReviewDiff.ReconcileOrderArtifacts(successful, successfulLimits, null);
+            AssertEqual(1, ReviewMatchCount(successful,
+                PdfReviewMatchKind.ReconciledOrder),
+                "минимальный успешный бюджет публикует весь geometry matching");
+
+            PdfReviewResult exhausted = ReviewOrderPermutationStageFixture();
+            string originalOperations = ReviewOrderMatchSig(exhausted);
+            int originalDeletes = ReviewOperationWordCount(exhausted.Operations,
+                PdfReviewDiffKind.Delete, -1);
+            int originalInserts = ReviewOperationWordCount(exhausted.Operations,
+                PdfReviewDiffKind.Insert, -1);
+            var exhaustedLimits = PdfReviewLimits.Default();
+            exhaustedLimits.MaxDiffWork = minimum - 1;
+            PdfReviewDiff.ReconcileOrderArtifacts(exhausted, exhaustedLimits, null);
+            AssertEqual(originalOperations, ReviewOrderMatchSig(exhausted),
+                "на единицу ниже успеха reconciliation не коммитит partial rebuild");
+            AssertEqual(0, ReviewMatchCount(exhausted,
+                PdfReviewMatchKind.ReconciledOrder),
+                "при exhaustion не публикуется ни одного частичного geometry Equal");
+            AssertEqual(originalDeletes, ReviewOperationWordCount(exhausted.Operations,
+                PdfReviewDiffKind.Delete, -1),
+                "reconciliation exhaustion сохраняет исходные Delete");
+            AssertEqual(originalInserts, ReviewOperationWordCount(exhausted.Operations,
+                PdfReviewDiffKind.Insert, -1),
+                "reconciliation exhaustion сохраняет исходные Insert");
+
+            PdfReviewResult probe = ReviewLargeOrderPermutationStageFixture();
+            int probeChecks = 0;
+            PdfReviewDiff.ReconcileOrderArtifacts(probe, PdfReviewLimits.Default(),
+                delegate
+                {
+                    probeChecks++;
+                    return false;
+                });
+            AssertEqual(19, ReviewMatchCount(probe,
+                PdfReviewMatchKind.ReconciledOrder),
+                "максимальный двадцатисловный fixture полностью reconciled");
+            AssertTrue(probeChecks > 1,
+                "fixture достигает periodic cancellation checkpoint внутри reconciliation");
+
+            PdfReviewResult cancelled = ReviewLargeOrderPermutationStageFixture();
+            string cancelledOriginal = ReviewOrderMatchSig(cancelled);
+            int cancellationChecks = 0;
+            bool thrown = false;
+            try
+            {
+                PdfReviewDiff.ReconcileOrderArtifacts(cancelled,
+                    PdfReviewLimits.Default(), delegate
+                    {
+                        cancellationChecks++;
+                        return cancellationChecks >= probeChecks;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                thrown = true;
+            }
+            AssertTrue(thrown,
+                "отмена на последнем достигнутом checkpoint бросает OperationCanceledException");
+            AssertEqual(probeChecks, cancellationChecks,
+                "отмена сработала в поздней части фактического successful path");
+            AssertEqual(cancelledOriginal, ReviewOrderMatchSig(cancelled),
+                "поздняя отмена оставляет authoritative operations полностью неизменными");
+            AssertEqual(0, ReviewMatchCount(cancelled,
+                PdfReviewMatchKind.ReconciledOrder),
+                "отмена не пропускает частичный ReconciledOrder через transactional boundary");
+
+            PdfReviewDiff.ReconcileOrderArtifacts(cancelled,
+                PdfReviewLimits.Default(), null);
+            AssertEqual(19, ReviewMatchCount(cancelled,
+                PdfReviewMatchKind.ReconciledOrder),
+                "тот же result допускает чистый повтор после поздней отмены");
+            var expectedLeft = new StringBuilder("large-before");
+            for (int i = 0; i < 20; i++)
+                expectedLeft.Append(' ').Append("cell-").Append(i.ToString("D2",
+                    System.Globalization.CultureInfo.InvariantCulture));
+            expectedLeft.Append(" large-after");
+            AssertEqual(expectedLeft.ToString(),
+                RebuildReviewSide(cancelled.Operations, true),
+                "повтор после отмены сохраняет весь левый порядок");
+        }
+
+        private static PdfReviewResult ReviewDistantReconcileSeedFixture(bool matching)
+        {
+            PdfReviewWord leftBefore = ReviewGeometryWord("seed-before", 0,
+                5, 180, 42, 10);
+            PdfReviewWord leftTarget = ReviewGeometryWord("distant-target", 0,
+                20, 130, 35, 11);
+            PdfReviewWord leftAfter = ReviewGeometryWord("seed-after", 0,
+                5, 40, 40, 10);
+            PdfReviewWord rightBefore = ReviewGeometryWord("seed-before", 0,
+                5, 180, 42, 90);
+            PdfReviewWord rightAfter = ReviewGeometryWord("seed-after", 0,
+                5, 40, 40, 90);
+            var rightMiddle = new List<PdfReviewWord>();
+            for (int i = 0; i < 48; i++)
+            {
+                string key = "foreign-" + i.ToString("D2",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                rightMiddle.Add(ReviewGeometryWord(key, 0,
+                    8 + (i % 8) * 22, 160 - (i / 8) * 16, 18, 91));
+            }
+            PdfReviewWord rightTarget = ReviewGeometryWord(
+                matching ? "distant-target" : "different-target", 0,
+                20, 130, 35, 91);
+
+            PdfReviewPage leftPage = ReviewGeometryPage(0,
+                leftBefore, leftTarget, leftAfter);
+            var rightPageWords = new List<PdfReviewWord> { rightBefore };
+            rightPageWords.AddRange(rightMiddle);
+            rightPageWords.Add(rightTarget);
+            rightPageWords.Add(rightAfter);
+            PdfReviewPage rightPage = ReviewGeometryPage(0, rightPageWords.ToArray());
+            PdfReviewDocument left = ReviewGeometryDocument("seed-left.pdf", leftPage);
+            PdfReviewDocument right = ReviewGeometryDocument("seed-right.pdf", rightPage);
+            var result = new PdfReviewResult { Left = left, Right = right };
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            PdfReviewDiff.AppendEqual(result.Operations, leftBefore, rightBefore,
+                PdfReviewMatchKind.Exact);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Delete, leftTarget);
+            foreach (PdfReviewWord word in rightMiddle)
+                PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Insert, word);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Insert, rightTarget);
+            PdfReviewDiff.AppendEqual(result.Operations, leftAfter, rightAfter,
+                PdfReviewMatchKind.Exact);
+            return result;
+        }
+
+        private static void TestReviewReconciliationSeedWindowBounded()
+        {
+            PdfReviewResult distant = ReviewDistantReconcileSeedFixture(true);
+            string original = ReviewOrderMatchSig(distant);
+            int distantChecks = 0;
+            PdfReviewDiff.ReconcileOrderArtifacts(distant, PdfReviewLimits.Default(),
+                delegate
+                {
+                    distantChecks++;
+                    return false;
+                });
+            AssertEqual(original, ReviewOrderMatchSig(distant),
+                "matching Insert в 49 items от Delete не входит в 48-item seed window");
+            AssertEqual(0, ReviewMatchCount(distant,
+                PdfReviewMatchKind.ReconciledOrder),
+                "дальний одинаковый ключ не превращается в geometry Equal");
+            AssertEqual(1, ReviewOperationWordCount(distant.Operations,
+                PdfReviewDiffKind.Delete, -1),
+                "дальний seed сохраняет исходный Delete");
+            AssertEqual(49, ReviewOperationWordCount(distant.Operations,
+                PdfReviewDiffKind.Insert, -1),
+                "дальний seed сохраняет target и все foreign Insert");
+
+            PdfReviewResult control = ReviewDistantReconcileSeedFixture(false);
+            int controlChecks = 0;
+            PdfReviewDiff.ReconcileOrderArtifacts(control, PdfReviewLimits.Default(),
+                delegate
+                {
+                    controlChecks++;
+                    return false;
+                });
+            AssertEqual(controlChecks, distantChecks,
+                "ключ за seed-window не добавляет ни одного cancellation work checkpoint");
+            AssertEqual("seed-before distant-target seed-after",
+                RebuildReviewSide(distant.Operations, true),
+                "bounded scan не теряет левую сторону");
+            AssertTrue(RebuildReviewSide(distant.Operations, false).EndsWith(
+                "distant-target seed-after", StringComparison.Ordinal),
+                "bounded scan не теряет дальний правый target");
+        }
+
+        private static PdfReviewResult ReviewOrderPermutation(bool reverse)
+        {
+            PdfReviewDocument left;
+            PdfReviewDocument right;
+            ReviewOrderPermutationDocuments(out left, out right);
+            return reverse
+                ? PdfReviewDiff.Compare(right, left, PdfReviewLimits.Default())
+                : PdfReviewDiff.Compare(left, right, PdfReviewLimits.Default());
+        }
+
+        /// <summary>
+        /// Один global diff сохраняется: cleanup лишь переводит маленькую перестановку
+        /// extraction-order в Equal после уникального физического 1↔1 сопоставления.
+        /// </summary>
+        private static void TestReviewOrderArtifactReconciliation()
+        {
+            PdfReviewResult forward = ReviewOrderPermutation(false);
+            AssertEqual(0, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Delete, -1),
+                "геометрически неизменная перестановка не остаётся Delete");
+            AssertEqual(0, ReviewOperationWordCount(forward.Operations,
+                PdfReviewDiffKind.Insert, -1),
+                "геометрически неизменная перестановка не остаётся Insert");
+            AssertEqual(1, ReviewMatchCount(forward,
+                PdfReviewMatchKind.ReconciledOrder),
+                "только снятый LCS-артефакт получает geometry provenance");
+            AssertEqual(4, ReviewMatchCount(forward, PdfReviewMatchKind.Exact),
+                "исходные точные пары не теряют Exact provenance при перестройке цикла");
+            PdfReviewWordOp mixed = null;
+            foreach (PdfReviewWordOp operation in forward.Operations)
+                if (operation.MatchKind == PdfReviewMatchKind.MixedOrder)
+                    mixed = operation;
+            AssertTrue(mixed != null && mixed.Matches.Count == 3,
+                "цикл с Exact и ReconciledOrder представлен отдельным MixedOrder-контейнером");
+            AssertEqual("before-anchor alpha beta gamma after-anchor",
+                RebuildReviewSide(forward.Operations, true),
+                "reconciliation сохраняет документный порядок левой стороны");
+            AssertEqual("before-anchor gamma alpha beta after-anchor",
+                RebuildReviewSide(forward.Operations, false),
+                "reconciliation сохраняет документный порядок правой стороны");
+            AssertEqual(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
+                ReviewOrderPermutation(false)),
+                "повторный запуск выбирает те же окна и связи");
+
+            PdfReviewResult reverse = ReviewOrderPermutation(true);
+            AssertEqual(0, ReviewOperationWordCount(reverse.Operations,
+                PdfReviewDiffKind.Delete, -1) + ReviewOperationWordCount(
+                    reverse.Operations, PdfReviewDiffKind.Insert, -1),
+                "обратное сравнение снимает ту же перестановку");
+            AssertEqual(1, ReviewMatchCount(reverse,
+                PdfReviewMatchKind.ReconciledOrder),
+                "обратное сравнение хранит одну зеркальную geometry-связь");
+            AssertEqual(4, ReviewMatchCount(reverse, PdfReviewMatchKind.Exact),
+                "обратная перестройка также сохраняет Exact provenance");
+            AssertEqual("before-anchor gamma alpha beta after-anchor",
+                RebuildReviewSide(reverse.Operations, true),
+                "обратный результат точно восстанавливает новую левую сторону");
+            AssertEqual("before-anchor alpha beta gamma after-anchor",
+                RebuildReviewSide(reverse.Operations, false),
+                "обратный результат точно восстанавливает новую правую сторону");
+        }
+
+        /// <summary>
+        /// Равный multiset сам по себе ничего не доказывает: повторные одинаковые boxes дают
+        /// несколько perfect matchings, а физически переехавшее слово не имеет colocated-edge.
+        /// </summary>
+        private static void TestReviewOrderArtifactAmbiguity()
+        {
+            PdfReviewPage ambiguousLeft = ReviewGeometryPage(0,
+                ReviewGeometryWord("before", 0, 5, 180, 30),
+                ReviewGeometryWord("mover", 0, 130, 100, 25),
+                ReviewGeometryWord("dup", 0, 40, 130, 18),
+                ReviewGeometryWord("dup", 0, 40, 130, 18),
+                ReviewGeometryWord("stable", 0, 80, 130, 28),
+                ReviewGeometryWord("after", 0, 5, 40, 25));
+            PdfReviewPage ambiguousRight = ReviewGeometryPage(0,
+                ReviewGeometryWord("before", 0, 5, 180, 30),
+                ReviewGeometryWord("dup", 0, 40, 130, 18),
+                ReviewGeometryWord("dup", 0, 40, 130, 18),
+                ReviewGeometryWord("stable", 0, 80, 130, 28),
+                ReviewGeometryWord("mover", 0, 130, 100, 25),
+                ReviewGeometryWord("after", 0, 5, 40, 25));
+            PdfReviewResult ambiguous = PdfReviewDiff.Compare(
+                ReviewGeometryDocument("ambiguous-left.pdf", ambiguousLeft),
+                ReviewGeometryDocument("ambiguous-right.pdf", ambiguousRight),
+                PdfReviewLimits.Default());
+            AssertEqual(0, ReviewMatchCount(ambiguous,
+                PdfReviewMatchKind.ReconciledOrder),
+                "два perfect matching для повторов требуют abstention");
+            AssertEqual(1, ReviewOperationWordCount(ambiguous.Operations,
+                PdfReviewDiffKind.Delete, -1),
+                "неоднозначная перестановка остаётся видимым Delete-кандидатом");
+            AssertEqual(1, ReviewOperationWordCount(ambiguous.Operations,
+                PdfReviewDiffKind.Insert, -1),
+                "неоднозначная перестановка остаётся видимым Insert-кандидатом");
+
+            PdfReviewPage movedLeft = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-move", 0, 5, 180, 40),
+                ReviewGeometryWord("moved", 0, 125, 135, 28),
+                ReviewGeometryWord("fixed-a", 0, 15, 125, 28),
+                ReviewGeometryWord("fixed-b", 0, 60, 125, 28),
+                ReviewGeometryWord("after-move", 0, 5, 40, 38));
+            PdfReviewPage movedRight = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-move", 0, 5, 180, 40),
+                ReviewGeometryWord("fixed-a", 0, 15, 125, 28),
+                ReviewGeometryWord("fixed-b", 0, 60, 125, 28),
+                ReviewGeometryWord("moved", 0, 125, 70, 28),
+                ReviewGeometryWord("after-move", 0, 5, 40, 38));
+            PdfReviewResult moved = PdfReviewDiff.Compare(
+                ReviewGeometryDocument("moved-left.pdf", movedLeft),
+                ReviewGeometryDocument("moved-right.pdf", movedRight),
+                PdfReviewLimits.Default());
+            AssertEqual(0, ReviewMatchCount(moved,
+                PdfReviewMatchKind.ReconciledOrder),
+                "настоящее физическое перемещение не маскируется");
+            AssertEqual(1, ReviewOperationWordCount(moved.Operations,
+                PdfReviewDiffKind.Delete, -1), "старая позиция движения остаётся Delete");
+            AssertEqual(1, ReviewOperationWordCount(moved.Operations,
+                PdfReviewDiffKind.Insert, -1), "новая позиция движения остаётся Insert");
+        }
+
+        private static void TestReviewOrderArtifactSafetyGates()
+        {
+            PdfReviewPage incompatibleLeft = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-block", 0, 5, 180, 42, 10),
+                ReviewGeometryWord("alpha-block", 0, 10, 140, 25, 11),
+                ReviewGeometryWord("beta-block", 0, 70, 140, 22, 11),
+                ReviewGeometryWord("gamma-block", 0, 10, 110, 28, 12),
+                ReviewGeometryWord("after-block", 0, 5, 40, 40, 10));
+            PdfReviewPage incompatibleRight = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-block", 0, 5, 180, 42, 90),
+                ReviewGeometryWord("gamma-block", 0, 10, 110, 28, 92),
+                ReviewGeometryWord("alpha-block", 0, 10, 140, 25, 91),
+                ReviewGeometryWord("beta-block", 0, 70, 140, 22, 93),
+                ReviewGeometryWord("after-block", 0, 5, 40, 40, 90));
+            PdfReviewDocument incompatibleLeftDocument = ReviewGeometryDocument(
+                "block-left.pdf", incompatibleLeft);
+            PdfReviewDocument incompatibleRightDocument = ReviewGeometryDocument(
+                "block-right.pdf", incompatibleRight);
+            PdfReviewResult incompatible = PdfReviewDiff.Compare(
+                incompatibleLeftDocument, incompatibleRightDocument,
+                PdfReviewLimits.Default());
+            PdfReviewResult incompatibleReverse = PdfReviewDiff.Compare(
+                incompatibleRightDocument, incompatibleLeftDocument,
+                PdfReviewLimits.Default());
+            AssertEqual(0, ReviewMatchCount(incompatible,
+                PdfReviewMatchKind.ReconciledOrder),
+                "один local block не может соответствовать двум foreign blocks");
+            AssertEqual(0, ReviewMatchCount(incompatibleReverse,
+                PdfReviewMatchKind.ReconciledOrder),
+                "block-partition gate симметричен при обратном сравнении");
+            AssertTrue(ReviewOperationWordCount(incompatible.Operations,
+                           PdfReviewDiffKind.Delete, -1) > 0 &&
+                       ReviewOperationWordCount(incompatible.Operations,
+                           PdfReviewDiffKind.Insert, -1) > 0,
+                "несовместимый trusted flow остаётся явной правкой");
+
+            PdfReviewPage invalidLeft = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-invalid", 0, 5, 180, 45),
+                ReviewGeometryWord("one", 0, 10, 135, 18),
+                ReviewGeometryWord("two", 0, 60, 135, 18),
+                ReviewGeometryWord("three", 0, 10, 105, 24),
+                ReviewGeometryWord("after-invalid", 0, 5, 40, 42));
+            PdfReviewWord invalidThree = ReviewGeometryWord("three", 0, 10, 105, 0);
+            PdfReviewPage invalidRight = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-invalid", 0, 5, 180, 45),
+                invalidThree,
+                ReviewGeometryWord("one", 0, 10, 135, 18),
+                ReviewGeometryWord("two", 0, 60, 135, 18),
+                ReviewGeometryWord("after-invalid", 0, 5, 40, 42));
+            PdfReviewResult invalid = PdfReviewDiff.Compare(
+                ReviewGeometryDocument("invalid-left.pdf", invalidLeft),
+                ReviewGeometryDocument("invalid-right.pdf", invalidRight),
+                PdfReviewLimits.Default());
+            AssertEqual(0, ReviewMatchCount(invalid,
+                PdfReviewMatchKind.ReconciledOrder),
+                "неположительная box запрещает reconciliation");
+
+            PdfReviewPage registrationLeft = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-registration", 0, 5, 180, 55),
+                ReviewGeometryWord("red", 0, 10, 135, 18),
+                ReviewGeometryWord("blue", 0, 60, 135, 20),
+                ReviewGeometryWord("green", 0, 10, 105, 24),
+                ReviewGeometryWord("after-registration", 0, 5, 40, 52));
+            PdfReviewPage registrationRight = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-registration", 0, 5, 180, 55),
+                ReviewGeometryWord("green", 0, 10, 105, 24),
+                ReviewGeometryWord("red", 0, 10, 135, 18),
+                ReviewGeometryWord("blue", 0, 60, 135, 20),
+                ReviewGeometryWord("after-registration", 0, 30, 40, 52));
+            PdfReviewResult noRegistration = PdfReviewDiff.Compare(
+                ReviewGeometryDocument("registration-left.pdf", registrationLeft),
+                ReviewGeometryDocument("registration-right.pdf", registrationRight),
+                PdfReviewLimits.Default());
+            AssertEqual(0, ReviewMatchCount(noRegistration,
+                PdfReviewMatchKind.ReconciledOrder),
+                "несогласованные два anchor не дают локальную регистрацию");
+
+            var manyLeft = new List<PdfReviewWord>();
+            var manyRight = new List<PdfReviewWord>();
+            manyLeft.Add(ReviewGeometryWord("before-many", 0, 5, 190, 38));
+            manyRight.Add(ReviewGeometryWord("before-many", 0, 5, 190, 38));
+            for (int i = 0; i < 21; i++)
+            {
+                string key = "item-" + i.ToString("D2",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                double x = 5 + (i % 7) * 27;
+                double y = 160 - (i / 7) * 25;
+                manyLeft.Add(ReviewGeometryWord(key, 0, x, y, 20));
+            }
+            manyRight.Add(ReviewGeometryWord("item-20", 0,
+                5 + (20 % 7) * 27, 160 - (20 / 7) * 25, 20));
+            for (int i = 0; i < 20; i++)
+            {
+                string key = "item-" + i.ToString("D2",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                double x = 5 + (i % 7) * 27;
+                double y = 160 - (i / 7) * 25;
+                manyRight.Add(ReviewGeometryWord(key, 0, x, y, 20));
+            }
+            manyLeft.Add(ReviewGeometryWord("after-many", 0, 5, 20, 35));
+            manyRight.Add(ReviewGeometryWord("after-many", 0, 5, 20, 35));
+            PdfReviewResult oversized = PdfReviewDiff.Compare(
+                ReviewGeometryDocument("many-left.pdf", ReviewGeometryPage(0,
+                    manyLeft.ToArray())),
+                ReviewGeometryDocument("many-right.pdf", ReviewGeometryPage(0,
+                    manyRight.ToArray())), PdfReviewLimits.Default());
+            AssertEqual(0, ReviewMatchCount(oversized,
+                PdfReviewMatchKind.ReconciledOrder),
+                "участок больше двадцати слов не reconciled");
+
+            PdfReviewPage crossLeftZero = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-cross", 0, 5, 180, 42),
+                ReviewGeometryWord("cross-a", 0, 10, 140, 30));
+            PdfReviewPage crossLeftOne = ReviewGeometryPage(1,
+                ReviewGeometryWord("cross-b", 1, 60, 140, 30),
+                ReviewGeometryWord("cross-c", 1, 10, 105, 30),
+                ReviewGeometryWord("after-cross", 1, 5, 40, 40));
+            PdfReviewPage crossRightZero = ReviewGeometryPage(0,
+                ReviewGeometryWord("before-cross", 0, 5, 180, 42),
+                ReviewGeometryWord("cross-c", 0, 10, 105, 30));
+            PdfReviewPage crossRightOne = ReviewGeometryPage(1,
+                ReviewGeometryWord("cross-a", 1, 10, 140, 30),
+                ReviewGeometryWord("cross-b", 1, 60, 140, 30),
+                ReviewGeometryWord("after-cross", 1, 5, 40, 40));
+            PdfReviewResult crossPage = PdfReviewDiff.Compare(
+                ReviewGeometryDocument("cross-left.pdf", crossLeftZero, crossLeftOne),
+                ReviewGeometryDocument("cross-right.pdf", crossRightZero, crossRightOne),
+                PdfReviewLimits.Default());
+            AssertEqual(0, ReviewMatchCount(crossPage,
+                PdfReviewMatchKind.ReconciledOrder),
+                "кандидат через физическую границу страницы не reconciled");
+            AssertTrue(ReviewOperationWordCount(crossPage.Operations,
+                           PdfReviewDiffKind.Delete, -1) > 0 &&
+                       ReviewOperationWordCount(crossPage.Operations,
+                           PdfReviewDiffKind.Insert, -1) > 0,
+                "cross-page перестановка остаётся явными операциями");
+        }
+
+        private static PdfReviewResult ReviewOrderAdjacentCrossPair(bool reverse)
+        {
+            PdfReviewPage leftZero = ReviewGeometryPage(0,
+                ReviewGeometryWord("page-zero", 0, 5, 195, 42, 10),
+                ReviewGeometryWord("before-local", 0, 5, 180, 42, 10),
+                ReviewGeometryWord("cell-a", 0, 10, 140, 24, 11),
+                ReviewGeometryWord("pivot-upper", 0, 70, 140, 34, 11),
+                ReviewGeometryWord("cell-b", 0, 10, 110, 24, 12),
+                ReviewGeometryWord("pivot-lower", 0, 70, 110, 34, 12),
+                ReviewGeometryWord("cross-page-signature", 0, 5, 30, 55, 13));
+            PdfReviewPage leftOne = ReviewGeometryPage(1,
+                ReviewGeometryWord("page-one-a", 1, 5, 185, 34, 20),
+                ReviewGeometryWord("page-one-b", 1, 5, 165, 34, 20),
+                ReviewGeometryWord("page-one-c", 1, 5, 145, 34, 20),
+                ReviewGeometryWord("old-value", 1, 5, 105, 34, 21),
+                ReviewGeometryWord("page-one-d", 1, 5, 65, 34, 22),
+                ReviewGeometryWord("page-one-e", 1, 5, 45, 34, 22));
+            PdfReviewPage rightZero = ReviewGeometryPage(0,
+                ReviewGeometryWord("page-zero", 0, 5, 195, 42, 90),
+                ReviewGeometryWord("before-local", 0, 5, 180, 42, 90),
+                ReviewGeometryWord("pivot-upper", 0, 70, 140, 34, 91),
+                ReviewGeometryWord("cell-a", 0, 10, 140, 24, 91),
+                ReviewGeometryWord("pivot-lower", 0, 70, 110, 34, 92),
+                ReviewGeometryWord("cell-b", 0, 10, 110, 24, 92));
+            PdfReviewPage rightOne = ReviewGeometryPage(1,
+                ReviewGeometryWord("cross-page-signature", 1, 5, 185, 55, 200),
+                ReviewGeometryWord("page-one-a", 1, 5, 165, 34, 201),
+                ReviewGeometryWord("page-one-b", 1, 5, 145, 34, 201),
+                ReviewGeometryWord("page-one-c", 1, 5, 125, 34, 201),
+                ReviewGeometryWord("new-value", 1, 5, 85, 34, 202),
+                ReviewGeometryWord("page-one-d", 1, 5, 45, 34, 203),
+                ReviewGeometryWord("page-one-e", 1, 5, 25, 34, 203));
+            PdfReviewDocument left = ReviewGeometryDocument(
+                "adjacent-cross-left.pdf", leftZero, leftOne);
+            PdfReviewDocument right = ReviewGeometryDocument(
+                "adjacent-cross-right.pdf", rightZero, rightOne);
+            return reverse
+                ? PdfReviewDiff.Compare(right, left, PdfReviewLimits.Default())
+                : PdfReviewDiff.Compare(left, right, PdfReviewLimits.Default());
+        }
+
+        /// <summary>
+        /// Foreign Exact остаётся жёсткой границей, но не отбрасывает доказанный
+        /// same-page цикл непосредственно перед ней. Проверяется полный Compare и обе стороны.
+        /// </summary>
+        private static void TestReviewOrderArtifactAdjacentCrossPairBarrier()
+        {
+            PdfReviewResult forward = ReviewOrderAdjacentCrossPair(false);
+            AssertReviewAdjacentCrossPairResult(forward, false,
+                "прямое сравнение");
+            PdfReviewResult repeat = ReviewOrderAdjacentCrossPair(false);
+            AssertEqual(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(repeat),
+                "окно рядом с cross-pair границей выбирается детерминированно");
+
+            PdfReviewResult reverse = ReviewOrderAdjacentCrossPair(true);
+            AssertReviewAdjacentCrossPairResult(reverse, true,
+                "обратное сравнение");
+            AssertEqual(ReviewMatchCount(forward,
+                    PdfReviewMatchKind.ReconciledOrder),
+                ReviewMatchCount(reverse, PdfReviewMatchKind.ReconciledOrder),
+                "зеркальные направления снимают одинаковое число LCS-артефактов");
+        }
+
+        private static void AssertReviewAdjacentCrossPairResult(PdfReviewResult result,
+            bool reverse, string context)
+        {
+            AssertTrue(result.Pairs.Count == 2 &&
+                       result.Pairs[0].LeftPageIndex == 0 &&
+                       result.Pairs[0].RightPageIndex == 0 &&
+                       result.Pairs[1].LeftPageIndex == 1 &&
+                       result.Pairs[1].RightPageIndex == 1,
+                context + ": viewer сохранил физические пары 0↔0 и 1↔1");
+            AssertEqual(0, ReviewChangedKeyCount(result, "cell-a") +
+                           ReviewChangedKeyCount(result, "cell-b"),
+                context + ": локальные ячейки не остаются ложными Delete/Insert");
+            AssertEqual(2, ReviewMatchCount(result,
+                PdfReviewMatchKind.ReconciledOrder),
+                context + ": две переставленные ячейки имеют geometry provenance");
+            AssertEqual(1, ReviewChangedKeyCount(result,
+                reverse ? "new-value" : "old-value"),
+                context + ": настоящее удаление рядом с границей сохранено");
+            AssertEqual(1, ReviewChangedKeyCount(result,
+                reverse ? "old-value" : "new-value"),
+                context + ": настоящее добавление рядом с границей сохранено");
+
+            int crossMatches = 0;
+            foreach (PdfReviewWordOp operation in result.Operations)
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                    if (match != null && match.Left != null && match.Right != null &&
+                        match.Left.Key == "cross-page-signature" &&
+                        match.Right.Key == "cross-page-signature")
+                    {
+                        crossMatches++;
+                        AssertTrue(match.Kind == PdfReviewMatchKind.Exact &&
+                                   match.Left.PageIndex == (reverse ? 1 : 0) &&
+                                   match.Right.PageIndex == (reverse ? 0 : 1),
+                            context + ": foreign Exact остался отдельной физической связью");
+                    }
+            AssertEqual(1, crossMatches,
+                context + ": cross-page свидетельство не потеряно и не продублировано");
+            AssertReviewReconcilePagePairInvariant(result, context);
+        }
+
+        private static PdfReviewResult ReviewOrderInternalBlockCluster(bool reverse)
+        {
+            PdfReviewPage earlyZero = ReviewGeometryPage(0,
+                ReviewGeometryWord("local-prefix", 0, 5, 127, 42, 10),
+                ReviewGeometryWord("cell-a", 0, 60, 80, 20, 11, 4.5),
+                ReviewGeometryWord("cell-b", 0, 90, 80, 25, 11, 4.5),
+                ReviewGeometryWord("row-anchor-a", 0, 110, 84, 20, 12),
+                ReviewGeometryWord("row-anchor-b", 0, 140, 84, 20, 12),
+                ReviewGeometryWord("row-anchor-e", 0, 170, 84, 15, 12),
+                ReviewGeometryWord("cell-c", 0, 60, 60, 30, 11, 4.5),
+                ReviewGeometryWord("row-anchor-c", 0, 110, 60, 25, 12),
+                ReviewGeometryWord("row-anchor-d", 0, 145, 60, 20, 12));
+            PdfReviewPage earlyOne = ReviewGeometryPage(1,
+                ReviewGeometryWord("cross-page-signature", 1, 5, 185, 55, 200),
+                ReviewGeometryWord("page-one-a", 1, 5, 165, 34, 201),
+                ReviewGeometryWord("page-one-b", 1, 5, 145, 34, 201),
+                ReviewGeometryWord("old-value", 1, 5, 105, 34, 202),
+                ReviewGeometryWord("page-one-c", 1, 5, 65, 34, 203),
+                ReviewGeometryWord("page-one-d", 1, 5, 45, 34, 203));
+            PdfReviewPage lateZero = ReviewGeometryPage(0,
+                ReviewGeometryWord("local-prefix", 0, 5, 180, 42, 90),
+                ReviewGeometryWord("row-anchor-a", 0, 110, 134, 20, 92),
+                ReviewGeometryWord("row-anchor-b", 0, 140, 134, 20, 92),
+                ReviewGeometryWord("row-anchor-e", 0, 170, 134, 15, 92),
+                ReviewGeometryWord("cell-a", 0, 60, 136, 20, 91, 4.5),
+                ReviewGeometryWord("cell-b", 0, 90, 136, 25, 91, 4.5),
+                ReviewGeometryWord("row-anchor-c", 0, 110, 110.5, 25, 92),
+                ReviewGeometryWord("row-anchor-d", 0, 145, 110.5, 20, 92),
+                ReviewGeometryWord("cell-c", 0, 60, 115, 30, 91, 4.5),
+                ReviewGeometryWord("cross-page-signature", 0, 5, 20, 55, 91));
+            PdfReviewPage lateOne = ReviewGeometryPage(1,
+                ReviewGeometryWord("page-one-a", 1, 5, 165, 34, 210),
+                ReviewGeometryWord("page-one-b", 1, 5, 145, 34, 210),
+                ReviewGeometryWord("new-value", 1, 5, 85, 34, 211),
+                ReviewGeometryWord("page-one-c", 1, 5, 65, 34, 212),
+                ReviewGeometryWord("page-one-d", 1, 5, 45, 34, 212));
+            PdfReviewDocument early = ReviewGeometryDocument(
+                "internal-cluster-early.pdf", earlyZero, earlyOne);
+            PdfReviewDocument late = ReviewGeometryDocument(
+                "internal-cluster-late.pdf", lateZero, lateOne);
+            return reverse
+                ? PdfReviewDiff.Compare(late, early, PdfReviewLimits.Default())
+                : PdfReviewDiff.Compare(early, late, PdfReviewLimits.Default());
+        }
+
+        /// <summary>
+        /// Соседние строки формы могут иметь немного разный вертикальный сдвиг. Три слова
+        /// одного trusted block-pair дают независимое локальное corroboration, но внешний
+        /// cross-page Exact остаётся границей, а настоящая правка — Delete/Insert.
+        /// </summary>
+        private static void TestReviewOrderArtifactInternalBlockCluster()
+        {
+            PdfReviewResult forward = ReviewOrderInternalBlockCluster(false);
+            AssertReviewInternalBlockCluster(forward, false, "прямое сравнение");
+            AssertEqual(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
+                ReviewOrderInternalBlockCluster(false)),
+                "локальный block-cluster выбирается детерминированно");
+
+            PdfReviewResult reverse = ReviewOrderInternalBlockCluster(true);
+            AssertReviewInternalBlockCluster(reverse, true, "обратное сравнение");
+            AssertEqual(ReviewMatchCount(forward,
+                    PdfReviewMatchKind.ReconciledOrder),
+                ReviewMatchCount(reverse, PdfReviewMatchKind.ReconciledOrder),
+                "trusted block-cluster симметричен при перестановке документов");
+        }
+
+        private static void AssertReviewInternalBlockCluster(PdfReviewResult result,
+            bool reverse, string context)
+        {
+            AssertTrue(result.Pairs.Count == 2 &&
+                       result.Pairs[0].LeftPageIndex == 0 &&
+                       result.Pairs[0].RightPageIndex == 0 &&
+                       result.Pairs[1].LeftPageIndex == 1 &&
+                       result.Pairs[1].RightPageIndex == 1,
+                context + ": viewer сохранил физические пары 0↔0 и 1↔1");
+            foreach (string key in new[] { "cell-a", "cell-b", "cell-c",
+                "row-anchor-a", "row-anchor-b", "row-anchor-c", "row-anchor-d",
+                "row-anchor-e" })
+            {
+                AssertEqual(0, ReviewChangedKeyCount(result, key),
+                    context + ": «" + key + "» не остаётся ложной правкой");
+                int matches = 0;
+                PdfReviewMatchKind kind = PdfReviewMatchKind.None;
+                foreach (PdfReviewWordOp operation in result.Operations)
+                    foreach (PdfReviewWordMatch match in operation.Matches)
+                        if (match != null && match.Left != null && match.Right != null &&
+                            match.Left.Key == key && match.Right.Key == key)
+                        {
+                            matches++;
+                            kind = match.Kind;
+                        }
+                AssertEqual(1, matches, context + ": «" + key +
+                    "» имеет одну явную двустороннюю связь");
+                AssertTrue(kind == PdfReviewMatchKind.Exact ||
+                           kind == PdfReviewMatchKind.ReconciledOrder,
+                    context + ": «" + key + "» сохраняет доказанную provenance");
+            }
+            AssertEqual(3, ReviewMatchCount(result,
+                PdfReviewMatchKind.ReconciledOrder),
+                context + ": только три LCS-артефакта получают geometry provenance");
+            AssertEqual(1, ReviewChangedKeyCount(result, "old-value"),
+                context + ": старое значение осталось видимой правкой");
+            AssertEqual(1, ReviewChangedKeyCount(result, "new-value"),
+                context + ": новое значение осталось видимой правкой");
+
+            int crossMatches = 0;
+            foreach (PdfReviewWordOp operation in result.Operations)
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                    if (match != null && match.Left != null && match.Right != null &&
+                        match.Left.Key == "cross-page-signature" &&
+                        match.Right.Key == "cross-page-signature")
+                    {
+                        crossMatches++;
+                        AssertTrue(match.Kind == PdfReviewMatchKind.Exact &&
+                                   match.Left.PageIndex == (reverse ? 0 : 1) &&
+                                   match.Right.PageIndex == (reverse ? 1 : 0),
+                            context + ": foreign Exact не перепривязан к локальному блоку");
+                    }
+            AssertEqual(1, crossMatches,
+                context + ": foreign Exact сохранён ровно один раз");
+            AssertReviewReconcilePagePairInvariant(result, context);
+        }
+
+        private static PdfReviewResult ReviewRepeatedExactAnchor(bool reverse,
+            bool strongEvidence)
+        {
+            var earlyWords = new List<PdfReviewWord>
+            {
+                ReviewGeometryWord("repeat-prefix", 0, 5, 180, 45, 10),
+                ReviewGeometryWord("dup-anchor", 0, 150, 150, 24, 11),
+                ReviewGeometryWord("old-only", 0, 145, 135, 30, 11),
+                ReviewGeometryWord("dup-anchor", 0, 20, 100, 24, 20),
+                ReviewGeometryWord("header-a", 0, 50, 100, 25, 20)
+            };
+            var lateWords = new List<PdfReviewWord>
+            {
+                ReviewGeometryWord("repeat-prefix", 0, 5, 180, 45, 80),
+                ReviewGeometryWord("dup-anchor", 0, 20, 120, 24, 90),
+                ReviewGeometryWord("header-a", 0, 50, 120, 25, 90)
+            };
+            if (strongEvidence)
+            {
+                earlyWords.Add(ReviewGeometryWord("header-b", 0, 85, 100, 25, 20));
+                lateWords.Add(ReviewGeometryWord("header-b", 0, 85, 120, 25, 90));
+            }
+            earlyWords.Add(ReviewGeometryWord("old-tail", 0, 20, 50, 30, 30));
+            lateWords.Add(ReviewGeometryWord("new-tail", 0, 20, 50, 30, 100));
+
+            PdfReviewDocument early = ReviewGeometryDocument("repeat-early.pdf",
+                ReviewGeometryPage(0, earlyWords.ToArray()));
+            PdfReviewDocument late = ReviewGeometryDocument("repeat-late.pdf",
+                ReviewGeometryPage(0, lateWords.ToArray()));
+            return reverse
+                ? PdfReviewDiff.Compare(late, early, PdfReviewLimits.Default())
+                : PdfReviewDiff.Compare(early, late, PdfReviewLimits.Default());
+        }
+
+        /// <summary>
+        /// Global LCS закономерно берёт первый одинаковый ключ и может связать удаляемую строку
+        /// с поздним заголовком. Перепривязка допустима только когда другая физическая копия
+        /// образует уникальный кластер минимум из трёх слов одной trusted block-pair.
+        /// </summary>
+        private static void TestReviewRepeatedExactAnchorRepair()
+        {
+            PdfReviewResult forward = ReviewRepeatedExactAnchor(false, true);
+            AssertReviewFixtureStable(forward, false, "dup-anchor", 20, 100,
+                20, 120, "прямое сравнение повторного Exact");
+            AssertReviewFixtureChange(forward, PdfReviewDiffKind.Delete,
+                "dup-anchor", 0, 150, 150,
+                "прямое сравнение сохраняет реально удалённую копию");
+            AssertEqual(1, ReviewChangedKeyCount(forward, "dup-anchor"),
+                "прямое сравнение меняет только физически удалённую копию");
+            AssertEqual(1, ReviewMatchCount(forward,
+                PdfReviewMatchKind.ReconciledOrder),
+                "перепривязанный заголовок явно хранит geometry provenance");
+            AssertEqual(1, ReviewChangedKeyCount(forward, "old-only"),
+                "старое содержимое рядом с повтором остаётся удалением");
+            AssertEqual(1, ReviewChangedKeyCount(forward, "old-tail"),
+                "старый хвост рядом с повтором остаётся удалением");
+            AssertEqual(1, ReviewChangedKeyCount(forward, "new-tail"),
+                "настоящее добавление рядом с повтором остаётся видимым");
+            AssertEqual(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
+                ReviewRepeatedExactAnchor(false, true)),
+                "перепривязка повторного ключа детерминирована");
+
+            PdfReviewResult reverse = ReviewRepeatedExactAnchor(true, true);
+            AssertReviewFixtureStable(reverse, true, "dup-anchor", 20, 100,
+                20, 120, "обратное сравнение повторного Exact");
+            AssertReviewFixtureChange(reverse, PdfReviewDiffKind.Insert,
+                "dup-anchor", 0, 150, 150,
+                "обратное сравнение зеркально сохраняет удалённую раннюю копию");
+            AssertEqual(ReviewFixturePhysicalMatchSig(forward, false),
+                ReviewFixturePhysicalMatchSig(reverse, true),
+                "оба направления строят одну физическую карту после перепривязки");
+
+            PdfReviewResult weak = ReviewRepeatedExactAnchor(false, false);
+            AssertReviewFixtureStable(weak, false, "dup-anchor", 150, 150,
+                20, 120, "одного block-свидетеля недостаточно");
+            AssertReviewFixtureChange(weak, PdfReviewDiffKind.Delete,
+                "dup-anchor", 0, 20, 100,
+                "без минимального кластера сомнительная копия остаётся Delete");
+            AssertEqual(0, ReviewMatchCount(weak,
+                PdfReviewMatchKind.ReconciledOrder),
+                "неполный trusted block-кластер требует abstention");
+        }
+
+        private static int ReviewChangedKeyCount(PdfReviewResult result, string key)
+        {
+            int count = 0;
+            foreach (PdfReviewWordOp operation in result.Operations)
+            {
+                if (operation.Kind == PdfReviewDiffKind.Delete)
+                {
+                    foreach (PdfReviewWord word in operation.LeftWords)
+                        if (word != null && word.Key == key)
+                            count++;
+                }
+                else if (operation.Kind == PdfReviewDiffKind.Insert)
+                {
+                    foreach (PdfReviewWord rightWord in operation.RightWords)
+                        if (rightWord != null && rightWord.Key == key)
+                            count++;
+                }
+            }
+            return count;
+        }
+
+        private static void AssertReviewReconcilePagePairInvariant(
+            PdfReviewResult result, string context)
+        {
+            foreach (PdfReviewWordOp operation in result.Operations)
+            {
+                if (operation.MatchKind != PdfReviewMatchKind.ReconciledOrder &&
+                    operation.MatchKind != PdfReviewMatchKind.MixedOrder)
+                    continue;
+                AssertTrue(operation.Matches.Count > 0,
+                    context + ": reconciled-контейнер имеет явные связи");
+                int leftPage = operation.Matches[0].Left.PageIndex;
+                int rightPage = operation.Matches[0].Right.PageIndex;
+                bool explicitPair = false;
+                foreach (PdfReviewPagePair pair in result.Pairs)
+                    if (pair.LeftPageIndex == leftPage &&
+                        pair.RightPageIndex == rightPage)
+                        explicitPair = true;
+                AssertTrue(explicitPair,
+                    context + ": reconciled-контейнер принадлежит viewer page-pair");
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                    AssertTrue(match != null && match.Left != null &&
+                               match.Right != null &&
+                               match.Left.PageIndex == leftPage &&
+                               match.Right.PageIndex == rightPage &&
+                               (match.Kind == PdfReviewMatchKind.Exact ||
+                                match.Kind == PdfReviewMatchKind.ReconciledOrder),
+                        context + ": ни одна связь контейнера не пересекает page-pair");
+                if (operation.MatchKind == PdfReviewMatchKind.MixedOrder)
+                {
+                    bool exact = false;
+                    bool reconciled = false;
+                    foreach (PdfReviewWordMatch match in operation.Matches)
+                    {
+                        exact |= match.Kind == PdfReviewMatchKind.Exact;
+                        reconciled |= match.Kind == PdfReviewMatchKind.ReconciledOrder;
+                    }
+                    AssertTrue(exact && reconciled,
+                        context + ": MixedOrder сохраняет индивидуальную provenance");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Реальный пограничный случай: глобальный diff вправе связать неизменный текст
+        /// через репагинацию, но такая Exact-пара не становится частью локального цикла
+        /// номера страницы на другой физической page-pair.
+        /// </summary>
+        private static void TestReviewOrderArtifactCrossPairExactBarrier()
+        {
+            PdfReviewWord leftBefore = ReviewGeometryWord("before-margin", 1,
+                10, 180, 38);
+            PdfReviewWord leftNumber = ReviewGeometryWord("3", 1,
+                160, 180, 8);
+            PdfReviewWord leftCrossA = ReviewGeometryWord("signature-a", 1,
+                10, 120, 42, 7);
+            PdfReviewWord leftCrossB = ReviewGeometryWord("signature-b", 1,
+                60, 120, 42, 7);
+            PdfReviewWord leftAfter = ReviewGeometryWord("after-anchor", 1,
+                10, 40, 42, 8);
+            PdfReviewWord rightCrossA = ReviewGeometryWord("signature-a", 0,
+                10, 120, 42, 70);
+            PdfReviewWord rightCrossB = ReviewGeometryWord("signature-b", 0,
+                60, 120, 42, 70);
+            PdfReviewWord rightBefore = ReviewGeometryWord("before-margin", 1,
+                10, 180, 38);
+            PdfReviewWord rightNumber = ReviewGeometryWord("3", 1,
+                160, 180, 8);
+            PdfReviewWord rightAfter = ReviewGeometryWord("after-anchor", 1,
+                10, 40, 42, 80);
+
+            PdfReviewDocument left = ReviewGeometryDocument("cross-exact-left.pdf",
+                ReviewGeometryPage(0), ReviewGeometryPage(1, leftBefore,
+                    leftNumber, leftCrossA, leftCrossB, leftAfter));
+            PdfReviewDocument right = ReviewGeometryDocument("cross-exact-right.pdf",
+                ReviewGeometryPage(0, rightCrossA, rightCrossB),
+                ReviewGeometryPage(1, rightBefore, rightNumber, rightAfter));
+            var result = new PdfReviewResult { Left = left, Right = right };
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            result.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 1,
+                RightPageIndex = 1
+            });
+
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Delete,
+                leftBefore);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Delete,
+                leftNumber);
+            PdfReviewDiff.AppendEqual(result.Operations, leftCrossA, rightCrossA,
+                PdfReviewMatchKind.Exact);
+            PdfReviewDiff.AppendEqual(result.Operations, leftCrossB, rightCrossB,
+                PdfReviewMatchKind.Exact);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Insert,
+                rightBefore);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Insert,
+                rightNumber);
+            PdfReviewDiff.AppendEqual(result.Operations, leftAfter, rightAfter,
+                PdfReviewMatchKind.Exact);
+            string before = ReviewOrderMatchSig(result);
+
+            PdfReviewDiff.ReconcileOrderArtifacts(result);
+
+            AssertEqual(before, ReviewOrderMatchSig(result),
+                "небезопасный SCC целиком оставлен исходным word-diff");
+            AssertEqual(0, ReviewMatchCount(result,
+                PdfReviewMatchKind.ReconciledOrder),
+                "номер 3 не спрятан за geometry-связью через другую page-pair");
+            AssertEqual(2, ReviewOperationWordCount(result.Operations,
+                PdfReviewDiffKind.Delete, -1),
+                "левые кандидаты остаются видимыми удалениями");
+            AssertEqual(2, ReviewOperationWordCount(result.Operations,
+                PdfReviewDiffKind.Insert, -1),
+                "правые кандидаты остаются видимыми добавлениями");
+            AssertTrue(result.Operations[1].Matches.Count == 2 &&
+                       result.Operations[1].Matches[0].Left.PageIndex == 1 &&
+                       result.Operations[1].Matches[0].Right.PageIndex == 0,
+                "репагинированные Exact-пары сохранены отдельно и с физическими владельцами");
+
+            var reverse = new PdfReviewResult { Left = right, Right = left };
+            reverse.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = 0
+            });
+            reverse.Pairs.Add(new PdfReviewPagePair
+            {
+                LeftPageIndex = 1,
+                RightPageIndex = 1
+            });
+            PdfReviewDiff.Append(reverse.Operations, PdfReviewDiffKind.Insert,
+                leftBefore);
+            PdfReviewDiff.Append(reverse.Operations, PdfReviewDiffKind.Insert,
+                leftNumber);
+            PdfReviewDiff.AppendEqual(reverse.Operations, rightCrossA, leftCrossA,
+                PdfReviewMatchKind.Exact);
+            PdfReviewDiff.AppendEqual(reverse.Operations, rightCrossB, leftCrossB,
+                PdfReviewMatchKind.Exact);
+            PdfReviewDiff.Append(reverse.Operations, PdfReviewDiffKind.Delete,
+                rightBefore);
+            PdfReviewDiff.Append(reverse.Operations, PdfReviewDiffKind.Delete,
+                rightNumber);
+            PdfReviewDiff.AppendEqual(reverse.Operations, rightAfter, leftAfter,
+                PdfReviewMatchKind.Exact);
+            string reverseBefore = ReviewOrderMatchSig(reverse);
+
+            PdfReviewDiff.ReconcileOrderArtifacts(reverse);
+
+            AssertEqual(reverseBefore, ReviewOrderMatchSig(reverse),
+                "зеркальный cross-pair SCC также оставлен без reconciliation");
+            AssertEqual(0, ReviewMatchCount(reverse,
+                PdfReviewMatchKind.ReconciledOrder),
+                "страничный барьер одинаково действует в обоих направлениях");
+        }
+
+        /// Политика симметрична, сохраняет владельца/union-рамку и не затрагивает кириллицу,
+        /// идентификаторы, обычные границы слов или дефисы внутри строки.
+        /// </summary>
+        private static void TestReviewLatinLineEndHyphenation()
+        {
+            PdfReviewPage split = ReviewPageFromWords(0,
+                W("inter-", 10, 100, 30, 10),
+                W("national", 5, 80, 40, 10));
+            AssertEqual(1, split.Words.Count,
+                "латинский line-end перенос стал одним каноническим словом");
+            AssertEqual("international", split.Words[0].Key,
+                "видимый переносный дефис снят, буквы не потеряны");
+            AssertEqual(0, split.Words[0].PageIndex,
+                "объединённое слово осталось у своей физической страницы");
+            PdfReviewBox union = split.Words[0].Box;
+            AssertTrue(Math.Abs(union.Left - 5) < 0.001 &&
+                       Math.Abs(union.Bottom - 80) < 0.001 &&
+                       Math.Abs(union.Right - 45) < 0.001 &&
+                       Math.Abs(union.Top - 110) < 0.001,
+                "рамка объединённого слова покрывает фрагменты на обеих строках");
+
+            PdfReviewPage whole = ReviewPageFromWords(0,
+                W("international", 5, 90, 45, 10));
+            var splitDocument = new PdfReviewDocument { Path = "split-hyphen.pdf" };
+            splitDocument.Pages.Add(split);
+            splitDocument.WordCount = split.Words.Count;
+            var wholeDocument = new PdfReviewDocument { Path = "whole-word.pdf" };
+            wholeDocument.Pages.Add(whole);
+            wholeDocument.WordCount = whole.Words.Count;
+
+            PdfReviewResult forward = PdfReviewDiff.Compare(splitDocument, wholeDocument,
+                PdfReviewLimits.Default());
+            PdfReviewResult reverse = PdfReviewDiff.Compare(wholeDocument, splitDocument,
+                PdfReviewLimits.Default());
+            AssertEqual("Equal:international", ReviewOpsSig(forward.Operations),
+                "перенос не создаёт Delete/Insert в прямом сравнении");
+            AssertEqual("Equal:international", ReviewOpsSig(reverse.Operations),
+                "перенос не создаёт Delete/Insert в обратном сравнении");
+            AssertEqual(0, forward.Stats.DeletedWords + forward.Stats.InsertedWords,
+                "прямое сравнение не считает перенос правкой");
+            AssertEqual(0, reverse.Stats.DeletedWords + reverse.Stats.InsertedWords,
+                "обратное сравнение не считает перенос правкой");
+
+            PdfReviewPage softHyphen = ReviewPageFromWords(0,
+                W("frag\x00AD", 10, 100, 20, 10),
+                W("ment", 10, 80, 20, 10));
+            AssertEqual("fragment", softHyphen.Words[0].Key,
+                "soft hyphen на конце строки обрабатывается как перенос");
+
+            PdfReviewPage otherColumn = ReviewPageFromWords(0,
+                W("inter-", 10, 100, 30, 10),
+                W("national", 120, 80, 40, 10));
+            AssertEqual("inter- national", ReviewWordKeys(otherColumn.Words),
+                "соседство разных колонок не выдаётся за line-end перенос");
+
+            PdfReviewPage distantBlock = ReviewPageFromWords(0,
+                W("inter-", 10, 100, 30, 10),
+                W("national", 10, 40, 40, 10));
+            AssertEqual("inter- national", ReviewWordKeys(distantBlock.Words),
+                "большой вертикальный разрыв не выдаётся за соседние строки");
+
+            PdfWord taggedLeft = W("inter-", 10, 100, 30, 10);
+            taggedLeft.BlockId = 1;
+            PdfWord taggedRight = W("national", 10, 80, 40, 10);
+            taggedRight.BlockId = 2;
+            PdfReviewPage differentTaggedBlocks = ReviewPageFromWords(0,
+                taggedLeft, taggedRight);
+            AssertEqual("inter- national", ReviewWordKeys(differentTaggedBlocks.Words),
+                "разные размеченные блоки не склеиваются");
+
+            PdfReviewPage emptyBoundary = ReviewPageFromWords(0,
+                W("inter-", 10, 100, 30, 10),
+                W("", 10, 80, 10, 10),
+                W("national", 10, 60, 40, 10));
+            AssertEqual("inter- national", ReviewWordKeys(emptyBoundary.Words),
+                "пустой extraction-фрагмент сохраняет границу между строками");
+
+            PdfReviewPage cyrillic = ReviewPageFromWords(0,
+                W("информационно-", 10, 100, 55, 10),
+                W("коммуникационный", 10, 80, 70, 10));
+            AssertEqual("информационно- коммуникационный", ReviewWordKeys(cyrillic.Words),
+                "кириллический дефис на границе строки сохранён");
+
+            PdfReviewPage identifier = ReviewPageFromWords(0,
+                W("ISO-", 10, 100, 20, 10),
+                W("9001", 10, 80, 20, 10));
+            AssertEqual("ISO- 9001", ReviewWordKeys(identifier.Words),
+                "буквенно-цифровой идентификатор не склеен");
+
+            PdfReviewPage ordinaryBoundary = ReviewPageFromWords(0,
+                W("alpha", 10, 100, 25, 10),
+                W("beta", 10, 80, 20, 10));
+            AssertEqual("alpha beta", ReviewWordKeys(ordinaryBoundary.Words),
+                "обычная новая строка остаётся видимой границей слов");
+
+            PdfReviewPage sameLine = ReviewPageFromWords(0,
+                W("well-known", 10, 100, 45, 10));
+            AssertEqual("well-known", sameLine.Words[0].Key,
+                "дефис внутри строки не меняется");
+
+            PdfReviewPage joinedBoundary = ReviewPageFromWords(0,
+                W("alphabeta", 10, 100, 45, 10));
+            AssertEqual(PdfReviewPairStatus.Changed,
+                PdfReviewDiff.Pair(ordinaryBoundary, joinedBoundary,
+                    PdfReviewLimits.Default()).Status,
+                "настоящая граница слов по-прежнему является содержательной разницей");
+        }
+
+        private static void TestReviewDiffSuffixAndOwnership()
+        {
+            List<PdfReviewWord> left = ReviewWords("old-a", "old-b", "tail");
+            List<PdfReviewWord> right = ReviewWords("new", "tail");
+            List<PdfReviewWordOp> forward = PdfReviewDiff.DiffWords(left, right, null);
+            AssertEqual("Delete:old-a,old-b|Insert:new|Equal:tail", ReviewOpsSig(forward),
+                "неравная длина с общим суффиксом диффится без выхода за границы");
+            AssertTrue(ReferenceEquals(forward[2].LeftWords[0], left[2]) &&
+                       ReferenceEquals(forward[2].RightWords[0], right[1]) &&
+                       forward[2].Matches.Count == 1 &&
+                       forward[2].Matches[0].Kind == PdfReviewMatchKind.Exact,
+                "общий суффикс Equal хранит фактические объекты обеих последовательностей");
+
+            List<PdfReviewWordOp> reverse = PdfReviewDiff.DiffWords(right, left,
+                PdfReviewLimits.Default());
+            AssertEqual("Delete:new|Insert:old-a,old-b|Equal:tail", ReviewOpsSig(reverse),
+                "зеркальный случай неравной длины также устойчив");
+
+            List<PdfReviewWord> middleLeft = ReviewWords("before", "same", "after");
+            List<PdfReviewWord> middleRight = ReviewWords("same");
+            List<PdfReviewWordOp> middle = PdfReviewDiff.DiffWords(middleLeft, middleRight,
+                PdfReviewLimits.Default());
+            AssertEqual("Delete:before|Equal:same|Delete:after", ReviewOpsSig(middle),
+                "single-item ветка находит совпадение внутри длинной стороны");
+            AssertTrue(ReferenceEquals(middle[1].LeftWords[0], middleLeft[1]) &&
+                       ReferenceEquals(middle[1].RightWords[0], middleRight[0]),
+                "single-item Equal хранит фактические совпавшие объекты обеих сторон");
+        }
+
+        private static void TestReviewDiffWholeWordsAndLimits()
+        {
+            List<PdfReviewWordOp> changed = PdfReviewDiff.DiffWords(
+                ReviewPage(0, "before ab after").Words,
+                ReviewPage(0, "before axb after").Words, null);
+            AssertEqual("Equal:before|Delete:ab|Insert:axb|Equal:after",
+                ReviewOpsSig(changed),
+                "внутрисловная вставка подсвечивает целые слова без частичного Equal");
+
+            List<PdfReviewWordOp> empty = PdfReviewDiff.DiffWords(null, null, null);
+            AssertTrue(empty.Count == 1 && empty[0].Kind == PdfReviewDiffKind.Equal &&
+                       empty[0].Words.Count == 0, "две пустые стороны дают безопасный пустой Equal");
+            List<PdfReviewWord> one = ReviewWords("one");
+            List<PdfReviewWordOp> inserted = PdfReviewDiff.DiffWords(null, one, null);
+            List<PdfReviewWordOp> deleted = PdfReviewDiff.DiffWords(one, null, null);
+            AssertTrue(inserted.Count == 1 && inserted[0].Kind == PdfReviewDiffKind.Insert &&
+                       ReferenceEquals(inserted[0].Words[0], one[0]),
+                "пустая левая сторона вставляет объект справа");
+            AssertTrue(deleted.Count == 1 && deleted[0].Kind == PdfReviewDiffKind.Delete &&
+                       ReferenceEquals(deleted[0].Words[0], one[0]),
+                "пустая правая сторона удаляет объект слева");
+
+            List<PdfReviewWord> fallbackLeft = ReviewWords("a", "b", "c", "d", "e", "f", "g", "h");
+            List<PdfReviewWord> fallbackRight = ReviewWords("a", "b", "x", "c", "d", "f", "y", "g", "h");
+            var limits = PdfReviewLimits.Default();
+            limits.MaxDiffCells = 4;
+            List<PdfReviewWordOp> fallback = PdfReviewDiff.DiffWords(fallbackLeft, fallbackRight, limits);
+            AssertEqual("a b c d e f g h", RebuildReviewSide(fallback, true),
+                "bounded fallback восстанавливает левую сторону");
+            AssertEqual("a b x c d f y g h", RebuildReviewSide(fallback, false),
+                "bounded fallback восстанавливает правую сторону");
+            AssertEqual(ReviewOpsSig(fallback),
+                ReviewOpsSig(PdfReviewDiff.DiffWords(fallbackLeft, fallbackRight, limits)),
+                "bounded fallback детерминирован");
+        }
+
+        private static void TestReviewCanonicalPageAlignment()
+        {
+            PdfReviewPage leftFirst = ReviewPageFromWords(0,
+                W("StableToken", 10, 100, 55, 10));
+            PdfReviewPage rightFirst = ReviewPageFromWords(0,
+                W("Stable", 10, 100, 30, 10), W("Token", 40.4, 100, 25, 10));
+            PdfReviewPage leftLast = ReviewPage(1, "tail common words");
+            PdfReviewPage inserted = ReviewPage(1, "unrelated inserted page");
+            PdfReviewPage rightLast = ReviewPage(2, "tail common words");
+            var left = new List<PdfReviewPage> { leftFirst, leftLast };
+            var right = new List<PdfReviewPage> { rightFirst, inserted, rightLast };
+
+            List<PdfReviewPagePair> pairs = PdfReviewDiff.Align(left, right, null);
+            AssertEqual("0:0:Unchanged|-1:1:RightOnly|1:2:Unchanged", PairSig(pairs),
+                "фрагментация не сдвигает pairing после вставленной страницы");
+            AssertEqual(1.0, pairs[0].Similarity,
+                "alignment использует те же канонические keys, что и final diff");
+        }
+
+        private static void TestReviewOperationsStatsHighlights()
+        {
+            PdfReviewPage leftPage = ReviewPageFromWords(0,
+                W("o", 10, 100, 5, 10), W("ld", 15.3, 100, 9, 10),
+                W("stable", 40, 100, 25, 10));
+            PdfReviewPage rightPage = ReviewPageFromWords(0,
+                W("n", 12, 100, 5, 10), W("ew", 17.2, 100, 9, 10),
+                W("stable", 40, 100, 25, 10));
+            var left = new PdfReviewDocument { Path = "left.pdf", WordCount = leftPage.Words.Count };
+            var right = new PdfReviewDocument { Path = "right.pdf", WordCount = rightPage.Words.Count };
+            left.Pages.Add(leftPage);
+            right.Pages.Add(rightPage);
+            PdfReviewResult result = PdfReviewDiff.Compare(left, right, PdfReviewLimits.Default());
+            PdfReviewPagePair pair = result.Pairs[0];
+
+            AssertEqual("Delete:old|Insert:new|Equal:stable", ReviewOpsSig(result.Operations),
+                "операции состоят из канонических слов");
+            AssertEqual(1, result.Stats.DeletedWords, "статистика считает один Delete");
+            AssertEqual(1, result.Stats.InsertedWords, "статистика считает один Insert");
+            AssertEqual(1, result.Stats.Replacements, "пара Delete/Insert — одна замена");
+
+            PdfReviewHighlight removed = PdfReviewForm.BuildHighlight(result, pair, true);
+            PdfReviewHighlight added = PdfReviewForm.BuildHighlight(result, pair, false);
+            AssertEqual(Theme.ReviewDeleteFill, removed.Color,
+                "Delete использует точный красный Word-подобный фон");
+            AssertEqual(Theme.ReviewInsertFill, added.Color,
+                "Insert использует точный зелёный Word-подобный фон");
+            AssertEqual(Theme.ReviewDeleteMarker, removed.EdgeColor,
+                "удаление имеет отдельный контрастный marker-цвет");
+            AssertEqual(Theme.ReviewInsertMarker, added.EdgeColor,
+                "добавление имеет отдельный контрастный marker-цвет");
+            AssertEqual(PdfReviewHighlightStyle.Removed, removed.Style,
+                "Delete явно передаёт solid/− семантику");
+            AssertEqual(PdfReviewHighlightStyle.Added, added.Style,
+                "Insert явно передаёт dashed/+ семантику");
+            AssertEqual(PdfReviewChangeBarSide.Left, removed.ChangeBarSide,
+                "Delete change bar находится во внешнем левом поле левой панели");
+            AssertEqual(PdfReviewChangeBarSide.Right, added.ChangeBarSide,
+                "Insert change bar находится во внешнем правом поле правой панели");
+            AssertEqual(1, removed.Boxes.Count, "Delete даёт одну union-рамку слева");
+            AssertEqual(1, added.Boxes.Count, "Insert даёт одну union-рамку справа");
+            AssertEqual(BoxSig(leftPage.Words[0].Box), BoxSig(removed.Boxes[0]),
+                "левая рамка взята из того же Delete");
+            AssertEqual(BoxSig(rightPage.Words[0].Box), BoxSig(added.Boxes[0]),
+                "правая рамка взята из того же Insert");
+            AssertTrue(BoxSig(removed.Boxes[0]) != BoxSig(leftPage.Words[1].Box) &&
+                       BoxSig(added.Boxes[0]) != BoxSig(rightPage.Words[1].Box),
+                "Equal-рамка не попала в подсветку");
+            AssertEqual(leftPage.ViewWidthPt, removed.ViewWidthPt, "размер левой страницы передан UI");
+            AssertEqual(rightPage.ViewHeightPt, added.ViewHeightPt, "размер правой страницы передан UI");
+
+            var removedMarker = new PdfReviewWhitespaceMarker
+            {
+                Box = new PdfReviewBox { Left = 32, Bottom = 94, Right = 34, Top = 104 },
+                Text = "− ␠",
+                AccessibleDescription = "removed one space"
+            };
+            var addedMarker = new PdfReviewWhitespaceMarker
+            {
+                Box = new PdfReviewBox { Left = 35, Bottom = 94, Right = 37, Top = 104 },
+                Text = "+ ␠",
+                AccessibleDescription = "added one space"
+            };
+            result.DeletedWhitespaceByPage[0] =
+                new List<PdfReviewWhitespaceMarker> { removedMarker };
+            result.InsertedWhitespaceByPage[0] =
+                new List<PdfReviewWhitespaceMarker> { addedMarker };
+            removed = PdfReviewForm.BuildHighlight(result, pair, true);
+            added = PdfReviewForm.BuildHighlight(result, pair, false);
+            AssertEqual(1, removed.WhitespaceMarkers.Count,
+                "левая UI-модель получает только authoritative removed-whitespace marker");
+            AssertEqual(1, added.WhitespaceMarkers.Count,
+                "правая UI-модель получает только authoritative added-whitespace marker");
+            AssertTrue(object.ReferenceEquals(removedMarker, removed.WhitespaceMarkers[0]) &&
+                       object.ReferenceEquals(addedMarker, added.WhitespaceMarkers[0]),
+                "BuildHighlight не пересоздаёт и не переосмысливает пробельные факты");
+
+            var lineHighlight = new PdfReviewHighlight
+            {
+                ViewWidthPt = 200,
+                ViewHeightPt = 200,
+                Color = Theme.ReviewDeleteFill,
+                EdgeColor = Theme.ReviewDeleteMarker,
+                ChangeBarSide = PdfReviewChangeBarSide.Left,
+                Style = PdfReviewHighlightStyle.Removed
+            };
+            lineHighlight.Boxes.Add(new PdfReviewBox
+                { Left = 20, Bottom = 150, Right = 45, Top = 160 });
+            lineHighlight.Boxes.Add(new PdfReviewBox
+                { Left = 80, Bottom = 149, Right = 110, Top = 161 });
+            lineHighlight.Boxes.Add(new PdfReviewBox
+                { Left = 20, Bottom = 90, Right = 55, Top = 100 });
+            List<RectangleF> bands = PdfReviewPageView.ChangeLineBands(lineHighlight, 200, 200);
+            AssertEqual(2, bands.Count,
+                "несколько кандидатов одной строки дают одну high-contrast change bar");
+
+            var source = new Bitmap(200, 200);
+            using (Graphics graphics = Graphics.FromImage(source))
+            {
+                graphics.Clear(Color.White);
+                using (var ink = new SolidBrush(Color.FromArgb(31, 43, 57)))
+                    graphics.FillRectangle(ink, 25, 42, 15, 7);
+                source.SetPixel(31, 44, Color.FromArgb(92, 105, 119));
+            }
+            using (Bitmap marked = PdfReviewPageView.DrawHighlight(source, lineHighlight, false))
+            {
+                AssertEqual(Theme.ReviewDeleteFill.ToArgb(), marked.GetPixel(22, 41).ToArgb(),
+                    "normal mode превращает белую бумагу word-box в точный красный фон");
+                AssertEqual(Color.FromArgb(31, 43, 57).ToArgb(), marked.GetPixel(26, 43).ToArgb(),
+                    "Word-подобный фон сохраняет тёмный PDF ink");
+                AssertEqual(Color.FromArgb(92, 105, 119).ToArgb(), marked.GetPixel(31, 44).ToArgb(),
+                    "Word-подобный фон сохраняет тёмный нейтральный glyph");
+                AssertEqual(Color.White.ToArgb(), marked.GetPixel(60, 45).ToArgb(),
+                    "normal mode не заполняет стабильный промежуток между word-box");
+                AssertEqual(Color.White.ToArgb(), marked.GetPixel(7, 45).ToArgb(),
+                    "normal mode не рисует устаревшую внешнюю change bar");
+            }
+            AssertThrowsAny("успешная композиция освобождает исходный bitmap",
+                delegate { source.GetPixel(0, 0); });
+
+            lineHighlight.Color = Theme.ReviewInsertFill;
+            lineHighlight.EdgeColor = Theme.ReviewInsertMarker;
+            lineHighlight.ChangeBarSide = PdfReviewChangeBarSide.Right;
+            lineHighlight.Style = PdfReviewHighlightStyle.Added;
+            source = new Bitmap(200, 200);
+            using (Graphics graphics = Graphics.FromImage(source))
+                graphics.Clear(Color.White);
+            using (Bitmap marked = PdfReviewPageView.DrawHighlight(source, lineHighlight, false))
+            {
+                AssertEqual(Theme.ReviewInsertFill.ToArgb(), marked.GetPixel(22, 41).ToArgb(),
+                    "Insert получает точный зелёный Word-подобный фон");
+                AssertEqual(Color.White.ToArgb(), marked.GetPixel(60, 45).ToArgb(),
+                    "зелёная заливка не мостит промежуток до соседнего слова");
+            }
+
+            lineHighlight.Color = Theme.ReviewDeleteFill;
+            lineHighlight.EdgeColor = Theme.ReviewDeleteMarker;
+            lineHighlight.ChangeBarSide = PdfReviewChangeBarSide.Left;
+            lineHighlight.Style = PdfReviewHighlightStyle.Removed;
+            source = new Bitmap(200, 200);
+            using (Graphics graphics = Graphics.FromImage(source))
+                graphics.Clear(Color.White);
+            using (Bitmap marked = PdfReviewPageView.DrawHighlight(source, lineHighlight, true))
+            {
+                AssertEqual(Color.White.ToArgb(), marked.GetPixel(30, 45).ToArgb(),
+                    "high contrast сохраняет бумагу внутри слова вместо custom fill");
+                AssertTrue(ReviewHasColoredPixel(marked, 0, 24, 34, 55),
+                    "high contrast сохраняет solid/− change bar удаления слева");
+                AssertTrue(!ReviewHasColoredPixel(marked, 188, 199, 34, 55),
+                    "high-contrast Delete не рисует rail у правого края");
+            }
+
+            lineHighlight.ChangeBarSide = PdfReviewChangeBarSide.Right;
+            lineHighlight.Style = PdfReviewHighlightStyle.Added;
+            source = new Bitmap(200, 200);
+            using (Graphics graphics = Graphics.FromImage(source))
+                graphics.Clear(Color.White);
+            using (Bitmap marked = PdfReviewPageView.DrawHighlight(source, lineHighlight, true))
+            {
+                AssertTrue(ReviewHasColoredPixel(marked, 175, 199, 34, 55),
+                    "high contrast сохраняет dashed/+ change bar добавления справа");
+                AssertTrue(!ReviewHasColoredPixel(marked, 0, 7, 34, 55),
+                    "high-contrast Insert не рисует rail у противоположного края");
+            }
+        }
+
+        private static void TestReviewHighlightPixelComposition()
+        {
+            Color removed = Theme.ReviewDeleteFill;
+            Color added = Theme.ReviewInsertFill;
+            AssertEqual(Color.FromArgb(236, 8, 8).ToArgb(), removed.ToArgb(),
+                "removed palette совпадает с чистым #EC0808 из reference");
+            AssertEqual(Color.FromArgb(27, 233, 26).ToArgb(), added.ToArgb(),
+                "added palette совпадает с чистым #1BE91A из reference");
+
+            AssertEqual(removed.ToArgb(),
+                PdfReviewHighlightRenderer.ComposePixel(Color.White, removed).ToArgb(),
+                "белая бумага становится точным semantic fill");
+            AssertEqual(added.ToArgb(),
+                PdfReviewHighlightRenderer.ComposePixel(Color.FromArgb(238, 238, 238),
+                    added).ToArgb(),
+                "граница PaperMinimum тоже становится точным fill");
+
+            Color black = Color.FromArgb(255, 0, 0, 0);
+            Color dark = Color.FromArgb(255, 150, 148, 149);
+            AssertEqual(black.ToArgb(),
+                PdfReviewHighlightRenderer.ComposePixel(black, removed).ToArgb(),
+                "чёрный PDF ink остаётся чёрным");
+            AssertEqual(dark.ToArgb(),
+                PdfReviewHighlightRenderer.ComposePixel(dark, removed).ToArgb(),
+                "порог тёмного glyph сохраняется без recolor");
+
+            Color edge = Color.FromArgb(255, 200, 200, 200);
+            Color composed = PdfReviewHighlightRenderer.ComposePixel(edge, removed);
+            AssertEqual(Color.FromArgb(255, 185, 6, 6).ToArgb(), composed.ToArgb(),
+                "нейтральный anti-aliased edge умножается на фон один раз");
+            AssertTrue(composed.ToArgb() != edge.ToArgb() &&
+                       composed.ToArgb() != removed.ToArgb(),
+                "edge не оставляет белый ореол и не стирается сплошной заливкой");
+
+            Color chromatic = Color.FromArgb(255, 245, 200, 245);
+            AssertEqual(chromatic.ToArgb(),
+                PdfReviewHighlightRenderer.ComposePixel(chromatic, added).ToArgb(),
+                "chromatic source ink не классифицируется как бумага");
+            Color translucent = Color.FromArgb(254, 250, 250, 250);
+            AssertEqual(translucent.ToArgb(),
+                PdfReviewHighlightRenderer.ComposePixel(translucent, removed).ToArgb(),
+                "непрозрачность исходного пикселя не изменяется и не выдумывается");
+        }
+
+        private static void TestReviewHighlightIntervals()
+        {
+            Color paper = Color.FromArgb(255, 200, 200, 200);
+            Color fill = Theme.ReviewDeleteFill;
+            Color once = PdfReviewHighlightRenderer.ComposePixel(paper, fill);
+            using (var bitmap = new Bitmap(12, 6,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                using (Graphics graphics = Graphics.FromImage(bitmap))
+                    graphics.Clear(paper);
+                var rectangles = new List<RectangleF>
+                {
+                    // Две области перекрываются на x=3..4: пиксель должен пройти compositor один раз.
+                    new RectangleF(1.2f, 1.2f, 3.5f, 1.2f),
+                    new RectangleF(3.1f, 1.2f, 3.2f, 1.2f),
+                    // Две соседние области с реальным однопиксельным разрывом x=3.
+                    new RectangleF(1f, 4f, 2f, 1f),
+                    new RectangleF(4f, 4f, 2f, 1f),
+                    // Fractional clipping у верхнего/левого края.
+                    new RectangleF(-2f, -1f, 3f, 2f),
+                    // Большая конечная координата вне bitmap не должна переполнить int.
+                    new RectangleF(1.0e20f, 3f, 1.0e10f, 1f),
+                    new RectangleF(float.NaN, 3f, 2f, 1f),
+                    new RectangleF(7f, 3f, 0f, 1f),
+                    new RectangleF(8f, 3f, 2f, -1f)
+                };
+                PdfReviewHighlightRenderer.ApplyWordFills(bitmap, rectangles, fill);
+
+                AssertEqual(once.ToArgb(), bitmap.GetPixel(3, 1).ToArgb(),
+                    "overlap не затемняется повторной композицией");
+                AssertEqual(once.ToArgb(), bitmap.GetPixel(6, 2).ToArgb(),
+                    "floor/ceiling включает весь fractional word-box");
+                AssertEqual(paper.ToArgb(), bitmap.GetPixel(7, 2).ToArgb(),
+                    "за правой ceiling-границей исходный пиксель не меняется");
+                AssertEqual(once.ToArgb(), bitmap.GetPixel(0, 0).ToArgb(),
+                    "отрицательная область корректно clipped к bitmap");
+                AssertEqual(paper.ToArgb(), bitmap.GetPixel(1, 0).ToArgb(),
+                    "clipping не расширяет прямоугольник за его правую границу");
+                AssertEqual(once.ToArgb(), bitmap.GetPixel(2, 4).ToArgb(),
+                    "первая отдельная область заполнена");
+                AssertEqual(paper.ToArgb(), bitmap.GetPixel(3, 4).ToArgb(),
+                    "union не мостит реальный промежуток между semantic boxes");
+                AssertEqual(once.ToArgb(), bitmap.GetPixel(4, 4).ToArgb(),
+                    "вторая отдельная область заполнена независимо");
+                AssertEqual(paper.ToArgb(), bitmap.GetPixel(9, 3).ToArgb(),
+                    "NaN/zero/huge-outside области игнорируются без broad fill");
+                AssertEqual(paper.ToArgb(), bitmap.GetPixel(0, 5).ToArgb(),
+                    "строки вне authoritative rectangles не сканируются семантически");
+            }
+
+            using (var bitmap = new Bitmap(5, 2,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                using (Graphics graphics = Graphics.FromImage(bitmap))
+                    graphics.Clear(Color.White);
+                PdfReviewHighlightRenderer.ApplyWordFills(bitmap,
+                    new[] { new RectangleF(-1.0e20f, 0f, 2.0e20f, 1f) }, fill);
+                for (int x = 0; x < bitmap.Width; x++)
+                    AssertEqual(fill.ToArgb(), bitmap.GetPixel(x, 0).ToArgb(),
+                        "конечный spanning rectangle clipped без integer overflow");
+                AssertEqual(Color.White.ToArgb(), bitmap.GetPixel(0, 1).ToArgb(),
+                    "spanning rectangle не выходит на соседнюю scanline");
+            }
+        }
+
+        private static void TestReviewHighlightBitmapLifecycle()
+        {
+            var source = new Bitmap(20, 12);
+            source.SetPixel(0, 0, Color.Blue);
+            Bitmap unchanged = PdfReviewPageView.DrawHighlight(source, null, false);
+            AssertTrue(ReferenceEquals(source, unchanged),
+                "null projection возвращает исходный bitmap без копии");
+            AssertEqual(Color.Blue.ToArgb(), source.GetPixel(0, 0).ToArgb(),
+                "пустой путь не освобождает bitmap, которым продолжает владеть caller");
+            source.Dispose();
+
+            var empty = new PdfReviewHighlight { ViewWidthPt = 20, ViewHeightPt = 12 };
+            source = new Bitmap(20, 12);
+            unchanged = PdfReviewPageView.DrawHighlight(source, empty, false);
+            AssertTrue(ReferenceEquals(source, unchanged),
+                "пустая word/whitespace projection не создаёт полный raster-copy");
+            source.Dispose();
+
+            var ready = new PdfReviewHighlight
+            {
+                ViewWidthPt = 20,
+                ViewHeightPt = 12,
+                Color = Theme.ReviewInsertFill,
+                EdgeColor = Theme.ReviewInsertMarker,
+                Style = PdfReviewHighlightStyle.Added
+            };
+            ready.Boxes.Add(new PdfReviewBox
+                { Left = 2, Bottom = 4, Right = 8, Top = 10 });
+            source = new Bitmap(20, 12,
+                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            using (Graphics graphics = Graphics.FromImage(source))
+                graphics.Clear(Color.White);
+            Bitmap rendered = PdfReviewPageView.DrawHighlight(source, ready, false);
+            try
+            {
+                AssertTrue(!ReferenceEquals(source, rendered),
+                    "готовая projection публикует отдельный bitmap");
+                AssertEqual(System.Drawing.Imaging.PixelFormat.Format32bppArgb,
+                    rendered.PixelFormat, "опубликованный compositor raster нормализован в 32bpp");
+                AssertEqual(Theme.ReviewInsertFill.ToArgb(), rendered.GetPixel(3, 3).ToArgb(),
+                    "готовая копия содержит fill в преобразованной PDF-рамке");
+                AssertThrowsAny("после commit исходный bitmap освобождён ровно владельцем renderer",
+                    delegate { source.GetPixel(0, 0); });
+            }
+            finally { rendered.Dispose(); }
+
+            var whitespaceOnly = new PdfReviewHighlight
+            {
+                ViewWidthPt = 80,
+                ViewHeightPt = 40,
+                Color = Theme.ReviewDeleteFill,
+                EdgeColor = Theme.ReviewDeleteMarker,
+                Style = PdfReviewHighlightStyle.Removed
+            };
+            whitespaceOnly.WhitespaceMarkers.Add(new PdfReviewWhitespaceMarker
+            {
+                Box = new PdfReviewBox { Left = 35, Bottom = 15, Right = 40, Top = 25 },
+                Text = "− ␠",
+                AccessibleDescription = "removed space"
+            });
+            source = new Bitmap(80, 40);
+            using (Graphics graphics = Graphics.FromImage(source))
+                graphics.Clear(Color.White);
+            rendered = PdfReviewPageView.DrawHighlight(source, whitespaceOnly, false);
+            try
+            {
+                AssertTrue(!ReferenceEquals(source, rendered),
+                    "отдельный whitespace layer также публикуется транзакционной копией");
+                AssertEqual(0, whitespaceOnly.Boxes.Count,
+                    "рисование whitespace token не превращает его в word-box");
+                AssertThrowsAny("whitespace commit освобождает прежний raster",
+                    delegate { source.GetPixel(0, 0); });
+            }
+            finally { rendered.Dispose(); }
+        }
+
+        private static void TestReviewTextSelectionTrustAndRanges()
+        {
+            PdfReviewWord valid = ReviewTrustedWord("valid", 0, 5, 70, 13, 80);
+            AssertTrue(PdfReviewTextSelection.IsSelectable(valid),
+                "полный trusted source span с конечной рамкой допускается");
+
+            var invalid = new List<PdfReviewWord>
+            {
+                null,
+                ReviewTrustedWord("", 0, 5, 70, 13, 80),
+                ReviewTrustedWord("mismatch", 0, 5, 70, 13, 80),
+                ReviewTrustedWord("negative", -1, 5, 70, 13, 80),
+                ReviewTrustedWord("reverse", 3, 5, 70, 13, 80),
+                ReviewTrustedWord("nan", 0, double.NaN, 70, 13, 80),
+                ReviewTrustedWord("infinite", 0, 5, 70, double.PositiveInfinity, 80),
+                ReviewTrustedWord("zero", 0, 5, 70, 5, 80)
+            };
+            invalid[1].SourceText = "";
+            invalid[2].SourceText = "other";
+            invalid[3].SourceStart = -1;
+            invalid[4].SourceEnd = 2;
+            var untrusted = ReviewTrustedWord("untrusted", 0, 5, 70, 13, 80);
+            untrusted.SourceTrusted = false;
+            invalid.Add(untrusted);
+            foreach (PdfReviewWord word in invalid)
+                AssertTrue(!PdfReviewTextSelection.IsSelectable(word),
+                    "неполная provenance/геометрия никогда не допускается к copy");
+
+            var filteredPage = ReviewTrustedPage(7,
+                new[] { "valid" }, new string[0]);
+            foreach (PdfReviewWord word in invalid)
+                filteredPage.Words.Add(word);
+            var filtered = new PdfReviewTextSelection(filteredPage);
+            AssertEqual(1, filtered.Count,
+                "immutable selectable list фильтрует все недоверенные объекты");
+            filtered.SelectAll();
+            AssertEqual("valid", filtered.BuildCopyText().Text,
+                "недоверенный source не попадает в clipboard output");
+
+            PdfReviewPage page = ReviewTrustedPage(3,
+                new[] { "a", "b", "c", "d" }, new[] { " ", " ", " " });
+            var selection = new PdfReviewTextSelection(page);
+            AssertTrue(!selection.HasSelection && selection.SelectionStart == -1 &&
+                       selection.SelectionEnd == -1,
+                "новая модель не имеет неявного диапазона");
+            AssertTrue(!selection.Select(-1, false) && !selection.Select(4, false),
+                "индексы вне selectable list отвергаются без мутации");
+            AssertTrue(selection.Select(3, false) && selection.ExtendTo(1),
+                "reverse drag сохраняет anchor и двигает focus");
+            AssertEqual(1, selection.SelectionStart, "reverse range нормализует начало");
+            AssertEqual(3, selection.SelectionEnd, "reverse range нормализует конец");
+            AssertEqual("b c d", selection.BuildCopyText().Text,
+                "reverse range копируется в canonical reading order");
+            AssertTrue(selection.Select(2, true),
+                "Shift-like extension сохраняет исходный anchor");
+            AssertEqual(3, selection.Anchor, "extend не меняет anchor");
+            AssertEqual(2, selection.Focus, "extend меняет только focus");
+            AssertEqual("c d", selection.BuildCopyText().Text,
+                "сокращённый reverse range остаётся в document order");
+            AssertTrue(selection.SelectAll() && selection.SelectedCount == 4,
+                "SelectAll выбирает все и только trusted слова текущей страницы");
+            AssertTrue(selection.Clear() && !selection.HasSelection && !selection.Clear(),
+                "Clear идемпотентен и не оставляет скрытого anchor");
+
+            AssertEqual(0, selection.HitTest(new PointF(18, 25), new Size(200, 100)),
+                "hit-test использует общий PDF→pixel transform");
+            AssertEqual(-1, selection.HitTest(new PointF(190, 90), new Size(200, 100)),
+                "blank paper не выбирает ближайшее слово при обычном click");
+            AssertEqual(0, selection.HitTestNearest(new PointF(27, 25),
+                new Size(200, 100), 2f),
+                "drag может продолжиться до ближайшей bounded рамки");
+            AssertEqual(-1, selection.HitTestNearest(new PointF(190, 90),
+                new Size(200, 100), 4f),
+                "далёкая геометрия не расширяет диапазон");
+            selection.Select(0, false);
+            List<RectangleF> mapped = selection.SelectedRectangles(new Size(200, 100));
+            AssertEqual(1, mapped.Count, "selection overlay получает одну рамку на слово");
+            AssertTrue(Math.Abs(mapped[0].Left - 10f) < 0.001f &&
+                       Math.Abs(mapped[0].Top - 20f) < 0.001f,
+                "selection overlay и hit-test разделяют один transform без OCR");
+        }
+
+        private static void TestReviewTextSelectionExactWhitespace()
+        {
+            string[] words = { "A", "B", "C", "D", "E", "F", "G", "H" };
+            string[] separators = { "", " ", "  ", " ", "\t", "\r\n", "\n" };
+            PdfReviewPage page = ReviewTrustedPage(4, words, separators);
+            var selection = new PdfReviewTextSelection(page);
+            selection.SelectAll();
+            PdfReviewCopyText copy = selection.BuildCopyText();
+            AssertEqual("AB C  D E\tF\r\nG\nH", copy.Text,
+                "exact boundary сохраняет empty/space/repeated/NBSP/tab/CRLF/LF буквально");
+            AssertEqual(8, copy.WordCount, "word count отделён от пробельных atom");
+            AssertTrue(!copy.UsedFallbackSeparator,
+                "полный decoded source proof не помечается fallback");
+
+            selection.Select(6, false);
+            selection.ExtendTo(2);
+            copy = selection.BuildCopyText();
+            AssertEqual("C  D E\tF\r\nG", copy.Text,
+                "поддиапазон использует только внутренние source-boundary");
+            AssertTrue(!copy.Text.StartsWith(separators[1], StringComparison.Ordinal) &&
+                       !copy.Text.EndsWith(separators[6], StringComparison.Ordinal),
+                "page-leading/trailing whitespace не выводится без character selection");
+
+            page.Words[0].Box = new PdfReviewBox
+                { Left = 1, Bottom = 70, Right = 2, Top = 80 };
+            page.Words[1].Box = new PdfReviewBox
+                { Left = 90, Bottom = 5, Right = 99, Top = 15 };
+            selection = new PdfReviewTextSelection(page);
+            selection.Select(0, false);
+            selection.ExtendTo(1);
+            copy = selection.BuildCopyText();
+            AssertEqual("AB", copy.Text,
+                "огромный visual gap и перенос geometry не выдумывают разделитель");
+            AssertTrue(!copy.UsedFallbackSeparator,
+                "доказанная пустая source-boundary сильнее геометрии");
+        }
+
+        private static void TestReviewTextSelectionFallback()
+        {
+            PdfReviewPage page = ReviewTrustedPage(8,
+                new[] { "a", "b", "c" }, new[] { " ", "\t" });
+            page.WhitespaceBoundaries.RemoveAt(0);
+            var selection = new PdfReviewTextSelection(page);
+            selection.SelectAll();
+            PdfReviewCopyText copy = selection.BuildCopyText();
+            AssertEqual("a b\tc", copy.Text,
+                "missing proof получает один U+0020, остальные exact boundary сохраняются");
+            AssertTrue(copy.UsedFallbackSeparator,
+                "readability fallback явно сообщается вызывающему коду");
+            AssertEqual(1, page.WhitespaceBoundaries.Count,
+                "copy builder не публикует fallback как semantic whitespace evidence");
+
+            page = ReviewTrustedPage(8, new[] { "x", "y" }, new[] { "  " });
+            PdfReviewWhitespaceEvidence duplicate = page.WhitespaceBoundaries[0];
+            page.WhitespaceBoundaries.Add(duplicate);
+            selection = new PdfReviewTextSelection(page);
+            selection.SelectAll();
+            copy = selection.BuildCopyText();
+            AssertEqual("x y", copy.Text,
+                "даже одинаковый duplicate proof считается неоднозначным");
+            AssertTrue(copy.UsedFallbackSeparator,
+                "duplicate boundary не выбирается произвольно");
+
+            page = ReviewTrustedPage(8, new[] { "x", "y" }, new[] { "" });
+            page.WhitespaceBoundaries[0].PageIndex = 9;
+            selection = new PdfReviewTextSelection(page);
+            selection.SelectAll();
+            AssertEqual("x y", selection.BuildCopyText().Text,
+                "evidence другой физической страницы отвергается");
+
+            page = ReviewTrustedPage(8, new[] { "x", "y" }, new[] { "" });
+            page.WhitespaceBoundaries[0].RawText = "not whitespace";
+            selection = new PdfReviewTextSelection(page);
+            selection.SelectAll();
+            copy = selection.BuildCopyText();
+            AssertEqual("x y", copy.Text,
+                "не-whitespace raw payload не внедряется в clipboard");
+            AssertTrue(copy.UsedFallbackSeparator,
+                "невалидный raw payload приводит к безопасному flagged fallback");
+
+            page = ReviewTrustedPage(8,
+                new[] { "first", "hidden", "last" }, new[] { "", "" });
+            page.Words[1].SourceTrusted = false;
+            selection = new PdfReviewTextSelection(page);
+            AssertEqual(2, selection.Count, "untrusted middle word отсутствует в диапазоне");
+            selection.SelectAll();
+            copy = selection.BuildCopyText();
+            AssertEqual("first last", copy.Text,
+                "через canonical gap нельзя склеить source text без разделителя");
+            AssertTrue(copy.UsedFallbackSeparator,
+                "canonical gap раскрыт как fallback, а не доказанная семантика");
+
+            selection.Clear();
+            copy = selection.BuildCopyText();
+            AssertEqual("", copy.Text, "пустой range не создаёт clipboard text");
+            AssertEqual(0, copy.WordCount, "у пустого range ноль выбранных слов");
+            AssertTrue(!copy.UsedFallbackSeparator,
+                "без диапазона нет и реконструированного separator");
+            selection.Select(0, false);
+            copy = selection.BuildCopyText();
+            AssertEqual("first", copy.Text, "одно слово не получает leading/trailing fallback");
+            AssertTrue(!copy.UsedFallbackSeparator,
+                "одиночное слово не заявляет несуществующую неоднозначность");
+        }
+
+        private static void TestReviewClipboardUnicodeContract()
+        {
+            const string value = "Копия с tab\tи строкой\r\n🙂";
+            DataObject data = PdfReviewClipboardWriter.CreateDataObject(value);
+            AssertTrue(data.GetDataPresent(DataFormats.UnicodeText, true),
+                "DataObject публикует стандартный UnicodeText format");
+            AssertEqual(value, data.GetData(DataFormats.UnicodeText, true) as string,
+                "Unicode clipboard payload сохраняет UTF-16, NBSP, tab, CRLF и surrogate pair");
+            AssertEqual(5, PdfReviewClipboardWriter.RetryCount,
+                "clipboard lock retries имеют конечный явный предел");
+            AssertEqual(100, PdfReviewClipboardWriter.RetryDelayMilliseconds,
+                "между retries задан конечный delay без busy loop");
+
+            DataObject empty = PdfReviewClipboardWriter.CreateDataObject(null);
+            AssertTrue(empty.GetDataPresent(DataFormats.UnicodeText, true),
+                "даже pure helper детерминированно задаёт UnicodeText format");
+            AssertEqual("", empty.GetData(DataFormats.UnicodeText, true) as string,
+                "null helper payload нормализуется в пустую строку");
+        }
+
+        private sealed class ReviewFakeClipboardWriter : IPdfReviewClipboardWriter
+        {
+            public PdfReviewClipboardResult Result = PdfReviewClipboardResult.Success;
+            public int Calls;
+            public string Text;
+
+            public PdfReviewClipboardResult WriteUnicodeText(string text)
+            {
+                Calls++;
+                Text = text;
+                return Result;
+            }
+        }
+
+        private static void TestReviewPageSurfaceCommands()
+        {
+            RunSta(delegate
+            {
+                using (var host = new Form())
+                using (var image = new Bitmap(200, 100))
+                {
+                    host.ClientSize = new Size(220, 120);
+                    var surface = new PdfReviewPageSurface
+                    {
+                        Location = new Point(10, 10),
+                        Size = new Size(200, 100),
+                        Image = image,
+                        SizeMode = PictureBoxSizeMode.Zoom
+                    };
+                    host.Controls.Add(surface);
+                    host.Show();
+                    Application.DoEvents();
+
+                    var clipboard = new ReviewFakeClipboardWriter();
+                    surface.ClipboardWriter = clipboard;
+                    surface.AttachPage(ReviewTrustedPage(0,
+                        new[] { "один", "два" }, new[] { " " }));
+                    AssertTrue(surface.TabStop && surface.HasSelectableText,
+                        "ready trusted page входит в tab order как read-only document");
+                    AssertEqual(AccessibleRole.Document, surface.AccessibleRole,
+                        "surface честно сообщает document role без fake TextPattern");
+                    AssertEqual(2, surface.ContextMenuStrip.Items.Count,
+                        "контекстное меню содержит только Copy и Select all");
+                    AssertEqual(Loc.T("common.copy"),
+                        surface.ContextMenuStrip.Items[0].Text,
+                        "Copy в контекстном меню локализован");
+                    AssertEqual(Loc.T("review.selection.selectAll"),
+                        surface.ContextMenuStrip.Items[1].Text,
+                        "Select all в контекстном меню локализован");
+
+                    AssertTrue(InvokeReviewSurfaceCmdKey(surface, Keys.Control | Keys.A),
+                        "Ctrl+A обрабатывается только focused selection surface");
+                    AssertEqual(2, surface.SelectedWordCount,
+                        "Ctrl+A выбирает trusted слова текущей страницы");
+                    AssertTrue(surface.InteractionStatus.Contains("2"),
+                        "status/accessibility сообщает число выбранных слов");
+                    AssertTrue(InvokeReviewSurfaceCmdKey(surface, Keys.Control | Keys.C),
+                        "Ctrl+C публикует выбранный trusted text");
+                    AssertEqual(1, clipboard.Calls, "clipboard writer вызван ровно один раз");
+                    AssertEqual("один два", clipboard.Text,
+                        "surface передаёт fake writer точный source-backed Unicode text");
+                    AssertEqual(Loc.T("review.selection.copied"), surface.InteractionStatus,
+                        "успешное exact-копирование даёт non-modal feedback");
+
+                    AssertTrue(InvokeReviewSurfaceCmdKey(surface, Keys.Escape),
+                        "Escape очищает текущий диапазон");
+                    AssertTrue(!surface.HasSelection,
+                        "после Escape selection overlay/state отсутствует");
+                    AssertTrue(InvokeReviewSurfaceCmdKey(surface, Keys.Control | Keys.C),
+                        "Ctrl+C без range остаётся локальной read-only командой");
+                    AssertEqual(1, clipboard.Calls,
+                        "пустой диапазон никогда не касается clipboard");
+
+                    surface.SelectAllWords();
+                    clipboard.Result = PdfReviewClipboardResult.Unavailable;
+                    AssertTrue(!surface.CopySelection(),
+                        "занятый clipboard не превращается в ложный success");
+                    AssertEqual(Loc.T("review.selection.clipboardUnavailable"),
+                        surface.InteractionStatus,
+                        "clipboard failure виден пользователю без падения окна");
+
+                    surface.AttachPage(ReviewTrustedPage(1,
+                        new[] { "новая" }, new string[0]));
+                    AssertTrue(!surface.HasSelection && surface.SelectedWordCount == 0,
+                        "page replacement атомарно сбрасывает старый диапазон/feedback");
+                    surface.DetachPage();
+                    AssertTrue(!surface.HasSelectableText && !surface.TabStop &&
+                               surface.Cursor == Cursors.Default,
+                        "detach убирает source layer, focus target и I-beam");
+                    host.Close();
+                }
+            });
+        }
+
+        private static void TestReviewPageSurfacePointerLifecycle()
+        {
+            RunSta(delegate
+            {
+                using (var host = new Form())
+                using (var image = new Bitmap(200, 100))
+                {
+                    using (Graphics graphics = Graphics.FromImage(image))
+                        graphics.Clear(Color.White);
+                    host.ClientSize = new Size(220, 120);
+                    var surface = new PdfReviewPageSurface
+                    {
+                        Location = new Point(10, 10),
+                        Size = new Size(200, 100),
+                        Image = image,
+                        SizeMode = PictureBoxSizeMode.Zoom
+                    };
+                    host.Controls.Add(surface);
+                    PdfReviewPage trustedPage = ReviewTrustedPage(0,
+                        new[] { "one", "two", "three" }, new[] { " ", " " });
+                    var railHighlight = new PdfReviewHighlight
+                    {
+                        ViewWidthPt = trustedPage.ViewWidthPt,
+                        ViewHeightPt = trustedPage.ViewHeightPt,
+                        ChangeBarSide = PdfReviewChangeBarSide.Left,
+                        Style = PdfReviewHighlightStyle.Removed
+                    };
+                    railHighlight.Words.Add(trustedPage.Words[0]);
+                    railHighlight.Boxes.Add(trustedPage.Words[0].Box);
+                    railHighlight.Words.Add(trustedPage.Words[2]);
+                    railHighlight.Boxes.Add(trustedPage.Words[2].Box);
+                    surface.AttachPage(trustedPage, railHighlight);
+                    host.Show();
+                    Application.DoEvents();
+
+                    InvokeReviewSurfaceMouse(surface, "OnMouseDown",
+                        new MouseEventArgs(MouseButtons.Left, 1, 2, 25, 0));
+                    AssertEqual(3, surface.SelectedWordCount,
+                        "click по change bar выбирает соответствующий полный фрагмент строки");
+                    AssertEqual("one two three", surface.SelectionModel.BuildCopyText().Text,
+                        "change bar выбирает trusted слова в document order");
+                    InvokeReviewSurfaceMouse(surface, "OnMouseUp",
+                        new MouseEventArgs(MouseButtons.Left, 1, 2, 25, 0));
+                    surface.ClearSelection();
+
+                    InvokeReviewSurfaceMouse(surface, "OnMouseDown",
+                        new MouseEventArgs(MouseButtons.Left, 1, 18, 25, 0));
+                    InvokeReviewSurfaceMouse(surface, "OnMouseMove",
+                        new MouseEventArgs(MouseButtons.Left, 0, 58, 25, 0));
+                    InvokeReviewSurfaceMouse(surface, "OnMouseUp",
+                        new MouseEventArgs(MouseButtons.Left, 1, 58, 25, 0));
+                    AssertEqual(3, surface.SelectedWordCount,
+                        "forward mouse drag выбирает contiguous canonical range");
+                    AssertTrue(!ReviewPrivateField<bool>(surface, "_dragging") &&
+                               !ReviewPrivateField<Timer>(surface,
+                                   "_autoScrollTimer").Enabled,
+                        "mouse-up снимает capture intent и останавливает timer");
+
+                    InvokeReviewSurfaceMouse(surface, "OnMouseDown",
+                        new MouseEventArgs(MouseButtons.Left, 1, 58, 25, 0));
+                    InvokeReviewSurfaceMouse(surface, "OnMouseMove",
+                        new MouseEventArgs(MouseButtons.Left, 0, 18, 25, 0));
+                    InvokeReviewSurfaceMouse(surface, "OnMouseUp",
+                        new MouseEventArgs(MouseButtons.Left, 1, 18, 25, 0));
+                    AssertEqual(3, surface.SelectedWordCount,
+                        "reverse mouse drag даёт тот же document-ordered range");
+                    AssertEqual("one two three",
+                        surface.SelectionModel.BuildCopyText().Text,
+                        "reverse drag не меняет порядок clipboard text");
+
+                    using (var painted = new Bitmap(200, 100))
+                    {
+                        surface.DrawToBitmap(painted, new Rectangle(0, 0, 200, 100));
+                        AssertTrue(painted.GetPixel(18, 25).ToArgb() != Color.White.ToArgb(),
+                            "selection имеет видимый system-colour overlay поверх страницы");
+                    }
+
+                    InvokeReviewSurfaceMouse(surface, "OnMouseDown",
+                        new MouseEventArgs(MouseButtons.Left, 1, 190, 90, 0));
+                    AssertTrue(!surface.HasSelection,
+                        "click на blank paper очищает range, а не выбирает nearest word");
+
+                    InvokeReviewSurfaceMouse(surface, "OnMouseDown",
+                        new MouseEventArgs(MouseButtons.Left, 1, 32, 25, 0));
+                    AssertTrue(ReviewPrivateField<bool>(surface, "_dragging") &&
+                               surface.Capture,
+                        "drag начинается только после exact word hit");
+                    surface.Capture = false;
+                    Application.DoEvents();
+                    AssertTrue(!ReviewPrivateField<bool>(surface, "_dragging") &&
+                               !ReviewPrivateField<Timer>(surface,
+                                   "_autoScrollTimer").Enabled,
+                        "capture loss завершает drag/timer без изменения semantic model");
+
+                    int doubleClicks = 0;
+                    surface.DoubleClick += delegate { doubleClicks++; };
+                    InvokeReviewSurfaceEvent(surface, "OnDoubleClick", EventArgs.Empty);
+                    AssertEqual(1, doubleClicks,
+                        "custom selection surface сохраняет PictureBox double-click contract");
+                    host.Close();
+                }
+            });
+        }
+
+        private static void TestReviewPageSurfaceIsolation()
+        {
+            RunSta(delegate
+            {
+                using (var host = new Form())
+                {
+                    host.ClientSize = new Size(420, 120);
+                    var left = new PdfReviewPageSurface
+                    {
+                        Location = new Point(0, 0), Size = new Size(200, 100)
+                    };
+                    var right = new PdfReviewPageSurface
+                    {
+                        Location = new Point(210, 0), Size = new Size(200, 100)
+                    };
+                    host.Controls.Add(left);
+                    host.Controls.Add(right);
+                    host.Show();
+                    Application.DoEvents();
+                    var leftClipboard = new ReviewFakeClipboardWriter();
+                    var rightClipboard = new ReviewFakeClipboardWriter();
+                    left.ClipboardWriter = leftClipboard;
+                    right.ClipboardWriter = rightClipboard;
+                    left.AttachPage(ReviewTrustedPage(0,
+                        new[] { "removed", "left" }, new[] { " " }));
+                    right.AttachPage(ReviewTrustedPage(0,
+                        new[] { "added", "right" }, new[] { "\t" }));
+
+                    left.SelectAllWords();
+                    AssertTrue(left.HasSelection && !right.HasSelection,
+                        "selection одной pane не выделяет вторую pane");
+                    right.SelectAllWords();
+                    AssertTrue(left.HasSelection && right.HasSelection,
+                        "каждая pane хранит собственный range одновременно");
+                    left.CopySelection();
+                    right.CopySelection();
+                    AssertEqual("removed left", leftClipboard.Text,
+                        "левая pane копирует только свой source layer");
+                    AssertEqual("added\tright", rightClipboard.Text,
+                        "правая pane копирует только свой source layer");
+                    AssertEqual(1, leftClipboard.Calls,
+                        "правое копирование не вызывает левый clipboard adapter");
+                    AssertEqual(1, rightClipboard.Calls,
+                        "левое копирование не вызывает правый clipboard adapter");
+
+                    left.AttachPage(ReviewTrustedPage(1,
+                        new[] { "replacement" }, new string[0]));
+                    AssertTrue(!left.HasSelection && right.HasSelection,
+                        "навигация слева очищает только левый диапазон");
+                    host.Close();
+                    left.Dispose();
+                    right.Dispose();
+                }
+            });
+        }
+
+        private static PdfReviewWord ReviewTrustedWord(string text, int sourceStart,
+            double left, double bottom, double right, double top)
+        {
+            string value = text ?? "";
+            return new PdfReviewWord
+            {
+                Text = value,
+                Key = value,
+                PageIndex = 0,
+                Box = new PdfReviewBox
+                    { Left = left, Bottom = bottom, Right = right, Top = top },
+                SourceStart = sourceStart,
+                SourceEnd = sourceStart + Math.Max(0, value.Length - 1),
+                SourceText = value,
+                SourceTrusted = true
+            };
+        }
+
+        private static PdfReviewPage ReviewTrustedPage(int pageIndex, string[] words,
+            string[] separators)
+        {
+            if (words == null)
+                words = new string[0];
+            if (separators == null || separators.Length != Math.Max(0, words.Length - 1))
+                throw new ArgumentException("separators must describe every word boundary");
+            var page = new PdfReviewPage
+            {
+                PageIndex = pageIndex,
+                WidthPt = 100,
+                HeightPt = 100,
+                ViewWidthPt = 100,
+                ViewHeightPt = 100
+            };
+            int source = 0;
+            var text = new StringBuilder();
+            for (int i = 0; i < words.Length; i++)
+            {
+                string value = words[i] ?? "";
+                PdfReviewWord word = ReviewTrustedWord(value, source,
+                    5 + i * 10, 70, 13 + i * 10, 80);
+                word.PageIndex = pageIndex;
+                page.Words.Add(word);
+                text.Append(value);
+                source += value.Length;
+                if (i < separators.Length)
+                {
+                    string separator = separators[i] ?? "";
+                    text.Append(separator);
+                    source += separator.Length;
+                }
+            }
+            for (int i = 0; i < separators.Length; i++)
+            {
+                string separator = separators[i] ?? "";
+                page.WhitespaceBoundaries.Add(new PdfReviewWhitespaceEvidence
+                {
+                    PageIndex = pageIndex,
+                    Before = page.Words[i],
+                    After = page.Words[i + 1],
+                    RawText = separator,
+                    LogicalText = separator,
+                    MarkerBox = new PdfReviewBox
+                    {
+                        Left = page.Words[i].Box.Right,
+                        Bottom = page.Words[i].Box.Bottom,
+                        Right = page.Words[i + 1].Box.Left,
+                        Top = page.Words[i].Box.Top
+                    }
+                });
+            }
+            page.Text = text.ToString();
+            page.NormalizedText = PdfReviewDiff.Normalize(page.Text);
+            page.Fingerprint = PdfReviewDiff.Fingerprint(page.NormalizedText,
+                page.WidthPt, page.HeightPt);
+            return page;
+        }
+
+        private static bool InvokeReviewSurfaceCmdKey(PdfReviewPageSurface surface,
+            Keys keyData)
+        {
+            MethodInfo method = typeof(PdfReviewPageSurface).GetMethod("ProcessCmdKey",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var args = new object[] { new Message(), keyData };
+            return (bool)method.Invoke(surface, args);
+        }
+
+        private static void InvokeReviewSurfaceMouse(PdfReviewPageSurface surface,
+            string methodName, MouseEventArgs args)
+        {
+            MethodInfo method = typeof(PdfReviewPageSurface).GetMethod(methodName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            method.Invoke(surface, new object[] { args });
+        }
+
+        private static void InvokeReviewSurfaceEvent(PdfReviewPageSurface surface,
+            string methodName, EventArgs args)
+        {
+            MethodInfo method = typeof(PdfReviewPageSurface).GetMethod(methodName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            method.Invoke(surface, new object[] { args });
+        }
+
+        private static bool ReviewHasColoredPixel(Bitmap bitmap, int left, int right,
+            int top, int bottom)
+        {
+            for (int y = Math.Max(0, top); y <= Math.Min(bitmap.Height - 1, bottom); y++)
+                for (int x = Math.Max(0, left); x <= Math.Min(bitmap.Width - 1, right); x++)
+                    if (bitmap.GetPixel(x, y).ToArgb() != Color.White.ToArgb())
+                        return true;
+            return false;
+        }
+
+        private static PdfReviewWord ReviewVisualWord(string key, double left,
+            double bottom, double right, double top)
+        {
+            return new PdfReviewWord
+            {
+                Text = key,
+                Key = key,
+                Box = new PdfReviewBox { Left = left, Bottom = bottom, Right = right, Top = top }
+            };
+        }
+
+        private static PdfReviewPage ReviewVisualPage(int index, params PdfReviewWord[] words)
+        {
+            var page = new PdfReviewPage
+            {
+                PageIndex = index,
+                WidthPt = 200,
+                HeightPt = 100,
+                ViewWidthPt = 200,
+                ViewHeightPt = 100
+            };
+            var text = new StringBuilder();
+            foreach (PdfReviewWord word in words)
+            {
+                page.Words.Add(word);
+                if (text.Length > 0) text.Append(' ');
+                text.Append(word.Key);
+            }
+            page.Text = text.ToString();
+            page.NormalizedText = PdfReviewDiff.Normalize(page.Text);
+            page.Fingerprint = PdfReviewDiff.Fingerprint(page.NormalizedText,
+                page.WidthPt, page.HeightPt);
+            return page;
+        }
+
+        private static System.Drawing.Bitmap ReviewVisualBitmap(
+            Action<System.Drawing.Graphics> paint)
+        {
+            return ReviewVisualBitmap(200, 100, paint);
+        }
+
+        private static System.Drawing.Bitmap ReviewVisualBitmap(int width, int height,
+            Action<System.Drawing.Graphics> paint)
+        {
+            var bitmap = new System.Drawing.Bitmap(width, height,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(bitmap))
+            {
+                g.Clear(System.Drawing.Color.White);
+                if (paint != null) paint(g);
+            }
+            return bitmap;
+        }
+
+        private static List<PdfReviewWordOp> ReviewVisualOperations(PdfReviewPage leftPage,
+            PdfReviewPage rightPage)
+        {
+            foreach (PdfReviewWord word in leftPage.Words)
+                word.PageIndex = leftPage.PageIndex;
+            foreach (PdfReviewWord word in rightPage.Words)
+                word.PageIndex = rightPage.PageIndex;
+            return PdfReviewDiff.DiffWords(leftPage.Words, rightPage.Words,
+                PdfReviewLimits.Default());
+        }
+
+        private static PdfReviewResult ReviewVisualResult(PdfReviewPage leftPage,
+            PdfReviewPage rightPage, IList<PdfReviewWordOp> operations)
+        {
+            var left = new PdfReviewDocument { Path = "left.pdf", WordCount = leftPage.Words.Count };
+            var right = new PdfReviewDocument { Path = "right.pdf", WordCount = rightPage.Words.Count };
+            left.Pages.Add(leftPage);
+            right.Pages.Add(rightPage);
+            var result = new PdfReviewResult { Left = left, Right = right };
+            result.Pairs.Add(PdfReviewDiff.Pair(leftPage, rightPage, PdfReviewLimits.Default()));
+            if (operations != null)
+                result.Operations.AddRange(operations);
+            PdfReviewDiff.Project(result);
+            return result;
+        }
+
+        private static PdfReviewResult RefineVisualResult(PdfReviewPage leftPage,
+            PdfReviewPage rightPage, Bitmap leftBitmap, Bitmap rightBitmap, out bool refined)
+        {
+            List<PdfReviewWordOp> operations = ReviewVisualOperations(leftPage, rightPage);
+            List<PdfReviewWordOp> refinedOperations;
+            refined = PdfReviewVisualDiff.RefineHunk(operations, leftPage, rightPage,
+                leftBitmap, rightBitmap, out refinedOperations);
+            return ReviewVisualResult(leftPage, rightPage,
+                refined ? refinedOperations : operations);
+        }
+
+        private static PdfReviewResult ReviewVisualCandidateResult(string leftKey,
+            string rightKey)
+        {
+            PdfReviewPage leftPage = leftKey == null
+                ? ReviewVisualPage(0)
+                : ReviewVisualPage(0, ReviewVisualWord(leftKey, 20, 30, 80, 70));
+            PdfReviewPage rightPage = rightKey == null
+                ? ReviewVisualPage(0)
+                : ReviewVisualPage(0, ReviewVisualWord(rightKey, 20, 30, 80, 70));
+            return ReviewVisualResult(leftPage, rightPage,
+                ReviewVisualOperations(leftPage, rightPage));
+        }
+
+        private static PdfReviewWordOp ReviewVisualOperationForWord(
+            IList<PdfReviewWordOp> operations, PdfReviewWord word)
+        {
+            foreach (PdfReviewWordOp op in operations)
+                if (op != null && (op.LeftWords.Contains(word) ||
+                    op.RightWords.Contains(word)))
+                    return op;
+            return null;
+        }
+
+        private static PdfReviewResult ReviewVisualSampleBudgetResult(int hunkCount,
+            out PdfReviewWord lastLeft, out PdfReviewWord lastRight)
+        {
+            if (hunkCount <= 0)
+                throw new ArgumentOutOfRangeException("hunkCount");
+            var leftWords = new List<PdfReviewWord>();
+            var rightWords = new List<PdfReviewWord>();
+            var operations = new List<PdfReviewWordOp>();
+            lastLeft = lastRight = null;
+            for (int i = 0; i < hunkCount; i++)
+            {
+                PdfReviewWord left = ReviewVisualWord("sample-left-" + i,
+                    20, 30, 80, 70);
+                PdfReviewWord right = ReviewVisualWord("sample-right-" + i,
+                    20, 30, 80, 70);
+                leftWords.Add(left);
+                rightWords.Add(right);
+                PdfReviewDiff.Append(operations, PdfReviewDiffKind.Delete, left);
+                PdfReviewDiff.Append(operations, PdfReviewDiffKind.Insert, right);
+                lastLeft = left;
+                lastRight = right;
+                if (i + 1 < hunkCount)
+                {
+                    PdfReviewWord leftAnchor = ReviewVisualWord("sample-anchor-" + i,
+                        100, 10, 120, 20);
+                    PdfReviewWord rightAnchor = ReviewVisualWord("sample-anchor-" + i,
+                        100, 10, 120, 20);
+                    leftWords.Add(leftAnchor);
+                    rightWords.Add(rightAnchor);
+                    PdfReviewDiff.AppendEqual(operations, leftAnchor, rightAnchor,
+                        PdfReviewMatchKind.Exact);
+                }
+            }
+            foreach (PdfReviewWord word in leftWords) word.PageIndex = 0;
+            foreach (PdfReviewWord word in rightWords) word.PageIndex = 0;
+            PdfReviewPage leftPage = ReviewVisualPage(0, leftWords.ToArray());
+            PdfReviewPage rightPage = ReviewVisualPage(0, rightWords.ToArray());
+            return ReviewVisualResult(leftPage, rightPage, operations);
+        }
+
+        private static PdfReviewResult ReviewVisualRelationBudgetResult(
+            int finalDeletes, int finalInserts, out PdfReviewWord proofLeft,
+            out PdfReviewWord proofRight)
+        {
+            var leftWords = new List<PdfReviewWord>();
+            var rightWords = new List<PdfReviewWord>();
+            var operations = new List<PdfReviewWordOp>();
+            for (int i = 0; i < 15; i++)
+                AppendReviewVisualRelationHunk(operations, leftWords, rightWords,
+                    i, 256, 256);
+            AppendReviewVisualRelationHunk(operations, leftWords, rightWords,
+                15, finalDeletes, finalInserts);
+
+            proofLeft = ReviewVisualWord("relation-proof-left", 20, 30, 80, 70);
+            proofRight = ReviewVisualWord("relation-proof-right", 20, 30, 80, 70);
+            leftWords.Add(proofLeft);
+            rightWords.Add(proofRight);
+            PdfReviewDiff.Append(operations, PdfReviewDiffKind.Delete, proofLeft);
+            PdfReviewDiff.Append(operations, PdfReviewDiffKind.Insert, proofRight);
+            foreach (PdfReviewWord word in leftWords) word.PageIndex = 0;
+            foreach (PdfReviewWord word in rightWords) word.PageIndex = 0;
+            PdfReviewPage leftPage = ReviewVisualPage(0, leftWords.ToArray());
+            PdfReviewPage rightPage = ReviewVisualPage(0, rightWords.ToArray());
+            return ReviewVisualResult(leftPage, rightPage, operations);
+        }
+
+        private static void AppendReviewVisualRelationHunk(
+            List<PdfReviewWordOp> operations, List<PdfReviewWord> leftWords,
+            List<PdfReviewWord> rightWords, int hunkIndex, int deleteCount,
+            int insertCount)
+        {
+            for (int i = 0; i < deleteCount; i++)
+            {
+                PdfReviewWord word = ReviewVisualWord("relation-left-" + hunkIndex +
+                    "-" + i, 10, 70, 20, 80);
+                leftWords.Add(word);
+                PdfReviewDiff.Append(operations, PdfReviewDiffKind.Delete, word);
+            }
+            for (int i = 0; i < insertCount; i++)
+            {
+                PdfReviewWord word = ReviewVisualWord("relation-right-" + hunkIndex +
+                    "-" + i, 160, 10, 170, 20);
+                rightWords.Add(word);
+                PdfReviewDiff.Append(operations, PdfReviewDiffKind.Insert, word);
+            }
+            PdfReviewWord leftAnchor = ReviewVisualWord("relation-anchor-" + hunkIndex,
+                90, 45, 110, 55);
+            PdfReviewWord rightAnchor = ReviewVisualWord("relation-anchor-" + hunkIndex,
+                90, 45, 110, 55);
+            leftWords.Add(leftAnchor);
+            rightWords.Add(rightAnchor);
+            PdfReviewDiff.AppendEqual(operations, leftAnchor, rightAnchor,
+                PdfReviewMatchKind.Exact);
+        }
+
+        private static void AssertReviewVisualBitmapsDisposed(IList<Bitmap> bitmaps,
+            string context)
+        {
+            for (int i = 0; i < bitmaps.Count; i++)
+            {
+                Bitmap bitmap = bitmaps[i];
+                AssertThrowsAny(context + ": bitmap " + i + " освобождён",
+                    delegate { bitmap.GetPixel(0, 0); });
+            }
+        }
+
+        private static void AssertReviewVisualUnsafeHunk(PdfReviewResult result,
+            string context)
+        {
+            string before = ReviewOpsSig(result.Operations);
+            int cancellationChecks = 0;
+            PdfReviewVisualDiff.Refine(result, PdfReviewLimits.Default(), delegate
+            {
+                cancellationChecks++;
+                return true;
+            });
+            AssertEqual(0, cancellationChecks,
+                context + ": renderer и cancellation path не запущены");
+            AssertEqual(before, ReviewOpsSig(result.Operations),
+                context + ": текстовый кандидат сохранён fail-safe");
+        }
+
+        /// <summary>
+        /// Production-facing Refine имеет более строгий контракт, чем растровое ядро: только
+        /// смешанная hunk одной физической пары может дойти до renderer. Все неоднозначные случаи
+        /// остаются в глобальном diff, а отмена безопасной работы распространяется вызывающему.
+        /// </summary>
+        private static void TestReviewVisualRefineSafetyGates()
+        {
+            PdfReviewResult pureDelete = ReviewVisualCandidateResult("old", null);
+            AssertEqual("Delete:old", ReviewOpsSig(pureDelete.Operations),
+                "контроль: pure-delete fixture");
+            AssertReviewVisualUnsafeHunk(pureDelete, "pure Delete");
+
+            PdfReviewResult pureInsert = ReviewVisualCandidateResult(null, "new");
+            AssertEqual("Insert:new", ReviewOpsSig(pureInsert.Operations),
+                "контроль: pure-insert fixture");
+            AssertReviewVisualUnsafeHunk(pureInsert, "pure Insert");
+
+            PdfReviewPage crossLeft = ReviewVisualPage(0,
+                ReviewVisualWord("old-a", 20, 30, 45, 70),
+                ReviewVisualWord("old-b", 47, 30, 80, 70));
+            PdfReviewPage crossRight = ReviewVisualPage(0,
+                ReviewVisualWord("new", 20, 30, 80, 70));
+            PdfReviewResult crossPage = ReviewVisualResult(crossLeft, crossRight,
+                ReviewVisualOperations(crossLeft, crossRight));
+            crossLeft.Words[1].PageIndex = 1;
+            AssertReviewVisualUnsafeHunk(crossPage,
+                "Delete нескольких физических страниц");
+
+            PdfReviewResult noDisplayPair = ReviewVisualCandidateResult("old", "new");
+            noDisplayPair.Pairs.Clear();
+            PdfReviewDiff.Project(noDisplayPair);
+            AssertReviewVisualUnsafeHunk(noDisplayPair,
+                "нет явной строки сопоставления");
+
+            PdfReviewResult invalidOwner = ReviewVisualCandidateResult("old", "new");
+            invalidOwner.Operations[0].Words[0].PageIndex = -1;
+            AssertReviewVisualUnsafeHunk(invalidOwner,
+                "невалидный физический владелец");
+
+            PdfReviewResult rendererFailure = ReviewVisualCandidateResult("old", "new");
+            rendererFailure.Left.Path = Path.Combine(Path.GetTempPath(),
+                "iwo_missing_left_" + Guid.NewGuid().ToString("N") + ".pdf");
+            rendererFailure.Right.Path = Path.Combine(Path.GetTempPath(),
+                "iwo_missing_right_" + Guid.NewGuid().ToString("N") + ".pdf");
+            string beforeFailure = ReviewOpsSig(rendererFailure.Operations);
+            int failureChecks = 0;
+            PdfReviewVisualDiff.Refine(rendererFailure, PdfReviewLimits.Default(), delegate
+            {
+                failureChecks++;
+                return false;
+            });
+            AssertTrue(failureChecks > 0,
+                "безопасная hunk дошла до cooperative cancellation gate");
+            AssertEqual(beforeFailure, ReviewOpsSig(rendererFailure.Operations),
+                "ошибка renderer сохраняет исходный Delete/Insert");
+
+            PdfReviewResult limited = ReviewVisualCandidateResult("old", "new");
+            limited.Left.Path = rendererFailure.Left.Path;
+            limited.Right.Path = rendererFailure.Right.Path;
+            var lowLimits = PdfReviewLimits.Default();
+            lowLimits.MaxRenderPixels = 10000;
+            string beforeLimit = ReviewOpsSig(limited.Operations);
+            int limitChecks = 0;
+            PdfReviewVisualDiff.Refine(limited, lowLimits, delegate
+            {
+                limitChecks++;
+                return false;
+            });
+            AssertTrue(limitChecks > 0,
+                "безопасная hunk проверена до оценки raster-лимита");
+            AssertEqual(beforeLimit, ReviewOpsSig(limited.Operations),
+                "недостаточный raster-лимит сохраняет исходный Delete/Insert");
+
+            var leftCandidates = new PdfReviewWord[257];
+            var rightCandidates = new PdfReviewWord[256];
+            for (int i = 0; i < leftCandidates.Length; i++)
+                leftCandidates[i] = ReviewVisualWord("old-" + i, 20, 30, 80, 70);
+            for (int i = 0; i < rightCandidates.Length; i++)
+                rightCandidates[i] = ReviewVisualWord("new-" + i, 20, 30, 80, 70);
+            PdfReviewPage oversizedLeft = ReviewVisualPage(0, leftCandidates);
+            PdfReviewPage oversizedRight = ReviewVisualPage(0, rightCandidates);
+            PdfReviewResult oversized = ReviewVisualResult(oversizedLeft, oversizedRight,
+                ReviewVisualOperations(oversizedLeft, oversizedRight));
+            AssertReviewVisualUnsafeHunk(oversized,
+                "hunk сверх детерминированного candidate-потолка");
+
+            PdfReviewResult longNoOp = ReviewVisualCandidateResult("old", "new");
+            longNoOp.Operations.Clear();
+            for (int i = 0; i < 5000; i++)
+                longNoOp.Operations.Add(new PdfReviewWordOp
+                {
+                    Kind = PdfReviewDiffKind.Equal,
+                    MatchKind = PdfReviewMatchKind.Exact
+                });
+            List<PdfReviewWordOp> longNoOpOperations = longNoOp.Operations;
+            int longNoOpChecks = 0;
+            bool longNoOpCancelled = false;
+            try
+            {
+                PdfReviewVisualDiff.Refine(longNoOp, PdfReviewLimits.Default(), delegate
+                {
+                    longNoOpChecks++;
+                    return true;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                longNoOpCancelled = true;
+            }
+            AssertTrue(longNoOpCancelled,
+                "длинный no-op обход visual-кандидатов кооперативно отменён");
+            AssertEqual(1, longNoOpChecks,
+                "длинный no-op проверяет отмену периодически, а не на каждом элементе");
+            AssertTrue(ReferenceEquals(longNoOpOperations, longNoOp.Operations) &&
+                       longNoOp.Operations.Count == 5000,
+                "отмена группировки не публикует частичный список операций");
+
+            PdfReviewPage coreLeft = ReviewVisualPage(0,
+                ReviewVisualWord("old", 20, 30, 80, 70));
+            PdfReviewPage coreRight = ReviewVisualPage(0,
+                ReviewVisualWord("new", 20, 30, 80, 70));
+            List<PdfReviewWordOp> coreOperations = ReviewVisualOperations(coreLeft,
+                coreRight);
+            int coreChecks = 0;
+            bool coreCancelled = false;
+            using (Bitmap leftBitmap = ReviewVisualBitmap(null))
+            using (Bitmap rightBitmap = ReviewVisualBitmap(null))
+            {
+                List<PdfReviewWordOp> ignored;
+                try
+                {
+                    PdfReviewVisualDiff.RefineHunk(coreOperations, coreLeft, coreRight,
+                        leftBitmap, rightBitmap, delegate
+                        {
+                            coreChecks++;
+                            return true;
+                        }, out ignored);
+                }
+                catch (OperationCanceledException)
+                {
+                    coreCancelled = true;
+                }
+            }
+            AssertTrue(coreCancelled && coreChecks == 1,
+                "растровое ядро проверяет отмену до копирования bitmap");
+
+            List<PdfReviewWordOp> cappedOutput;
+            bool cappedRefined;
+            PdfReviewPage cappedLeft = ReviewVisualPage(0,
+                ReviewVisualWord("old", 0, 0, 200, 100));
+            PdfReviewPage cappedRight = ReviewVisualPage(0,
+                ReviewVisualWord("new", 0, 0, 200, 100));
+            List<PdfReviewWordOp> cappedOperations = ReviewVisualOperations(cappedLeft,
+                cappedRight);
+            using (Bitmap leftBitmap = ReviewVisualBitmap(640, 256, null))
+            using (Bitmap rightBitmap = ReviewVisualBitmap(640, 256, null))
+                cappedRefined = PdfReviewVisualDiff.RefineHunk(cappedOperations,
+                    cappedLeft, cappedRight, leftBitmap, rightBitmap, out cappedOutput);
+            AssertTrue(!cappedRefined && cappedOutput == null,
+                "слишком широкая raster-proof область консервативно сохранена как правка");
+
+            PdfReviewResult cancelled = ReviewVisualCandidateResult("old", "new");
+            int cancellationCalls = 0;
+            bool cancellationThrown = false;
+            try
+            {
+                PdfReviewVisualDiff.Refine(cancelled, PdfReviewLimits.Default(), delegate
+                {
+                    cancellationCalls++;
+                    return true;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                cancellationThrown = true;
+            }
+            AssertTrue(cancellationThrown,
+                "отмена безопасного production-refinement не маскируется fail-safe catch");
+            AssertEqual(1, cancellationCalls,
+                "поднятый флаг отмены проверен до renderer");
+            AssertEqual("Delete:old|Insert:new", ReviewOpsSig(cancelled.Operations),
+                "отмена не мутирует глобальные операции");
+        }
+
+        /// <summary>
+        /// Пять отдельно допустимых hunk требуют примерно по 7,84 млн sample-пикселей.
+        /// Четыре укладываются в общий потолок 32 млн, пятая обязана остаться семантической,
+        /// хотя её собственный объём меньше локального потолка 8 млн.
+        /// </summary>
+        private static void TestReviewVisualSharedSampleBudget()
+        {
+            PdfReviewWord lastLeft, lastRight;
+            PdfReviewResult result = ReviewVisualSampleBudgetResult(5,
+                out lastLeft, out lastRight);
+            List<PdfReviewWordOp> sourceOperations = result.Operations;
+            List<PdfReviewWhitespaceChange> sourceWhitespace = result.WhitespaceChanges;
+            var rendered = new List<Bitmap>();
+            int renderCalls = 0;
+            PdfReviewVisualDiff.Refine(result, PdfReviewLimits.Default(), null,
+                delegate(string path, int pageIndex, int targetWidth, int maxHeight)
+                {
+                    renderCalls++;
+                    Bitmap bitmap = ReviewVisualBitmap(1200, 600, null);
+                    rendered.Add(bitmap);
+                    return bitmap;
+                });
+
+            AssertEqual(2, renderCalls,
+                "одна физическая пара растеризована ровно один раз с каждой стороны");
+            AssertReviewVisualBitmapsDisposed(rendered,
+                "успешный injected-renderer path");
+            AssertTrue(!ReferenceEquals(sourceOperations, result.Operations),
+                "ранние доказанные hunks опубликованы одним новым snapshot");
+            AssertTrue(ReferenceEquals(sourceWhitespace, result.WhitespaceChanges),
+                "word-only refinement не заменяет пробельную семантику");
+
+            int rasterLeft = 0, rasterRight = 0;
+            foreach (PdfReviewWordOp op in result.Operations)
+                if (op != null && op.Kind == PdfReviewDiffKind.Equal &&
+                    op.MatchKind == PdfReviewMatchKind.RasterEquivalent)
+                {
+                    rasterLeft += op.LeftWords.Count;
+                    rasterRight += op.RightWords.Count;
+                }
+            AssertEqual(4, rasterLeft,
+                "четыре ранние hunk подтверждены до общего sample-потолка");
+            AssertEqual(4, rasterRight,
+                "растровые Equal сохраняют четыре фактические правые стороны");
+            AssertEqual(PdfReviewDiffKind.Delete,
+                ReviewVisualOperationForWord(result.Operations, lastLeft).Kind,
+                "поздний левый кандидат сохранён после исчерпания общего бюджета");
+            AssertEqual(PdfReviewDiffKind.Insert,
+                ReviewVisualOperationForWord(result.Operations, lastRight).Kind,
+                "поздний правый кандидат сохранён после исчерпания общего бюджета");
+            AssertEqual(result.Left.Pages[0].Text,
+                RebuildReviewSide(result.Operations, true),
+                "частичный proof не меняет порядок и полноту левой последовательности");
+            AssertEqual(result.Right.Pages[0].Text,
+                RebuildReviewSide(result.Operations, false),
+                "частичный proof не меняет порядок и полноту правой последовательности");
+            AssertEqual(1, result.Stats.DeletedWords,
+                "после общего потолка остался ровно один Delete");
+            AssertEqual(1, result.Stats.InsertedWords,
+                "после общего потолка остался ровно один Insert");
+            AssertEqual(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
+                "непроверенная поздняя hunk оставляет страницу изменённой");
+        }
+
+        /// <summary>
+        /// Пятнадцать групп 256×256 дают 983 040 relation-check. Группа 159×106
+        /// оставляет запас для последнего доказательства, а 160×106 доводит счётчик ровно
+        /// до 1 000 000: следующий кандидат не рассматривается и остаётся Delete/Insert.
+        /// </summary>
+        private static void TestReviewVisualRelationBudget()
+        {
+            PdfReviewWord controlLeft, controlRight;
+            PdfReviewResult control = ReviewVisualRelationBudgetResult(159, 106,
+                out controlLeft, out controlRight);
+            List<PdfReviewWordOp> controlSource = control.Operations;
+            var controlBitmaps = new List<Bitmap>();
+            PdfReviewVisualDiff.Refine(control, PdfReviewLimits.Default(), null,
+                delegate(string path, int pageIndex, int targetWidth, int maxHeight)
+                {
+                    Bitmap bitmap = ReviewVisualBitmap(200, 100, null);
+                    controlBitmaps.Add(bitmap);
+                    return bitmap;
+                });
+            AssertReviewVisualBitmapsDisposed(controlBitmaps,
+                "relation-budget control");
+            AssertTrue(!ReferenceEquals(controlSource, control.Operations),
+                "запас ниже relation-потолка допускает последнее доказательство");
+            PdfReviewWordOp controlLeftOp = ReviewVisualOperationForWord(
+                control.Operations, controlLeft);
+            PdfReviewWordOp controlRightOp = ReviewVisualOperationForWord(
+                control.Operations, controlRight);
+            AssertTrue(controlLeftOp != null && controlRightOp != null &&
+                       controlLeftOp.Kind == PdfReviewDiffKind.Equal &&
+                       controlRightOp.Kind == PdfReviewDiffKind.Equal &&
+                       controlLeftOp.MatchKind == PdfReviewMatchKind.RasterEquivalent,
+                "кандидат при 999 895 суммарных relation-check растрово подтверждён");
+
+            PdfReviewWord cappedLeft, cappedRight;
+            PdfReviewResult capped = ReviewVisualRelationBudgetResult(160, 106,
+                out cappedLeft, out cappedRight);
+            List<PdfReviewWordOp> cappedSource = capped.Operations;
+            var cappedBitmaps = new List<Bitmap>();
+            PdfReviewVisualDiff.Refine(capped, PdfReviewLimits.Default(), null,
+                delegate(string path, int pageIndex, int targetWidth, int maxHeight)
+                {
+                    Bitmap bitmap = ReviewVisualBitmap(200, 100, null);
+                    cappedBitmaps.Add(bitmap);
+                    return bitmap;
+                });
+            AssertReviewVisualBitmapsDisposed(cappedBitmaps,
+                "relation-budget ceiling");
+            AssertTrue(ReferenceEquals(cappedSource, capped.Operations),
+                "исчерпание без доказанных hunks не создаёт новый snapshot");
+            AssertEqual(PdfReviewDiffKind.Delete,
+                ReviewVisualOperationForWord(capped.Operations, cappedLeft).Kind,
+                "левый кандидат за точным relation-потолком не скрыт");
+            AssertEqual(PdfReviewDiffKind.Insert,
+                ReviewVisualOperationForWord(capped.Operations, cappedRight).Kind,
+                "правый кандидат за точным relation-потолком не скрыт");
+        }
+
+        /// <summary>
+        /// Первая пара успевает пройти raster-proof, затем renderer второй пары поднимает
+        /// отмену до её hunk. Ни ранний полуфабрикат, ни derived-индексы не публикуются;
+        /// все переданные bitmap освобождаются и тот же результат допускает чистый повтор.
+        /// </summary>
+        private static void TestReviewVisualRefineCancellationAtomic()
+        {
+            PdfReviewPage leftFirst = ReviewVisualPage(0,
+                ReviewVisualWord("cancel-old-first", 20, 30, 80, 70),
+                ReviewVisualWord("cancel-anchor", 110, 10, 140, 20));
+            PdfReviewPage rightFirst = ReviewVisualPage(0,
+                ReviewVisualWord("cancel-new-first", 20, 30, 80, 70),
+                ReviewVisualWord("cancel-anchor", 110, 10, 140, 20));
+            PdfReviewPage leftSecond = ReviewVisualPage(1,
+                ReviewVisualWord("cancel-old-second", 20, 30, 80, 70));
+            PdfReviewPage rightSecond = ReviewVisualPage(1,
+                ReviewVisualWord("cancel-new-second", 20, 30, 80, 70));
+            var operations = new List<PdfReviewWordOp>();
+            operations.AddRange(ReviewVisualOperations(leftFirst, rightFirst));
+            operations.AddRange(ReviewVisualOperations(leftSecond, rightSecond));
+            var left = new PdfReviewDocument { Path = "left.pdf", WordCount = 3 };
+            var right = new PdfReviewDocument { Path = "right.pdf", WordCount = 3 };
+            left.Pages.Add(leftFirst);
+            left.Pages.Add(leftSecond);
+            right.Pages.Add(rightFirst);
+            right.Pages.Add(rightSecond);
+            var result = new PdfReviewResult { Left = left, Right = right };
+            result.Pairs.Add(PdfReviewDiff.Pair(leftFirst, rightFirst,
+                PdfReviewLimits.Default()));
+            result.Pairs.Add(PdfReviewDiff.Pair(leftSecond, rightSecond,
+                PdfReviewLimits.Default()));
+            result.Operations.AddRange(operations);
+            PdfReviewDiff.Project(result);
+
+            PdfReviewWord firstLeft = leftFirst.Words[0];
+            PdfReviewWord secondLeft = leftSecond.Words[0];
+            List<PdfReviewWordOp> oldOperations = result.Operations;
+            List<PdfReviewWhitespaceChange> oldWhitespace = result.WhitespaceChanges;
+            Dictionary<int, List<PdfReviewWord>> oldDeleted =
+                result.DeletedWordsByPage;
+            Dictionary<int, List<PdfReviewWord>> oldInserted =
+                result.InsertedWordsByPage;
+            Dictionary<int, List<PdfReviewWhitespaceMarker>> oldDeletedWhitespace =
+                result.DeletedWhitespaceByPage;
+            Dictionary<int, List<PdfReviewWhitespaceMarker>> oldInsertedWhitespace =
+                result.InsertedWhitespaceByPage;
+            List<PdfReviewWord> oldDeletedFirst = oldDeleted[0];
+            List<PdfReviewWord> oldInsertedFirst = oldInserted[0];
+            PdfReviewStats oldStats = result.Stats;
+            PdfReviewPairStatus oldFirstStatus = result.Pairs[0].Status;
+            PdfReviewPairStatus oldSecondStatus = result.Pairs[1].Status;
+            string oldSignature = ReviewOpsSig(oldOperations);
+
+            bool cancelNow = false;
+            bool cancellationThrown = false;
+            int cancellationChecks = 0;
+            var rendered = new List<Bitmap>();
+            try
+            {
+                PdfReviewVisualDiff.Refine(result, PdfReviewLimits.Default(),
+                    delegate
+                    {
+                        cancellationChecks++;
+                        return cancelNow;
+                    },
+                    delegate(string path, int pageIndex, int targetWidth, int maxHeight)
+                    {
+                        Bitmap bitmap = ReviewVisualBitmap(200, 100, null);
+                        rendered.Add(bitmap);
+                        if (pageIndex == 1 && string.Equals(path, right.Path,
+                            StringComparison.Ordinal))
+                            cancelNow = true;
+                        return bitmap;
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                cancellationThrown = true;
+            }
+
+            AssertTrue(cancellationThrown && cancellationChecks > 0,
+                "отмена второй пары распространяется после работы над первой");
+            AssertEqual(4, rendered.Count,
+                "до отмены получены обе стороны первой и второй физических пар");
+            AssertReviewVisualBitmapsDisposed(rendered,
+                "отменённый injected-renderer path");
+            AssertTrue(ReferenceEquals(oldOperations, result.Operations) &&
+                       ReferenceEquals(oldWhitespace, result.WhitespaceChanges),
+                "отмена сохраняет обе authoritative snapshot-ссылки");
+            AssertTrue(ReferenceEquals(oldDeleted, result.DeletedWordsByPage) &&
+                       ReferenceEquals(oldInserted, result.InsertedWordsByPage) &&
+                       ReferenceEquals(oldDeletedWhitespace,
+                           result.DeletedWhitespaceByPage) &&
+                       ReferenceEquals(oldInsertedWhitespace,
+                           result.InsertedWhitespaceByPage),
+                "отмена не публикует ни один derived-словарь");
+            AssertTrue(ReferenceEquals(oldDeletedFirst,
+                           result.DeletedWordsByPage[0]) &&
+                       ReferenceEquals(oldInsertedFirst,
+                           result.InsertedWordsByPage[0]) &&
+                       ReferenceEquals(oldStats, result.Stats),
+                "вложенные индексы и статистика остаются прежним snapshot");
+            AssertEqual(oldSignature, ReviewOpsSig(result.Operations),
+                "раннее растровое совпадение не опубликовано частично");
+            AssertEqual(oldFirstStatus, result.Pairs[0].Status,
+                "статус первой пары не изменён частичной работой");
+            AssertEqual(oldSecondStatus, result.Pairs[1].Status,
+                "статус второй пары не изменён отменой");
+            AssertEqual(PdfReviewDiffKind.Delete,
+                ReviewVisualOperationForWord(result.Operations, firstLeft).Kind,
+                "первый семантический кандидат сохранён после отмены");
+
+            var retryBitmaps = new List<Bitmap>();
+            PdfReviewVisualDiff.Refine(result, PdfReviewLimits.Default(), null,
+                delegate(string path, int pageIndex, int targetWidth, int maxHeight)
+                {
+                    Bitmap bitmap = ReviewVisualBitmap(200, 100, null);
+                    retryBitmaps.Add(bitmap);
+                    return bitmap;
+                });
+            AssertReviewVisualBitmapsDisposed(retryBitmaps,
+                "чистый повтор injected-renderer path");
+            AssertEqual(PdfReviewDiffKind.Equal,
+                ReviewVisualOperationForWord(result.Operations, firstLeft).Kind,
+                "на чистом повторе ранняя hunk действительно подтверждается");
+            AssertEqual(PdfReviewDiffKind.Equal,
+                ReviewVisualOperationForWord(result.Operations, secondLeft).Kind,
+                "на чистом повторе подтверждается и поздняя hunk");
+            AssertEqual(0, result.Stats.ChangedPages,
+                "чистый повтор атомарно публикует обе доказанные пары");
+        }
+
+        /// <summary>
+        /// Разные Unicode/токены при одном видимом рисунке — типичный артефакт text layer.
+        /// Допускаем однопиксельный AA-сдвиг, снимаем Delete и Insert вместе и тем самым
+        /// одновременно обнуляем статистику и обе UI-рамки.
+        /// </summary>
+        private static void TestReviewVisualEquivalentCandidate()
+        {
+            PdfReviewPage leftPage = ReviewVisualPage(0,
+                ReviewVisualWord("layout-left", 20, 30, 80, 70),
+                ReviewVisualWord("tail", 150, 20, 180, 35));
+            PdfReviewPage rightPage = ReviewVisualPage(0,
+                ReviewVisualWord("layout-right", 20, 30, 80, 70),
+                ReviewVisualWord("tail", 150, 20, 180, 35));
+            AssertEqual("Delete:layout-left|Insert:layout-right|Equal:tail",
+                ReviewOpsSig(ReviewVisualOperations(leftPage, rightPage)),
+                "контроль: текстовый слой дал кандидата замены");
+
+            PdfReviewResult result;
+            bool refined;
+            using (Bitmap left = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 30, 44, 24, 12);
+            }))
+            using (Bitmap right = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 31, 44, 24, 12);
+            }))
+            {
+                result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
+            }
+            AssertTrue(refined, "однопиксельный сдвиг признан визуально равным кандидатом");
+
+            PdfReviewPagePair pair = result.Pairs[0];
+            AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+                "после снятия единственного кандидата страница неизменна");
+            AssertEqual("Equal:layout-left|Equal:tail", ReviewOpsSig(result.Operations),
+                "растровый Equal отделён от точного и сохраняет левую последовательность");
+            AssertTrue(result.Operations[0].MatchKind == PdfReviewMatchKind.RasterEquivalent &&
+                       result.Operations[0].Matches.Count == 1 &&
+                       result.Operations[0].Matches[0].Kind == PdfReviewMatchKind.RasterEquivalent &&
+                       ReferenceEquals(result.Operations[0].Matches[0].Left, leftPage.Words[0]) &&
+                       ReferenceEquals(result.Operations[0].Matches[0].Right, rightPage.Words[0]) &&
+                       ReferenceEquals(result.Operations[0].LeftWords[0], leftPage.Words[0]) &&
+                       ReferenceEquals(result.Operations[0].RightWords[0], rightPage.Words[0]),
+                "однозначное растровое снятие сохраняет фактическую one-to-one связь");
+            AssertEqual(0, result.Stats.ChangedPages, "статистика пересчитана из очищенных операций");
+            AssertEqual(0, result.Stats.DeletedWords, "ложного Delete нет в статистике");
+            AssertEqual(0, result.Stats.InsertedWords, "ложного Insert нет в статистике");
+            AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+                "ложной красной рамки нет");
+            AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+                "ложной зелёной рамки нет");
+        }
+
+        /// <summary>
+        /// На production-ширине допускается только малое округление PDF-рендера. Сдвиг в четыре
+        /// пикселя подтверждается локальной регистрацией, а заметный сдвиг за её пределами остаётся
+        /// настоящей правкой — поиск не должен превращаться в неограниченное совмещение.
+        /// </summary>
+        private static void TestReviewVisualRegistrationBounded()
+        {
+            PdfReviewPage leftPage = ReviewVisualPage(0,
+                ReviewVisualWord("layout-left", 20, 30, 80, 70));
+            PdfReviewPage rightPage = ReviewVisualPage(0,
+                ReviewVisualWord("layout-right", 20, 30, 80, 70));
+            PdfReviewResult smallResult;
+            bool smallRefined;
+            using (Bitmap left = ReviewVisualBitmap(1200, 600,
+                delegate(Graphics g)
+                {
+                    g.FillRectangle(Brushes.Black, 180, 250, 80, 70);
+                }))
+            using (Bitmap right = ReviewVisualBitmap(1200, 600,
+                delegate(Graphics g)
+                {
+                    g.FillRectangle(Brushes.Black, 184, 250, 80, 70);
+                }))
+            {
+                smallResult = RefineVisualResult(leftPage, rightPage, left, right,
+                    out smallRefined);
+            }
+            AssertTrue(smallRefined,
+                "четырёхпиксельное округление снято локальной регистрацией");
+            AssertEqual(PdfReviewPairStatus.Unchanged, smallResult.Pairs[0].Status,
+                "малый сдвиг не создаёт ложную правку");
+
+            List<PdfReviewWordOp> operations = ReviewVisualOperations(leftPage, rightPage);
+            string before = ReviewOpsSig(operations);
+            bool largeRefined;
+            PdfReviewResult largeResult;
+            using (Bitmap left = ReviewVisualBitmap(1200, 600,
+                delegate(Graphics g)
+                {
+                    g.FillRectangle(Brushes.Black, 180, 250, 80, 70);
+                }))
+            using (Bitmap right = ReviewVisualBitmap(1200, 600,
+                delegate(Graphics g)
+                {
+                    g.FillRectangle(Brushes.Black, 192, 250, 80, 70);
+                }))
+            {
+                largeResult = RefineVisualResult(leftPage, rightPage, left, right,
+                    out largeRefined);
+            }
+            AssertTrue(!largeRefined, "заметный сдвиг за ограниченным радиусом не скрыт");
+            AssertEqual(before, ReviewOpsSig(largeResult.Operations),
+                "ограниченная регистрация сохранила обе операции настоящей правки");
+        }
+
+        /// <summary>
+        /// Даже когда основная часть рисунка совпадает после малого сдвига, дополнительный видимый
+        /// штрих обязан сохранить Delete/Insert. Регистрация компенсирует AA, но не вычитает контент.
+        /// </summary>
+        private static void TestReviewVisualRegistrationKeepsAddedInk()
+        {
+            PdfReviewPage leftPage = ReviewVisualPage(0,
+                ReviewVisualWord("old", 20, 30, 80, 70));
+            PdfReviewPage rightPage = ReviewVisualPage(0,
+                ReviewVisualWord("new", 20, 30, 80, 70));
+            string before = ReviewOpsSig(ReviewVisualOperations(leftPage, rightPage));
+            PdfReviewResult result;
+            bool refined;
+            using (Bitmap left = ReviewVisualBitmap(1200, 600,
+                delegate(Graphics g)
+                {
+                    g.FillRectangle(Brushes.Black, 180, 250, 70, 70);
+                }))
+            using (Bitmap right = ReviewVisualBitmap(1200, 600,
+                delegate(Graphics g)
+                {
+                    g.FillRectangle(Brushes.Black, 184, 250, 70, 70);
+                    g.FillRectangle(Brushes.Black, 320, 250, 70, 70);
+                }))
+            {
+                result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
+            }
+            AssertTrue(!refined,
+                "добавленный видимый штрих не признан артефактом регистрации");
+            AssertEqual(before, ReviewOpsSig(result.Operations),
+                "Delete и Insert сохранены при частичном визуальном совпадении");
+        }
+
+        private static void TestReviewVisualRealChange()
+        {
+            PdfReviewPage leftPage = ReviewVisualPage(0,
+                ReviewVisualWord("old", 20, 30, 80, 70));
+            PdfReviewPage rightPage = ReviewVisualPage(0,
+                ReviewVisualWord("new", 20, 30, 80, 70));
+            PdfReviewResult result;
+            bool refined;
+            using (Bitmap left = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 27, 40, 12, 20);
+            }))
+            using (Bitmap right = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 61, 40, 12, 20);
+            }))
+            {
+                result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
+            }
+            AssertTrue(!refined, "разный рисунок не имеет права снять текстовую правку");
+
+            PdfReviewPagePair pair = result.Pairs[0];
+            AssertEqual(PdfReviewPairStatus.Changed, pair.Status, "настоящая правка сохранена");
+            AssertEqual("Delete:old|Insert:new", ReviewOpsSig(result.Operations),
+                "Delete слева и Insert справа сохранены вместе");
+            AssertEqual(1, result.Stats.DeletedWords, "настоящий Delete посчитан");
+            AssertEqual(1, result.Stats.InsertedWords, "настоящий Insert посчитан");
+            AssertEqual(1, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+                "настоящая правка имеет красную рамку слева");
+            AssertEqual(1, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+                "настоящая правка имеет зелёную рамку справа");
+        }
+
+        private static void TestReviewVisualMixedCandidates()
+        {
+            PdfReviewPage leftPage = ReviewVisualPage(0,
+                ReviewVisualWord("layout-left", 10, 30, 70, 70),
+                ReviewVisualWord("old", 110, 30, 180, 70),
+                ReviewVisualWord("tail", 80, 10, 100, 20));
+            PdfReviewPage rightPage = ReviewVisualPage(0,
+                ReviewVisualWord("layout-right", 10, 30, 70, 70),
+                ReviewVisualWord("new", 110, 30, 180, 70),
+                ReviewVisualWord("tail", 80, 10, 100, 20));
+            PdfReviewResult result;
+            bool refined;
+            using (Bitmap left = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 25, 44, 22, 12);
+                g.FillRectangle(Brushes.Black, 118, 40, 12, 20);
+            }))
+            using (Bitmap right = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 26, 44, 22, 12);
+                g.FillRectangle(Brushes.Black, 162, 40, 12, 20);
+            }))
+            {
+                result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
+            }
+            AssertTrue(refined, "из смешанной пары снят визуально равный кандидат");
+
+            PdfReviewPagePair pair = result.Pairs[0];
+            AssertEqual(PdfReviewPairStatus.Changed, pair.Status,
+                "реальная часть смешанной пары оставляет страницу изменённой");
+            AssertEqual("Equal:layout-left|Delete:old|Insert:new|Equal:tail",
+                ReviewOpsSig(result.Operations), "снят только артефакт text layer");
+            AssertEqual(1, result.Stats.DeletedWords, "после refinement остался один Delete");
+            AssertEqual(1, result.Stats.InsertedWords, "после refinement остался один Insert");
+            PdfReviewHighlight red = PdfReviewForm.BuildHighlight(result, pair, true);
+            PdfReviewHighlight green = PdfReviewForm.BuildHighlight(result, pair, false);
+            AssertEqual(1, red.Boxes.Count, "слева осталась только настоящая рамка");
+            AssertEqual(1, green.Boxes.Count, "справа осталась только настоящая рамка");
+            AssertEqual(BoxSig(leftPage.Words[1].Box), BoxSig(red.Boxes[0]),
+                "красная рамка принадлежит настоящему Delete");
+            AssertEqual(BoxSig(rightPage.Words[1].Box), BoxSig(green.Boxes[0]),
+                "зелёная рамка принадлежит настоящему Insert");
+        }
+
+        /// <summary>
+        /// Геометрически близкие кандидаты по разные стороны Equal не образуют одну транзитивную
+        /// компоненту. Ложная первая замена снимается, а соседняя настоящая остаётся с обеих сторон.
+        /// </summary>
+        private static void TestReviewVisualOperationGroups()
+        {
+            PdfReviewPage leftPage = ReviewVisualPage(0,
+                ReviewVisualWord("artifact-left", 20, 30, 60, 70),
+                ReviewVisualWord("anchor", 130, 20, 145, 30),
+                ReviewVisualWord("old", 70, 30, 110, 70),
+                ReviewVisualWord("tail", 160, 20, 180, 30));
+            PdfReviewPage rightPage = ReviewVisualPage(0,
+                ReviewVisualWord("artifact-right", 20, 30, 60, 70),
+                ReviewVisualWord("anchor", 130, 20, 145, 30),
+                ReviewVisualWord("new", 70, 30, 110, 70),
+                ReviewVisualWord("tail", 160, 20, 180, 30));
+            AssertEqual("Delete:artifact-left|Insert:artifact-right|Equal:anchor|" +
+                "Delete:old|Insert:new|Equal:tail",
+                ReviewOpsSig(ReviewVisualOperations(leftPage, rightPage)),
+                "контроль: Equal разделил две текстовые группы изменений");
+
+            PdfReviewResult result;
+            bool refined;
+            using (Bitmap left = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 27, 44, 20, 12);
+                g.FillRectangle(Brushes.Black, 76, 40, 10, 20);
+            }))
+            using (Bitmap right = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 28, 44, 20, 12);
+                g.FillRectangle(Brushes.Black, 99, 40, 10, 20);
+            }))
+            {
+                result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
+            }
+            AssertTrue(refined, "снят только визуально равный кандидат до Equal");
+
+            PdfReviewPagePair pair = result.Pairs[0];
+            AssertEqual("Equal:artifact-left|Equal:anchor|Delete:old|Insert:new|Equal:tail",
+                ReviewOpsSig(result.Operations),
+                "соседняя настоящая замена не вернула артефакт транзитивной связью");
+            AssertEqual(1, result.Stats.DeletedWords, "после разделения групп остался Delete");
+            AssertEqual(1, result.Stats.InsertedWords, "после разделения групп остался Insert");
+            AssertEqual(1, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+                "после разделения групп осталась одна красная рамка");
+            AssertEqual(1, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+                "после разделения групп осталась одна зелёная рамка");
+        }
+
+        /// <summary>
+        /// Несколько Delete и один Insert одной видимой области принимают одно атомарное решение:
+        /// одинаковый итоговый рисунок снимает всю замену, а не оставляет сиротскую рамку.
+        /// </summary>
+        private static void TestReviewVisualRelatedCandidatesEquivalent()
+        {
+            PdfReviewPage leftPage = ReviewVisualPage(0,
+                ReviewVisualWord("part-a", 20, 30, 40, 70),
+                ReviewVisualWord("part-b", 42, 30, 62, 70),
+                ReviewVisualWord("tail", 100, 10, 130, 20));
+            PdfReviewPage rightPage = ReviewVisualPage(0,
+                ReviewVisualWord("combined", 20, 30, 62, 70),
+                ReviewVisualWord("tail", 100, 10, 130, 20));
+            AssertEqual("Delete:part-a,part-b|Insert:combined|Equal:tail",
+                ReviewOpsSig(ReviewVisualOperations(leftPage, rightPage)),
+                "контроль: текстовый diff создал связанную фрагментированную замену");
+            PdfReviewResult result;
+            bool refined;
+            using (Bitmap left = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 25, 44, 10, 12);
+                g.FillRectangle(Brushes.Black, 47, 42, 9, 16);
+            }))
+            using (Bitmap right = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 26, 44, 10, 12);
+                g.FillRectangle(Brushes.Black, 48, 42, 9, 16);
+            }))
+            {
+                result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
+            }
+            AssertTrue(refined, "визуально равная связная замена снята целиком");
+            AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+                "после снятия связной замены страница неизменна");
+            AssertEqual("Equal:part-a,part-b|Equal:tail", ReviewOpsSig(result.Operations),
+                "растровый Equal хранит полные последовательности обеих сторон");
+            AssertTrue(result.Operations[0].MatchKind == PdfReviewMatchKind.RasterEquivalent &&
+                       result.Operations[0].LeftWords.Count == 2 &&
+                       result.Operations[0].RightWords.Count == 1 &&
+                       ReferenceEquals(result.Operations[0].RightWords[0], rightPage.Words[0]) &&
+                       result.Operations[0].Matches.Count == 0,
+                "many-to-one refinement не теряет правую сторону и не выдумывает пары");
+        }
+
+        /// <summary>
+        /// Один Insert может геометрически связывать несколько Delete. Если один фрагмент
+        /// действительно изменился, вся связная замена остаётся: решение не зависит от порядка
+        /// обхода и не превращается в одинокую рамку на одной стороне.
+        /// </summary>
+        private static void TestReviewVisualRelatedCandidatesAtomic()
+        {
+            PdfReviewPage leftPage = ReviewVisualPage(0,
+                ReviewVisualWord("part-a", 20, 30, 40, 70),
+                ReviewVisualWord("part-b", 42, 30, 62, 70),
+                ReviewVisualWord("tail", 100, 10, 130, 20));
+            PdfReviewPage rightPage = ReviewVisualPage(0,
+                ReviewVisualWord("combined", 20, 30, 40, 70),
+                ReviewVisualWord("tail", 100, 10, 130, 20));
+            string before = ReviewOpsSig(ReviewVisualOperations(leftPage, rightPage));
+            PdfReviewResult result;
+            bool refined;
+            using (Bitmap left = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 25, 44, 10, 12);
+                g.FillRectangle(Brushes.Black, 48, 42, 9, 16);
+            }))
+            using (Bitmap right = ReviewVisualBitmap(delegate(Graphics g)
+            {
+                g.FillRectangle(Brushes.Black, 25, 44, 10, 12);
+            }))
+            {
+                result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
+            }
+            AssertTrue(!refined, "частично изменённая связная замена не снята наполовину");
+            AssertEqual("Delete:part-a,part-b|Insert:combined|Equal:tail", before,
+                "контроль: fixture создала связанную замену из трёх кандидатов");
+            AssertEqual(before, ReviewOpsSig(result.Operations),
+                "все операции связной замены сохранены атомарно");
+        }
+
+        /// <summary>
+        /// Реальный born-digital PDF может кодировать одинаковый видимый глиф разными Unicode:
+        /// здесь латинская A и кириллическая А имеют один рисунок Times New Roman. Fixture обязана
+        /// пройти фильтры PdfTextExtract, дать настоящий текстовый кандидат, а production Compare —
+        /// снять его только после растрового подтверждения.
+        /// </summary>
+        private static void TestReviewEquivalentUnicodeGlyphsLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_glyph_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string latinPath = Path.Combine(dir, "latin.pdf");
+                string cyrillicPath = Path.Combine(dir, "cyrillic.pdf");
+                WriteEquivalentGlyphReviewPdf(latinPath, "A");
+                WriteEquivalentGlyphReviewPdf(cyrillicPath, "А");
+
+                PdfReviewDocument latin = PdfReviewService.Load(latinPath, null, null,
+                    PdfReviewLimits.Default());
+                PdfReviewDocument cyrillic = PdfReviewService.Load(cyrillicPath, null, null,
+                    PdfReviewLimits.Default());
+                AssertEqual(1, latin.Pages.Count, "контрольный PDF прочитан одной страницей");
+                AssertEqual(1, cyrillic.Pages.Count, "PDF с альтернативным Unicode прочитан одной страницей");
+                AssertTrue(latin.Pages[0].Words.Count > 0 && cyrillic.Pages[0].Words.Count > 0,
+                    "оба видимых глифа дошли до review-слов");
+                AssertTrue(!PdfReviewDiff.WordsEqual(latin.Pages[0].Words, cyrillic.Pages[0].Words),
+                    "fixture действительно создаёт текстовый кандидат после PdfTextExtract");
+                List<PdfReviewWordOp> textual = PdfReviewDiff.DiffWords(
+                    latin.Pages[0].Words, cyrillic.Pages[0].Words, PdfReviewLimits.Default());
+                AssertEqual("Equal:stable|Delete:A|Insert:А|Equal:anchor",
+                    ReviewOpsSig(textual),
+                    "текстовый кандидат владеет словом каждой стороны");
+
+                PdfReviewResult direct = PdfReviewDiff.Compare(latin, cyrillic,
+                    PdfReviewLimits.Default());
+                AssertEqual("Equal:stable|Delete:A|Insert:А|Equal:anchor",
+                    ReviewOpsSig(direct.Operations),
+                    "production-facing Refine получает безопасную same-page hunk");
+                PdfReviewVisualDiff.Refine(direct, PdfReviewLimits.Default(), null);
+                AssertEqual("Equal:stable|Equal:A|Equal:anchor", ReviewOpsSig(direct.Operations),
+                    "top-level Refine сохраняет provenance-границы растрового совпадения");
+                AssertTrue(direct.Operations[1].MatchKind == PdfReviewMatchKind.RasterEquivalent &&
+                           ReferenceEquals(direct.Operations[1].LeftWords[0], latin.Pages[0].Words[1]) &&
+                           ReferenceEquals(direct.Operations[1].RightWords[0], cyrillic.Pages[0].Words[1]),
+                    "top-level rebuild сохраняет оба фактических Unicode-объекта");
+
+                PdfReviewResult result = PdfReviewService.Compare(latinPath, cyrillicPath);
+                AssertEqual(1, result.Pairs.Count, "production Compare сопоставил страницы");
+                AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+                    "одинаковый видимый глиф не считается изменением документа");
+                AssertEqual("Equal:stable|Equal:A|Equal:anchor", ReviewOpsSig(result.Operations),
+                    "растровое подтверждение сохранило обе стороны и границы provenance");
+                AssertEqual(0, result.Stats.ChangedPages,
+                    "альтернативная Unicode-карта не меняет страницы в статистике");
+                AssertEqual(0, result.Stats.DeletedWords, "визуальный артефакт не создаёт Delete");
+                AssertEqual(0, result.Stats.InsertedWords, "визуальный артефакт не создаёт Insert");
+                AssertEqual(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], true).Boxes.Count,
+                    "визуальный артефакт не создаёт красную рамку");
+                AssertEqual(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], false).Boxes.Count,
+                    "визуальный артефакт не создаёт зелёную рамку");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void WriteEquivalentGlyphReviewPdf(string path, string glyph)
+        {
+            using (var doc = new PdfDocument())
+            {
+                PdfPage page = doc.AddPage();
+                using (XGraphics g = XGraphics.FromPdfPage(page))
+                {
+                    var font = new XFont("Times New Roman", 20);
+                    g.DrawString("stable " + glyph + " anchor", font, XBrushes.Black,
+                        new XPoint(80, 120));
+                }
+                doc.Save(path);
+            }
+        }
+
+        /// <summary>
+        /// Интеграционный born-digital fixture: визуально одно слово рисуется одной PDF text
+        /// operation слева и двумя почти соприкасающимися operation с чуть разным кеглем справа.
+        /// Вендорный PdfPig обязан реально вернуть разную raw-сегментацию, после чего весь
+        /// production Compare должен получить нулевой diff и пустую UI-подсветку.
+        /// </summary>
+        private static void TestReviewFragmentedPdfLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_review_frag_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string wholePath = Path.Combine(dir, "whole.pdf");
+                string fragmentedPath = Path.Combine(dir, "fragmented.pdf");
+                WriteFragmentedReviewPdf(wholePath, false);
+                WriteFragmentedReviewPdf(fragmentedPath, true);
+
+                List<PdfPageText> wholeRaw = PdfTextExtract.Extract(wholePath);
+                List<PdfPageText> fragmentedRaw = PdfTextExtract.Extract(fragmentedPath);
+                AssertEqual(1, wholeRaw.Count, "контрольный PDF прочитан одной страницей");
+                AssertEqual(1, fragmentedRaw.Count, "фрагментированный PDF прочитан одной страницей");
+                AssertTrue(wholeRaw[0].Words.Count != fragmentedRaw[0].Words.Count,
+                    "fixture действительно воспроизводит разную raw-сегментацию PdfPig");
+
+                PdfReviewResult result = PdfReviewService.Compare(wholePath, fragmentedPath);
+                AssertEqual(1, result.Pairs.Count, "production Compare сопоставил одну пару страниц");
+                AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+                    "одинаковый видимый текст без ложной правки от PDF operations");
+                AssertEqual(1.0, result.Pairs[0].Similarity, "live canonical similarity равна 1");
+                AssertEqual(0, result.Stats.DeletedWords, "live fixture не создаёт Delete");
+                AssertEqual(0, result.Stats.InsertedWords, "live fixture не создаёт Insert");
+                AssertEqual(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], true).Boxes.Count,
+                    "слева нет ложной красной подсветки");
+                AssertEqual(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], false).Boxes.Count,
+                    "справа нет ложной зелёной подсветки");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void WriteFragmentedReviewPdf(string path, bool fragmented)
+        {
+            using (var doc = new PdfDocument())
+            {
+                PdfPage page = doc.AddPage();
+                using (XGraphics g = XGraphics.FromPdfPage(page))
+                {
+                    var regular = new XFont("Times New Roman", 14);
+                    var shifted = new XFont("Times New Roman", 14.25);
+                    double x = 50;
+                    const double y = 100;
+                    const string before = "anchor ";
+                    const string first = "Fragment";
+                    const string second = "Token";
+                    const string after = " trailer";
+                    g.DrawString(before, regular, XBrushes.Black, new XPoint(x, y));
+                    x += g.MeasureString(before, regular).Width;
+                    if (fragmented)
+                    {
+                        g.DrawString(first, regular, XBrushes.Black, new XPoint(x, y));
+                        x += g.MeasureString(first, regular).Width;
+                        g.DrawString(second, shifted, XBrushes.Black, new XPoint(x, y));
+                        x += g.MeasureString(second, shifted).Width;
+                    }
+                    else
+                    {
+                        string word = first + second;
+                        g.DrawString(word, regular, XBrushes.Black, new XPoint(x, y));
+                        x += g.MeasureString(word, regular).Width;
+                    }
+                    g.DrawString(after, regular, XBrushes.Black, new XPoint(x, y));
+                }
+                doc.Save(path);
+            }
         }
 
         /// <summary>Геометрия подсветки: повороты и перевод в пиксели растра (Y вниз).</summary>
@@ -1838,6 +8539,1147 @@ namespace ExcelMerger.Tests
             AssertEqual(1, rightUses, "правая страница ровно в одной паре");
         }
 
+        /// <summary>
+        /// Генерирует независимые born-digital PDF разной сложности: плотные страницы, колонки,
+        /// несколько кеглей, альтернативную сегментацию text operations, две настоящие замены и
+        /// вставленную страницу. Проверяется production-путь в обоих направлениях, включая единый
+        /// источник операций, статистики и рамок.
+        /// </summary>
+        private static void TestReviewGeneratedComplexCorpusLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_complex_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string baselinePath = Path.Combine(dir, "baseline.pdf");
+                string independentPath = Path.Combine(dir, "independent.pdf");
+                string fragmentedPath = Path.Combine(dir, "fragmented.pdf");
+                string revisedPath = Path.Combine(dir, "revised.pdf");
+                WriteComplexReviewPdf(baselinePath, false, false, false);
+                WriteComplexReviewPdf(independentPath, false, false, false);
+                WriteComplexReviewPdf(fragmentedPath, true, false, false);
+                WriteComplexReviewPdf(revisedPath, true, true, true);
+
+                AssertReviewAllUnchanged(
+                    PdfReviewService.Compare(baselinePath, independentPath), 3,
+                    "независимо сгенерированные одинаковые PDF");
+                AssertReviewAllUnchanged(
+                    PdfReviewService.Compare(baselinePath, fragmentedPath), 3,
+                    "сложный PDF с другой сегментацией text operations");
+
+                PdfReviewResult forward = PdfReviewService.Compare(baselinePath, revisedPath);
+                AssertGeneratedReviewChanges(forward, PdfReviewPairStatus.RightOnly,
+                    "100|Moscow", "125|Samara", "прямое сравнение");
+                PdfReviewResult reverse = PdfReviewService.Compare(revisedPath, baselinePath);
+                AssertGeneratedReviewChanges(reverse, PdfReviewPairStatus.LeftOnly,
+                    "125|Samara", "100|Moscow", "обратное сравнение");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void AssertReviewAllUnchanged(PdfReviewResult result, int expectedPairs,
+            string context)
+        {
+            AssertEqual(expectedPairs, result.Pairs.Count, context + ": все страницы сопоставлены");
+            foreach (PdfReviewPagePair pair in result.Pairs)
+            {
+                AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+                    context + ": нет ложной изменённой страницы");
+                AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+                    context + ": нет ложной красной рамки");
+                AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+                    context + ": нет ложной зелёной рамки");
+            }
+            AssertEqual(0, result.Stats.ChangedPages, context + ": ноль изменённых страниц");
+            AssertEqual(0, result.Stats.DeletedWords, context + ": ноль удалённых слов");
+            AssertEqual(0, result.Stats.InsertedWords, context + ": ноль добавленных слов");
+        }
+
+        private static void AssertGeneratedReviewChanges(PdfReviewResult result,
+            PdfReviewPairStatus extraStatus, string expectedDeletes, string expectedInserts,
+            string context)
+        {
+            AssertEqual(4, result.Pairs.Count, context + ": вставка дала отдельную пару");
+            AssertEqual(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+                context + ": две страницы остались неизменными");
+            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+                context + ": изменилась ровно одна парная страница");
+            AssertEqual(1, ReviewStatusCount(result, extraStatus),
+                context + ": вставленная страница имеет правильную сторону");
+            PdfReviewPairStatus opposite = extraStatus == PdfReviewPairStatus.RightOnly
+                ? PdfReviewPairStatus.LeftOnly : PdfReviewPairStatus.RightOnly;
+            AssertEqual(0, ReviewStatusCount(result, opposite),
+                context + ": на противоположной стороне нет потерянных страниц");
+
+            PdfReviewPagePair changed = null;
+            foreach (PdfReviewPagePair pair in result.Pairs)
+            {
+                if (pair.Status == PdfReviewPairStatus.Changed)
+                    changed = pair;
+                else if (pair.Status == PdfReviewPairStatus.Unchanged)
+                {
+                    AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+                        context + ": неизменная страница без красных рамок");
+                    AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+                        context + ": неизменная страница без зелёных рамок");
+                }
+            }
+            AssertTrue(changed != null, context + ": парная изменённая страница найдена");
+            AssertEqual(expectedDeletes, ReviewChangedWords(result, changed, PdfReviewDiffKind.Delete),
+                context + ": Delete содержит только смысловые правки");
+            AssertEqual(expectedInserts, ReviewChangedWords(result, changed, PdfReviewDiffKind.Insert),
+                context + ": Insert содержит только смысловые правки");
+            AssertEqual(2, PdfReviewForm.BuildHighlight(result, changed, true).Boxes.Count,
+                context + ": две красные рамки из Delete");
+            AssertEqual(2, PdfReviewForm.BuildHighlight(result, changed, false).Boxes.Count,
+                context + ": две зелёные рамки из Insert");
+            AssertEqual(1, result.Stats.ChangedPages,
+                context + ": статистика видит одну изменённую парную страницу");
+            AssertEqual(2, result.Stats.Replacements,
+                context + ": статистика видит две замены");
+        }
+
+        private static int ReviewStatusCount(PdfReviewResult result, PdfReviewPairStatus status)
+        {
+            int count = 0;
+            foreach (PdfReviewPagePair pair in result.Pairs)
+                if (pair.Status == status) count++;
+            return count;
+        }
+
+        private static string ReviewChangedWords(PdfReviewResult result,
+            PdfReviewPagePair pair, PdfReviewDiffKind kind)
+        {
+            var words = new List<string>();
+            int pageIndex = kind == PdfReviewDiffKind.Insert
+                ? pair.RightPageIndex : pair.LeftPageIndex;
+            foreach (PdfReviewWordOp op in result.Operations)
+                if (op.Kind == kind)
+                    foreach (PdfReviewWord word in op.Words)
+                        if (word.PageIndex == pageIndex)
+                            words.Add(word.Key);
+            words.Sort(StringComparer.Ordinal);
+            return string.Join("|", words.ToArray());
+        }
+
+        private static void WriteComplexReviewPdf(string path, bool fragmentedAnchor,
+            bool revised, bool insertedPage)
+        {
+            using (var doc = new PdfDocument())
+            {
+                var title = new XFont("Times New Roman", 20);
+                var body = new XFont("Times New Roman", 12);
+                var small = new XFont("Times New Roman", 9);
+
+                PdfPage cover = doc.AddPage();
+                using (XGraphics g = XGraphics.FromPdfPage(cover))
+                {
+                    g.DrawString("Quarterly Operations Report", title, XBrushes.Black,
+                        new XPoint(50, 55));
+                    g.DrawString("StableCover Identity RPT-2026-08 Department North",
+                        body, XBrushes.Black, new XPoint(50, 90));
+                    g.DrawString("PreparedFor Internal Review Cycle Seven", body,
+                        XBrushes.Black, new XPoint(50, 118));
+                    double x = 50;
+                    const double y = 152;
+                    const string prefix = "Canonical ";
+                    g.DrawString(prefix, body, XBrushes.Black, new XPoint(x, y));
+                    x += g.MeasureString(prefix, body).Width;
+                    if (fragmentedAnchor)
+                    {
+                        const string first = "Render";
+                        g.DrawString(first, body, XBrushes.Black, new XPoint(x, y));
+                        x += g.MeasureString(first, body).Width;
+                        g.DrawString("Anchor", body, XBrushes.Black, new XPoint(x, y));
+                        x += g.MeasureString("Anchor", body).Width;
+                    }
+                    else
+                    {
+                        const string anchor = "RenderAnchor";
+                        g.DrawString(anchor, body, XBrushes.Black, new XPoint(x, y));
+                        x += g.MeasureString(anchor, body).Width;
+                    }
+                    g.DrawString(" remains stable across content streams", body,
+                        XBrushes.Black, new XPoint(x, y));
+                    for (int row = 0; row < 9; row++)
+                        g.DrawString("CoverLine " + row.ToString("00") +
+                            " Stable Alpha Bravo Charlie Delta", small, XBrushes.Black,
+                            new XPoint(50, 195 + row * 24));
+                }
+
+                PdfPage details = doc.AddPage();
+                using (XGraphics g = XGraphics.FromPdfPage(details))
+                {
+                    g.DrawString("Delivery And Finance Detail", title, XBrushes.Black,
+                        new XPoint(50, 55));
+                    g.DrawString("DocumentKey DETAIL-417 RevisionWindow Stable",
+                        body, XBrushes.Black, new XPoint(50, 92));
+                    g.DrawString("DeliveryCity " + (revised ? "Samara" : "Moscow") +
+                        " RouteCode R-417 StableWindow", body, XBrushes.Black,
+                        new XPoint(50, 126));
+                    g.DrawString("ApprovedAmount " + (revised ? "125" : "100") +
+                        " UnitsCode U-9001 StableBudget", body, XBrushes.Black,
+                        new XPoint(50, 158));
+                    for (int row = 0; row < 8; row++)
+                    {
+                        g.DrawString("LeftColumn Row" + row.ToString("00") +
+                            " Alpha Logistics Stable", small, XBrushes.Black,
+                            new XPoint(50, 205 + row * 27));
+                        g.DrawString("RightColumn Row" + row.ToString("00") +
+                            " Bravo Finance Stable", small, XBrushes.Black,
+                            new XPoint(315, 205 + row * 27));
+                    }
+                    g.DrawString("DetailFooter ChecksumVisible KAPPA-2048", small,
+                        XBrushes.Black, new XPoint(50, 470));
+                }
+
+                if (insertedPage)
+                {
+                    PdfPage exhibit = doc.AddPage();
+                    using (XGraphics g = XGraphics.FromPdfPage(exhibit))
+                    {
+                        g.DrawString("Inserted Compliance Exhibit", title, XBrushes.Black,
+                            new XPoint(50, 55));
+                        g.DrawString("Only Revised Document Contains This Standalone Page",
+                            body, XBrushes.Black, new XPoint(50, 100));
+                        g.DrawString("UniqueMarker ZETA-8841 Evidence Register Delta",
+                            body, XBrushes.Black, new XPoint(50, 135));
+                        for (int row = 0; row < 10; row++)
+                            g.DrawString("ExhibitRecord " + row.ToString("00") +
+                                " Compliance Evidence Unique", small, XBrushes.Black,
+                                new XPoint(50, 185 + row * 27));
+                    }
+                }
+
+                PdfPage appendix = doc.AddPage();
+                using (XGraphics g = XGraphics.FromPdfPage(appendix))
+                {
+                    g.DrawString("Stable Technical Appendix", title, XBrushes.Black,
+                        new XPoint(50, 55));
+                    g.DrawString("AppendixIdentity OMEGA-7788 UnchangedFinalPage",
+                        body, XBrushes.Black, new XPoint(50, 92));
+                    for (int row = 0; row < 18; row++)
+                        g.DrawString("AppendixRow " + row.ToString("00") +
+                            " Metric Stable Value Confirmed", small, XBrushes.Black,
+                            new XPoint(50, 135 + row * 25));
+                }
+                doc.Save(path);
+            }
+        }
+
+        /// <summary>
+        /// Сквозная матрица настоящих смысловых изменений на born-digital PDF: граница слова,
+        /// чистые удаление/вставка, замена, вставленная и переставленная страницы. Документы
+        /// содержат повторные колонтитулы, номера страниц, таблицы, разную плотность и размеры.
+        /// Все ожидания проверяются через PdfReviewService в прямом и обратном направлениях.
+        /// </summary>
+        private static void TestReviewGeneratedSemanticMatrixLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_semantic_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                int[] baselineOrder = { 0, 1, 2, 3, 4 };
+                string baselinePath = Path.Combine(dir, "baseline.pdf");
+                string revisedPath = Path.Combine(dir, "revised.pdf");
+                string insertedPath = Path.Combine(dir, "inserted.pdf");
+                string reorderedPath = Path.Combine(dir, "reordered.pdf");
+                WriteSemanticReviewPdf(baselinePath, baselineOrder, false);
+                WriteSemanticReviewPdf(revisedPath, baselineOrder, true);
+                WriteSemanticReviewPdf(insertedPath, new[] { 0, 1, 2, 5, 3, 4 }, false);
+                WriteSemanticReviewPdf(reorderedPath, new[] { 0, 2, 1, 3, 4 }, false);
+
+                PdfReviewResult forward = PdfReviewService.Compare(baselinePath, revisedPath);
+                AssertSemanticFixtureShape(forward.Left, false, "смысловая матрица: baseline");
+                AssertSemanticFixtureShape(forward.Right, true, "смысловая матрица: revision");
+                AssertSemanticReviewChanges(forward,
+                    new[] { "ab|c", "obsolete", "", "amber", "" },
+                    new[] { "a|bc", "", "added", "green", "" },
+                    "смысловая матрица, прямо");
+
+                PdfReviewResult reverse = PdfReviewService.Compare(revisedPath, baselinePath);
+                AssertSemanticReviewChanges(reverse,
+                    new[] { "a|bc", "", "added", "green", "" },
+                    new[] { "ab|c", "obsolete", "", "amber", "" },
+                    "смысловая матрица, обратно");
+
+                AssertSemanticInsertedPage(
+                    PdfReviewService.Compare(baselinePath, insertedPath),
+                    "0:0:Unchanged|1:1:Unchanged|2:2:Unchanged|-1:3:RightOnly|" +
+                    "3:4:Unchanged|4:5:Unchanged",
+                    PdfReviewPairStatus.RightOnly, "вставленная страница, прямо");
+                AssertSemanticInsertedPage(
+                    PdfReviewService.Compare(insertedPath, baselinePath),
+                    "0:0:Unchanged|1:1:Unchanged|2:2:Unchanged|3:-1:LeftOnly|" +
+                    "4:3:Unchanged|5:4:Unchanged",
+                    PdfReviewPairStatus.LeftOnly, "вставленная страница, обратно");
+
+                AssertSemanticReorder(
+                    PdfReviewService.Compare(baselinePath, reorderedPath),
+                    "0:0:Unchanged|1:-1:LeftOnly|2:1:Unchanged|-1:2:RightOnly|" +
+                    "3:3:Unchanged|4:4:Unchanged",
+                    "SemanticPageB", "перестановка страниц, прямо");
+                AssertSemanticReorder(
+                    PdfReviewService.Compare(reorderedPath, baselinePath),
+                    "0:0:Unchanged|-1:1:RightOnly|1:2:Unchanged|2:-1:LeftOnly|" +
+                    "3:3:Unchanged|4:4:Unchanged",
+                    "SemanticPageB", "перестановка страниц, обратно");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void AssertSemanticFixtureShape(PdfReviewDocument document,
+            bool revised, string context)
+        {
+            AssertEqual(5, document.Pages.Count, context + ": пять страниц загружены");
+            var dimensions = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < document.Pages.Count; i++)
+            {
+                PdfReviewPage page = document.Pages[i];
+                dimensions.Add(Math.Round(page.WidthPt, 1) + "x" +
+                    Math.Round(page.HeightPt, 1));
+                string words = ReviewPageKeys(page);
+                string marker = "SemanticPage" + (char)('A' + i);
+                AssertTrue(words.Contains("Semantic Validation Register"),
+                    context + ": повторный верхний колонтитул извлечён на странице " + i);
+                AssertTrue(words.Contains("Generated Control Page " + (i + 1).ToString("00")),
+                    context + ": повторный нижний колонтитул и номер извлечены на странице " + i);
+                AssertTrue(words.Contains(marker),
+                    context + ": уникальный маркер страницы извлечён: " + marker);
+                AssertTrue(page.Words.Count >= 40,
+                    context + ": таблица страницы не выродилась в пустой fixture: " + i);
+            }
+            AssertEqual(5, dimensions.Count,
+                context + ": все пять размеров/ориентаций страниц различаются");
+            AssertTrue(ReviewPageKeys(document.Pages[0]).Contains(revised
+                    ? "Boundary a bc Anchor Stable" : "Boundary ab c Anchor Stable"),
+                context + ": реальная граница слова присутствует в извлечённых данных");
+            AssertTrue(ReviewPageKeys(document.Pages[1]).Contains(revised
+                    ? "Deletion Alpha Omega Stable"
+                    : "Deletion Alpha obsolete Omega Stable"),
+                context + ": чистое удаление присутствует в извлечённых данных");
+            AssertTrue(ReviewPageKeys(document.Pages[2]).Contains(revised
+                    ? "Insertion Alpha added Omega Stable"
+                    : "Insertion Alpha Omega Stable"),
+                context + ": чистая вставка присутствует в извлечённых данных");
+            AssertTrue(ReviewPageKeys(document.Pages[3]).Contains(revised
+                    ? "Status Alpha green Omega Stable"
+                    : "Status Alpha amber Omega Stable"),
+                context + ": замена присутствует в извлечённых данных");
+        }
+
+        private static void AssertSemanticReviewChanges(PdfReviewResult result,
+            string[] expectedDeletes, string[] expectedInserts, string context)
+        {
+            AssertEqual(5, result.Pairs.Count, context + ": страницы сопоставлены 1:1");
+            AssertEqual(4, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+                context + ": изменены ровно четыре смысловые страницы");
+            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+                context + ": контрольная страница неизменна");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
+                context + ": нет ложной удалённой страницы");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
+                context + ": нет ложной добавленной страницы");
+            for (int i = 0; i < result.Pairs.Count; i++)
+            {
+                PdfReviewPagePair pair = result.Pairs[i];
+                AssertEqual(i, pair.LeftPageIndex, context + ": точная левая страница " + i);
+                AssertEqual(i, pair.RightPageIndex, context + ": точная правая страница " + i);
+                AssertEqual(expectedDeletes[i],
+                    ReviewChangedWords(result, pair, PdfReviewDiffKind.Delete),
+                    context + ": точные Delete страницы " + i);
+                AssertEqual(expectedInserts[i],
+                    ReviewChangedWords(result, pair, PdfReviewDiffKind.Insert),
+                    context + ": точные Insert страницы " + i);
+            }
+            AssertEqual(4, result.Stats.ChangedPages,
+                context + ": статистика видит четыре изменённые страницы");
+            AssertEqual(4, result.Stats.DeletedWords,
+                context + ": граница, удаление и замена дали четыре Delete");
+            AssertEqual(4, result.Stats.InsertedWords,
+                context + ": граница, вставка и замена дали четыре Insert");
+            AssertEqual(3, result.Stats.Replacements,
+                context + ": чистые вставка/удаление не стали заменами");
+            AssertReviewOperationOwnership(result, context);
+            AssertReviewPairReconstruction(result, context);
+            AssertReviewProjectionMatchesOperations(result, context);
+        }
+
+        private static void AssertSemanticInsertedPage(PdfReviewResult result,
+            string expectedPairs, PdfReviewPairStatus extraStatus, string context)
+        {
+            AssertEqual(expectedPairs, PairSig(result.Pairs),
+                context + ": точное последовательное сопоставление страниц");
+            AssertEqual(5, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+                context + ": пять исходных страниц не изменены");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+                context + ": вставка не превратила соседей в Changed");
+            AssertEqual(1, ReviewStatusCount(result, extraStatus),
+                context + ": отдельная страница находится на ожидаемой стороне");
+            PdfReviewPagePair extra = null;
+            foreach (PdfReviewPagePair pair in result.Pairs)
+                if (pair.Status == extraStatus) extra = pair;
+            AssertTrue(extra != null, context + ": отдельная пара найдена");
+            PdfReviewPage page = extraStatus == PdfReviewPairStatus.LeftOnly
+                ? result.Left.Pages[extra.LeftPageIndex]
+                : result.Right.Pages[extra.RightPageIndex];
+            AssertTrue(ReviewPageKeys(page).Contains("InsertedExhibit"),
+                context + ": page-only пара принадлежит вставленному exhibit");
+            AssertEqual(extraStatus == PdfReviewPairStatus.LeftOnly ? 1 : 0,
+                result.Stats.LeftOnlyPages, context + ": статистика left-only точна");
+            AssertEqual(extraStatus == PdfReviewPairStatus.RightOnly ? 1 : 0,
+                result.Stats.RightOnlyPages, context + ": статистика right-only точна");
+            AssertEqual(extraStatus == PdfReviewPairStatus.LeftOnly ? page.Words.Count : 0,
+                result.Stats.DeletedWords, context + ": вся удалённая страница посчитана");
+            AssertEqual(extraStatus == PdfReviewPairStatus.RightOnly ? page.Words.Count : 0,
+                result.Stats.InsertedWords, context + ": вся добавленная страница посчитана");
+            AssertEqual(0, result.Stats.Replacements,
+                context + ": отдельная страница не считается заменой");
+            AssertReviewEqualOwnership(result, context);
+            AssertReviewPairReconstruction(result, context);
+            AssertReviewProjectionMatchesOperations(result, context);
+        }
+
+        private static void AssertSemanticReorder(PdfReviewResult result,
+            string expectedPairs, string movedMarker, string context)
+        {
+            AssertEqual(expectedPairs, PairSig(result.Pairs),
+                context + ": перестановка имеет детерминированные пары");
+            AssertEqual(4, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+                context + ": четыре страницы сопоставлены без ложных правок");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+                context + ": перестановка не маскируется как редактирование текста");
+            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
+                context + ": прежняя позиция страницы видна слева");
+            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
+                context + ": новая позиция страницы видна справа");
+            PdfReviewPage leftMoved = null, rightMoved = null;
+            foreach (PdfReviewPagePair pair in result.Pairs)
+            {
+                if (pair.Status == PdfReviewPairStatus.LeftOnly)
+                    leftMoved = result.Left.Pages[pair.LeftPageIndex];
+                else if (pair.Status == PdfReviewPairStatus.RightOnly)
+                    rightMoved = result.Right.Pages[pair.RightPageIndex];
+            }
+            AssertTrue(leftMoved != null && rightMoved != null,
+                context + ": обе стороны переставленной страницы найдены");
+            AssertTrue(ReviewPageKeys(leftMoved).Contains(movedMarker) &&
+                ReviewPageKeys(rightMoved).Contains(movedMarker),
+                context + ": page-only пары относятся к одному видимому листу");
+            AssertEqual(ReviewPageKeys(leftMoved), ReviewPageKeys(rightMoved),
+                context + ": переставлен именно неизменённый лист");
+            AssertEqual(leftMoved.Words.Count, result.Stats.DeletedWords,
+                context + ": старая позиция целиком посчитана как удаление");
+            AssertEqual(rightMoved.Words.Count, result.Stats.InsertedWords,
+                context + ": новая позиция целиком посчитана как вставка");
+            AssertEqual(0, result.Stats.ChangedPages,
+                context + ": нет парных текстовых правок");
+            AssertEqual(0, result.Stats.Replacements,
+                context + ": перестановка не считается заменой слов");
+            AssertReviewEqualOwnership(result, context);
+            AssertReviewPairReconstruction(result, context);
+            AssertReviewProjectionMatchesOperations(result, context);
+        }
+
+        private static void AssertReviewOperationOwnership(PdfReviewResult result, string context)
+        {
+            foreach (PdfReviewWordOp op in result.Operations)
+            {
+                PdfReviewDocument owner = op.Kind == PdfReviewDiffKind.Insert
+                    ? result.Right : result.Left;
+                foreach (PdfReviewWord word in op.Words)
+                    AssertTrue(ReviewDocumentOwns(owner, word), context + ": " + op.Kind +
+                        " владеет словом правильной стороны");
+            }
+        }
+
+        private static void AssertReviewPairReconstruction(PdfReviewResult result, string context)
+        {
+            AssertEqual(ReviewDocumentKeys(result.Left),
+                RebuildReviewSide(result.Operations, true),
+                context + ": operations восстанавливают весь левый документ");
+            AssertEqual(ReviewDocumentKeys(result.Right),
+                RebuildReviewSide(result.Operations, false),
+                context + ": operations восстанавливают весь правый документ");
+        }
+
+        private static bool ReviewDocumentOwns(PdfReviewDocument document, PdfReviewWord word)
+        {
+            foreach (PdfReviewPage page in document.Pages)
+                foreach (PdfReviewWord owned in page.Words)
+                    if (object.ReferenceEquals(word, owned))
+                        return true;
+            return false;
+        }
+
+        private static string ReviewDocumentKeys(PdfReviewDocument document)
+        {
+            var words = new List<string>();
+            foreach (PdfReviewPage page in document.Pages)
+                foreach (PdfReviewWord word in page.Words)
+                    words.Add(word.Key);
+            return string.Join(" ", words.ToArray());
+        }
+
+        private static string ReviewPageKeys(PdfReviewPage page)
+        {
+            var words = new List<string>();
+            foreach (PdfReviewWord word in page.Words)
+                words.Add(word.Key);
+            return string.Join(" ", words.ToArray());
+        }
+
+        private static void WriteSemanticReviewPdf(string path, int[] logicalPages,
+            bool revised)
+        {
+            double[] widths = { 595, 612, 842, 540, 650, 700 };
+            double[] heights = { 842, 792, 595, 720, 900, 680 };
+            using (var doc = new PdfDocument())
+            {
+                var header = new XFont("Times New Roman", 9);
+                var title = new XFont("Times New Roman", 17);
+                var body = new XFont("Times New Roman", 11);
+                var table = new XFont("Times New Roman", 8.5);
+                foreach (int logicalPage in logicalPages)
+                {
+                    PdfPage page = doc.AddPage();
+                    page.Width = widths[logicalPage];
+                    page.Height = heights[logicalPage];
+                    using (XGraphics g = XGraphics.FromPdfPage(page))
+                        DrawSemanticReviewPage(g, widths[logicalPage], heights[logicalPage],
+                            logicalPage, revised, header, title, body, table);
+                }
+                doc.Save(path);
+            }
+        }
+
+        private static void DrawSemanticReviewPage(XGraphics g, double width, double height,
+            int logicalPage, bool revised, XFont header, XFont title, XFont body, XFont table)
+        {
+            string marker = "SemanticPage" + (char)('A' + logicalPage);
+            double textX = 40 + logicalPage * 5;
+            g.DrawString("Semantic Validation Register", header, XBrushes.Black,
+                new XPoint(40, 34));
+            g.DrawLine(XPens.Gray, 40, 43, width - 40, 43);
+            g.DrawString(SemanticPageTitle(logicalPage), title, XBrushes.Black,
+                new XPoint(textX, 75));
+            g.DrawString("Identity " + marker + " Stable Visible Digital", body,
+                XBrushes.Black, new XPoint(textX, 105));
+            g.DrawString(SemanticEditLine(logicalPage, revised), body, XBrushes.Black,
+                new XPoint(textX, 133));
+
+            int rows = logicalPage == 5 ? 10 : 8 + logicalPage * 2;
+            const double top = 160;
+            const double rowHeight = 22;
+            double left = 40;
+            double right = width - 40;
+            double middle = left + (right - left) * 0.54;
+            double bottom = top + rows * rowHeight;
+            g.DrawRectangle(XPens.LightGray, left, top, right - left, bottom - top);
+            g.DrawLine(XPens.LightGray, middle, top, middle, bottom);
+            for (int row = 0; row <= rows; row++)
+                g.DrawLine(XPens.LightGray, left, top + row * rowHeight,
+                    right, top + row * rowHeight);
+            char code = (char)('A' + logicalPage);
+            for (int row = 0; row < rows; row++)
+            {
+                string number = row.ToString("00");
+                g.DrawString("Grid" + code + number + " Metric" + code + number,
+                    table, XBrushes.Black, new XPoint(left + 6, top + 15 + row * rowHeight));
+                g.DrawString("Value" + code + number + " Check" + code + number,
+                    table, XBrushes.Black, new XPoint(middle + 6, top + 15 + row * rowHeight));
+            }
+            g.DrawLine(XPens.Gray, 40, height - 38, width - 40, height - 38);
+            g.DrawString("Generated Control Page " + (logicalPage + 1).ToString("00") +
+                " " + marker, header, XBrushes.Black, new XPoint(40, height - 22));
+        }
+
+        private static string SemanticPageTitle(int logicalPage)
+        {
+            switch (logicalPage)
+            {
+                case 0: return "Boundary Control Ledger";
+                case 1: return "Deletion Control Ledger";
+                case 2: return "Insertion Control Ledger";
+                case 3: return "Replacement Control Ledger";
+                case 4: return "Unchanged Control Appendix";
+                default: return "InsertedExhibit Standalone Register";
+            }
+        }
+
+        private static string SemanticEditLine(int logicalPage, bool revised)
+        {
+            switch (logicalPage)
+            {
+                case 0: return revised
+                    ? "Boundary a bc Anchor Stable" : "Boundary ab c Anchor Stable";
+                case 1: return revised
+                    ? "Deletion Alpha Omega Stable" : "Deletion Alpha obsolete Omega Stable";
+                case 2: return revised
+                    ? "Insertion Alpha added Omega Stable" : "Insertion Alpha Omega Stable";
+                case 3: return revised
+                    ? "Status Alpha green Omega Stable" : "Status Alpha amber Omega Stable";
+                case 4: return "Control Alpha unchanged Omega Stable";
+                default: return "InsertedExhibit Unique Standalone Stable";
+            }
+        }
+
+        private enum ReviewFormattingVariant
+        {
+            None,
+            FontFamily,
+            FontSize,
+            FontStyle,
+            Color,
+            Combined
+        }
+
+        /// <summary>
+        /// Форматирование само по себе не является правкой: production-сравнение смотрит на
+        /// видимые слова, а не на имя/размер/начертание/цвет шрифта. Каждый вариант сначала
+        /// обязан реально изменить extraction-модель, затем дать ноль операций в обе стороны.
+        /// </summary>
+        private static void TestReviewFormattingDifferencesIgnoredLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_format_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string baselinePath = Path.Combine(dir, "baseline.pdf");
+                WriteReviewFormattingPdf(baselinePath, ReviewFormattingVariant.None);
+                string baselineRaw = ReviewFormattingExtractionSignature(baselinePath);
+                var variants = new[]
+                {
+                    ReviewFormattingVariant.FontFamily,
+                    ReviewFormattingVariant.FontSize,
+                    ReviewFormattingVariant.FontStyle,
+                    ReviewFormattingVariant.Color,
+                    ReviewFormattingVariant.Combined
+                };
+
+                foreach (ReviewFormattingVariant variant in variants)
+                {
+                    string context = "форматирование " + variant;
+                    string path = Path.Combine(dir, variant.ToString() + ".pdf");
+                    WriteReviewFormattingPdf(path, variant);
+                    AssertTrue(!string.Equals(baselineRaw,
+                            ReviewFormattingExtractionSignature(path), StringComparison.Ordinal),
+                        context + ": fixture реально меняет raw-геометрию или свойства шрифта");
+
+                    PdfReviewResult forward = PdfReviewService.Compare(baselinePath, path);
+                    AssertReviewAllUnchanged(forward, 2, context + ", прямо");
+                    AssertReviewEqualOwnership(forward, context + ", прямо");
+                    AssertReviewProjectionMatchesOperations(forward, context + ", прямо");
+
+                    PdfReviewResult reverse = PdfReviewService.Compare(path, baselinePath);
+                    AssertReviewAllUnchanged(reverse, 2, context + ", обратно");
+                    AssertReviewEqualOwnership(reverse, context + ", обратно");
+                    AssertReviewProjectionMatchesOperations(reverse, context + ", обратно");
+                }
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void WriteReviewFormattingPdf(string path,
+            ReviewFormattingVariant variant)
+        {
+            bool otherFamily = variant == ReviewFormattingVariant.FontFamily ||
+                               variant == ReviewFormattingVariant.Combined;
+            bool otherSize = variant == ReviewFormattingVariant.FontSize ||
+                             variant == ReviewFormattingVariant.Combined;
+            bool otherStyle = variant == ReviewFormattingVariant.FontStyle ||
+                              variant == ReviewFormattingVariant.Combined;
+            bool otherColor = variant == ReviewFormattingVariant.Color ||
+                              variant == ReviewFormattingVariant.Combined;
+            string family = otherFamily ? "Arial" : "Times New Roman";
+            XFontStyle style = otherStyle ? XFontStyle.BoldItalic : XFontStyle.Regular;
+            XBrush brush = otherColor
+                ? (XBrush)new XSolidBrush(XColor.FromArgb(255, 24, 72, 132))
+                : XBrushes.Black;
+
+            using (var doc = new PdfDocument())
+            {
+                for (int pageIndex = 0; pageIndex < 2; pageIndex++)
+                {
+                    PdfPage page = doc.AddPage();
+                    using (XGraphics g = XGraphics.FromPdfPage(page))
+                    {
+                        var title = new XFont(family, otherSize ? 22 : 18, style);
+                        var body = new XFont(family, otherSize ? 14 : 11, style);
+                        var small = new XFont(family, otherSize ? 10.5 : 8.5, style);
+                        g.DrawString("Formatting Control Register", title, brush,
+                            new XPoint(48, 56));
+                        g.DrawString("Identical Words Stay Equal", body, brush,
+                            new XPoint(48, 108));
+                        g.DrawString("Amount 4187 Status Ready Cycle Seven", body, brush,
+                            new XPoint(48, 145));
+                        for (int row = 0; row < 12; row++)
+                        {
+                            g.DrawString("NeutralRow " + row.ToString("00") +
+                                " Stable Value Confirmed Page " + pageIndex,
+                                small, brush, new XPoint(48, 205 + row * 35));
+                        }
+                    }
+                }
+                doc.Save(path);
+            }
+        }
+
+        private static string ReviewFormattingExtractionSignature(string path)
+        {
+            var signature = new StringBuilder();
+            foreach (PdfPageText page in PdfTextExtract.Extract(path))
+            {
+                signature.Append('P').Append(page.PageIndex).Append(':');
+                foreach (PdfWord word in page.Words)
+                {
+                    signature.Append(word.Text ?? "").Append('@')
+                        .Append(word.FontName ?? "").Append(',')
+                        .Append(BitConverter.DoubleToInt64Bits(word.FontSizePt)).Append(',')
+                        .Append(word.Bold ? '1' : '0').Append(word.Italic ? '1' : '0').Append(',')
+                        .Append(word.ColorArgb).Append(',')
+                        .Append(BitConverter.DoubleToInt64Bits(word.Left)).Append(',')
+                        .Append(BitConverter.DoubleToInt64Bits(word.Bottom)).Append(',')
+                        .Append(BitConverter.DoubleToInt64Bits(word.Right)).Append(',')
+                        .Append(BitConverter.DoubleToInt64Bits(word.Top)).Append(';');
+                }
+            }
+            return signature.ToString();
+        }
+
+        [Flags]
+        private enum ReviewRepresentationVariant
+        {
+            None = 0,
+            FragmentedText = 1,
+            ReversedOperations = 2,
+            DuplicateOverlay = 4,
+            InvisibleLayer = 8,
+            AlternateUnicode = 16,
+            SubpixelOffset = 32
+        }
+
+        private sealed class ReviewMatrixLine
+        {
+            public string Text;
+            public double X;
+            public double Y;
+            public int Font;
+        }
+
+        /// <summary>
+        /// Независимо генерирует обычные и плотные born-digital PDF с разным устройством
+        /// content stream: фрагментацией, порядком операций, дублем text layer, невидимым
+        /// слоем, эквивалентным Unicode и малым смещением. Матрица проверяет, что визуально
+        /// равные представления не дают рамок, а настоящие вставка, удаление и замены
+        /// сохраняются теми же operations, статистикой и UI-проекцией в обе стороны.
+        /// </summary>
+        private static void TestReviewGeneratedRepresentationMatrixLive()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_matrix_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string baselinePath = Path.Combine(dir, "baseline.pdf");
+                WriteRepresentationMatrixPdf(baselinePath, ReviewRepresentationVariant.None, false);
+
+                ReviewRepresentationVariant[] variants = ReviewRepresentationVariants();
+                AssertEqual(23, variants.Length,
+                    "матрица содержит baseline, шесть одиночных, пятнадцать парных и общий профиль");
+                string baselineRaw = ReviewPdfPigSignature(baselinePath);
+
+                for (int i = 0; i < variants.Length; i++)
+                {
+                    string profile = variants[i].ToString();
+                    string equivalentPath = Path.Combine(dir, "equivalent_" + i + ".pdf");
+                    WriteRepresentationMatrixPdf(equivalentPath, variants[i], false);
+                    string equivalentRaw = ReviewPdfPigSignature(equivalentPath);
+                    if (variants[i] == ReviewRepresentationVariant.None)
+                        AssertEqual(baselineRaw, equivalentRaw,
+                            "независимый baseline воспроизводит тот же raw PDF-текст");
+                    else
+                        AssertTrue(!string.Equals(baselineRaw, equivalentRaw,
+                                StringComparison.Ordinal),
+                            "fixture реально меняет PdfPig-представление: " + profile);
+
+                    PdfReviewResult forwardEquivalent = PdfReviewService.Compare(
+                        baselinePath, equivalentPath);
+                    AssertReviewAllUnchanged(forwardEquivalent, 4,
+                        "матрица эквивалентных представлений, прямо: " + profile);
+                    AssertReviewEqualOwnership(forwardEquivalent,
+                        "матрица эквивалентных представлений, прямо: " + profile);
+                    AssertReviewProjectionMatchesOperations(forwardEquivalent,
+                        "матрица эквивалентных представлений, прямо: " + profile);
+
+                    PdfReviewResult reverseEquivalent = PdfReviewService.Compare(
+                        equivalentPath, baselinePath);
+                    AssertReviewAllUnchanged(reverseEquivalent, 4,
+                        "матрица эквивалентных представлений, обратно: " + profile);
+                    AssertReviewEqualOwnership(reverseEquivalent,
+                        "матрица эквивалентных представлений, обратно: " + profile);
+                    AssertReviewProjectionMatchesOperations(reverseEquivalent,
+                        "матрица эквивалентных представлений, обратно: " + profile);
+                }
+
+                ReviewRepresentationVariant combined =
+                    ReviewRepresentationVariant.FragmentedText |
+                    ReviewRepresentationVariant.ReversedOperations |
+                    ReviewRepresentationVariant.DuplicateOverlay |
+                    ReviewRepresentationVariant.InvisibleLayer |
+                    ReviewRepresentationVariant.AlternateUnicode |
+                    ReviewRepresentationVariant.SubpixelOffset;
+                string revisedPath = Path.Combine(dir, "revised.pdf");
+                WriteRepresentationMatrixPdf(revisedPath, combined, true);
+
+                PdfReviewResult forward = PdfReviewService.Compare(baselinePath, revisedPath);
+                AssertRepresentationMatrixChanges(forward, "40|West|legacy",
+                    "47|East|urgent", "матрица, прямое сравнение");
+                PdfReviewResult reverse = PdfReviewService.Compare(revisedPath, baselinePath);
+                AssertRepresentationMatrixChanges(reverse, "47|East|urgent",
+                    "40|West|legacy", "матрица, обратное сравнение");
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static ReviewRepresentationVariant[] ReviewRepresentationVariants()
+        {
+            var flags = new[]
+            {
+                ReviewRepresentationVariant.FragmentedText,
+                ReviewRepresentationVariant.ReversedOperations,
+                ReviewRepresentationVariant.DuplicateOverlay,
+                ReviewRepresentationVariant.InvisibleLayer,
+                ReviewRepresentationVariant.AlternateUnicode,
+                ReviewRepresentationVariant.SubpixelOffset
+            };
+            var variants = new List<ReviewRepresentationVariant>();
+            variants.Add(ReviewRepresentationVariant.None);
+            for (int i = 0; i < flags.Length; i++)
+                variants.Add(flags[i]);
+            for (int i = 0; i < flags.Length; i++)
+                for (int j = i + 1; j < flags.Length; j++)
+                    variants.Add(flags[i] | flags[j]);
+            variants.Add(ReviewRepresentationVariant.FragmentedText |
+                ReviewRepresentationVariant.ReversedOperations |
+                ReviewRepresentationVariant.DuplicateOverlay |
+                ReviewRepresentationVariant.InvisibleLayer |
+                ReviewRepresentationVariant.AlternateUnicode |
+                ReviewRepresentationVariant.SubpixelOffset);
+            return variants.ToArray();
+        }
+
+        private static string ReviewPdfPigSignature(string path)
+        {
+            var signature = new StringBuilder();
+            using (UglyToad.PdfPig.PdfDocument pdf = PdfPageProbe.OpenPig(path))
+            {
+                signature.Append(pdf.NumberOfPages).Append('|');
+                for (int pageNumber = 1; pageNumber <= pdf.NumberOfPages; pageNumber++)
+                {
+                    signature.Append('P').Append(pageNumber).Append(':');
+                    UglyToad.PdfPig.Content.Page page = pdf.GetPage(pageNumber);
+                    signature.Append('L');
+                    foreach (UglyToad.PdfPig.Content.Letter letter in page.Letters)
+                    {
+                        UglyToad.PdfPig.Core.PdfRectangle box = letter.GlyphRectangle;
+                        signature.Append(letter.Value).Append('@')
+                            .Append(BitConverter.DoubleToInt64Bits(box.Left)).Append(',')
+                            .Append(BitConverter.DoubleToInt64Bits(box.Bottom)).Append(',')
+                            .Append(BitConverter.DoubleToInt64Bits(box.Right)).Append(',')
+                            .Append(BitConverter.DoubleToInt64Bits(box.Top)).Append(';');
+                    }
+                    signature.Append('W');
+                    foreach (UglyToad.PdfPig.Content.Word word in page.GetWords())
+                    {
+                        signature.Append(word.Text).Append('@')
+                            .Append(BitConverter.DoubleToInt64Bits(word.BoundingBox.Left)).Append(',')
+                            .Append(BitConverter.DoubleToInt64Bits(word.BoundingBox.Bottom)).Append(',')
+                            .Append(BitConverter.DoubleToInt64Bits(word.BoundingBox.Right)).Append(',')
+                            .Append(BitConverter.DoubleToInt64Bits(word.BoundingBox.Top)).Append(';');
+                    }
+                }
+            }
+            return signature.ToString();
+        }
+
+        private static void AssertRepresentationMatrixChanges(PdfReviewResult result,
+            string expectedDeletes, string expectedInserts, string context)
+        {
+            AssertEqual(4, result.Pairs.Count, context + ": страницы сопоставлены 1:1");
+            AssertEqual(3, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+                context + ": изменены три страницы с настоящими правками");
+            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+                context + ": контрольная страница осталась неизменной");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
+                context + ": нет ложной удалённой страницы");
+            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
+                context + ": нет ложной добавленной страницы");
+            AssertEqual(expectedDeletes,
+                ReviewChangedWordsAcrossPairs(result, PdfReviewDiffKind.Delete),
+                context + ": Delete содержит только видимые правки");
+            AssertEqual(expectedInserts,
+                ReviewChangedWordsAcrossPairs(result, PdfReviewDiffKind.Insert),
+                context + ": Insert содержит только видимые правки");
+            AssertEqual(3, result.Stats.ChangedPages,
+                context + ": статистика страниц строится из refined operations");
+            AssertEqual(3, result.Stats.DeletedWords,
+                context + ": статистика удалений согласована с operations");
+            AssertEqual(3, result.Stats.InsertedWords,
+                context + ": статистика вставок согласована с operations");
+            AssertEqual(2, result.Stats.Replacements,
+                context + ": отдельная вставка не превращена в замену");
+            AssertReviewEqualOwnership(result, context);
+            AssertReviewProjectionMatchesOperations(result, context);
+        }
+
+        private static string ReviewChangedWordsAcrossPairs(PdfReviewResult result,
+            PdfReviewDiffKind kind)
+        {
+            var words = new List<string>();
+            foreach (PdfReviewWordOp op in result.Operations)
+                if (op.Kind == kind)
+                    foreach (PdfReviewWord word in op.Words)
+                        words.Add(word.Key);
+            words.Sort(StringComparer.Ordinal);
+            return string.Join("|", words.ToArray());
+        }
+
+        private static void AssertReviewEqualOwnership(PdfReviewResult result, string context)
+        {
+            foreach (PdfReviewWordOp op in result.Operations)
+            {
+                if (op.Kind != PdfReviewDiffKind.Equal)
+                    continue;
+                AssertTrue(op.LeftWords.Count > 0 && op.RightWords.Count > 0,
+                    context + ": Equal хранит обе фактические стороны");
+                foreach (PdfReviewWord word in op.LeftWords)
+                    AssertTrue(ReviewDocumentOwns(result.Left, word),
+                        context + ": левая часть Equal принадлежит раннему документу");
+                foreach (PdfReviewWord word in op.RightWords)
+                    AssertTrue(ReviewDocumentOwns(result.Right, word),
+                        context + ": правая часть Equal принадлежит позднему документу");
+                foreach (PdfReviewWordMatch match in op.Matches)
+                    AssertTrue(match != null &&
+                               ReviewDocumentOwns(result.Left, match.Left) &&
+                               ReviewDocumentOwns(result.Right, match.Right),
+                        context + ": явная связь Equal не меняет владельцев");
+            }
+        }
+
+        private static void AssertReviewProjectionMatchesOperations(PdfReviewResult result,
+            string context)
+        {
+            int deleted = ReviewOperationWordCount(result.Operations,
+                PdfReviewDiffKind.Delete, -1);
+            int inserted = ReviewOperationWordCount(result.Operations,
+                PdfReviewDiffKind.Insert, -1);
+            foreach (PdfReviewPagePair pair in result.Pairs)
+            {
+                int pairDeleted = pair.LeftPageIndex < 0 ? 0 :
+                    ReviewOperationWordCount(result.Operations,
+                        PdfReviewDiffKind.Delete, pair.LeftPageIndex);
+                int pairInserted = pair.RightPageIndex < 0 ? 0 :
+                    ReviewOperationWordCount(result.Operations,
+                        PdfReviewDiffKind.Insert, pair.RightPageIndex);
+
+                PdfReviewHighlight red = PdfReviewForm.BuildHighlight(result, pair, true);
+                PdfReviewHighlight green = PdfReviewForm.BuildHighlight(result, pair, false);
+                AssertEqual(pairDeleted, red.Boxes.Count,
+                    context + ": красные рамки проецируются только из глобальных Delete");
+                AssertEqual(pairInserted, green.Boxes.Count,
+                    context + ": зелёные рамки проецируются только из глобальных Insert");
+                AssertReviewBoxesValid(red, context + ": красная геометрия корректна");
+                AssertReviewBoxesValid(green, context + ": зелёная геометрия корректна");
+            }
+            AssertEqual(deleted, result.Stats.DeletedWords,
+                context + ": общий Delete согласован со статистикой");
+            AssertEqual(inserted, result.Stats.InsertedWords,
+                context + ": общий Insert согласован со статистикой");
+        }
+
+        private static int ReviewOperationWordCount(IList<PdfReviewWordOp> operations,
+            PdfReviewDiffKind kind, int pageIndex)
+        {
+            int count = 0;
+            foreach (PdfReviewWordOp op in operations)
+                if (op.Kind == kind)
+                    foreach (PdfReviewWord word in op.Words)
+                        if (pageIndex < 0 || word.PageIndex == pageIndex)
+                            count++;
+            return count;
+        }
+
+        private static void AssertReviewBoxesValid(PdfReviewHighlight highlight, string context)
+        {
+            foreach (PdfReviewBox box in highlight.Boxes)
+            {
+                AssertTrue(box.Right > box.Left && box.Top > box.Bottom,
+                    context + ": рамка имеет положительную площадь");
+                AssertTrue(box.Left >= -0.5 && box.Bottom >= -0.5 &&
+                    box.Right <= highlight.ViewWidthPt + 0.5 &&
+                    box.Top <= highlight.ViewHeightPt + 0.5,
+                    context + ": рамка остаётся в пространстве страницы");
+            }
+        }
+
+        private static void WriteRepresentationMatrixPdf(string path,
+            ReviewRepresentationVariant variant, bool revised)
+        {
+            using (var doc = new PdfDocument())
+            {
+                for (int pageIndex = 0; pageIndex < 4; pageIndex++)
+                {
+                    PdfPage page = doc.AddPage();
+                    using (XGraphics g = XGraphics.FromPdfPage(page))
+                        DrawRepresentationMatrixPage(g, pageIndex, variant, revised);
+                }
+                doc.Save(path);
+            }
+        }
+
+        private static void DrawRepresentationMatrixPage(XGraphics g, int pageIndex,
+            ReviewRepresentationVariant variant, bool revised)
+        {
+            var title = new XFont("Times New Roman", 18);
+            var body = new XFont("Times New Roman", 11);
+            var small = new XFont("Times New Roman", 8.5);
+            List<ReviewMatrixLine> lines = BuildRepresentationMatrixLines(pageIndex, revised);
+
+            if ((variant & ReviewRepresentationVariant.InvisibleLayer) != 0)
+            {
+                g.DrawString("Hidden Service Layer " + pageIndex, body, XBrushes.White,
+                    new XPoint(48, 760));
+                g.DrawString("Nonprinting Metadata ALPHA", small, XBrushes.White,
+                    new XPoint(310, 780));
+            }
+
+            bool reverse = (variant & ReviewRepresentationVariant.ReversedOperations) != 0;
+            for (int position = 0; position < lines.Count; position++)
+            {
+                int index = reverse ? lines.Count - 1 - position : position;
+                ReviewMatrixLine line = lines[index];
+                XFont font = line.Font == 0 ? title : (line.Font == 1 ? body : small);
+                string text = line.Text;
+                if ((variant & ReviewRepresentationVariant.AlternateUnicode) != 0)
+                    text = text.Replace("ALPHA", ((char)0x0410) + "LPHA");
+                double offset = (variant & ReviewRepresentationVariant.SubpixelOffset) != 0
+                    ? 0.24 : 0;
+                DrawRepresentationMatrixText(g, text, font, line.X + offset,
+                    line.Y - offset,
+                    (variant & ReviewRepresentationVariant.FragmentedText) != 0);
+                if ((variant & ReviewRepresentationVariant.DuplicateOverlay) != 0)
+                    DrawRepresentationMatrixText(g, text, font, line.X + offset,
+                        line.Y - offset,
+                        (variant & ReviewRepresentationVariant.FragmentedText) != 0);
+            }
+
+            g.DrawLine(XPens.Gray, 48, 68, 547, 68);
+            g.DrawRectangle(XPens.LightGray, 47, 84, 501, 680);
+        }
+
+        private static void DrawRepresentationMatrixText(XGraphics g, string text,
+            XFont font, double x, double y, bool fragmented)
+        {
+            const string token = "RenderAnchor";
+            int tokenIndex = fragmented
+                ? text.IndexOf(token, StringComparison.Ordinal) : -1;
+            if (tokenIndex < 0)
+            {
+                g.DrawString(text, font, XBrushes.Black, new XPoint(x, y));
+                return;
+            }
+
+            string prefix = text.Substring(0, tokenIndex);
+            string suffix = text.Substring(tokenIndex + token.Length);
+            if (prefix.Length > 0)
+            {
+                g.DrawString(prefix, font, XBrushes.Black, new XPoint(x, y));
+                x += g.MeasureString(prefix, font).Width;
+            }
+            g.DrawString("Render", font, XBrushes.Black, new XPoint(x, y));
+            x += g.MeasureString("Render", font).Width;
+            g.DrawString("Anchor", font, XBrushes.Black, new XPoint(x, y));
+            x += g.MeasureString("Anchor", font).Width;
+            if (suffix.Length > 0)
+                g.DrawString(suffix, font, XBrushes.Black, new XPoint(x, y));
+        }
+
+        private static List<ReviewMatrixLine> BuildRepresentationMatrixLines(int pageIndex,
+            bool revised)
+        {
+            var lines = new List<ReviewMatrixLine>();
+            if (pageIndex == 0)
+            {
+                AddReviewMatrixLine(lines, "Ordinary Workflow Summary", 48, 52, 0);
+                AddReviewMatrixLine(lines, "Identity ALPHA RenderAnchor Stable", 48, 102, 1);
+                AddReviewMatrixLine(lines, revised
+                    ? "Workflow urgent normal queue twelve"
+                    : "Workflow normal queue twelve", 48, 132, 1);
+                AddReviewMatrixLine(lines, "Owner Delta State Ready Cycle Seven", 48, 162, 1);
+                for (int row = 0; row < 14; row++)
+                    AddReviewMatrixLine(lines, "OrdinaryRow " + row.ToString("00") +
+                        " Stable Value Confirmed", 48, 210 + row * 28, 2);
+            }
+            else if (pageIndex == 1)
+            {
+                AddReviewMatrixLine(lines, "Dense Two Column Register", 48, 52, 0);
+                AddReviewMatrixLine(lines, "Identity ALPHA RenderAnchor Stable", 48, 102, 1);
+                AddReviewMatrixLine(lines, "Quota " + (revised ? "47" : "40") +
+                    " Units Stable", 48, 132, 1);
+                for (int row = 0; row < 18; row++)
+                {
+                    AddReviewMatrixLine(lines, "Left " + row.ToString("00") +
+                        " Delta Stable", 48, 185 + row * 27, 2);
+                    AddReviewMatrixLine(lines, "Right " + row.ToString("00") +
+                        " Sigma Stable", 310, 185 + row * 27, 2);
+                }
+            }
+            else if (pageIndex == 2)
+            {
+                AddReviewMatrixLine(lines, "Mixed Operations Ledger", 48, 52, 0);
+                AddReviewMatrixLine(lines, "Identity ALPHA RenderAnchor Stable", 48, 102, 1);
+                AddReviewMatrixLine(lines, "Direction " + (revised ? "East" : "West") +
+                    " Route Stable", 48, 132, 1);
+                AddReviewMatrixLine(lines, revised ? "Mode stable" : "Mode stable legacy",
+                    48, 162, 1);
+                for (int row = 0; row < 16; row++)
+                    AddReviewMatrixLine(lines, "LedgerRow " + row.ToString("00") +
+                        " Amount " + (200 + row) + " Verified", 48, 210 + row * 29, 2);
+            }
+            else
+            {
+                AddReviewMatrixLine(lines, "Unchanged Control Appendix", 48, 52, 0);
+                AddReviewMatrixLine(lines, "Identity ALPHA RenderAnchor Stable", 48, 102, 1);
+                AddReviewMatrixLine(lines, "Control Material Remains Identical", 48, 132, 1);
+                for (int row = 0; row < 20; row++)
+                    AddReviewMatrixLine(lines, "ControlRow " + row.ToString("00") +
+                        " Neutral Stable Confirmed", 48, 185 + row * 26, 2);
+            }
+            return lines;
+        }
+
+        private static void AddReviewMatrixLine(List<ReviewMatrixLine> lines, string text,
+            double x, double y, int font)
+        {
+            lines.Add(new ReviewMatrixLine { Text = text, X = x, Y = y, Font = font });
+        }
+
         private static void TestReviewServiceLive()
         {
             string dir = Path.Combine(Path.GetTempPath(), "iwo_review_" + Guid.NewGuid().ToString("N"));
@@ -1871,6 +9713,364 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
+        /// Локальные 1.pdf/2.pdf — воспроизводитель изменившегося extraction-order в форме.
+        /// Общие ключи проверяются по физическим экземплярам, иначе настоящая правка слова
+        /// «по» могла бы замаскировать ложную пару в другой ячейке. В CI без образцов тест
+        /// явно пропускается; IWO_REVIEW_FIXTURE_DIR превращает их отсутствие в ошибку.
+        /// </summary>
+        private static void TestReviewRootFixturesLive()
+        {
+            string fixtureDir = Environment.GetEnvironmentVariable(
+                "IWO_REVIEW_FIXTURE_DIR");
+            bool explicitlyConfigured = !string.IsNullOrWhiteSpace(fixtureDir);
+            if (!explicitlyConfigured)
+            {
+                string sourceDir = SourceDir();
+                fixtureDir = sourceDir == null ? null : Path.GetDirectoryName(sourceDir);
+            }
+            string earlyPath = fixtureDir == null ? null :
+                Path.Combine(fixtureDir, "1.pdf");
+            string latePath = fixtureDir == null ? null :
+                Path.Combine(fixtureDir, "2.pdf");
+            if (earlyPath == null || latePath == null ||
+                !File.Exists(earlyPath) || !File.Exists(latePath))
+            {
+                AssertTrue(!explicitlyConfigured,
+                    "IWO_REVIEW_FIXTURE_DIR обязан содержать 1.pdf и 2.pdf");
+                Console.WriteLine("      [пропуск] рядом с репозиторием нет 1.pdf и 2.pdf");
+                return;
+            }
+
+            PdfReviewLimits limits = PdfReviewLimits.Default();
+            PdfReviewDocument early = PdfReviewService.Load(earlyPath, null, null,
+                limits);
+            PdfReviewDocument late = PdfReviewService.Load(latePath, null, null,
+                limits);
+
+            PdfReviewResult textualForward = PdfReviewDiff.Compare(early, late,
+                limits);
+            string forwardBeforeRaster = ReviewOrderMatchSig(textualForward);
+            PdfReviewVisualDiff.Refine(textualForward, limits, null);
+            AssertEqual(forwardBeforeRaster, ReviewOrderMatchSig(textualForward),
+                "1→2: word-only растр не скрывает доказанные реальные правки");
+
+            PdfReviewResult textualReverse = PdfReviewDiff.Compare(late, early,
+                limits);
+            string reverseBeforeRaster = ReviewOrderMatchSig(textualReverse);
+            PdfReviewVisualDiff.Refine(textualReverse, limits, null);
+            AssertEqual(reverseBeforeRaster, ReviewOrderMatchSig(textualReverse),
+                "2→1: word-only растр не скрывает доказанные реальные правки");
+
+            PdfReviewResult forward = PdfReviewService.Compare(earlyPath, latePath,
+                null, null, limits);
+            PdfReviewResult reverse = PdfReviewService.Compare(latePath, earlyPath,
+                null, null, limits);
+            AssertEqual(ReviewOrderMatchSig(textualForward),
+                ReviewOrderMatchSig(forward),
+                "1→2: публичный production-путь совпадает с проверенной семантикой");
+            AssertEqual(ReviewOrderMatchSig(textualReverse),
+                ReviewOrderMatchSig(reverse),
+                "2→1: публичный production-путь совпадает с проверенной семантикой");
+
+            PdfReviewResult forwardRepeat = PdfReviewDiff.Compare(early, late,
+                limits);
+            PdfReviewResult reverseRepeat = PdfReviewDiff.Compare(late, early,
+                limits);
+            AssertEqual(forwardBeforeRaster,
+                ReviewOrderMatchSig(forwardRepeat),
+                "1→2: результат детерминирован при повторном global diff");
+            AssertEqual(reverseBeforeRaster,
+                ReviewOrderMatchSig(reverseRepeat),
+                "2→1: результат детерминирован при повторном global diff");
+
+            AssertReviewRootFixtureResult(forward, false, "1→2");
+            AssertReviewRootFixtureResult(reverse, true, "2→1");
+            AssertEqual(forward.Stats.DeletedWords, reverse.Stats.InsertedWords,
+                "зеркальный запуск меняет местами число удалений/добавлений");
+            AssertEqual(forward.Stats.InsertedWords, reverse.Stats.DeletedWords,
+                "зеркальный запуск меняет местами число добавлений/удалений");
+            // Exact provenance принадлежит выбранному global-LCS и при равных
+            // подпоследовательностях может приходиться на разные слова. Симметрия
+            // semantic cleanup — это одна и та же физическая карта связей после
+            // перестановки сторон, а не одинаковый размер provenance-категорий.
+            AssertEqual(ReviewFixturePhysicalMatchSig(forward, false),
+                ReviewFixturePhysicalMatchSig(reverse, true),
+                "оба направления строят одинаковые физические word-связи");
+        }
+
+        private static string ReviewFixturePhysicalMatchSig(PdfReviewResult result,
+            bool reverse)
+        {
+            var parts = new List<string>();
+            foreach (PdfReviewWordOp operation in result.Operations)
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                {
+                    if (match == null || match.Left == null || match.Right == null)
+                        continue;
+                    PdfReviewWord early = reverse ? match.Right : match.Left;
+                    PdfReviewWord late = reverse ? match.Left : match.Right;
+                    parts.Add(ReviewFixturePhysicalWordSig(early) + ">" +
+                        ReviewFixturePhysicalWordSig(late));
+                }
+            parts.Sort(StringComparer.Ordinal);
+            return string.Join("|", parts.ToArray());
+        }
+
+        private static string ReviewFixturePhysicalWordSig(PdfReviewWord word)
+        {
+            if (word == null)
+                return "-";
+            var culture = System.Globalization.CultureInfo.InvariantCulture;
+            return word.Key + "@p" + word.PageIndex + "(" +
+                word.Box.Left.ToString("0.###", culture) + "," +
+                word.Box.Bottom.ToString("0.###", culture) + "," +
+                word.Box.Right.ToString("0.###", culture) + "," +
+                word.Box.Top.ToString("0.###", culture) + ")";
+        }
+
+        private static void AssertReviewRootFixtureResult(PdfReviewResult result,
+            bool reverse, string context)
+        {
+            AssertEqual("0:0:Changed|1:1:Changed|2:2:Changed",
+                PairSig(result.Pairs),
+                context + ": viewer сохранил пары физических страниц 0↔0, 1↔1, 2↔2");
+            AssertEqual(3, result.Stats.PagePairs,
+                context + ": три page-pair в статистике");
+            AssertEqual(3, result.Stats.ChangedPages,
+                context + ": правки сохранены на трёх страницах");
+            AssertEqual(0, result.Stats.LeftOnlyPages +
+                           result.Stats.RightOnlyPages,
+                context + ": нет ложных односторонних страниц");
+
+            // Сначала проверяем известные физические экземпляры: при регрессии их
+            // диагностическая сигнатура полезнее одного несовпавшего общего счётчика.
+            AssertReviewRootStableMatches(result, reverse, context);
+            AssertReviewRootGenuineChanges(result, reverse, context);
+
+            AssertEqual(reverse ? 3 : 51, result.Stats.DeletedWords,
+                context + ": удалены только реальные слова и консервативные номера страниц");
+            AssertEqual(reverse ? 51 : 3, result.Stats.InsertedWords,
+                context + ": добавлены только реальные слова и консервативные номера страниц");
+            AssertEqual(1, result.Stats.Replacements,
+                context + ": единственная смысловая замена — описание услуги");
+            AssertEqual(0, result.WhitespaceChanges.Count,
+                context + ": образцы не содержат доказанного литерального изменения пробелов");
+            AssertEqual(0, result.Stats.WhitespaceChanges +
+                           result.Stats.DeletedWhitespaceAtoms +
+                           result.Stats.InsertedWhitespaceAtoms,
+                context + ": пробельная статистика не выводится из геометрии формы");
+
+            AssertReviewReconcilePagePairInvariant(result, context);
+        }
+
+        private static void AssertReviewRootStableMatches(PdfReviewResult result,
+            bool reverse, string context)
+        {
+            AssertReviewFixtureStable(result, reverse, "с.", 249, 57,
+                249, 108, context);
+            AssertReviewFixtureStable(result, reverse, "Б-Глушица", 255.747,
+                57, 255.747, 108, context);
+            AssertReviewFixtureStable(result, reverse, "колодец", 248.251,
+                48.752, 248.251, 99.752, context);
+            AssertReviewFixtureStable(result, reverse, "№53", 274.501,
+                48.752, 274.501, 99.752, context);
+            AssertReviewFixtureStable(result, reverse, "7", 159.75, 44.25,
+                159.75, 96, context);
+            AssertReviewFixtureStable(result, reverse, "Гагарина", 180.749,
+                44.252, 180.749, 99.752, context);
+            AssertReviewFixtureStable(result, reverse, "по", 221.255, 44.252,
+                221.255, 99.752, context);
+            AssertReviewFixtureStable(result, reverse, "по", 259.503, 40.503,
+                259.503, 91.503, context);
+            AssertReviewFixtureStable(result, reverse, "ул.", 268.502, 40.503,
+                268.502, 91.503, context);
+            AssertReviewFixtureStable(result, reverse, "ул.", 185.251, 36.752,
+                185.251, 91.503, context);
+            AssertReviewFixtureStable(result, reverse, "Гагарина,", 195.748,
+                36.752, 195.748, 91.503, context);
+            AssertReviewFixtureStable(result, reverse, "Ленинградской", 246.003,
+                32.255, 246.003, 84.004, context);
+            AssertReviewFixtureStable(result, reverse, "Пугачевская,", 186,
+                28.5, 186, 84.004, context);
+            AssertReviewFixtureStable(result, reverse, "№", 158.25, 288.75,
+                158.25, 344.25, context);
+        }
+
+        private static void AssertReviewFixtureStable(PdfReviewResult result,
+            bool reverse, string key, double earlyLeft, double earlyBottom,
+            double lateLeft, double lateBottom, string context)
+        {
+            PdfReviewWord expectedLeft = null;
+            PdfReviewWord expectedRight = null;
+            PdfReviewMatchKind kind = PdfReviewMatchKind.None;
+            int count = 0;
+            foreach (PdfReviewWordOp operation in result.Operations)
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                {
+                    if (match == null || match.Left == null || match.Right == null)
+                        continue;
+                    double left = reverse ? lateLeft : earlyLeft;
+                    double leftBottom = reverse ? lateBottom : earlyBottom;
+                    double right = reverse ? earlyLeft : lateLeft;
+                    double rightBottom = reverse ? earlyBottom : lateBottom;
+                    if (ReviewFixtureWordAt(match.Left, key, 0, left,
+                            leftBottom) &&
+                        ReviewFixtureWordAt(match.Right, key, 0, right,
+                            rightBottom))
+                    {
+                        count++;
+                        expectedLeft = match.Left;
+                        expectedRight = match.Right;
+                        kind = match.Kind;
+                    }
+                }
+            AssertEqual(1, count, context + ": физический экземпляр «" + key +
+                "» сопоставлен ровно один раз; changes=" +
+                ReviewFixtureChangedSig(result) + "; words=" +
+                ReviewFixtureWordSig(result, key) + "; matches=" +
+                ReviewFixtureMatchSig(result, key));
+            AssertTrue(expectedLeft != null && expectedRight != null &&
+                       (kind == PdfReviewMatchKind.Exact ||
+                        kind == PdfReviewMatchKind.ReconciledOrder),
+                context + ": «" + key + "» имеет только Exact/geometry provenance");
+        }
+
+        private static void AssertReviewRootGenuineChanges(PdfReviewResult result,
+            bool reverse, string context)
+        {
+            PdfReviewDiffKind oldKind = reverse ? PdfReviewDiffKind.Insert :
+                PdfReviewDiffKind.Delete;
+            PdfReviewDiffKind newKind = reverse ? PdfReviewDiffKind.Delete :
+                PdfReviewDiffKind.Insert;
+            AssertReviewFixtureChange(result, oldKind, "Оказание", 0, 169.5,
+                451.5, context + ": старое длинное описание осталось видимым");
+            AssertReviewFixtureChange(result, oldKind, "колодцев", 0, 135.75,
+                438, context + ": хвост старого описания остался видимым");
+            AssertReviewFixtureChange(result, newKind, "рпарарпапрапрап", 0,
+                169.5, 451.5, context + ": новый текст остался видимым");
+            AssertReviewFixtureChange(result, oldKind, "Основание:", 0, 169.5,
+                354, context + ": удалённый заголовок основания не скрыт");
+            foreach (double bottom in new[] { 339.75, 326.25, 312.75 })
+            {
+                AssertReviewFixtureChange(result, oldKind, "Коммерческое", 0,
+                    187.5, bottom,
+                    context + ": коммерческое предложение не скрыто");
+                AssertReviewFixtureChange(result, oldKind, "№", 0, 372, bottom,
+                    context + ": номер удалённого коммерческого предложения не скрыт");
+            }
+
+            foreach (KeyValuePair<string, int> pageNumber in
+                new Dictionary<string, int> { { "2", 1 }, { "3", 2 } })
+            {
+                AssertReviewFixtureChange(result, PdfReviewDiffKind.Delete,
+                    pageNumber.Key, pageNumber.Value, 418.5, 567,
+                    context + ": номер страницы остаётся видимым без строгого proof");
+                AssertReviewFixtureChange(result, PdfReviewDiffKind.Insert,
+                    pageNumber.Key, pageNumber.Value, 418.5, 567,
+                    context + ": номер страницы остаётся видимым без строгого proof");
+            }
+        }
+
+        private static void AssertReviewFixtureChange(PdfReviewResult result,
+            PdfReviewDiffKind kind, string key, int pageIndex, double left,
+            double bottom, string message)
+        {
+            int count = 0;
+            foreach (PdfReviewWordOp operation in result.Operations)
+            {
+                if (operation.Kind != kind)
+                    continue;
+                IList<PdfReviewWord> words = kind == PdfReviewDiffKind.Delete
+                    ? (IList<PdfReviewWord>)operation.LeftWords :
+                    operation.RightWords;
+                foreach (PdfReviewWord word in words)
+                    if (ReviewFixtureWordAt(word, key, pageIndex, left, bottom))
+                        count++;
+            }
+            AssertEqual(1, count, message + "; changes=" +
+                ReviewFixtureChangedSig(result));
+        }
+
+        private static bool ReviewFixtureWordAt(PdfReviewWord word, string key,
+            int pageIndex, double left, double bottom)
+        {
+            return word != null && word.Key == key &&
+                word.PageIndex == pageIndex &&
+                Math.Abs(word.Box.Left - left) <= 0.05 &&
+                Math.Abs(word.Box.Bottom - bottom) <= 0.05;
+        }
+
+        private static string ReviewFixtureChangedSig(PdfReviewResult result)
+        {
+            var parts = new List<string>();
+            foreach (PdfReviewWordOp operation in result.Operations)
+            {
+                if (operation.Kind != PdfReviewDiffKind.Delete &&
+                    operation.Kind != PdfReviewDiffKind.Insert)
+                    continue;
+                IList<PdfReviewWord> words = operation.Kind ==
+                    PdfReviewDiffKind.Delete
+                    ? (IList<PdfReviewWord>)operation.LeftWords :
+                    operation.RightWords;
+                foreach (PdfReviewWord word in words)
+                    parts.Add(operation.Kind + ":" + word.Key + "@p" +
+                        word.PageIndex + "(" +
+                        word.Box.Left.ToString("0.###",
+                            System.Globalization.CultureInfo.InvariantCulture) +
+                        "," + word.Box.Bottom.ToString("0.###",
+                            System.Globalization.CultureInfo.InvariantCulture) + ")");
+            }
+            return string.Join("|", parts.ToArray());
+        }
+
+        private static string ReviewFixtureWordSig(PdfReviewResult result,
+            string key)
+        {
+            var parts = new List<string>();
+            foreach (PdfReviewWordOp operation in result.Operations)
+            {
+                foreach (PdfReviewWord word in operation.LeftWords)
+                    if (word != null && word.Key == key)
+                        parts.Add(operation.Kind + "/" + operation.MatchKind +
+                            ":L:p" + word.PageIndex + "(" +
+                            word.Box.Left.ToString("0.###",
+                                System.Globalization.CultureInfo.InvariantCulture) + "," +
+                            word.Box.Bottom.ToString("0.###",
+                                System.Globalization.CultureInfo.InvariantCulture) + ")");
+                foreach (PdfReviewWord word in operation.RightWords)
+                    if (word != null && word.Key == key)
+                        parts.Add(operation.Kind + "/" + operation.MatchKind +
+                            ":R:p" + word.PageIndex + "(" +
+                            word.Box.Left.ToString("0.###",
+                                System.Globalization.CultureInfo.InvariantCulture) + "," +
+                            word.Box.Bottom.ToString("0.###",
+                                System.Globalization.CultureInfo.InvariantCulture) + ")");
+            }
+            return string.Join("|", parts.ToArray());
+        }
+
+        private static string ReviewFixtureMatchSig(PdfReviewResult result,
+            string key)
+        {
+            var parts = new List<string>();
+            foreach (PdfReviewWordOp operation in result.Operations)
+                foreach (PdfReviewWordMatch match in operation.Matches)
+                    if (match != null && match.Left != null && match.Right != null &&
+                        match.Left.Key == key && match.Right.Key == key)
+                        parts.Add(match.Kind + ":p" + match.Left.PageIndex + "(" +
+                            match.Left.Box.Left.ToString("0.###",
+                                System.Globalization.CultureInfo.InvariantCulture) + "," +
+                            match.Left.Box.Bottom.ToString("0.###",
+                                System.Globalization.CultureInfo.InvariantCulture) + ")->p" +
+                            match.Right.PageIndex + "(" +
+                            match.Right.Box.Left.ToString("0.###",
+                                System.Globalization.CultureInfo.InvariantCulture) + "," +
+                            match.Right.Box.Bottom.ToString("0.###",
+                                System.Globalization.CultureInfo.InvariantCulture) + ")");
+            return string.Join("|", parts.ToArray());
+        }
+
+        /// <summary>
         /// Регрессия на баг 1.18.5: ShowPage(page) обязан показывать именно ПЕРЕДАННУЮ
         /// страницу, а не старое поле _page (раньше параметр игнорировался — аналог
         /// CA1801, в просмотре «застревала» одна страница). Проверяем живым рендером:
@@ -1894,12 +10094,35 @@ namespace ExcelMerger.Tests
                         var pageField = typeof(PdfReviewPageView).GetField("_page",
                             BindingFlags.Instance | BindingFlags.NonPublic);
 
-                        view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 1 }, "вторая", null);
+                        var secondPage = new PdfPageRef { SourcePath = pdf, PageIndex = 1 };
+                        view.ShowPage(secondPage, "вторая", null);
+                        AssertTrue(view.IsShowing(new PdfPageRef
+                        {
+                            SourcePath = pdf.ToUpperInvariant(),
+                            PageIndex = 1,
+                            Rotation = 360
+                        }), "логическая страница узнаётся во время Loading/после Ready");
                         AssertTrue(WaitFor(delegate
                         {
                             var p = (PdfPageRef)pageField.GetValue(view);
                             return p != null && p.PageIndex == 1;
                         }), "ShowPage показала запрошенную ВТОРУЮ страницу, а не старую/пустую");
+                        AssertTrue(!view.IsShowing(new PdfPageRef
+                        {
+                            SourcePath = pdf,
+                            PageIndex = 0
+                        }), "другой физический номер не считается той же страницей");
+                        AssertTrue(!view.IsShowing(new PdfPageRef
+                        {
+                            SourcePath = pdf + ".other",
+                            PageIndex = 1
+                        }), "другой источник не считается той же страницей");
+                        AssertTrue(!view.IsShowing(new PdfPageRef
+                        {
+                            SourcePath = pdf,
+                            PageIndex = 1,
+                            Rotation = 90
+                        }), "другой поворот не считается той же страницей");
 
                         view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, "первая", null);
                         AssertTrue(WaitFor(delegate
@@ -1914,6 +10137,1087 @@ namespace ExcelMerger.Tests
             {
                 Directory.Delete(dir, true);
             }
+        }
+
+        private static void TestReviewPageViewStates()
+        {
+            RunSta(delegate
+            {
+                using (var host = new Form())
+                {
+                    host.ClientSize = new Size(680, 520);
+                    var view = new PdfReviewPageView { Dock = DockStyle.Fill };
+                    host.Controls.Add(view);
+                    host.Show();
+                    Application.DoEvents();
+
+                    PictureBox picture = ReviewPrivateField<PictureBox>(view, "_picture");
+                    Label message = ReviewPrivateField<Label>(view, "_message");
+                    Label status = ReviewPrivateField<Label>(view, "_status");
+                    AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                        "первый кадр — настоящий Empty, не missing-page");
+                    AssertReviewNoCanvas(view, "первый кадр");
+                    AssertTrue(message.Visible, "на сером фоне первого кадра видна подсказка");
+
+                    view.ShowEmpty("Левая сторона");
+                    AssertEqual(PdfReviewPageViewState.Empty, view.ViewState, "явный Empty");
+                    AssertEqual("Левая сторона", status.Text, "Empty сохраняет caption стороны");
+                    AssertReviewNoCanvas(view, "явный Empty");
+
+                    view.SetDropTarget(true);
+                    AssertEqual(PdfReviewPageViewState.DropTarget, view.ViewState,
+                        "drag cue имеет отдельное наблюдаемое состояние");
+                    AssertEqual(Loc.T("review.source.dropHere"), message.Text,
+                        "drag cue объясняет действие");
+                    AssertReviewNoCanvas(view, "DropTarget над пустой стороной");
+                    view.SetDropTarget(false);
+                    AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                        "снятие drag cue возвращает предыдущее Empty");
+                    AssertEqual("Левая сторона", status.Text,
+                        "временный drag cue не стирает caption");
+
+                    InvokeReviewBeginState(view, "Левая загрузка", PdfReviewPageViewState.Loading);
+                    AssertEqual(PdfReviewPageViewState.Loading, view.ViewState, "явный Loading");
+                    AssertEqual(Loc.T("preview.loading"), message.Text, "Loading подписан");
+                    AssertTrue(status.Text.Contains("Левая загрузка"),
+                        "Loading сохраняет caption");
+                    AssertReviewNoCanvas(view, "Loading");
+
+                    var page = new PdfPageRef { SourcePath = "synthetic.pdf", PageIndex = 2 };
+                    InvokeReviewApplyRendered(view, ReviewPrivateField<int>(view, "_generation"),
+                        page, new Bitmap(1200, 1800), "Левый документ");
+                    AssertEqual(PdfReviewPageViewState.Ready, view.ViewState, "готовый bitmap даёт Ready");
+                    AssertTrue(view.HasVisiblePage, "Ready сообщает о видимой странице");
+                    AssertTrue(picture.Visible && picture.Image != null &&
+                        picture.Width > 0 && picture.Height > 0,
+                        "белое полотно появляется только вместе с готовым bitmap");
+                    AssertEqual(string.Format(Loc.T("review.source.ready"), "Левый документ", 3,
+                            PreviewZoom.Percent(view.ZoomScale)), status.Text,
+                        "Ready сохраняет сторону, номер именно запрошенной страницы и масштаб");
+
+                    view.SetDropTarget(true);
+                    AssertEqual(PdfReviewPageViewState.DropTarget, view.ViewState,
+                        "drag cue временно перекрывает Ready");
+                    AssertTrue(message.Visible, "подсказка drop поднята над готовой страницей");
+                    view.SetDropTarget(false);
+                    AssertEqual(PdfReviewPageViewState.Ready, view.ViewState,
+                        "после drag готовая страница не потеряна");
+                    AssertTrue(view.HasVisiblePage && status.Text.Contains("Левый документ"),
+                        "после drag восстановлены bitmap и caption");
+
+                    view.ShowPage(null, "Нет пары", null);
+                    AssertEqual(PdfReviewPageViewState.MissingCounterpart, view.ViewState,
+                        "только null-пара означает MissingCounterpart");
+                    AssertEqual(Loc.T("review.source.missing"), message.Text,
+                        "отсутствующая парная страница объяснена");
+                    AssertReviewNoCanvas(view, "MissingCounterpart");
+
+                    InvokeReviewBeginState(view, "Не рендерится", PdfReviewPageViewState.Loading);
+                    InvokeReviewApplyRendered(view, ReviewPrivateField<int>(view, "_generation"),
+                        new PdfPageRef { SourcePath = "broken.pdf", PageIndex = 0 }, null,
+                        "Не рендерится");
+                    AssertEqual(PdfReviewPageViewState.Unavailable, view.ViewState,
+                        "null raster даёт Unavailable, не Empty");
+                    AssertEqual(Loc.T("preview.unavailable"), message.Text,
+                        "Unavailable имеет понятную подпись");
+                    AssertTrue(status.Text.Contains("Не рендерится"),
+                        "Unavailable не стирает caption");
+                    AssertReviewNoCanvas(view, "Unavailable");
+
+                    view.ShowEmpty("Снова пусто");
+                    AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                        "очистка после ошибки возвращает Empty");
+                    AssertReviewNoCanvas(view, "Empty после ошибки");
+                    host.Close();
+                }
+            });
+        }
+
+        private static void TestReviewPageViewRejectsStaleRender()
+        {
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_stale_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string pdf = Path.Combine(dir, "page.pdf");
+                WriteReviewPdf(pdf, new[] { "Late rendered page" });
+                RunSta(delegate
+                {
+                    using (var host = new Form())
+                    {
+                        host.ClientSize = new Size(640, 480);
+                        var view = new PdfReviewPageView { Dock = DockStyle.Fill };
+                        host.Controls.Add(view);
+                        host.Show();
+                        Application.DoEvents();
+
+                        InvokeReviewBeginState(view, "Старый запрос", PdfReviewPageViewState.Loading);
+                        int staleGeneration = ReviewPrivateField<int>(view, "_generation");
+                        view.ShowEmpty("Новый Empty");
+                        var stale = new Bitmap(40, 60);
+                        InvokeReviewApplyRendered(view, staleGeneration,
+                            new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, stale,
+                            "Старый запрос");
+                        AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                            "старое завершение не возвращает отменённую страницу");
+                        AssertTrue(!view.HasVisiblePage, "после stale completion страницы нет");
+                        AssertThrowsAny("отброшенный stale bitmap освобождён",
+                            delegate { stale.GetPixel(0, 0); });
+
+                        InvokeReviewBeginState(view, "Текущий запрос", PdfReviewPageViewState.Loading);
+                        int currentGeneration = ReviewPrivateField<int>(view, "_generation");
+                        var current = new Bitmap(400, 700);
+                        InvokeReviewApplyRendered(view, currentGeneration,
+                            new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, current,
+                            "Текущий запрос");
+                        AssertTrue(ReferenceEquals(current,
+                            ReviewPrivateField<Bitmap>(view, "_bitmap")),
+                            "актуальный raster принят без лишней копии");
+                        var older = new Bitmap(40, 60);
+                        InvokeReviewApplyRendered(view, currentGeneration - 1,
+                            new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, older,
+                            "Опоздавший");
+                        AssertTrue(ReferenceEquals(current,
+                            ReviewPrivateField<Bitmap>(view, "_bitmap")),
+                            "ещё более поздний stale callback не заменил текущий raster");
+                        AssertThrowsAny("второй stale bitmap освобождён",
+                            delegate { older.GetPixel(0, 0); });
+
+                        view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 0 },
+                            "Фоновый запрос", null);
+                        view.ShowEmpty("Отменено");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return !ReviewPrivateField<bool>(view, "_renderWorker");
+                        }), "реальный фоновый renderer завершился после отмены");
+                        Application.DoEvents();
+                        AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                            "late worker callback не переоткрыл отменённую страницу");
+                        AssertEqual("Отменено", ReviewPrivateField<Label>(view, "_status").Text,
+                            "late worker callback не стёр новый caption");
+                        AssertReviewNoCanvas(view, "после реального late worker");
+                        host.Close();
+                    }
+                });
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        private static void TestReviewPageViewContentRevision()
+        {
+            RunSta(delegate
+            {
+                using (var host = new Form())
+                {
+                    host.ClientSize = new Size(640, 480);
+                    var view = new PdfReviewPageView { Dock = DockStyle.Fill };
+                    host.Controls.Add(view);
+                    host.Show();
+                    Application.DoEvents();
+
+                    var physical = new PdfPageRef
+                    {
+                        SourcePath = "synthetic-revision.pdf",
+                        PageIndex = 0
+                    };
+                    PdfReviewPage firstPage = ReviewTrustedPage(0,
+                        new[] { "first", "publication" }, new[] { " " });
+                    // null не запускает Windows.Data.Pdf worker, но создаёт новый generation и
+                    // revision target; затем имитируем атомарное завершение этого request.
+                    view.ShowPage(null, null, 41L, "Первая", null);
+                    int generation = ReviewPrivateField<int>(view, "_generation");
+                    var firstRaster = new Bitmap(400, 600);
+                    InvokeReviewApplyRendered(view, generation, 41L, physical,
+                        firstPage, firstRaster, "Первая");
+
+                    PdfReviewPageSurface surface =
+                        ReviewPrivateField<PdfReviewPageSurface>(view, "_picture");
+                    AssertEqual(PdfReviewPageViewState.Ready, view.ViewState,
+                        "matching generation/revision принимает raster и trusted layer вместе");
+                    AssertTrue(ReferenceEquals(firstRaster,
+                        ReviewPrivateField<Bitmap>(view, "_bitmap")) &&
+                        ReferenceEquals(firstPage,
+                            ReviewPrivateField<PdfReviewPage>(view, "_reviewPage")),
+                        "опубликованные raster/model принадлежат одной completion");
+                    AssertTrue(surface.HasSelectableText && surface.SelectionModel.Count == 2,
+                        "готовый surface построен из matching trusted PdfReviewPage");
+                    AssertTrue(view.IsShowing(physical, 41L) &&
+                               !view.IsShowing(physical, 40L),
+                        "IsShowing различает semantic publication одной физической страницы");
+                    surface.SelectAllWords();
+                    AssertEqual("first publication",
+                        surface.SelectionModel.BuildCopyText().Text,
+                        "selection использует модель принятой publication");
+
+                    var staleRaster = new Bitmap(30, 40);
+                    PdfReviewPage stalePage = ReviewTrustedPage(0,
+                        new[] { "stale" }, new string[0]);
+                    InvokeReviewApplyRendered(view, generation, 40L, physical,
+                        stalePage, staleRaster, "Старая");
+                    AssertTrue(ReferenceEquals(firstRaster,
+                                   ReviewPrivateField<Bitmap>(view, "_bitmap")) &&
+                               ReferenceEquals(firstPage,
+                                   ReviewPrivateField<PdfReviewPage>(view, "_reviewPage")),
+                        "same-generation completion старой revision не смешивает слои");
+                    AssertEqual("first publication",
+                        surface.SelectionModel.BuildCopyText().Text,
+                        "stale completion не восстанавливает старый selectable source");
+                    AssertThrowsAny("stale-revision bitmap освобождён",
+                        delegate { staleRaster.GetPixel(0, 0); });
+
+                    PdfReviewPage secondPage = ReviewTrustedPage(1,
+                        new[] { "second" }, new string[0]);
+                    view.ShowPage(null, secondPage, 42L, "Вторая", null);
+                    AssertEqual(PdfReviewPageViewState.MissingCounterpart, view.ViewState,
+                        "новый request сразу убирает canvas до atomic commit");
+                    AssertTrue(!surface.HasSelectableText && !surface.HasSelection,
+                        "новая revision сразу снимает старый text/selection layer");
+                    AssertThrowsAny("заменённый raster освобождён при начале новой revision",
+                        delegate { firstRaster.GetPixel(0, 0); });
+
+                    generation = ReviewPrivateField<int>(view, "_generation");
+                    var secondRaster = new Bitmap(300, 500);
+                    var secondPhysical = new PdfPageRef
+                    {
+                        SourcePath = physical.SourcePath,
+                        PageIndex = 1
+                    };
+                    InvokeReviewApplyRendered(view, generation, 42L, secondPhysical,
+                        secondPage, secondRaster, "Вторая");
+                    AssertTrue(view.IsShowing(secondPhysical, 42L) &&
+                               surface.HasSelectableText && surface.SelectionModel.Count == 1,
+                        "следующая matching revision публикуется без наследования range");
+                    AssertTrue(!surface.HasSelection,
+                        "новая page model никогда не наследует selection предыдущей страницы");
+
+                    surface.SelectAllWords();
+                    view.ShowEmpty("Очищено");
+                    AssertTrue(!surface.HasSelectableText && !surface.HasSelection &&
+                               ReviewPrivateField<PdfReviewPage>(view, "_reviewPage") == null,
+                        "Empty transition атомарно удаляет trusted layer");
+                    AssertThrowsAny("Empty transition освобождает последний raster",
+                        delegate { secondRaster.GetPixel(0, 0); });
+                    host.Close();
+                }
+            });
+        }
+
+        private static void TestReviewPageViewWheel()
+        {
+            RunSta(delegate
+            {
+                using (var host = new Form())
+                {
+                    host.ClientSize = new Size(700, 500);
+                    var view = new PdfReviewPageView { Dock = DockStyle.Fill };
+                    host.Controls.Add(view);
+                    host.Show();
+                    Application.DoEvents();
+                    Panel viewport = ReviewPrivateField<Panel>(view, "_viewport");
+                    Point center = new Point(viewport.ClientSize.Width / 2,
+                        viewport.ClientSize.Height / 2);
+                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                        view.HandleWheelAt(center, -120, false),
+                        "без страницы обычное колесо не поглощается");
+                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                        view.HandleWheelAt(center, 120, true),
+                        "без страницы Ctrl+wheel не поглощается");
+
+                    ReviewShowSyntheticPage(view, 2000, 2400, "Wheel page", 0);
+                    center = new Point(viewport.ClientSize.Width / 2,
+                        viewport.ClientSize.Height / 2);
+                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                        view.HandleWheelAt(new Point(-1, center.Y), -120, false),
+                        "точка вне viewport не действует");
+                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                        view.HandleWheelAt(center, 0, false),
+                        "нулевой delta не поглощается");
+                    AssertEqual(PdfReviewWheelResult.AtPreviousBoundary,
+                        view.HandleWheelAt(center, 120, false),
+                        "на верхней границе колесо сообщает предыдущую строку");
+
+                    double fit = view.ZoomScale;
+                    AssertEqual(PdfReviewWheelResult.Zoomed,
+                        view.HandleWheelAt(center, 120, true),
+                        "Ctrl+wheel увеличивает готовую страницу");
+                    AssertTrue(view.ZoomScale > fit, "масштаб действительно вырос");
+                    while (view.ZoomScale < 0.50 - 0.000001)
+                        AssertEqual(PdfReviewWheelResult.Zoomed,
+                            view.HandleWheelAt(center, 120, true),
+                            "последовательный Ctrl+wheel идёт по шкале масштабов");
+
+                    Point beforeScroll = view.ScrollOffset;
+                    double scaleBeforeScroll = view.ZoomScale;
+                    AssertEqual(PdfReviewWheelResult.Scrolled,
+                        view.HandleWheelAt(center, -120, false),
+                        "обычное колесо прокручивает увеличенную страницу вниз");
+                    Point afterScroll = view.ScrollOffset;
+                    AssertTrue(afterScroll.Y > beforeScroll.Y,
+                        "изменился вертикальный offset, а не номер пары или масштаб");
+                    AssertEqual(scaleBeforeScroll, view.ZoomScale,
+                        "обычная прокрутка не меняет масштаб");
+
+                    view.HandleWheelAt(center, -120, false);
+                    Point anchor = new Point(Math.Min(viewport.ClientSize.Width - 40, center.X + 90),
+                        Math.Min(viewport.ClientSize.Height - 40, center.Y + 60));
+                    Point oldScroll = view.ScrollOffset;
+                    double oldScale = view.ZoomScale;
+                    double oldContentX = (oldScroll.X + anchor.X) / oldScale;
+                    double oldContentY = (oldScroll.Y + anchor.Y) / oldScale;
+                    AssertEqual(PdfReviewWheelResult.Zoomed,
+                        view.HandleWheelAt(anchor, 120, true),
+                        "Ctrl+wheel у произвольной точки применён");
+                    Point newScroll = view.ScrollOffset;
+                    double newScale = view.ZoomScale;
+                    double newContentX = (newScroll.X + anchor.X) / newScale;
+                    double newContentY = (newScroll.Y + anchor.Y) / newScale;
+                    AssertTrue(Math.Abs(oldContentX - newContentX) <= 2.0 &&
+                               Math.Abs(oldContentY - newContentY) <= 2.0,
+                        "PDF-точка под курсором сохранена после Ctrl+wheel");
+
+                    while (view.ZoomScale < PreviewZoom.Max - 0.000001)
+                        view.HandleWheelAt(center, 120, true);
+                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                        view.HandleWheelAt(center, 120, true),
+                        "на максимальной ступени Ctrl+wheel не поглощается");
+                    host.Close();
+                }
+            });
+        }
+
+        private static void TestReviewPhysicalPageNavigationLive()
+        {
+            var lookupRows = new List<PdfReviewPagePair>
+            {
+                new PdfReviewPagePair { LeftPageIndex = 0, RightPageIndex = 0 },
+                new PdfReviewPagePair { LeftPageIndex = -1, RightPageIndex = 1 },
+                null,
+                new PdfReviewPagePair { LeftPageIndex = 1, RightPageIndex = -1 },
+                new PdfReviewPagePair { LeftPageIndex = 2, RightPageIndex = 2 },
+                new PdfReviewPagePair { LeftPageIndex = 2, RightPageIndex = 3 }
+            };
+            AssertEqual(0, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+                true, 0), "левая физическая страница найдена в готовой строке");
+            AssertEqual(3, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+                true, 1), "поиск слева пропускает right-only и null строки");
+            AssertEqual(1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+                false, 1), "правая физическая страница найдена независимо");
+            AssertEqual(4, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+                true, 2), "при дубликате выбирается первая существующая строка");
+            AssertEqual(-1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+                false, 4), "непредставленная физическая страница не создаёт строку");
+            AssertEqual(-1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+                true, -1), "отрицательный физический индекс отвергнут");
+            AssertEqual(-1, PdfReviewForm.FindViewerRowForPhysicalPage(null,
+                true, 0), "без готового alignment поиск ничего не создаёт");
+
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_page_nav_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string leftPath = Path.Combine(dir, "left.pdf");
+                string rightPath = Path.Combine(dir, "right.pdf");
+                string[] leftTexts =
+                    { "stable zero", "old middle", "stable end", "unmapped tail" };
+                string[] rightTexts =
+                    { "stable zero", "new middle", "stable end", "unmapped tail" };
+                WriteReviewPdf(leftPath, leftTexts);
+                WriteReviewPdf(rightPath, rightTexts);
+
+                PdfReviewDocument leftDocument = ReviewDocument(leftPath, leftTexts);
+                PdfReviewDocument rightDocument = ReviewDocument(rightPath, rightTexts);
+                GiveReviewWordsBoxes(leftDocument);
+                GiveReviewWordsBoxes(rightDocument);
+                PdfReviewResult result = PdfReviewDiff.Compare(leftDocument,
+                    rightDocument, PdfReviewLimits.Default());
+                result.Pairs.Clear();
+                result.Pairs.Add(new PdfReviewPagePair
+                    { LeftPageIndex = 0, RightPageIndex = 0 });
+                result.Pairs.Add(new PdfReviewPagePair
+                    { LeftPageIndex = -1, RightPageIndex = 1 });
+                result.Pairs.Add(new PdfReviewPagePair
+                    { LeftPageIndex = 1, RightPageIndex = -1 });
+                result.Pairs.Add(new PdfReviewPagePair
+                    { LeftPageIndex = 2, RightPageIndex = 2 });
+                PdfReviewDiff.Project(result);
+                string semanticBefore = ReviewNavigationSemanticSig(result);
+                PdfReviewStats statsBefore = result.Stats;
+
+                InIsolatedSettings("iwo_review_page_nav_settings_", delegate
+                {
+                    using (var form = new PdfReviewForm(null))
+                    {
+                        form.Show();
+                        Application.DoEvents();
+                        PdfReviewPageView left = ReviewPrivateField<PdfReviewPageView>(form,
+                            "_leftSource");
+                        PdfReviewPageView right = ReviewPrivateField<PdfReviewPageView>(form,
+                            "_rightSource");
+                        TextBox leftInput = ReviewPrivateField<TextBox>(form,
+                            "_leftPageInput");
+                        TextBox rightInput = ReviewPrivateField<TextBox>(form,
+                            "_rightPageInput");
+                        Label leftRange = ReviewPrivateField<Label>(form,
+                            "_leftPageRange");
+                        Label rightRange = ReviewPrivateField<Label>(form,
+                            "_rightPageRange");
+                        Label summary = ReviewPrivateField<Label>(form, "_summary");
+                        Button compare = ReviewPrivateField<Button>(form, "_compare");
+                        ListBox pairList = ReviewPrivateField<ListBox>(form, "_pairs");
+                        Panel leftViewport = ReviewPrivateField<Panel>(left, "_viewport");
+                        Panel rightViewport = ReviewPrivateField<Panel>(right, "_viewport");
+
+                        form.AcceptFiles(new[] { leftPath, rightPath });
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return string.Equals(ReviewPrivateField<string>(form,
+                                       "_leftFile"), leftPath,
+                                       StringComparison.OrdinalIgnoreCase) &&
+                                   string.Equals(ReviewPrivateField<string>(form,
+                                       "_rightFile"), rightPath,
+                                       StringComparison.OrdinalIgnoreCase) &&
+                                   compare.Enabled;
+                        }), "нейтральные источники проверены до применения результата");
+                        InvokeReviewApplyResult(form, result);
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return left.ViewState == PdfReviewPageViewState.Ready &&
+                                right.ViewState == PdfReviewPageViewState.Ready &&
+                                !ReviewPrivateField<bool>(left, "_renderWorker") &&
+                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                        }), "исходная строка физической навигации отрендерена");
+                        string restingStatus = summary.Text;
+                        AssertTrue(leftInput.Enabled && rightInput.Enabled,
+                            "оба поля физических страниц доступны после сравнения");
+                        AssertTrue(!ReferenceEquals(leftInput, rightInput) &&
+                            !ReferenceEquals(leftInput.Parent, rightInput.Parent),
+                            "у каждой стороны собственное поле и собственный host");
+                        AssertEqual(Loc.T("review.page.left.accessible"),
+                            leftInput.AccessibleName, "левое поле имеет локализованное имя");
+                        AssertEqual(Loc.T("review.page.right.accessible"),
+                            rightInput.AccessibleName, "правое поле имеет локализованное имя");
+                        AssertEqual(Loc.T("review.page.description"),
+                            leftInput.AccessibleDescription,
+                            "поле объясняет независимый переход");
+                        AssertEqual(string.Format(Loc.T("review.page.of"), 4),
+                            leftRange.Text, "левая граница использует собственный page count");
+                        AssertEqual(string.Format(Loc.T("review.page.of"), 4),
+                            rightRange.Text, "правая граница использует собственный page count");
+                        AssertEqual("1", leftInput.Text,
+                            "исходное левое поле one-based");
+                        AssertEqual("1", rightInput.Text,
+                            "исходное правое поле one-based");
+
+                        leftInput.Text = "not-a-page";
+                        AssertTrue(!form.NavigateToPhysicalPage(true),
+                            "нецелое значение не запускает навигацию");
+                        AssertEqual(Loc.T("review.page.err.number"), summary.Text,
+                            "нецелое значение объяснено в общей строке состояния");
+                        leftInput.Text = "0";
+                        AssertTrue(!form.NavigateToPhysicalPage(true),
+                            "нулевая one-based страница отвергнута");
+                        AssertEqual(string.Format(Loc.T("review.page.err.range"), 4),
+                            summary.Text, "ошибка сообщает диапазон выбранной стороны");
+                        leftInput.Text = "4";
+                        AssertTrue(!form.NavigateToPhysicalPage(true),
+                            "валидный номер без alignment-row не создаёт ручную пару");
+                        AssertEqual(Loc.T("review.page.err.unavailable"), summary.Text,
+                            "отсутствующая готовая строка объяснена");
+                        AssertEqual(0, pairList.SelectedIndex,
+                            "ошибочный ввод не меняет выбранную строку");
+                        AssertEqual(semanticBefore, ReviewNavigationSemanticSig(result),
+                            "валидация поля не меняет semantic result");
+
+                        Point rightPoint = ReviewScreenCenter(rightViewport);
+                        while (right.ZoomScale < 0.75 - 0.000001)
+                            AssertTrue(form.RouteWheel(rightPoint, 120, true),
+                                "правый pane увеличен перед независимым переходом слева");
+                        AssertTrue(form.RouteWheel(rightPoint, -120, false),
+                            "правый pane получил ненулевой offset");
+                        PdfPageRef rightPageBefore = ReviewPrivateField<PdfPageRef>(right,
+                            "_page");
+                        Bitmap rightBitmapBefore = ReviewPrivateField<Bitmap>(right,
+                            "_bitmap");
+                        double rightScaleBefore = right.ZoomScale;
+                        Point rightOffsetBefore = right.ScrollOffset;
+
+                        int compareClicks = 0;
+                        compare.Click += delegate { compareClicks++; };
+                        leftInput.Text = " 2 ";
+                        leftInput.Focus();
+                        Application.DoEvents();
+                        AssertTrue(leftInput.Focused,
+                            "левое поле физической страницы получает клавиатурный фокус");
+                        AssertTrue(InvokeReviewProcessCmdKey(form, Keys.Enter),
+                            "Enter в левом page field перехвачен до AcceptButton");
+                        AssertEqual(0, compareClicks,
+                            "Enter физической страницы не запускает Compare");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            PdfPageRef page = ReviewPrivateField<PdfPageRef>(left, "_page");
+                            return left.ViewState == PdfReviewPageViewState.Ready &&
+                                page != null && page.PageIndex == 1 &&
+                                !ReviewPrivateField<bool>(left, "_renderWorker");
+                        }), "левое поле открыло вторую физическую страницу");
+                        AssertEqual(2, pairList.SelectedIndex,
+                            "выбрана существующая left-only alignment-row");
+                        AssertEqual(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                            "левая сторона хранит строку введённой страницы");
+                        AssertEqual(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                            "правая сторона сохранила свою строку");
+                        AssertEqual("2", leftInput.Text,
+                            "успешный переход канонизировал левый one-based ввод");
+                        AssertEqual("1", rightInput.Text,
+                            "успешный левый переход не изменил правое поле");
+                        AssertTrue(ReferenceEquals(rightPageBefore,
+                            ReviewPrivateField<PdfPageRef>(right, "_page")),
+                            "левое поле не заменило логическую страницу справа");
+                        AssertTrue(ReferenceEquals(rightBitmapBefore,
+                            ReviewPrivateField<Bitmap>(right, "_bitmap")),
+                            "левое поле не перерендерило bitmap справа");
+                        AssertEqual(rightScaleBefore, right.ZoomScale,
+                            "левое поле сохранило правый zoom");
+                        AssertEqual(rightOffsetBefore, right.ScrollOffset,
+                            "левое поле сохранило правый offset");
+                        AssertEqual(restingStatus, summary.Text,
+                            "успешный переход восстановил статистический статус");
+                        AssertTrue(ReferenceEquals(statsBefore, result.Stats),
+                            "переход не запускал Project и не заменял Stats");
+                        AssertEqual(semanticBefore, ReviewNavigationSemanticSig(result),
+                            "левый переход не изменил операции, индексы, статистику или рамки");
+
+                        Point leftPoint = ReviewScreenCenter(leftViewport);
+                        while (left.ZoomScale < 0.75 - 0.000001)
+                            AssertTrue(form.RouteWheel(leftPoint, 120, true),
+                                "левый pane увеличен перед независимым переходом справа");
+                        AssertTrue(form.RouteWheel(leftPoint, -120, false),
+                            "левый pane получил ненулевой offset");
+                        PdfPageRef leftPageBefore = ReviewPrivateField<PdfPageRef>(left,
+                            "_page");
+                        Bitmap leftBitmapBefore = ReviewPrivateField<Bitmap>(left,
+                            "_bitmap");
+                        double leftScaleBefore = left.ZoomScale;
+                        Point leftOffsetBefore = left.ScrollOffset;
+
+                        rightInput.Focus();
+                        rightInput.Text = "2";
+                        leftInput.Focus(); // Leave правого поля выполняет тот же side-local route
+                        AssertTrue(WaitFor(delegate
+                        {
+                            PdfPageRef page = ReviewPrivateField<PdfPageRef>(right, "_page");
+                            return right.ViewState == PdfReviewPageViewState.Ready &&
+                                page != null && page.PageIndex == 1 &&
+                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                        }), "Leave правого поля открыл вторую физическую страницу");
+                        AssertEqual(1, pairList.SelectedIndex,
+                            "правое поле выбрало существующую right-only строку");
+                        AssertEqual(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                            "правое поле не изменило левую viewer-строку");
+                        AssertEqual(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                            "правая сторона хранит свою viewer-строку");
+                        AssertEqual("2", leftInput.Text,
+                            "правый переход сохранил левую физическую страницу");
+                        AssertEqual("2", rightInput.Text,
+                            "правый переход канонизировал своё поле");
+                        AssertTrue(ReferenceEquals(leftPageBefore,
+                            ReviewPrivateField<PdfPageRef>(left, "_page")),
+                            "правое поле не заменило логическую страницу слева");
+                        AssertTrue(ReferenceEquals(leftBitmapBefore,
+                            ReviewPrivateField<Bitmap>(left, "_bitmap")),
+                            "правое поле не перерендерило bitmap слева");
+                        AssertEqual(leftScaleBefore, left.ZoomScale,
+                            "правое поле сохранило левый zoom");
+                        AssertEqual(leftOffsetBefore, left.ScrollOffset,
+                            "правое поле сохранило левый offset");
+                        AssertEqual(semanticBefore, ReviewNavigationSemanticSig(result),
+                            "правый переход также оставил semantic result неизменным");
+
+                        MethodInfo mouseClick = typeof(Control).GetMethod("OnMouseClick",
+                            BindingFlags.Instance | BindingFlags.NonPublic);
+                        mouseClick.Invoke(pairList, new object[]
+                        {
+                            new MouseEventArgs(MouseButtons.Left, 1, 4, 4, 0)
+                        });
+                        Application.DoEvents();
+                        AssertEqual(1, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                            "повторный клик выбранной строки синхронизировал левую сторону");
+                        AssertEqual(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                            "повторный клик сохранил правую сторону на выбранной строке");
+                        AssertEqual(PdfReviewPageViewState.MissingCounterpart, left.ViewState,
+                            "явная right-only строка показывает отсутствие слева");
+                        AssertEqual("", leftInput.Text,
+                            "у синхронизированной missing-стороны поле пусто");
+                        AssertEqual("2", rightInput.Text,
+                            "явная строка показывает правую физическую страницу");
+
+                        pairList.SelectedIndex = 3;
+                        AssertTrue(WaitFor(delegate
+                        {
+                            PdfPageRef leftPage = ReviewPrivateField<PdfPageRef>(left, "_page");
+                            PdfPageRef rightPage = ReviewPrivateField<PdfPageRef>(right, "_page");
+                            return left.ViewState == PdfReviewPageViewState.Ready &&
+                                right.ViewState == PdfReviewPageViewState.Ready &&
+                                leftPage != null && leftPage.PageIndex == 2 &&
+                                rightPage != null && rightPage.PageIndex == 2 &&
+                                !ReviewPrivateField<bool>(left, "_renderWorker") &&
+                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                        }), "обычный выбор alignment-row синхронизировал обе стороны");
+                        AssertEqual(3, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                            "обычная selection хранится слева");
+                        AssertEqual(3, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                            "обычная selection хранится справа");
+                        AssertEqual("3", leftInput.Text,
+                            "после синхронизации левое поле показывает страницу 3");
+                        AssertEqual("3", rightInput.Text,
+                            "после синхронизации правое поле показывает страницу 3");
+                        AssertEqual(0, ReviewPrivateField<int>(form, "_navigationSide"),
+                            "side-local request сброшен после всех переходов");
+                        AssertEqual(PdfReviewPagePosition.Default,
+                            ReviewPrivateField<PdfReviewPagePosition>(form,
+                                "_navigationPosition"),
+                            "page-position request не протекает между переходами");
+                        AssertTrue(ReferenceEquals(statsBefore, result.Stats),
+                            "обычная навигация также не перепроецировала результат");
+                        AssertEqual(semanticBefore, ReviewNavigationSemanticSig(result),
+                            "все UI-переходы оставили canonical result неизменным");
+                        form.Close();
+                    }
+                });
+            }
+            finally { Directory.Delete(dir, true); }
+        }
+
+        private static void GiveReviewWordsBoxes(PdfReviewDocument document)
+        {
+            foreach (PdfReviewPage page in document.Pages)
+                for (int index = 0; index < page.Words.Count; index++)
+                    page.Words[index].Box = new PdfReviewBox
+                    {
+                        Left = 48 + index * 72,
+                        Bottom = 730 - page.PageIndex * 36,
+                        Right = 100 + index * 72,
+                        Top = 744 - page.PageIndex * 36
+                    };
+        }
+
+        private static string ReviewNavigationSemanticSig(PdfReviewResult result)
+        {
+            var signature = new StringBuilder();
+            signature.Append(ReviewOpsSig(result.Operations)).Append("||")
+                .Append(PairSig(result.Pairs)).Append("||");
+            PdfReviewStats stats = result.Stats;
+            if (stats == null)
+                signature.Append("null");
+            else
+                signature.Append(stats.PagePairs).Append(',')
+                    .Append(stats.ChangedPages).Append(',')
+                    .Append(stats.LeftOnlyPages).Append(',')
+                    .Append(stats.RightOnlyPages).Append(',')
+                    .Append(stats.DeletedWords).Append(',')
+                    .Append(stats.InsertedWords).Append(',')
+                    .Append(stats.Replacements).Append(',')
+                    .Append(stats.ChangedPercent);
+            signature.Append("||D:");
+            AppendReviewPageWordIndex(signature, result.DeletedWordsByPage);
+            signature.Append("||I:");
+            AppendReviewPageWordIndex(signature, result.InsertedWordsByPage);
+            signature.Append("||H:");
+            foreach (PdfReviewPagePair pair in result.Pairs)
+                foreach (bool leftSide in new[] { true, false })
+                {
+                    PdfReviewHighlight highlight = PdfReviewForm.BuildHighlight(result,
+                        pair, leftSide);
+                    signature.Append(highlight.Color.ToArgb()).Append('/')
+                        .Append(highlight.EdgeColor.ToArgb()).Append('/')
+                        .Append((int)highlight.ChangeBarSide).Append('/')
+                        .Append(highlight.ViewWidthPt).Append('/')
+                        .Append(highlight.ViewHeightPt).Append(':');
+                    foreach (PdfReviewBox box in highlight.Boxes)
+                        signature.Append(BoxSig(box)).Append(',');
+                    signature.Append('|');
+                }
+            return signature.ToString();
+        }
+
+        private static void AppendReviewPageWordIndex(StringBuilder signature,
+            Dictionary<int, List<PdfReviewWord>> index)
+        {
+            var pages = new List<int>(index.Keys);
+            pages.Sort();
+            foreach (int pageIndex in pages)
+            {
+                signature.Append(pageIndex).Append('=');
+                foreach (PdfReviewWord word in index[pageIndex])
+                    signature.Append(word.Key).Append('@').Append(word.PageIndex)
+                        .Append('@').Append(BoxSig(word.Box)).Append(',');
+                signature.Append(';');
+            }
+        }
+
+        private static PdfReviewWheelResult ReviewScrollToBoundary(PdfReviewPageView view,
+            Point inViewport, int delta)
+        {
+            for (int i = 0; i < 200; i++)
+            {
+                PdfReviewWheelResult result = view.HandleWheelAt(inViewport, delta, false);
+                if (result != PdfReviewWheelResult.Scrolled)
+                    return result;
+            }
+            throw new Exception("wheel не достиг границы страницы за 200 шагов");
+        }
+
+        private static void TestReviewWheelRoutingLive()
+        {
+            var lookupRows = new List<PdfReviewPagePair>
+            {
+                new PdfReviewPagePair { LeftPageIndex = 0, RightPageIndex = 0 },
+                new PdfReviewPagePair { LeftPageIndex = -1, RightPageIndex = 1 },
+                new PdfReviewPagePair { LeftPageIndex = 1, RightPageIndex = -1 },
+                null,
+                new PdfReviewPagePair { LeftPageIndex = 2, RightPageIndex = 2 }
+            };
+            AssertEqual(2, PdfReviewForm.FindViewerRow(lookupRows, 0, true, 1),
+                "левая сторона пропускает ближайшую right-only строку");
+            AssertEqual(1, PdfReviewForm.FindViewerRow(lookupRows, 0, false, 1),
+                "правая сторона выбирает ближайшую страницу справа");
+            AssertEqual(2, PdfReviewForm.FindViewerRow(lookupRows, 4, true, -1),
+                "поиск вверх пропускает null и строку без левой страницы");
+            AssertEqual(1, PdfReviewForm.FindViewerRow(lookupRows, 4, false, -1),
+                "поиск вверх пропускает null и строку без правой страницы");
+            AssertEqual(-1, PdfReviewForm.FindViewerRow(lookupRows, 4, true, 1),
+                "после последней левой страницы нет wrap");
+            AssertEqual(-1, PdfReviewForm.FindViewerRow(lookupRows, 0, false, -1),
+                "перед первой правой страницей нет wrap");
+            AssertEqual(-1, PdfReviewForm.FindViewerRow(lookupRows, 0, true, 0),
+                "нулевое направление не ищет строку");
+            AssertEqual(-1, PdfReviewForm.FindViewerRow(null, 0, true, 1),
+                "отсутствующий результат не ищет строку");
+
+            string dir = Path.Combine(Path.GetTempPath(),
+                "iwo_review_wheel_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string leftPath = Path.Combine(dir, "left.pdf");
+                string rightPath = Path.Combine(dir, "right.pdf");
+                WriteReviewPdf(leftPath, new[] { "Left zero", "Left one", "Left two" });
+                WriteReviewPdf(rightPath, new[] { "Right zero", "Right one", "Right two" });
+
+                InIsolatedSettings("iwo_reviewwheel_settings_", delegate
+                {
+                    using (var form = new PdfReviewForm(null))
+                    {
+                        form.Show();
+                        Application.DoEvents();
+                        AssertTrue(form.WheelFilterRegistered,
+                            "форма регистрирует один wheel filter при показе");
+                        PdfReviewPageView left = ReviewPrivateField<PdfReviewPageView>(form,
+                            "_leftSource");
+                        PdfReviewPageView right = ReviewPrivateField<PdfReviewPageView>(form,
+                            "_rightSource");
+                        ListBox pairList = ReviewPrivateField<ListBox>(form, "_pairs");
+                        TextBox leftPageInput = ReviewPrivateField<TextBox>(form,
+                            "_leftPageInput");
+                        TextBox rightPageInput = ReviewPrivateField<TextBox>(form,
+                            "_rightPageInput");
+                        Panel leftViewport = ReviewPrivateField<Panel>(left, "_viewport");
+                        Panel rightViewport = ReviewPrivateField<Panel>(right, "_viewport");
+
+                        PdfReviewDocument leftDocument = ReviewDocument(leftPath,
+                            "left zero", "left one", "left two");
+                        PdfReviewDocument rightDocument = ReviewDocument(rightPath,
+                            "right zero", "right one", "right two");
+                        var result = new PdfReviewResult
+                        {
+                            Left = leftDocument,
+                            Right = rightDocument
+                        };
+                        result.Pairs.Add(new PdfReviewPagePair
+                            { LeftPageIndex = 0, RightPageIndex = 0 });
+                        result.Pairs.Add(new PdfReviewPagePair
+                            { LeftPageIndex = -1, RightPageIndex = 1 });
+                        result.Pairs.Add(new PdfReviewPagePair
+                            { LeftPageIndex = 1, RightPageIndex = -1 });
+                        result.Pairs.Add(new PdfReviewPagePair
+                            { LeftPageIndex = 2, RightPageIndex = 2 });
+                        PdfReviewDiff.Project(result);
+                        InvokeReviewApplyResult(form, result);
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return left.ViewState == PdfReviewPageViewState.Ready &&
+                                right.ViewState == PdfReviewPageViewState.Ready &&
+                                !ReviewPrivateField<bool>(left, "_renderWorker") &&
+                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                        }), "первая viewer-строка отрендерена с обеих сторон");
+                        AssertEqual(0, pairList.SelectedIndex,
+                            "после применения результата выбрана первая строка");
+                        AssertEqual("1", leftPageInput.Text,
+                            "левое поле показывает one-based физическую страницу");
+                        AssertEqual("1", rightPageInput.Text,
+                            "правое поле показывает свою физическую страницу");
+
+                        Point leftPoint = ReviewScreenCenter(leftViewport);
+                        Point rightPoint = ReviewScreenCenter(rightViewport);
+                        Point leftLocal = leftViewport.PointToClient(leftPoint);
+                        Point rightLocal = rightViewport.PointToClient(rightPoint);
+
+                        int rowBeforeZoom = pairList.SelectedIndex;
+                        double leftBefore = left.ZoomScale;
+                        double rightBefore = right.ZoomScale;
+                        AssertTrue(form.RouteWheel(leftPoint, 120, true),
+                            "Ctrl+wheel над левой областью маршрутизирован");
+                        AssertTrue(left.ZoomScale > leftBefore,
+                            "масштаб изменила левая область");
+                        AssertEqual(rightBefore, right.ZoomScale,
+                            "правая область от левого Ctrl+wheel не изменилась");
+                        AssertEqual(rowBeforeZoom, pairList.SelectedIndex,
+                            "Ctrl+wheel слева не меняет viewer-строку");
+                        while (left.ZoomScale < 0.75 - 0.000001)
+                        {
+                            AssertTrue(form.RouteWheel(leftPoint, 120, true),
+                                "левая страница увеличивается до прокручиваемого масштаба");
+                            AssertEqual(rowBeforeZoom, pairList.SelectedIndex,
+                                "последовательный Ctrl+wheel не листает строки");
+                        }
+
+                        Point rightScrollBefore = right.ScrollOffset;
+                        Point leftScrollBefore = left.ScrollOffset;
+                        double rightScaleBeforeLeftNavigation = right.ZoomScale;
+                        PdfPageRef rightPageBeforeLeftNavigation =
+                            ReviewPrivateField<PdfPageRef>(right, "_page");
+                        Bitmap rightBitmapBeforeLeftNavigation =
+                            ReviewPrivateField<Bitmap>(right, "_bitmap");
+                        AssertTrue(form.RouteWheel(leftPoint, -120, false),
+                            "wheel над левой областью сначала прокручивает текущую страницу");
+                        AssertTrue(left.ScrollOffset.Y > leftScrollBefore.Y,
+                            "прокрутился только левый pane");
+                        AssertEqual(rightScrollBefore, right.ScrollOffset,
+                            "offset правого pane остался прежним");
+                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                            ReviewScrollToBoundary(left, leftLocal, -120),
+                            "левая страница достигает нижней границы");
+
+                        AssertTrue(form.RouteWheel(leftPoint, -120, false),
+                            "нижняя граница продолжает чтение по левой стороне");
+                        AssertEqual(2, pairList.SelectedIndex,
+                            "left wheel пропустил строку без левой страницы");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return left.ViewState == PdfReviewPageViewState.Ready &&
+                                !ReviewPrivateField<bool>(left, "_renderWorker");
+                        }), "следующая левая физическая страница отрендерена");
+                        AssertEqual(1, ReviewPrivateField<PdfPageRef>(left, "_page").PageIndex,
+                            "открыта именно следующая физическая страница слева");
+                        AssertEqual(0, left.ScrollOffset.Y,
+                            "движение вниз открывает следующую страницу сверху");
+                        AssertEqual(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                            "активная левая сторона хранит новую viewer-строку");
+                        AssertEqual(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                            "неактивная правая сторона остаётся на прежней viewer-строке");
+                        AssertEqual("2", leftPageInput.Text,
+                            "левое поле следует за активной физической страницей");
+                        AssertEqual("1", rightPageInput.Text,
+                            "правое поле не переписывается левой навигацией");
+                        AssertEqual(PdfReviewPageViewState.Ready, right.ViewState,
+                            "right pane не превращается в Missing из-за left-only выбранной строки");
+                        AssertTrue(ReferenceEquals(rightPageBeforeLeftNavigation,
+                            ReviewPrivateField<PdfPageRef>(right, "_page")),
+                            "left wheel сохраняет объект логической страницы справа");
+                        AssertTrue(ReferenceEquals(rightBitmapBeforeLeftNavigation,
+                            ReviewPrivateField<Bitmap>(right, "_bitmap")),
+                            "left wheel не перерендеривает raster справа");
+                        AssertEqual(rightScaleBeforeLeftNavigation, right.ZoomScale,
+                            "left wheel сохраняет масштаб справа");
+                        AssertEqual(rightScrollBefore, right.ScrollOffset,
+                            "left wheel сохраняет offset справа");
+
+                        AssertTrue(form.RouteWheel(ReviewScreenCenter(leftViewport), 120, false),
+                            "верхняя граница продолжает чтение назад по левой стороне");
+                        AssertEqual(0, pairList.SelectedIndex,
+                            "left wheel вверх пропустил строку без левой страницы");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return left.ViewState == PdfReviewPageViewState.Ready &&
+                                !ReviewPrivateField<bool>(left, "_renderWorker");
+                        }), "предыдущая левая viewer-страница снова отрендерена");
+                        AssertEqual(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                            "левая сторона вернулась на первую строку");
+                        AssertEqual(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                            "правая сторона всё время оставалась на первой строке");
+                        AssertTrue(ReferenceEquals(rightBitmapBeforeLeftNavigation,
+                            ReviewPrivateField<Bitmap>(right, "_bitmap")),
+                            "обратный left wheel также не перерендерил right pane");
+                        PictureBox leftPicture = ReviewPrivateField<PictureBox>(left, "_picture");
+                        int expectedBottom = Math.Max(0,
+                            leftPicture.Height - leftViewport.ClientSize.Height);
+                        AssertTrue(expectedBottom > 0,
+                            "увеличенная предыдущая страница действительно прокручиваема");
+                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                            left.HandleWheelAt(leftViewport.PointToClient(
+                                ReviewScreenCenter(leftViewport)), -120, false),
+                            "движение вверх открывает предыдущую страницу снизу");
+
+                        rightPoint = ReviewScreenCenter(rightViewport);
+                        rightLocal = rightViewport.PointToClient(rightPoint);
+                        rowBeforeZoom = pairList.SelectedIndex;
+                        double leftScaleBeforeRight = left.ZoomScale;
+                        AssertTrue(form.RouteWheel(rightPoint, 120, true),
+                            "Ctrl+wheel над правой областью маршрутизирован");
+                        AssertTrue(right.ZoomScale > rightBefore,
+                            "масштаб изменила правая область");
+                        AssertEqual(leftScaleBeforeRight, left.ZoomScale,
+                            "левая область от правого Ctrl+wheel не изменилась");
+                        AssertEqual(rowBeforeZoom, pairList.SelectedIndex,
+                            "Ctrl+wheel справа не меняет viewer-строку");
+                        while (right.ZoomScale < 0.75 - 0.000001)
+                            AssertTrue(form.RouteWheel(rightPoint, 120, true),
+                                "правая страница увеличивается до прокручиваемого масштаба");
+                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                            ReviewScrollToBoundary(right, rightLocal, -120),
+                            "правая страница достигает нижней границы");
+                        PdfPageRef leftPageBeforeRightNavigation =
+                            ReviewPrivateField<PdfPageRef>(left, "_page");
+                        Bitmap leftBitmapBeforeRightNavigation =
+                            ReviewPrivateField<Bitmap>(left, "_bitmap");
+                        double leftScaleBeforeRightNavigation = left.ZoomScale;
+                        Point leftOffsetBeforeRightNavigation = left.ScrollOffset;
+
+                        AssertTrue(form.RouteWheel(rightPoint, -120, false),
+                            "right wheel переходит к ближайшей правой странице");
+                        AssertEqual(1, pairList.SelectedIndex,
+                            "выбрана right-only строка, не сосед слева");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return right.ViewState == PdfReviewPageViewState.Ready &&
+                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                        }), "right-only страница отрендерена");
+                        AssertEqual(0, right.ScrollOffset.Y,
+                            "right wheel вниз открывает страницу сверху");
+                        AssertEqual(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                            "right wheel не меняет строку левой стороны");
+                        AssertEqual(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                            "активная правая сторона хранит right-only строку");
+                        AssertEqual("1", leftPageInput.Text,
+                            "левое поле не переписывается правой навигацией");
+                        AssertEqual("2", rightPageInput.Text,
+                            "правое поле показывает вторую физическую страницу");
+                        AssertEqual(PdfReviewPageViewState.Ready, left.ViewState,
+                            "left pane не превращается в Missing из-за right-only выбранной строки");
+                        AssertTrue(ReferenceEquals(leftPageBeforeRightNavigation,
+                            ReviewPrivateField<PdfPageRef>(left, "_page")),
+                            "right wheel сохраняет объект логической страницы слева");
+                        AssertTrue(ReferenceEquals(leftBitmapBeforeRightNavigation,
+                            ReviewPrivateField<Bitmap>(left, "_bitmap")),
+                            "right wheel не перерендеривает raster слева");
+                        AssertEqual(leftScaleBeforeRightNavigation, left.ZoomScale,
+                            "right wheel сохраняет масштаб слева");
+                        AssertEqual(leftOffsetBeforeRightNavigation, left.ScrollOffset,
+                            "right wheel сохраняет offset слева");
+                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                            ReviewScrollToBoundary(right,
+                                rightViewport.PointToClient(ReviewScreenCenter(rightViewport)), -120),
+                            "right-only страница достигает нижней границы");
+
+                        AssertTrue(form.RouteWheel(ReviewScreenCenter(rightViewport), -120, false),
+                            "right wheel пропускает строку без правой страницы");
+                        AssertEqual(3, pairList.SelectedIndex,
+                            "после right-only выбрана следующая строка с правой страницей");
+                        AssertTrue(WaitFor(delegate
+                        {
+                            return right.ViewState == PdfReviewPageViewState.Ready &&
+                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                        }), "последняя правая физическая страница отрендерена");
+                        AssertEqual(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                            "переход справа через missing-row оставил левую строку");
+                        AssertEqual(3, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                            "правая сторона дошла до последней строки");
+                        AssertEqual("1", leftPageInput.Text,
+                            "левая физическая страница по-прежнему независима");
+                        AssertEqual("3", rightPageInput.Text,
+                            "правое поле дошло до третьей физической страницы");
+                        AssertTrue(ReferenceEquals(leftBitmapBeforeRightNavigation,
+                            ReviewPrivateField<Bitmap>(left, "_bitmap")),
+                            "последующий right wheel также не перерендерил left pane");
+                        AssertEqual(0, right.ScrollOffset.Y,
+                            "после пропуска отсутствующей стороны новая страница открыта сверху");
+                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                            ReviewScrollToBoundary(right,
+                                rightViewport.PointToClient(ReviewScreenCenter(rightViewport)), -120),
+                            "последняя правая страница достигает нижней границы");
+                        AssertTrue(!form.RouteWheel(ReviewScreenCenter(rightViewport), -120, false),
+                            "нижняя граница последней страницы не поглощается и не оборачивается");
+                        AssertEqual(3, pairList.SelectedIndex,
+                            "на нижней границе выбранная строка не изменилась");
+                        AssertEqual(0, ReviewPrivateField<int>(form, "_navigationSide"),
+                            "неуспешный переход не оставляет отложенную сторону");
+                        AssertEqual(PdfReviewPagePosition.Default,
+                            ReviewPrivateField<PdfReviewPagePosition>(form, "_navigationPosition"),
+                            "неуспешный переход не оставляет Top/Bottom intent");
+
+                        Point outside = form.PointToScreen(new Point(8, 8));
+                        AssertTrue(!form.RouteWheel(outside, -120, false),
+                            "wheel вне обеих viewer-панелей не поглощается");
+                        AssertTrue(!form.RouteWheel(ReviewScreenCenter(leftViewport), 0, false),
+                            "нулевой wheel delta не поглощается формой");
+                        form.Close();
+                        AssertTrue(!form.WheelFilterRegistered,
+                            "при закрытии wheel filter обязательно снят");
+                        AssertTrue(!form.RouteWheel(leftPoint, -120, false),
+                            "закрытая форма больше не маршрутизирует wheel");
+                    }
+                });
+            }
+            finally
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        private static void AssertReviewNoCanvas(PdfReviewPageView view, string context)
+        {
+            PictureBox picture = ReviewPrivateField<PictureBox>(view, "_picture");
+            AssertTrue(!picture.Visible, context + ": белый PictureBox скрыт");
+            AssertEqual(Size.Empty, picture.Size, context + ": у белого PictureBox нулевой размер");
+            AssertTrue(picture.Image == null, context + ": raster отсутствует");
+            AssertTrue(!view.HasVisiblePage, context + ": viewer не заявляет готовую страницу");
+        }
+
+        private static void InvokeReviewBeginState(PdfReviewPageView view, string caption,
+            PdfReviewPageViewState state)
+        {
+            MethodInfo method = typeof(PdfReviewPageView).GetMethod("BeginState",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            method.Invoke(view, new object[] { caption, state });
+        }
+
+        private static void InvokeReviewApplyRendered(PdfReviewPageView view, int generation,
+            PdfPageRef page, Bitmap bitmap, string caption,
+            PdfReviewPagePosition position = PdfReviewPagePosition.Default)
+        {
+            InvokeReviewApplyRendered(view, generation,
+                ReviewPrivateField<long>(view, "_targetContentRevision"), page, null,
+                bitmap, caption, position);
+        }
+
+        private static void InvokeReviewApplyRendered(PdfReviewPageView view, int generation,
+            long contentRevision, PdfPageRef page, PdfReviewPage reviewPage, Bitmap bitmap,
+            string caption, PdfReviewPagePosition position = PdfReviewPagePosition.Default)
+        {
+            MethodInfo method = typeof(PdfReviewPageView).GetMethod("ApplyRendered",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            method.Invoke(view, new object[] { generation, contentRevision, page, reviewPage,
+                bitmap, caption, position });
+        }
+
+        private static void ReviewShowSyntheticPage(PdfReviewPageView view, int width, int height,
+            string caption, int pageIndex)
+        {
+            InvokeReviewBeginState(view, caption, PdfReviewPageViewState.Loading);
+            InvokeReviewApplyRendered(view, ReviewPrivateField<int>(view, "_generation"),
+                new PdfPageRef { SourcePath = "synthetic.pdf", PageIndex = pageIndex },
+                new Bitmap(width, height), caption);
         }
 
         private static void WriteReviewPdf(string path, string[] pages)
@@ -6069,10 +15373,9 @@ namespace ExcelMerger.Tests
 
 
         /// <summary>
-        /// Оба перевода — бета, и сказано об этом должно быть на ОБОИХ языках и в обоих
-        /// местах: на карточке инструмента (там выбирают) и в самом окне (там работают).
-        /// Причина названа прямо: берётся текстовый слой PDF, а отсканированную страницу
-        /// читать нечем — без этой строки пустой слайд читается как поломка программы.
+        /// Бета-инструменты помечены прямо в названиях на ОБОИХ языках. Для переводов
+        /// дополнительно сказано и на карточке, и в рабочем окне, чего им пока не хватает:
+        /// берётся текстовый слой PDF, а отсканированную страницу читать нечем.
         /// </summary>
         private static void TestBetaNotice()
         {
@@ -6084,7 +15387,7 @@ namespace ExcelMerger.Tests
                 {
                     Loc.Init(lang);
                     string mark = lang == Lang.Ru ? "(бета)" : "(beta)";
-                    foreach (string key in new[] { "hub.ocr.name", "hub.pptx.name" })
+                    foreach (string key in new[] { "hub.review.name", "hub.ocr.name", "hub.pptx.name" })
                         if (!Loc.T(key).EndsWith(mark))
                             offenders.Add(lang + " " + key + ": нет пометки " + mark);
                     string notice = Loc.T("convert.beta");
@@ -9546,9 +18849,14 @@ namespace ExcelMerger.Tests
         {
             string root = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
             AppPaths.SetRootForTests(root);
+            Exception error = null;
             try
             {
-                var th = new System.Threading.Thread(delegate() { body(); });
+                var th = new System.Threading.Thread(delegate()
+                {
+                    try { body(); }
+                    catch (Exception ex) { error = ex; }
+                });
                 th.SetApartmentState(System.Threading.ApartmentState.STA); // окна WinForms требуют STA
                 th.IsBackground = true;
                 th.Start();
@@ -9559,6 +18867,8 @@ namespace ExcelMerger.Tests
                 AppPaths.SetRootForTests(null);
                 try { Directory.Delete(root, true); } catch { }
             }
+            if (error != null)
+                throw new Exception(error.GetType().Name + ": " + error.Message);
         }
 
         /// <summary>
@@ -10022,9 +19332,9 @@ namespace ExcelMerger.Tests
                     if (hub == null) { failures.Add("хаба нет"); return; }
                     var expected = new List<Type>
                     {
-                        // Порядок — как в сетке хаба: верхний ряд операций, нижний — переводы.
+                        // Порядок сетки и клавиатуры: операции сверху, затем Compare перед Word/PPT.
                         typeof(PdfMergeForm), typeof(PdfSplitForm), typeof(PdfOpsForm),
-                        typeof(OcrForm), typeof(PptxForm), typeof(PdfReviewForm)
+                        typeof(PdfReviewForm), typeof(OcrForm), typeof(PptxForm)
                     };
                     hub.ShowLevel(HubLevel.Pdf);
                     var cards = new List<ChoiceCard>();

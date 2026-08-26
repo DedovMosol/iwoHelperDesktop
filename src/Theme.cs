@@ -44,6 +44,14 @@ namespace ExcelMerger
         public static readonly Color WarnOrange = Color.FromArgb(176, 98, 0);
         public static readonly Color ErrRed = Color.FromArgb(178, 34, 34);
 
+        // Word-подобный фон Review — точная чистая палитра из example.jpg. Тёмные
+        // marker-цвета нужны лишь для подписей/пробельных token в normal mode; high
+        // contrast использует SystemColors. Общие цвета статусов не меняются.
+        public static readonly Color ReviewDeleteFill = Color.FromArgb(236, 8, 8);          // #EC0808
+        public static readonly Color ReviewDeleteMarker = Color.FromArgb(111, 34, 50);      // #6F2232
+        public static readonly Color ReviewInsertFill = Color.FromArgb(27, 233, 26);         // #1BE91A
+        public static readonly Color ReviewInsertMarker = Color.FromArgb(4, 80, 92);         // #04505C
+
         public static readonly Color Border = Color.FromArgb(200, 200, 200);
         public static readonly Color BorderDark = Color.FromArgb(150, 150, 150);
         public static readonly Color SecondaryHover = Color.FromArgb(243, 244, 246);

@@ -8,14 +8,19 @@ namespace ExcelMerger
 {
     /// <summary>
     /// Сравнение двух выбранных пользователем born-digital PDF. Инструмент read-only:
-    /// страницы бок о бок в исходном виде, удалённое подсвечено красным на левой странице,
-    /// добавленное — зелёным на правой. Подсветка и счётчики строятся из одного ворд-диффа.
+    /// ранняя версия всегда слева с красным фоном удалений, поздняя справа с зелёным
+    /// фоном добавлений. Подсветка и счётчики строятся из одного document-wide результата.
     /// </summary>
-    public sealed class PdfReviewForm : PdfToolFormBase, IFileAcceptor, IUnsavedStateAware
+    public sealed class PdfReviewForm : PdfToolFormBase, IFileAcceptor, IUnsavedStateAware, IMessageFilter
     {
+        private const int WmMouseWheel = 0x020A;
         private static string Title { get { return Loc.T("hub.review.name"); } }
 
         private TextBox _leftPath, _rightPath;
+        private TextBox _leftPageInput, _rightPageInput;
+        private Label _leftPageRange, _rightPageRange;
+        private Label _leftLegend, _rightLegend;
+        private Label _leftWhitespaceLegend, _rightWhitespaceLegend;
         private Button _pickLeft, _pickRight, _swap, _compare;
         private SplitContainer _body, _sourceSplit;
         private ListBox _pairs;
@@ -23,9 +28,21 @@ namespace ExcelMerger
         private Label _summary, _position;
         private Button _previous, _next, _manual;
         private PdfReviewResult _result;
+        private long _contentRevision;
         private int _pairIndex = -1;
+        private int _leftRowIndex = -1, _rightRowIndex = -1;
         private int _pathTop; // ордината ряда выбора файлов: пересчитывается в OnResize
         private string _leftFile, _rightFile;
+        private bool _pathTextSync;
+        private bool _pageTextSync, _leftPageDirty, _rightPageDirty;
+        private int _leftSourceGeneration, _rightSourceGeneration;
+        private bool _leftSourceChecking, _rightSourceChecking;
+        private PdfReviewSourceError _leftSourceError, _rightSourceError;
+        private bool _sourceCallbacksStopped;
+        private bool _wheelFilterRegistered;
+        private int _navigationSide; // 0 — обе, 1 — только left, 2 — только right
+        private PdfReviewPagePosition _navigationPosition = PdfReviewPagePosition.Default;
+        private readonly HashSet<Control> _dropWired = new HashSet<Control>();
 
         public PdfReviewForm() : this(null) { }
 
@@ -37,7 +54,12 @@ namespace ExcelMerger
 
         public bool HasUncommittedState
         {
-            get { return !string.IsNullOrEmpty(_leftFile) || !string.IsNullOrEmpty(_rightFile) || _result != null; }
+            get
+            {
+                return !string.IsNullOrWhiteSpace(_leftPath == null ? null : _leftPath.Text) ||
+                       !string.IsNullOrWhiteSpace(_rightPath == null ? null : _rightPath.Text) ||
+                       _result != null;
+            }
         }
 
         private void BuildReviewHeader()
@@ -67,7 +89,6 @@ namespace ExcelMerger
         {
             InitShell(Title, new Size(1120, 760), new Size(900, 640), Theme.ReviewBlue);
             BuildReviewHeader();
-            WireFileDrop(AcceptFiles);
             int menu = HelpMenu.Height;
             int top = menu + 88;
             _pathTop = top;
@@ -76,11 +97,13 @@ namespace ExcelMerger
             // Границы ряда задаёт LayoutPathRow (единая точка на построение и ресайз):
             // якоря ширину полей не меняют, и при сжатии окна колонки наезжали друг на друга.
             _leftPath = PathBox(20, top, 300, Loc.T("review.left"));
+            WirePathBox(_leftPath, true);
             _leftPath.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             _pickLeft = Secondary(20, top - 1, 100, Loc.T("common.browse"));
             _pickLeft.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             _pickLeft.Click += delegate { PickSide(true); };
             _rightPath = PathBox(20, top, 300, Loc.T("review.right"));
+            WirePathBox(_rightPath, false);
             _rightPath.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _pickRight = Secondary(20, top - 1, 100, Loc.T("common.browse"));
             _pickRight.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -123,11 +146,19 @@ namespace ExcelMerger
             _pairs.IntegralHeight = false;
             _pairs.Font = Font;
             _pairs.SelectedIndexChanged += delegate { SelectPair(_pairs.SelectedIndex); };
+            // После независимой навигации список показывает строку активной стороны.
+            // Повторный клик по уже выбранной строке снова синхронизирует обе стороны.
+            _pairs.MouseClick += delegate
+            {
+                if (_pairs.SelectedIndex >= 0)
+                    SelectPair(_pairs.SelectedIndex);
+            };
             _body.Panel1.Controls.Add(_pairs);
 
             BuildViews();
             BuildProgress(right);
             BuildNavigation(right);
+            WireReviewDropTree(this);
         }
 
         private void BuildProgress(int right)
@@ -152,13 +183,28 @@ namespace ExcelMerger
         private TextBox PathBox(int x, int y, int width, string accessible)
         {
             var box = new TextBox();
-            box.ReadOnly = true;
             box.BackColor = Color.White;
             box.AccessibleName = accessible;
+            box.AccessibleDescription = Loc.T("review.source.inputDescription");
             box.SetBounds(x, y, width, 27);
             box.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            _tips.SetToolTip(box, Loc.T("review.source.inputDescription"));
             Controls.Add(box);
             return box;
+        }
+
+        private void WirePathBox(TextBox box, bool left)
+        {
+            box.TextChanged += delegate
+            {
+                if (!_pathTextSync)
+                    InvalidateSource(left);
+            };
+            box.Leave += delegate
+            {
+                if (!Working)
+                    CommitSource(left, false);
+            };
         }
 
         private Button Secondary(int x, int y, int width, string text)
@@ -171,8 +217,9 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Единственный вид сравнения — исходные страницы бок о бок с подсветкой:
-        /// удалённое красным на левой, добавленное зелёным на правой.
+        /// Единственный вид сравнения — исходные страницы бок о бок. Semantic ownership
+        /// подписано над каждой стороной и не зависит от оттенка: removed/solid/− слева,
+        /// added/dashed/+ справа. Поле физической страницы перемещает только свою сторону.
         /// </summary>
         private void BuildViews()
         {
@@ -181,9 +228,184 @@ namespace ExcelMerger
             _sourceSplit.Orientation = Orientation.Vertical;
             _leftSource = new PdfReviewPageView { Dock = DockStyle.Fill };
             _rightSource = new PdfReviewPageView { Dock = DockStyle.Fill };
-            _sourceSplit.Panel1.Controls.Add(_leftSource);
-            _sourceSplit.Panel2.Controls.Add(_rightSource);
+
+            Panel leftHost = BuildPageHost(_leftSource, true);
+            Panel rightHost = BuildPageHost(_rightSource, false);
+            _sourceSplit.Panel1.Controls.Add(leftHost);
+            _sourceSplit.Panel2.Controls.Add(rightHost);
             _body.Panel2.Controls.Add(_sourceSplit);
+            _leftSource.ShowEmpty(Loc.T("review.left"));
+            _rightSource.ShowEmpty(Loc.T("review.right"));
+            _tips.SetToolTip(_leftSource, Loc.T("review.source.interactions"));
+            _tips.SetToolTip(_rightSource, Loc.T("review.source.interactions"));
+        }
+
+        private Panel BuildPageHost(PdfReviewPageView source, bool leftSide)
+        {
+            var host = new Panel { Dock = DockStyle.Fill, TabStop = false };
+            var top = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                Height = 116,
+                RowCount = 2,
+                ColumnCount = 1,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                BackColor = SystemInformation.HighContrast
+                    ? SystemColors.Window : Color.White,
+                TabStop = false
+            };
+            top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            top.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            top.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            var navigator = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 3,
+                RowCount = 1,
+                Padding = new Padding(8, 6, 8, 5),
+                BackColor = top.BackColor,
+                TabStop = false
+            };
+            navigator.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            navigator.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 62));
+            navigator.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            navigator.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            var label = new Label
+            {
+                Text = Loc.T("review.page.label"),
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = Font,
+                ForeColor = SystemInformation.HighContrast
+                    ? SystemColors.WindowText : Theme.TextPrimary,
+                Margin = new Padding(0, 3, 6, 0),
+                TabStop = false
+            };
+            var input = new TextBox
+            {
+                BackColor = SystemInformation.HighContrast
+                    ? SystemColors.Window : Color.White,
+                ForeColor = SystemInformation.HighContrast
+                    ? SystemColors.WindowText : Theme.TextPrimary,
+                Dock = DockStyle.Fill,
+                MaxLength = 10,
+                TextAlign = HorizontalAlignment.Center,
+                AccessibleName = Loc.T(leftSide
+                    ? "review.page.left.accessible" : "review.page.right.accessible"),
+                AccessibleDescription = Loc.T("review.page.description"),
+                Margin = new Padding(0, 0, 6, 0),
+                TabIndex = 0
+            };
+            var range = new Label
+            {
+                AutoEllipsis = true,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = Font,
+                ForeColor = SystemInformation.HighContrast
+                    ? SystemColors.WindowText : Theme.TextMuted,
+                Margin = new Padding(0, 3, 0, 0),
+                TabStop = false
+            };
+            input.TextChanged += delegate
+            {
+                if (!_pageTextSync)
+                {
+                    if (leftSide) _leftPageDirty = true;
+                    else _rightPageDirty = true;
+                }
+            };
+            input.Leave += delegate
+            {
+                if (!Working && (leftSide ? _leftPageDirty : _rightPageDirty))
+                    NavigateToPhysicalPage(leftSide);
+            };
+            _tips.SetToolTip(input, Loc.T("review.page.description"));
+            navigator.Controls.Add(label, 0, 0);
+            navigator.Controls.Add(input, 1, 0);
+            navigator.Controls.Add(range, 2, 0);
+
+            Label ownership;
+            Label whitespace;
+            TableLayoutPanel legend = BuildLegend(leftSide, out ownership, out whitespace);
+            top.Controls.Add(navigator, 0, 0);
+            top.Controls.Add(legend, 0, 1);
+
+            if (leftSide)
+            {
+                _leftPageInput = input;
+                _leftPageRange = range;
+                _leftLegend = ownership;
+                _leftWhitespaceLegend = whitespace;
+            }
+            else
+            {
+                _rightPageInput = input;
+                _rightPageRange = range;
+                _rightLegend = ownership;
+                _rightWhitespaceLegend = whitespace;
+            }
+            source.TabIndex = 1;
+            host.Controls.Add(source);
+            host.Controls.Add(top);
+            top.BringToFront();
+            return host;
+        }
+
+        private TableLayoutPanel BuildLegend(bool leftSide, out Label ownership,
+            out Label whitespace)
+        {
+            Color background = SystemInformation.HighContrast
+                ? SystemColors.Window : Color.White;
+            Color foreground = SystemInformation.HighContrast
+                ? SystemColors.WindowText
+                : (leftSide ? Theme.ReviewDeleteMarker : Theme.ReviewInsertMarker);
+            var legend = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                RowCount = 2,
+                ColumnCount = 1,
+                Padding = new Padding(8, 2, 8, 4),
+                BackColor = background,
+                TabStop = false
+            };
+            legend.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            legend.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            legend.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+            ownership = new Label
+            {
+                Text = Loc.T(leftSide ? "review.legend.removed" :
+                    "review.legend.added"),
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                Font = new Font(Font, FontStyle.Bold),
+                ForeColor = foreground,
+                BackColor = background,
+                TextAlign = ContentAlignment.MiddleLeft,
+                AccessibleName = Loc.T(leftSide ? "review.legend.removed" :
+                    "review.legend.added"),
+                TabStop = false
+            };
+            whitespace = new Label
+            {
+                Text = Loc.T("review.legend.whitespace"),
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                Font = new Font(Font.FontFamily, Math.Max(8f, Font.Size - 0.5f)),
+                ForeColor = SystemInformation.HighContrast
+                    ? SystemColors.WindowText : Theme.TextMuted,
+                BackColor = background,
+                TextAlign = ContentAlignment.MiddleLeft,
+                AccessibleName = Loc.T("review.legend.whitespace"),
+                TabStop = false
+            };
+            legend.Controls.Add(ownership, 0, 0);
+            legend.Controls.Add(whitespace, 0, 1);
+            return legend;
         }
 
         /// <summary>
@@ -240,22 +462,8 @@ namespace ExcelMerger
         {
             if (Working || paths == null || paths.Length == 0) return;
             string[] pdfs = ChoiceCard.FilterByExtension(paths, PdfDrop.PdfOnly);
-            if (pdfs.Length == 0) return;
-            if (pdfs.Length > 2)
-            {
-                Dialogs.Info(this, Title, Loc.T("review.err.tooMany.title"),
-                    Loc.T("review.err.tooMany.body"));
-                return;
-            }
-            if (pdfs.Length == 2)
-            {
-                SetSide(true, pdfs[0]);
-                SetSide(false, pdfs[1]);
-            }
-            else if (string.IsNullOrEmpty(_leftFile))
-                SetSide(true, pdfs[0]);
-            else
-                SetSide(false, pdfs[0]);
+            ExecuteDropPlan(PdfReviewInput.PlanDrop(pdfs, PdfReviewDropTarget.Neutral,
+                HasSourceText(true), HasSourceText(false)));
         }
 
         private void PickSide(bool left)
@@ -265,28 +473,358 @@ namespace ExcelMerger
                 dialog.Filter = Loc.T("common.pdfFilter");
                 dialog.Title = left ? Loc.T("review.pickLeft") : Loc.T("review.pickRight");
                 if (dialog.ShowDialog(this) == DialogResult.OK)
-                    SetSide(left, dialog.FileName);
+                    AssignSource(left, dialog.FileName);
             }
         }
 
-        private void SetSide(bool left, string path)
+        /// <summary>
+        /// Любой ввод — клавиатура, browse или drop — сначала сбрасывает прежний resolved path.
+        /// Поэтому видимый текст никогда не расходится со скрытым источником Compare.
+        /// </summary>
+        private void InvalidateSource(bool left)
         {
-            if (left) { _leftFile = path; _leftPath.Text = path; _leftPath.SelectionStart = path.Length; }
-            else { _rightFile = path; _rightPath.Text = path; _rightPath.SelectionStart = path.Length; }
+            if (left)
+            {
+                _leftSourceGeneration++;
+                _leftSourceChecking = false;
+                _leftSourceError = PdfReviewSourceError.None;
+                _leftFile = null;
+            }
+            else
+            {
+                _rightSourceGeneration++;
+                _rightSourceChecking = false;
+                _rightSourceError = PdfReviewSourceError.None;
+                _rightFile = null;
+            }
             ClearResult();
             SyncControls();
+        }
+
+        private void AssignSource(bool left, string text)
+        {
+            SetSourceText(left, text);
+            InvalidateSource(left);
+            CommitSource(left, false);
+        }
+
+        private void AssignSources(string left, string right)
+        {
+            _pathTextSync = true;
+            try
+            {
+                _leftPath.Text = left ?? "";
+                _rightPath.Text = right ?? "";
+            }
+            finally { _pathTextSync = false; }
+            InvalidateSource(true);
+            InvalidateSource(false);
+            if (!string.IsNullOrWhiteSpace(_leftPath.Text)) CommitSource(true, false);
+            if (!string.IsNullOrWhiteSpace(_rightPath.Text)) CommitSource(false, false);
+        }
+
+        private void SetSourceText(bool left, string text)
+        {
+            TextBox box = left ? _leftPath : _rightPath;
+            _pathTextSync = true;
+            try
+            {
+                box.Text = text ?? "";
+                box.SelectionStart = box.TextLength;
+            }
+            finally { _pathTextSync = false; }
+        }
+
+        private void CommitSource(bool left, bool showEmptyError)
+        {
+            if (Working || _sourceCallbacksStopped) return;
+            TextBox box = left ? _leftPath : _rightPath;
+            string current = left ? _leftFile : _rightFile;
+            if (!string.IsNullOrEmpty(current) &&
+                string.Equals(box.Text, current, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            int generation;
+            if (left)
+            {
+                generation = ++_leftSourceGeneration;
+                _leftSourceChecking = false;
+                _leftSourceError = PdfReviewSourceError.None;
+                _leftFile = null;
+            }
+            else
+            {
+                generation = ++_rightSourceGeneration;
+                _rightSourceChecking = false;
+                _rightSourceError = PdfReviewSourceError.None;
+                _rightFile = null;
+            }
+            ClearResult();
+
+            PdfReviewSourceResult source = PdfReviewInput.Resolve(box.Text);
+            if (!source.IsValid)
+            {
+                ShowSourceError(left, source.Error, showEmptyError);
+                SyncControls();
+                return;
+            }
+
+            if (left) _leftSourceChecking = true;
+            else _rightSourceChecking = true;
+            SetStatus(Loc.T("review.status.checkingSource"), Theme.TextMuted);
+            SyncControls();
+            Ui.RunWorker(delegate
+            {
+                PdfReviewSourceResult probed = PdfReviewInput.Probe(source);
+                OnUi(delegate { CompleteSource(left, generation, probed); });
+            });
+        }
+
+        private void CompleteSource(bool left, int generation, PdfReviewSourceResult source)
+        {
+            // Probe завершается в фоне. Закрытие формы инвалидирует поколения до Dispose,
+            // поэтому уже поставленный в очередь UI-callback не трогает закрытые контролы.
+            if (_sourceCallbacksStopped || IsDisposed ||
+                (left ? _leftSourceGeneration : _rightSourceGeneration) != generation)
+                return;
+            if (left) _leftSourceChecking = false;
+            else _rightSourceChecking = false;
+
+            if (source == null || !source.IsValid)
+            {
+                if (left) _leftFile = null;
+                else _rightFile = null;
+                ShowSourceError(left,
+                    source == null ? PdfReviewSourceError.Unreadable : source.Error, true);
+                SyncControls();
+                return;
+            }
+
+            if (left)
+            {
+                _leftFile = source.Path;
+                _leftSourceError = PdfReviewSourceError.None;
+            }
+            else
+            {
+                _rightFile = source.Path;
+                _rightSourceError = PdfReviewSourceError.None;
+            }
+            SetSourceText(left, source.Path);
+            UpdateSourceStatus();
+            SyncControls();
+        }
+
+        private void ShowSourceError(bool left, PdfReviewSourceError error, bool showEmpty)
+        {
+            if (left) _leftSourceError = error;
+            else _rightSourceError = error;
+            if (error == PdfReviewSourceError.Empty && !showEmpty)
+            {
+                UpdateSourceStatus();
+                return;
+            }
+            SetStatus(SourceErrorText(error), Theme.ErrRed);
+        }
+
+        private static string SourceErrorText(PdfReviewSourceError error)
+        {
+            switch (error)
+            {
+                case PdfReviewSourceError.Empty: return Loc.T("review.err.source.empty");
+                case PdfReviewSourceError.InvalidPath: return Loc.T("review.err.source.invalidPath");
+                case PdfReviewSourceError.Missing: return Loc.T("review.err.source.missing");
+                case PdfReviewSourceError.NotPdf: return Loc.T("review.err.source.notPdf");
+                default: return Loc.T("review.err.source.unreadable");
+            }
+        }
+
+        private void UpdateSourceStatus()
+        {
+            if (_result != null)
+                return;
+            PdfReviewSourceError error = VisibleSourceError;
+            if (error != PdfReviewSourceError.None)
+                SetStatus(SourceErrorText(error), Theme.ErrRed);
+            else if (_leftSourceChecking || _rightSourceChecking)
+                SetStatus(Loc.T("review.status.checkingSource"), Theme.TextMuted);
+            else if (SameSourceSelected)
+                SetStatus(Loc.T("review.err.sameFile"), Theme.ErrRed);
+            else if (!string.IsNullOrEmpty(_leftFile) && !string.IsNullOrEmpty(_rightFile))
+                SetStatus(Loc.T("review.status.sourcesReady"), Theme.OkGreen);
+            else
+                SetStatus(Loc.T("review.status.pickBoth"), Theme.TextMuted);
+        }
+
+        private PdfReviewSourceError VisibleSourceError
+        {
+            get
+            {
+                if (_leftSourceError != PdfReviewSourceError.None &&
+                    _leftSourceError != PdfReviewSourceError.Empty)
+                    return _leftSourceError;
+                if (_rightSourceError != PdfReviewSourceError.None &&
+                    _rightSourceError != PdfReviewSourceError.Empty)
+                    return _rightSourceError;
+                return PdfReviewSourceError.None;
+            }
+        }
+
+        private bool HasSourceText(bool left)
+        {
+            TextBox box = left ? _leftPath : _rightPath;
+            return box != null && !string.IsNullOrWhiteSpace(box.Text);
+        }
+
+        private bool SameSourceSelected
+        {
+            get
+            {
+                return !string.IsNullOrEmpty(_leftFile) && !string.IsNullOrEmpty(_rightFile) &&
+                    OutputFile.IsSameFile(_leftFile, _rightFile);
+            }
         }
 
         private void SwapSides()
         {
-            string path = _leftFile;
-            _leftFile = _rightFile;
-            _rightFile = path;
-            _leftPath.Text = _leftFile ?? "";
-            _rightPath.Text = _rightFile ?? "";
-            ClearResult();
-            SyncControls();
+            if (Working) return;
+            string left = _leftPath.Text;
+            string right = _rightPath.Text;
+            AssignSources(right, left);
         }
+
+        /// <summary>
+        /// WinForms посылает drag-событие самому глубокому контролу под указателем. Поэтому
+        /// подписываем всё дерево (и поздно добавленные контролы), а сторону определяем по
+        /// экранной точке: drop над реальной кнопкой/полем/viewport не теряется.
+        /// </summary>
+        private void WireReviewDropTree(Control root)
+        {
+            if (root == null || _dropWired.Contains(root))
+                return;
+            _dropWired.Add(root);
+            root.AllowDrop = true;
+            root.DragEnter += OnReviewDragEnter;
+            root.DragOver += OnReviewDragOver;
+            root.DragLeave += OnReviewDragLeave;
+            root.DragDrop += OnReviewDragDrop;
+            root.ControlAdded += delegate(object sender, ControlEventArgs e)
+            {
+                WireReviewDropTree(e.Control);
+            };
+            foreach (Control child in root.Controls)
+                WireReviewDropTree(child);
+        }
+
+        private void OnReviewDragEnter(object sender, DragEventArgs e)
+        {
+            UpdateReviewDrag(e);
+        }
+
+        private void OnReviewDragOver(object sender, DragEventArgs e)
+        {
+            UpdateReviewDrag(e);
+        }
+
+        private void UpdateReviewDrag(DragEventArgs e)
+        {
+            string[] paths = Working ? new string[0] : PdfDrop.ExtractPaths(e, PdfDrop.PdfOnly);
+            e.Effect = paths.Length == 0 ? DragDropEffects.None : DragDropEffects.Copy;
+            PdfReviewDropPlan plan = paths.Length == 0 ? null :
+                PdfReviewInput.PlanDrop(paths, ReviewDropTargetAt(new Point(e.X, e.Y)),
+                    HasSourceText(true), HasSourceText(false));
+            SetDropCue(plan);
+        }
+
+        private void OnReviewDragLeave(object sender, EventArgs e)
+        {
+            ClearDropCueOutside(Cursor.Position);
+        }
+
+        /// <summary>
+        /// DragLeave дочернего control не означает уход с окна: при переходе между вложенными
+        /// слоями сохраняем cue до немедленного DragEnter/DragOver нового слоя. Снимаем его
+        /// только когда указатель действительно покинул клиентскую область Review.
+        /// </summary>
+        internal void ClearDropCueOutside(Point screenPoint)
+        {
+            if (!ContainsScreenPoint(this, screenPoint))
+                SetDropCue(null);
+        }
+
+        private void OnReviewDragDrop(object sender, DragEventArgs e)
+        {
+            PdfReviewDropTarget target = ReviewDropTargetAt(new Point(e.X, e.Y));
+            string[] paths = Working ? new string[0] : PdfDrop.ExtractPaths(e, PdfDrop.PdfOnly);
+            PdfReviewDropPlan plan = paths.Length == 0 ? null :
+                PdfReviewInput.PlanDrop(paths, target, HasSourceText(true), HasSourceText(false));
+            SetDropCue(null);
+            ExecuteDropPlan(plan);
+        }
+
+        internal PdfReviewDropTarget ReviewDropTargetAt(Point screenPoint)
+        {
+            if (ContainsScreenPoint(_leftPath, screenPoint) ||
+                ContainsScreenPoint(_pickLeft, screenPoint) ||
+                ContainsScreenPoint(_sourceSplit == null ? null : _sourceSplit.Panel1, screenPoint))
+                return PdfReviewDropTarget.Left;
+            if (ContainsScreenPoint(_rightPath, screenPoint) ||
+                ContainsScreenPoint(_pickRight, screenPoint) ||
+                ContainsScreenPoint(_sourceSplit == null ? null : _sourceSplit.Panel2, screenPoint))
+                return PdfReviewDropTarget.Right;
+            return PdfReviewDropTarget.Neutral;
+        }
+
+        private static bool ContainsScreenPoint(Control control, Point screenPoint)
+        {
+            return control != null && !control.IsDisposed && control.Visible &&
+                control.IsHandleCreated &&
+                control.RectangleToScreen(control.ClientRectangle).Contains(screenPoint);
+        }
+
+        /// <summary>
+        /// Подсказка показывает фактический план, а не просто control под мышью: два файла
+        /// подсвечивают обе стороны, neutral single-drop — первую пустую, неоднозначный drop —
+        /// ни одну (иначе интерфейс обещал бы молчаливую замену, которой не будет).
+        /// </summary>
+        internal void SetDropCue(PdfReviewDropPlan plan)
+        {
+            if (_leftSource == null || _rightSource == null)
+                return;
+            PdfReviewDropAction action = plan == null ? PdfReviewDropAction.None : plan.Action;
+            _leftSource.SetDropTarget(action == PdfReviewDropAction.AssignLeft ||
+                action == PdfReviewDropAction.AssignBoth);
+            _rightSource.SetDropTarget(action == PdfReviewDropAction.AssignRight ||
+                action == PdfReviewDropAction.AssignBoth);
+        }
+
+        private void ExecuteDropPlan(PdfReviewDropPlan plan)
+        {
+            if (plan == null)
+                return;
+            switch (plan.Action)
+            {
+                case PdfReviewDropAction.AssignLeft:
+                    AssignSource(true, plan.LeftPath);
+                    break;
+                case PdfReviewDropAction.AssignRight:
+                    AssignSource(false, plan.RightPath);
+                    break;
+                case PdfReviewDropAction.AssignBoth:
+                    AssignSources(plan.LeftPath, plan.RightPath);
+                    break;
+                case PdfReviewDropAction.NeedExplicitSide:
+                    Dialogs.Info(this, Title, Loc.T("review.err.dropSide.title"),
+                        Loc.T("review.err.dropSide.body"));
+                    break;
+                case PdfReviewDropAction.TooMany:
+                    Dialogs.Info(this, Title, Loc.T("review.err.tooMany.title"),
+                        Loc.T("review.err.tooMany.body"));
+                    break;
+            }
+        }
+
+        internal int DropWiredControlCount { get { return _dropWired.Count; } }
 
         private void StartComparison()
         {
@@ -341,14 +879,24 @@ namespace ExcelMerger
 
         private void ApplyResult(PdfReviewResult result)
         {
+            unchecked { _contentRevision++; }
             _result = result;
+            _pairIndex = _leftRowIndex = _rightRowIndex = -1;
+            _navigationSide = 0;
+            _navigationPosition = PdfReviewPagePosition.Default;
             _pairs.BeginUpdate();
             _pairs.Items.Clear();
             for (int i = 0; i < result.Pairs.Count; i++)
                 _pairs.Items.Add(PairLabel(result.Pairs[i]));
             _pairs.EndUpdate();
             _summary.Text = StatsText(result.Stats);
-            if (_pairs.Items.Count > 0) _pairs.SelectedIndex = 0;
+            if (_pairs.Items.Count > 0)
+                _pairs.SelectedIndex = 0;
+            else
+            {
+                ClearViews();
+                SyncPageInputs();
+            }
             RefreshRestingStatus();
             SyncControls();
         }
@@ -367,71 +915,218 @@ namespace ExcelMerger
         {
             if (s == null) return "";
             return string.Format(Loc.T("review.stats"), s.ChangedPages,
-                s.LeftOnlyPages, s.RightOnlyPages, s.DeletedWords, s.InsertedWords, s.ChangedPercent);
+                s.LeftOnlyPages, s.RightOnlyPages, s.DeletedWords, s.InsertedWords,
+                s.ChangedPercent, s.WhitespaceChanges, s.DeletedWhitespaceAtoms,
+                s.InsertedWhitespaceAtoms);
         }
 
         private void SelectPair(int index)
         {
+            int side = _navigationSide;
+            PdfReviewPagePosition position = _navigationPosition;
+            _navigationSide = 0;
+            _navigationPosition = PdfReviewPagePosition.Default;
             _pairIndex = index;
             if (_result == null || index < 0 || index >= _result.Pairs.Count)
             {
+                _leftRowIndex = _rightRowIndex = -1;
                 ClearViews();
+                SyncPageInputs();
                 SyncControls();
                 return;
             }
-            RenderSources();
-            _position.Text = string.Format(Loc.T("review.position"), index + 1, _result.Pairs.Count);
+
+            if (side == 1)
+            {
+                _leftRowIndex = index;
+                RenderSource(true, position);
+            }
+            else if (side == 2)
+            {
+                _rightRowIndex = index;
+                RenderSource(false, position);
+            }
+            else
+            {
+                _leftRowIndex = _rightRowIndex = index;
+                RenderSource(true, PdfReviewPagePosition.Default);
+                RenderSource(false, PdfReviewPagePosition.Default);
+            }
+            _position.Text = string.Format(Loc.T("review.position"), index + 1,
+                _result.Pairs.Count);
+            SyncPageInputs();
             SyncControls();
         }
 
         /// <summary>
-        /// Показать пару страниц с подсветкой из ТОГО ЖЕ ворд-диффа, что и счётчики:
-        /// слева — удалённые слова красным, справа — добавленные зелёным.
+        /// Рендерит только запрошенную сторону. Wheel и поля страницы не перезагружают
+        /// соседний pane, поэтому его физическая страница, масштаб и offset сохраняются.
+        /// Клик по alignment-row передаёт side=0 через SelectPair и синхронизирует обе стороны.
         /// </summary>
-        private void RenderSources()
+        private void RenderSource(bool leftSide, PdfReviewPagePosition position)
         {
-            if (_result == null || _pairIndex < 0 || _pairIndex >= _result.Pairs.Count) return;
-            PdfReviewPagePair pair = _result.Pairs[_pairIndex];
-            _leftSource.ShowPage(PageRef(_result.Left, pair.LeftPageIndex),
-                Loc.T("review.left"), HighlightFor(pair, true));
-            _rightSource.ShowPage(PageRef(_result.Right, pair.RightPageIndex),
-                Loc.T("review.right"), HighlightFor(pair, false));
+            if (_result == null)
+                return;
+            int rowIndex = leftSide ? _leftRowIndex : _rightRowIndex;
+            if (rowIndex < 0 || rowIndex >= _result.Pairs.Count)
+                return;
+            PdfReviewPagePair pair = _result.Pairs[rowIndex];
+            if (pair == null)
+                return;
+            int pageIndex = leftSide ? pair.LeftPageIndex : pair.RightPageIndex;
+            PdfReviewDocument document = leftSide ? _result.Left : _result.Right;
+            PdfPageRef page = PageRef(document, pageIndex);
+            PdfReviewPage reviewPage = PdfReviewDiff.PageAt(document, pageIndex);
+            PdfReviewPageView source = leftSide ? _leftSource : _rightSource;
+            if (!source.IsShowing(page, _contentRevision))
+                source.ShowPage(page, reviewPage, _contentRevision,
+                    Loc.T(leftSide ? "review.left" : "review.right"),
+                    BuildHighlight(_result, pair, leftSide), position);
         }
 
         /// <summary>
-        /// Подсветка одной стороны пары. Страница без пары целиком того же цвета
-        /// (вся удалена / вся добавлена); неизменённая пара — без подсветки.
+        /// Выбирает существующую viewer-строку для одной стороны. SelectedIndex остаётся
+        /// навигационным указателем, но противоположная сторона не меняется.
         /// </summary>
-        private PdfReviewHighlight HighlightFor(PdfReviewPagePair pair, bool leftSide)
+        private bool SelectViewerRow(int index, bool leftSide,
+            PdfReviewPagePosition position)
+        {
+            if (_result == null || index < 0 || index >= _result.Pairs.Count)
+                return false;
+            _navigationSide = leftSide ? 1 : 2;
+            _navigationPosition = position;
+            if (_pairs.SelectedIndex == index)
+                SelectPair(index);
+            else
+                _pairs.SelectedIndex = index;
+
+            bool selected = (leftSide ? _leftRowIndex : _rightRowIndex) == index;
+            // На случай, если WinForms не послал событие из-за уничтожения handle/очистки.
+            _navigationSide = 0;
+            _navigationPosition = PdfReviewPagePosition.Default;
+            return selected;
+        }
+
+        private void SyncPageInputs()
+        {
+            if (_leftPageInput == null || _rightPageInput == null)
+                return;
+            _pageTextSync = true;
+            try
+            {
+                _leftPageInput.Text = PhysicalPageText(true, _leftRowIndex);
+                _rightPageInput.Text = PhysicalPageText(false, _rightRowIndex);
+                _leftPageRange.Text = PageRangeText(_result == null || _result.Left == null
+                    ? 0 : _result.Left.Pages.Count);
+                _rightPageRange.Text = PageRangeText(_result == null || _result.Right == null
+                    ? 0 : _result.Right.Pages.Count);
+                _leftPageDirty = _rightPageDirty = false;
+            }
+            finally { _pageTextSync = false; }
+        }
+
+        private string PhysicalPageText(bool leftSide, int rowIndex)
+        {
+            if (_result == null || rowIndex < 0 || rowIndex >= _result.Pairs.Count)
+                return "";
+            PdfReviewPagePair pair = _result.Pairs[rowIndex];
+            if (pair == null)
+                return "";
+            int pageIndex = leftSide ? pair.LeftPageIndex : pair.RightPageIndex;
+            return pageIndex < 0 ? "" : (pageIndex + 1).ToString();
+        }
+
+        private static string PageRangeText(int pageCount)
+        {
+            return pageCount <= 0 ? "" : string.Format(Loc.T("review.page.of"), pageCount);
+        }
+
+        /// <summary>
+        /// Подсветка — обратная проекция одного глобального semantic result на физическую
+        /// страницу: Delete и подтверждённые пробельные удаления принадлежат ранней/левой
+        /// стороне, Insert и пробельные добавления — поздней/правой. Viewer не диффит заново.
+        /// </summary>
+        internal static PdfReviewHighlight BuildHighlight(PdfReviewResult result,
+            PdfReviewPagePair pair, bool leftSide)
         {
             var highlight = new PdfReviewHighlight
             {
-                Color = leftSide ? Theme.ErrRed : Theme.OkGreen
+                Color = leftSide ? Theme.ReviewDeleteFill : Theme.ReviewInsertFill,
+                EdgeColor = leftSide ? Theme.ReviewDeleteMarker : Theme.ReviewInsertMarker,
+                Style = leftSide ? PdfReviewHighlightStyle.Removed :
+                    PdfReviewHighlightStyle.Added,
+                // Каждая пометка живёт у ВНЕШНЕГО поля своей панели. Центральный просвет
+                // не образует двусмысленную общую ось удаления/добавления.
+                ChangeBarSide = leftSide
+                    ? PdfReviewChangeBarSide.Left : PdfReviewChangeBarSide.Right
             };
-            if (pair == null || pair.Status == PdfReviewPairStatus.Unchanged)
+            if (result == null || pair == null)
                 return highlight;
+            int pageIndex = leftSide ? pair.LeftPageIndex : pair.RightPageIndex;
             PdfReviewPage page = leftSide
-                ? PdfReviewDiff.PageAt(_result.Left, pair.LeftPageIndex)
-                : PdfReviewDiff.PageAt(_result.Right, pair.RightPageIndex);
-            if (page == null) return highlight;
+                ? PdfReviewDiff.PageAt(result.Left, pageIndex)
+                : PdfReviewDiff.PageAt(result.Right, pageIndex);
+            if (page == null)
+                return highlight;
             highlight.ViewWidthPt = page.ViewWidthPt;
             highlight.ViewHeightPt = page.ViewHeightPt;
-            if (pair.Status == PdfReviewPairStatus.Changed)
-            {
-                PdfReviewDiffKind wanted = leftSide
-                    ? PdfReviewDiffKind.Delete : PdfReviewDiffKind.Insert;
-                foreach (PdfReviewWordOp op in pair.Operations)
-                    if (op.Kind == wanted)
-                        foreach (PdfReviewWord word in op.Words)
-                            highlight.Boxes.Add(word.Box);
-                return highlight;
-            }
-            // Страница без пары: всё содержимое — удаление (слева) или вставка (справа).
-            if ((leftSide && pair.Status == PdfReviewPairStatus.LeftOnly) ||
-                (!leftSide && pair.Status == PdfReviewPairStatus.RightOnly))
-                foreach (PdfReviewWord word in page.Words)
-                    highlight.Boxes.Add(word.Box);
+
+            Dictionary<int, List<PdfReviewWord>> index = leftSide
+                ? result.DeletedWordsByPage : result.InsertedWordsByPage;
+            List<PdfReviewWord> words;
+            if (index.TryGetValue(pageIndex, out words))
+                foreach (PdfReviewWord word in words)
+                    if (word != null && !IsStableFooterPageNumber(result, pair,
+                        leftSide, page, word))
+                    {
+                        highlight.Boxes.Add(word.Box);
+                        highlight.Words.Add(word);
+                    }
+
+            Dictionary<int, List<PdfReviewWhitespaceMarker>> whitespaceIndex = leftSide
+                ? result.DeletedWhitespaceByPage : result.InsertedWhitespaceByPage;
+            List<PdfReviewWhitespaceMarker> markers;
+            if (whitespaceIndex.TryGetValue(pageIndex, out markers))
+                foreach (PdfReviewWhitespaceMarker marker in markers)
+                    if (marker != null)
+                        highlight.WhitespaceMarkers.Add(marker);
             return highlight;
+        }
+
+        private static bool IsStableFooterPageNumber(PdfReviewResult result,
+            PdfReviewPagePair pair, bool leftSide, PdfReviewPage page,
+            PdfReviewWord word)
+        {
+            if (result == null || pair == null || page == null || word == null ||
+                page.ViewHeightPt <= 0 || word.Box.Bottom < page.ViewHeightPt * 0.82)
+                return false;
+            string pageNumber = (page.PageIndex + 1).ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+            if (!string.Equals(word.Key, pageNumber, StringComparison.Ordinal) ||
+                !string.Equals(word.Text, pageNumber, StringComparison.Ordinal))
+                return false;
+
+            int otherPageIndex = leftSide ? pair.RightPageIndex : pair.LeftPageIndex;
+            PdfReviewDocument otherDocument = leftSide ? result.Right : result.Left;
+            PdfReviewPage other = PdfReviewDiff.PageAt(otherDocument, otherPageIndex);
+            if (other == null || other.ViewHeightPt <= 0)
+                return false;
+            double toleranceX = Math.Max(2.0,
+                Math.Max(page.ViewWidthPt, other.ViewWidthPt) * 0.015);
+            double toleranceY = Math.Max(2.0,
+                Math.Max(page.ViewHeightPt, other.ViewHeightPt) * 0.015);
+            foreach (PdfReviewWord candidate in other.Words)
+            {
+                if (candidate == null || !string.Equals(candidate.Key, pageNumber,
+                    StringComparison.Ordinal) || !string.Equals(candidate.Text, pageNumber,
+                    StringComparison.Ordinal) || candidate.Box.Bottom < other.ViewHeightPt * 0.82)
+                    continue;
+                return Math.Abs(word.Box.Left - candidate.Box.Left) <= toleranceX &&
+                    Math.Abs(word.Box.Right - candidate.Box.Right) <= toleranceX &&
+                    Math.Abs(word.Box.Bottom - candidate.Box.Bottom) <= toleranceY &&
+                    Math.Abs(word.Box.Top - candidate.Box.Top) <= toleranceY;
+            }
+            return false;
         }
 
         private static PdfPageRef PageRef(PdfReviewDocument doc, int pageIndex)
@@ -449,7 +1144,10 @@ namespace ExcelMerger
                 if (index < 0) index += _result.Pairs.Count;
                 if (_result.Pairs[index].Status != PdfReviewPairStatus.Unchanged)
                 {
-                    _pairs.SelectedIndex = index;
+                    if (_pairs.SelectedIndex == index)
+                        SelectPair(index);
+                    else
+                        _pairs.SelectedIndex = index;
                     return;
                 }
             }
@@ -472,19 +1170,187 @@ namespace ExcelMerger
             List<PdfReviewPagePair> remapped = PdfReviewDiff.ApplyManualPair(_result.Pairs,
                 _result.Left, _result.Right, left, right, PdfReviewLimits.Default());
             _result.Pairs.Clear(); _result.Pairs.AddRange(remapped);
-            _result.Stats = PdfReviewDiff.Statistics(_result);
+            PdfReviewDiff.Project(_result);
             ApplyResult(_result);
         }
 
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+            if (!_wheelFilterRegistered)
+            {
+                Application.AddMessageFilter(this);
+                _wheelFilterRegistered = true;
+            }
             if (_sourceSplit.ClientSize.Width > _sourceSplit.SplitterWidth)
                 _sourceSplit.SplitterDistance = (_sourceSplit.ClientSize.Width - _sourceSplit.SplitterWidth) / 2;
         }
 
+        bool IMessageFilter.PreFilterMessage(ref Message m)
+        {
+            if (m.Msg != WmMouseWheel || !_wheelFilterRegistered || IsDisposed || !Visible)
+                return false;
+            int delta = (short)(m.WParam.ToInt64() >> 16);
+            return RouteWheel(Cursor.Position, delta,
+                (Control.ModifierKeys & Keys.Control) != 0);
+        }
+
+        internal bool RouteWheel(Point screenPoint, int delta, bool controlDown)
+        {
+            bool leftSide;
+            PdfReviewPageView view;
+            if (_leftSource != null && _leftSource.ContainsViewport(screenPoint))
+            {
+                leftSide = true;
+                view = _leftSource;
+            }
+            else if (_rightSource != null && _rightSource.ContainsViewport(screenPoint))
+            {
+                leftSide = false;
+                view = _rightSource;
+            }
+            else
+            {
+                return false;
+            }
+
+            PdfReviewWheelResult outcome = view.HandleWheel(screenPoint, delta, controlDown);
+            if (outcome == PdfReviewWheelResult.Zoomed ||
+                outcome == PdfReviewWheelResult.Scrolled)
+                return true;
+            if (outcome != PdfReviewWheelResult.AtPreviousBoundary &&
+                outcome != PdfReviewWheelResult.AtNextBoundary)
+                return false;
+
+            int direction = outcome == PdfReviewWheelResult.AtPreviousBoundary ? -1 : 1;
+            int current = leftSide ? _leftRowIndex : _rightRowIndex;
+            int next = FindViewerRow(_result == null ? null : _result.Pairs,
+                current, leftSide, direction);
+            if (next < 0)
+                return false;
+            return SelectViewerRow(next, leftSide, direction < 0
+                ? PdfReviewPagePosition.Bottom : PdfReviewPagePosition.Top);
+        }
+
+        /// <summary>Ближайшая строка без wrap, где у активной стороны есть страница.</summary>
+        internal static int FindViewerRow(IList<PdfReviewPagePair> pairs, int current,
+            bool leftSide, int direction)
+        {
+            if (pairs == null || current < 0 || current >= pairs.Count || direction == 0)
+                return -1;
+            int step = direction < 0 ? -1 : 1;
+            for (int index = current + step; index >= 0 && index < pairs.Count; index += step)
+            {
+                PdfReviewPagePair pair = pairs[index];
+                if (pair != null && (leftSide ? pair.LeftPageIndex : pair.RightPageIndex) >= 0)
+                    return index;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Находит уже существующую строку, содержащую физическую страницу выбранной стороны.
+        /// Ничего не сопоставляет и не меняет: семантический diff и presentation rows неизменны.
+        /// </summary>
+        internal static int FindViewerRowForPhysicalPage(IList<PdfReviewPagePair> pairs,
+            bool leftSide, int physicalPageIndex)
+        {
+            if (pairs == null || physicalPageIndex < 0)
+                return -1;
+            for (int index = 0; index < pairs.Count; index++)
+            {
+                PdfReviewPagePair pair = pairs[index];
+                if (pair != null && (leftSide ? pair.LeftPageIndex : pair.RightPageIndex) ==
+                    physicalPageIndex)
+                    return index;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Переходит к введённой one-based физической странице только на выбранной стороне.
+        /// Использует готовую alignment-row; ApplyManualPair/Project/DiffWords здесь невозможны.
+        /// </summary>
+        internal bool NavigateToPhysicalPage(bool leftSide)
+        {
+            if (Working || _result == null)
+                return false;
+            TextBox input = leftSide ? _leftPageInput : _rightPageInput;
+            PdfReviewDocument document = leftSide ? _result.Left : _result.Right;
+            int pageCount = document == null ? 0 : document.Pages.Count;
+            int pageNumber;
+            if (input == null || !int.TryParse((input.Text ?? "").Trim(), out pageNumber))
+            {
+                SetStatus(Loc.T("review.page.err.number"), Theme.ErrRed);
+                return false;
+            }
+            if (pageNumber < 1 || pageNumber > pageCount)
+            {
+                SetStatus(string.Format(Loc.T("review.page.err.range"), pageCount),
+                    Theme.ErrRed);
+                return false;
+            }
+            int row = FindViewerRowForPhysicalPage(_result.Pairs, leftSide,
+                pageNumber - 1);
+            if (row < 0)
+            {
+                SetStatus(Loc.T("review.page.err.unavailable"), Theme.ErrRed);
+                return false;
+            }
+            if (!SelectViewerRow(row, leftSide, PdfReviewPagePosition.Default))
+                return false;
+            SetStatus(StatsText(_result.Stats), Theme.TextMuted);
+            return true;
+        }
+
+        internal bool WheelFilterRegistered { get { return _wheelFilterRegistered; } }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            if (!e.Cancel)
+                StopSourceCallbacks();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            StopSourceCallbacks();
+            RemoveWheelFilter();
+            base.OnFormClosed(e);
+        }
+
+        private void StopSourceCallbacks()
+        {
+            if (_sourceCallbacksStopped)
+                return;
+            _sourceCallbacksStopped = true;
+            _leftSourceGeneration++;
+            _rightSourceGeneration++;
+            _leftSourceChecking = false;
+            _rightSourceChecking = false;
+        }
+
+        private void RemoveWheelFilter()
+        {
+            if (!_wheelFilterRegistered)
+                return;
+            Application.RemoveMessageFilter(this);
+            _wheelFilterRegistered = false;
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (keyData == Keys.Enter &&
+                (_leftPageInput.Focused || _rightPageInput.Focused))
+            {
+                NavigateToPhysicalPage(_leftPageInput.Focused);
+                return true; // поле страницы не запускает AcceptButton «Сравнить»
+            }
+            if (keyData == Keys.Enter && (_leftPath.Focused || _rightPath.Focused))
+            {
+                CommitSource(_leftPath.Focused, true);
+                return true; // не отдаём Enter AcceptButton до успешной проверки обоих путей
+            }
             if (keyData == Keys.F3) { MoveChange(1); return true; }
             if (keyData == (Keys.Shift | Keys.F3)) { MoveChange(-1); return true; }
             return base.ProcessCmdKey(ref msg, keyData);
@@ -492,14 +1358,21 @@ namespace ExcelMerger
 
         private void ClearResult()
         {
-            _result = null; _pairIndex = -1;
-            _pairs.Items.Clear(); _summary.Text = Loc.T("review.status.pickBoth");
+            unchecked { _contentRevision++; }
+            _result = null;
+            _pairIndex = _leftRowIndex = _rightRowIndex = -1;
+            _navigationSide = 0;
+            _navigationPosition = PdfReviewPagePosition.Default;
+            _pairs.Items.Clear();
+            _summary.Text = Loc.T("review.status.pickBoth");
             ClearViews();
+            SyncPageInputs();
         }
 
         private void ClearViews()
         {
-            _leftSource.ShowPage(null, null, null); _rightSource.ShowPage(null, null, null);
+            _leftSource.ShowEmpty(Loc.T("review.left"));
+            _rightSource.ShowEmpty(Loc.T("review.right"));
             _position.Text = "";
         }
 
@@ -510,13 +1383,32 @@ namespace ExcelMerger
 
         protected override void SyncControls()
         {
+            bool checking = _leftSourceChecking || _rightSourceChecking;
             bool files = !string.IsNullOrEmpty(_leftFile) && !string.IsNullOrEmpty(_rightFile);
+            _leftPath.Enabled = _rightPath.Enabled = !Working;
             _pickLeft.Enabled = _pickRight.Enabled = !Working;
-            _swap.Enabled = !Working && (!string.IsNullOrEmpty(_leftFile) || !string.IsNullOrEmpty(_rightFile));
-            _compare.Enabled = !Working && files;
+            _swap.Enabled = !Working && (HasSourceText(true) || HasSourceText(false));
+            _compare.Enabled = !Working && !checking && files && !SameSourceSelected;
             _pairs.Enabled = !Working && _result != null;
-            _previous.Enabled = _next.Enabled = _result != null && _result.Pairs.Count > 0;
+            _previous.Enabled = _next.Enabled = !Working && _result != null && _result.Pairs.Count > 0;
             _manual.Enabled = !Working && _result != null && _pairIndex >= 0;
+            bool canNavigate = !Working && _result != null && _result.Pairs.Count > 0;
+            _leftPageInput.Enabled = canNavigate && _result.Left != null &&
+                _result.Left.Pages.Count > 0;
+            _rightPageInput.Enabled = canNavigate && _result.Right != null &&
+                _result.Right.Pages.Count > 0;
+            _leftPageRange.Enabled = _leftPageInput.Enabled;
+            _rightPageRange.Enabled = _rightPageInput.Enabled;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                StopSourceCallbacks();
+                RemoveWheelFilter();
+            }
+            base.Dispose(disposing);
         }
     }
 }

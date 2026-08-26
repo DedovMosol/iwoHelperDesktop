@@ -138,8 +138,8 @@ namespace ExcelMerger
             A("hub.pending", "Выберите инструмент для файлов: {0}", "Choose a tool for {0} file(s)");
             A("hub.section.pdf.name", "PDF", "PDF");
             A("hub.section.pdf.desc",
-                "Объединение, разделение, PDF → Word и PowerPoint и прочие операции: сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа.",
-                "Merge, split, PDF → Word and PowerPoint, and more operations: compression, images, text, grayscale, repair, editing the document properties.");
+                "Объединение, разделение, сравнение, PDF → Word и PowerPoint и прочие операции: сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа.",
+                "Merge, split, compare, PDF → Word and PowerPoint, and more operations: compression, images, text, grayscale, repair, editing the document properties.");
             A("hub.section.other.name", "Иной функционал", "Other tools");
             A("hub.section.other.desc", "Инструменты, не связанные с обработкой файлов расширения *.pdf.",
                 "Tools unrelated to processing *.pdf files.");
@@ -165,10 +165,10 @@ namespace ExcelMerger
             A("hub.pptx.desc",
                 "Перенести страницы цифрового PDF в презентацию *.pptx. Отсканированные страницы пока не переносятся.",
                 "Turn the pages of a born‑digital PDF into a *.pptx presentation. Scanned pages are not carried over yet.");
-            A("hub.review.name", "Сравнение PDF", "Compare PDF");
+            A("hub.review.name", "Сравнение PDF (бета)", "Compare PDF (beta)");
             A("hub.review.desc",
-                "Сравнить две выбранные версии цифрового PDF: найти добавленный и удалённый текст, сопоставить страницы и посмотреть обе версии рядом.",
-                "Compare two chosen versions of a born-digital PDF: find added and removed text, align pages and view both versions side by side.");
+                "Сквозно сравнить две версии цифрового PDF, увидеть добавленный и удалённый текст и проверить исходные страницы рядом.",
+                "Compare two born-digital PDF versions end to end, see added and removed text, and review the original pages side by side.");
             A("hub.ops.name", "Прочие операции", "More operations");
             A("hub.ops.desc",
                 "Сжать документ, сохранить страницы картинками, извлечь текст, напечатать, перевести в оттенки серого, восстановить повреждённый файл, изменить свойства документа.",
@@ -292,12 +292,36 @@ namespace ExcelMerger
                 "Сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа. Откроется отдельное окно, и открытый здесь документ уедет туда сам.",
                 "Compression, images, text, grayscale, repair, editing the document properties. A separate window opens, and the document you have open here goes there with it.");
 
-            A("review.header.subtitle", "Сравнение двух выбранных цифровых PDF без изменения файлов.",
-                "Compare two chosen born-digital PDFs without changing either file.");
+            A("review.header.subtitle", "Сквозное сравнение двух цифровых PDF без изменения файлов.",
+                "Whole-document comparison of two born-digital PDFs without changing either file.");
             A("review.left", "Ранняя версия · слева", "Earlier version · left");
             A("review.right", "Поздняя версия · справа", "Later version · right");
             A("review.pickLeft", "Выберите раннюю версию PDF", "Choose the earlier PDF version");
             A("review.pickRight", "Выберите позднюю версию PDF", "Choose the later PDF version");
+            A("review.source.inputDescription",
+                "Введите или вставьте путь к PDF. Enter проверяет путь; файл также можно выбрать кнопкой или перетащить на нужную сторону.",
+                "Type or paste a PDF path. Enter validates it; you can also browse or drop a file onto the required side.");
+            A("review.source.interactions",
+                "Панель только для чтения: выделяйте проверенный текст PDF мышью, Ctrl+A выделяет страницу, Ctrl+C копирует для вставки в другое приложение. Колесо прокручивает только эту сторону; Ctrl+колесо масштабирует её вокруг указателя.",
+                "Read-only pane: select verified PDF text with the mouse, Ctrl+A selects the page, and Ctrl+C copies for pasting into another app. The wheel scrolls only this side; Ctrl+wheel zooms it around the pointer.");
+            A("review.source.dropHere", "Отпустите PDF для этой стороны",
+                "Drop the PDF for this side");
+            A("review.source.empty", "Выберите, введите или перетащите PDF",
+                "Browse, type, or drop a PDF");
+            A("review.source.ready", "{0} · страница {1} · {2}%",
+                "{0} · page {1} · {2}%");
+            A("review.selection.selectAll", "Выделить весь текст страницы",
+                "Select all page text");
+            A("review.selection.count", "Выделено слов: {0}",
+                "Selected words: {0}");
+            A("review.selection.copied", "Текст скопирован",
+                "Text copied");
+            A("review.selection.copiedFallback",
+                "Текст скопирован; недоказанные разделители восстановлены одним пробелом",
+                "Text copied; unproven separators were reconstructed with one space");
+            A("review.selection.clipboardUnavailable",
+                "Буфер обмена занят или недоступен; повторите копирование",
+                "The clipboard is busy or unavailable; try copying again");
             A("review.swap", "⇄ Поменять местами", "⇄ Swap sides");
             A("review.compare", "Сравнить", "Compare");
             A("review.previous", "← Предыдущее", "← Previous");
@@ -305,14 +329,44 @@ namespace ExcelMerger
             A("review.manualPair", "Сопоставить страницы…", "Pair pages…");
             A("review.manual.left", "Страница ранней версии (1–{0}):", "Earlier-version page (1–{0}):");
             A("review.manual.right", "Страница поздней версии (1–{0}):", "Later-version page (1–{0}):");
-            A("review.position", "Изменение {0} из {1}", "Change {0} of {1}");
-            A("review.stats", "Изменено страниц: {0} · только слева: {1} · только справа: {2} · слов −{3} / +{4} · изменено {5}%",
-                "Changed pages: {0} · left only: {1} · right only: {2} · words −{3} / +{4} · {5}% changed");
+            A("review.position", "Строка сопоставления {0} из {1}", "Alignment row {0} of {1}");
+            A("review.page.label", "Страница:", "Page:");
+            A("review.page.left.accessible", "Физическая страница ранней версии",
+                "Earlier-version physical page");
+            A("review.page.right.accessible", "Физическая страница поздней версии",
+                "Later-version physical page");
+            A("review.page.description",
+                "Введите номер физической страницы этой стороны и нажмите Enter. Другая сторона не изменится.",
+                "Enter this side's physical page number and press Enter. The other side will not change.");
+            A("review.page.of", "из {0}", "of {0}");
+            A("review.page.err.number", "Введите номер физической страницы целым числом.",
+                "Enter the physical page number as a whole number.");
+            A("review.page.err.range", "Введите номер физической страницы от 1 до {0}.",
+                "Enter a physical page number from 1 to {0}.");
+            A("review.page.err.unavailable",
+                "Для этой физической страницы нет готовой строки сопоставления.",
+                "There is no existing alignment row for that physical page.");
+            A("review.stats", "Изменено страниц: {0} · только слева: {1} · только справа: {2} · слов −{3} / +{4} · пробелы: {6} изм., −{7} / +{8} знаков · изменено {5}%",
+                "Changed pages: {0} · left only: {1} · right only: {2} · words −{3} / +{4} · whitespace: {6} changes, −{7} / +{8} symbols · {5}% changed");
+            A("review.legend.removed", "− Красный фон: удалено из ранней версии · слева",
+                "− Red background: removed from earlier version · left");
+            A("review.legend.added", "+ Зелёный фон: добавлено в поздней версии · справа",
+                "+ Green background: added to later version · right");
+            A("review.legend.whitespace",
+                "␠ Пробельные изменения показываются только при наличии символов в текстовом слое PDF",
+                "␠ Whitespace changes are shown only when symbols are present in the PDF text layer");
+            A("review.whitespace.removed", "Удалено из ранней версии: {0}",
+                "Removed from earlier version: {0}");
+            A("review.whitespace.added", "Добавлено в поздней версии: {0}",
+                "Added in later version: {0}");
             A("review.status.pickBoth", "Выберите два PDF: раннюю версию слева и позднюю справа.",
                 "Choose two PDFs: the earlier version on the left and the later one on the right.");
+            A("review.status.checkingSource", "Проверка выбранного PDF…", "Validating the selected PDF…");
+            A("review.status.sourcesReady", "Оба PDF проверены. Можно начинать сравнение.",
+                "Both PDFs are valid. You can start the comparison.");
             A("review.status.comparing", "Сравнение документов…", "Comparing documents…");
-            A("review.status.ready", "Сопоставлено страниц: {0}, изменено пар: {1}.",
-                "Page pairs: {0}, changed pairs: {1}.");
+            A("review.status.ready", "Строк сопоставления: {0}, с изменениями: {1}.",
+                "Alignment rows: {0}, with changes: {1}.");
             A("review.status.failed", "Сравнение не выполнено.", "Comparison failed.");
             A("review.source.missing", "На другой стороне соответствующей страницы нет.",
                 "There is no corresponding page on this side.");
@@ -324,6 +378,18 @@ namespace ExcelMerger
             A("review.err.tooMany.title", "Нужно выбрать два PDF", "Choose two PDFs");
             A("review.err.tooMany.body", "Перетащено больше двух файлов. Выберите раннюю и позднюю версии отдельно — программа не угадывает пару сама.",
                 "More than two files were dropped. Choose the earlier and later versions explicitly — the app does not guess the pair.");
+            A("review.err.dropSide.title", "Укажите сторону", "Choose a side");
+            A("review.err.dropSide.body",
+                "Обе стороны уже заполнены. Перетащите один PDF прямо на левую или правую область, которую хотите заменить.",
+                "Both sides are already filled. Drop one PDF directly onto the left or right area you want to replace.");
+            A("review.err.source.empty", "Введите путь к PDF.", "Enter a PDF path.");
+            A("review.err.source.invalidPath", "Путь к PDF задан неверно.", "The PDF path is invalid.");
+            A("review.err.source.missing", "PDF по указанному пути не найден.",
+                "No PDF was found at that path.");
+            A("review.err.source.notPdf", "Выберите файл с расширением .pdf.",
+                "Choose a file with the .pdf extension.");
+            A("review.err.source.unreadable", "Выбранный файл не удалось открыть как PDF.",
+                "The selected file could not be opened as a PDF.");
             A("review.err.unreadable", "Файл не удалось прочитать как PDF.", "The file could not be read as a PDF.");
             A("review.err.unreadableFile", "Не удалось прочитать «{0}»: {1}", "Could not read “{0}”: {1}");
             A("review.err.password", "Для сравнения нужен правильный пароль к защищённому PDF.",
@@ -336,15 +402,21 @@ namespace ExcelMerger
                 "The file changed while it was being read. Retry with stable versions.");
             A("review.help.body",
                 "1. Самостоятельно выберите два PDF: раннюю версию слева и позднюю справа. Программа не ищет и не угадывает версии.\n" +
-                "2. Нажмите «Сравнить». Инструмент сопоставит страницы и подсветит отличия прямо на страницах: удалённое — красным на ранней версии, добавленное — зелёным на поздней. Счётчики в строке статуса считаются из той же разметки.\n" +
-                "3. F3 / Shift+F3 переходят к следующему / предыдущему изменению. В спорном месте страницы можно сопоставить вручную.\n" +
-                "4. Файлы остаются неизменными.\n\n" +
-                "Требуется текстовый слой цифрового PDF. OCR сканов и экспорт redline в этой версии не выполняются.",
+                "2. Нажмите «Сравнить». Инструмент один раз сравнит сквозную последовательность видимых слов всего документа и спроецирует результат на исходные страницы. Другой разрыв страниц, шрифт, размер, начертание, цвет и положение текста сами по себе не считаются правкой. Перестановка порядка извлечения снимается только при однозначном геометрическом доказательстве.\n" +
+                "3. Слева красным фоном показано только удалённое из ранней версии; справа зелёным фоном — только добавленное в поздней. Тёмные исходные знаки PDF сохраняются поверх фона. Постоянные подписи − слева и + справа передают смысл независимо от цвета; в режиме высокой контрастности используются системные контуры и узоры.\n" +
+                "4. Маркеры ␠, NBSP, ⇥ и ↵ появляются только для пробельных символов, буквально найденных в текстовом слое PDF. Визуальные промежутки, переносы отображения, край страницы и растр не считаются доказательством пробела. Пробельные счётчики отделены от счётчиков слов.\n" +
+                "5. Страницы остаются только для чтения. Проверенный текст текущей страницы можно выделить мышью; Ctrl+A выделяет его целиком, Ctrl+C копирует Unicode-текст, который можно вставить в другое приложение. Если точный разделитель между словами не доказан текстовым слоем, при копировании для читаемости вставляется один обычный пробел, и строка состояния прямо сообщает об этом.\n" +
+                "6. Колесо прокручивает только документ под указателем и на границе продолжает только эту сторону по строкам сопоставления. Ctrl+колесо масштабирует только эту сторону. В поле «Страница» можно независимо ввести физическую страницу каждой стороны.\n" +
+                "7. F3 / Shift+F3 переходят к следующему / предыдущему изменению. В спорном месте страницы можно сопоставить вручную. Файлы остаются неизменными.\n\n" +
+                "Требуется текстовый слой цифрового PDF. OCR сканов, редактирование PDF и экспорт redline в этой версии не выполняются.",
                 "1. Choose two PDFs yourself: the earlier version on the left and the later one on the right. The app does not discover or guess versions.\n" +
-                "2. Click “Compare”. The tool aligns the pages and highlights the differences right on them: removals in red on the earlier version, additions in green on the later one. The counters in the status line come from the very same markup.\n" +
-                "3. F3 / Shift+F3 go to the next / previous change. A disputed page pair can be corrected manually.\n" +
-                "4. Neither file is changed.\n\n" +
-                "A born-digital text layer is required. Scan OCR and redline export are not provided in this version.");
+                "2. Click “Compare”. The tool compares the whole document once as one continuous sequence of visible words, then projects the result onto the original pages. Different page breaks, font, size, style, colour or text placement are not edits by themselves. Extraction-order permutations are removed only when geometry proves one unambiguous match.\n" +
+                "3. The left uses a red background only for content removed from the earlier version; the right uses a green background only for content added to the later version. Original dark PDF glyphs remain visible above the background. Persistent − left and + right labels convey ownership without colour; High Contrast mode uses system-colour outlines and patterns.\n" +
+                "4. The ␠, NBSP, ⇥ and ↵ markers appear only for whitespace characters literally present in the PDF text layer. Visual gaps, display wrapping, page edges and raster output are not evidence of whitespace. Whitespace counts remain separate from word counts.\n" +
+                "5. Pages remain read-only. Verified text on the current page can be selected with the mouse; Ctrl+A selects it all, and Ctrl+C copies Unicode text for pasting into another app. If the text layer does not prove the exact separator between words, copying inserts one ordinary space for readability and the status line says so explicitly.\n" +
+                "6. The wheel scrolls only the document under the pointer and continues only that side across alignment rows at a page edge. Ctrl+wheel zooms only that side. Each side's Page field independently opens a physical page.\n" +
+                "7. F3 / Shift+F3 go to the next / previous change. A disputed page pair can be corrected manually. Neither file is changed.\n\n" +
+                "A born-digital text layer is required. Scan OCR, PDF editing and redline export are not provided in this version.");
 
             // ops.* — окно «Прочие операции» (PdfOpsForm): семь действий над одним документом.
             // До 1.17.9 они были спрятаны в меню «Доп. действия» внутри «Разделения PDF», где их

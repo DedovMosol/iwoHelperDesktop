@@ -51,8 +51,9 @@ LABELS = {
         "titleWord": "РУКОВОДСТВО ПОЛЬЗОВАТЕЛЯ",
         "subtitle": "Настольные инструменты для работы с документами Excel и PDF",
         "version": "Версия программы – %s",
-        "tocHint": "Оглавление собирается автоматически. Если оно не заполнилось, "
-                   "выделите документ клавишами Ctrl+A и нажмите F9.",
+        "tocHint": "Оглавление уже собрано. После добавления или переименования заголовка "
+                   "щёлкните оглавление и выберите «Обновить таблицу» → «Обновить целиком» "
+                   "(или нажмите F9 и выберите обновление целиком).",
         "chartTitle": "Размер файла, МБ",
         "chartLevels": ["Отлично\n(без сжатия)", "Очень хорошо\n(без потери чёткости)",
                         "Хорошо\n(150 dpi)", "Нормально\n(72 dpi)"],
@@ -71,8 +72,9 @@ LABELS = {
         "titleWord": "USER MANUAL",
         "subtitle": "Desktop tools for working with Excel and PDF documents",
         "version": "Program version – %s",
-        "tocHint": "The contents are collected automatically. If they came out empty, "
-                   "select the document with Ctrl+A and press F9.",
+        "tocHint": "The contents are already populated. After adding or renaming a heading, "
+                   "click the contents and choose Update Table → Update entire table "
+                   "(or press F9 and choose the entire-table update).",
         "chartTitle": "File size, MB",
         "chartLevels": ["Excellent\n(no compression)", "Very good\n(no loss of sharpness)",
                         "Good\n(150 dpi)", "Normal\n(72 dpi)"],
@@ -112,10 +114,6 @@ INDENT = Cm(1.25)         # красная строка
 
 def build_chart():
     """Диаграмма размеров файла при разных уровнях сжатия — по измеренным значениям."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
     data = {}
     for line in io.open(os.path.join(HERE, "compression.txt"), encoding="utf-8"):
         key, value = line.strip().split("=")
@@ -131,6 +129,25 @@ def build_chart():
     labels = L["chartLevels"]
     values = [data[k] for k in keys]
     colors = ["#8c8f94", "#4f6bed", "#0f6cbd", "#107c41"]
+    path = os.path.join(SHOTS, "chart.png")
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        # The language-specific chart is a tracked manual asset, just like every
+        # application screenshot. A checkout without the optional plotting package
+        # can still assemble the manuals, but a missing or corrupt asset must fail.
+        if not os.path.isfile(path):
+            raise SystemExit("нет готовой диаграммы и не установлен matplotlib: " + path)
+        try:
+            with Image.open(path) as image:
+                image.verify()
+        except (OSError, SyntaxError) as error:
+            raise SystemExit("готовая диаграмма повреждена: %s (%s)" % (path, error))
+        print("диаграмма: использован готовый файл (matplotlib не установлен): " + path)
+        return values
 
     plt.rcParams["font.family"] = FONT
     fig, ax = plt.subplots(figsize=(7.4, 3.5), dpi=200)
@@ -157,7 +174,6 @@ def build_chart():
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", alpha=0.25)
     fig.tight_layout()
-    path = os.path.join(SHOTS, "chart.png")
     fig.savefig(path)
     plt.close(fig)
     return values
@@ -309,7 +325,12 @@ def page_numbers():
 
 
 def update_fields_on_open():
-    """Попросить Word пересчитать поля при открытии — иначе оглавление будет пустым."""
+    """Записать стандартный запрос обновления полей для совместимых редакторов.
+
+    Это best effort, а не обещание автоматического обновления в desktop Word: после
+    добавления заголовка пользователь должен обновить оглавление целиком. Сборка сама
+    всегда материализует актуальные пункты и номера через Word COM.
+    """
     settings = doc.settings.element
     flag = OxmlElement("w:updateFields")
     flag.set(qn("w:val"), "true")
@@ -319,6 +340,7 @@ def update_fields_on_open():
 # ---------------------------------------------------------------- сноски
 
 FOOTNOTES = []
+FIRST_FOOTNOTE_ID = 2
 FOOTNOTE_NS = (
     'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
@@ -327,7 +349,9 @@ FOOTNOTE_NS = (
 
 def footnote(paragraph, text):
     """Обычная сноска внизу страницы. python-docx их не умеет, собираем часть пакета сами."""
-    number = len(FOOTNOTES) + 1
+    # Внутренний id связывает ссылку с записью и не является видимым номером.
+    # Word считает id 1 служебным и при пересохранении удаляет обычную ссылку на него.
+    footnote_id = len(FOOTNOTES) + FIRST_FOOTNOTE_ID
     FOOTNOTES.append(text)
     run = paragraph.add_run()
     set_font(run)
@@ -336,7 +360,7 @@ def footnote(paragraph, text):
     vert.set(qn("w:val"), "superscript")
     rpr.append(vert)
     ref = OxmlElement("w:footnoteReference")
-    ref.set(qn("w:id"), str(number))
+    ref.set(qn("w:id"), str(footnote_id))
     run._element.append(ref)
     return paragraph
 
@@ -351,7 +375,7 @@ def attach_footnotes():
              '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" '
              'w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>']
     size = str(int(NOTE_PT.pt * 2))
-    for index, text in enumerate(FOOTNOTES, start=1):
+    for index, text in enumerate(FOOTNOTES, start=FIRST_FOOTNOTE_ID):
         safe = (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
         rpr = ('<w:rPr><w:rFonts w:ascii="%s" w:hAnsi="%s" w:cs="%s" w:eastAsia="%s"/>'
                '<w:sz w:val="%s"/><w:szCs w:val="%s"/></w:rPr>' % (FONT, FONT, FONT, FONT, size, size))
@@ -392,6 +416,58 @@ def retheme(path):
                 data = xml.encode("utf-8")
             dst.writestr(item, data)
     shutil.move(temp, path)
+
+
+def request_field_update_on_open(path):
+    """Restore WordprocessingML's macro-free update request after Word saves.
+
+    Word computes and stores the real TOC in ``finalize_toc`` but may remove
+    ``w:updateFields`` while saving it. Keep the request in the shipped DOCX as a
+    best-effort aid for compatible editors; desktop Word still requires an explicit
+    whole-table update to guarantee that a newly added heading is included.
+    """
+    import shutil
+    import zipfile
+
+    temp = path + ".tmp"
+    settings_name = "word/settings.xml"
+    document_name = "word/document.xml"
+    settings_seen = False
+    document_seen = False
+    try:
+        with zipfile.ZipFile(path) as src, zipfile.ZipFile(temp, "w", zipfile.ZIP_DEFLATED) as dst:
+            for item in src.infolist():
+                data = src.read(item.filename)
+                if item.filename == settings_name:
+                    settings_seen = True
+                    from lxml import etree
+                    root = etree.fromstring(data)
+                    flags = root.xpath("./w:updateFields", namespaces={"w": root.nsmap["w"]})
+                    flag = flags[0] if flags else etree.SubElement(root, qn("w:updateFields"))
+                    flag.set(qn("w:val"), "true")
+                    data = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+                elif item.filename == document_name:
+                    document_seen = True
+                    from lxml import etree
+                    root = etree.fromstring(data)
+                    ns = {"w": root.nsmap["w"]}
+                    instructions = root.xpath('.//w:instrText[contains(., "TOC ")]', namespaces=ns)
+                    if len(instructions) != 1:
+                        raise SystemExit("ожидалось одно поле TOC, найдено: %d" % len(instructions))
+                    beginnings = instructions[0].xpath(
+                        'ancestor::w:r[1]/preceding-sibling::w:r[1]'
+                        '/w:fldChar[@w:fldCharType="begin"]', namespaces=ns)
+                    if len(beginnings) != 1:
+                        raise SystemExit("не найдено начало поля TOC")
+                    beginnings[0].set(qn("w:dirty"), "true")
+                    data = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+                dst.writestr(item, data)
+        if not settings_seen or not document_seen:
+            raise SystemExit("в пакете DOCX нет settings.xml или document.xml")
+        shutil.move(temp, path)
+    finally:
+        if os.path.exists(temp):
+            os.remove(temp)
 
 
 def finalize_toc(path):
@@ -513,7 +589,7 @@ FIG_ORDER = [
     "hub", "hub-pdf", "hub-lang", "help-split", "shortcuts", "merge-ctx", "goto", "preview",
     "merge-compress", "chart", "settings", "stats", "merge", "merge-menu",
     "split", "split-modes", "split-ranges", "split-everyn", "split-bookmarks",
-    "split-template", "ops", "ops-images", "ops-dpi", "metadata", "ocr", "pptx",
+    "split-template", "ops", "ops-images", "ops-dpi", "metadata", "review", "ocr", "pptx",
     "excel", "excel-menu", "about",
 ]
 _inserted = []

@@ -13,7 +13,7 @@ namespace ExcelMerger
     {
         /// <summary>Главный: два раздела — PDF и всё остальное.</summary>
         Main,
-        /// <summary>Инструменты PDF: объединение, разделение, PDF → Word, прочие операции.</summary>
+        /// <summary>Инструменты PDF: объединение, разделение, сравнение, переводы и прочие операции.</summary>
         Pdf,
         /// <summary>Иной функционал: пока один инструмент — объединение Excel.</summary>
         Other
@@ -34,7 +34,7 @@ namespace ExcelMerger
     public class StartForm : Form
     {
         private const string AppTitle = "iwo Helper Desktop";
-        // Раздел PDF — пять инструментов сеткой 3×2. Третий РЯД не поместился бы: окно и так
+        // Раздел PDF — шесть инструментов сеткой 3×2. Третий РЯД не поместился бы: окно и так
         // почти во всю высоту экрана 1366×768, а третья КОЛОНКА помещается свободно —
         // экраны шире, чем выше. Карточки при этом остаются полноразмерными.
         private const int CardW = 240, WideW = 756, CardH = 250, Row1 = 96, Row2 = 364;
@@ -169,7 +169,7 @@ namespace ExcelMerger
                 Loc.T("hub.section.other.desc"), Pad, Row2, WideW);
             other.Click += delegate { GoTo(HubLevel.Other, true); };
 
-            // Раздел PDF: четыре инструмента сеткой 2×2.
+            // Раздел PDF: шесть инструментов сеткой 3×2.
             Func<Action, Form> ocrFactory = delegate(Action back) { return new OcrForm(back); };
             Func<Action, Form> pptxFactory = delegate(Action back) { return new PptxForm(back); };
             Func<Action, Form> reviewFactory = delegate(Action back) { return new PdfReviewForm(back); };
@@ -190,19 +190,21 @@ namespace ExcelMerger
             Func<Action, Form> mergeFactory = delegate(Action back) { return new PdfMergeForm(back, openOps); };
             Func<Action, Form> splitFactory = delegate(Action back) { return new PdfSplitForm(back, openOps); };
 
-            // Верхний ряд — операции НАД страницами, нижний — переводы в другой формат.
+            // Верхний ряд — операции НАД страницами. Нижний начинается со сравнения,
+            // затем идут бета-переводы: review должен быть перед Word и в визуальном,
+            // и в клавиатурном порядке.
             _firstPdf = AddTool(_levelPdf, CardGlyph.Pdf, "pdf", "hub.pdf.name", "hub.pdf.desc",
                 mergeFactory, Pad, Row1, CardW);
             AddTool(_levelPdf, CardGlyph.PdfSplit, "split", "hub.split.name", "hub.split.desc",
                 splitFactory, Col2, Row1, CardW);
             AddTool(_levelPdf, CardGlyph.Tools, "ops", "hub.ops.name", "hub.ops.desc",
                 opsFactory, Col3, Row1, CardW);
-            AddTool(_levelPdf, CardGlyph.Ocr, "ocr", "hub.ocr.name", "hub.ocr.desc",
-                ocrFactory, Pad, Row2, CardW);
-            AddTool(_levelPdf, CardGlyph.Pptx, "pptx", "hub.pptx.name", "hub.pptx.desc",
-                pptxFactory, Col2, Row2, CardW);
             AddTool(_levelPdf, CardGlyph.Review, "review", "hub.review.name", "hub.review.desc",
-                reviewFactory, Col3, Row2, CardW);
+                reviewFactory, Pad, Row2, CardW);
+            AddTool(_levelPdf, CardGlyph.Ocr, "ocr", "hub.ocr.name", "hub.ocr.desc",
+                ocrFactory, Col2, Row2, CardW);
+            AddTool(_levelPdf, CardGlyph.Pptx, "pptx", "hub.pptx.name", "hub.pptx.desc",
+                pptxFactory, Col3, Row2, CardW);
 
             // Иной функционал: пока один инструмент, место под следующие размечено той же
             // сеткой, что и в разделе PDF.

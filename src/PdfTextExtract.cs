@@ -15,6 +15,17 @@ namespace ExcelMerger
         public double HeightPt;
     }
 
+    /// <summary>
+    /// Один декодированный source-unit text layer. Это extraction-only модель: наружу не
+    /// выходят ни Letter, ни другие объекты PdfPig. Trusted означает подходящую ориентацию
+    /// и однозначно декодированное значение; видимость доказывают соседние retained-слова.
+    /// </summary>
+    internal sealed class PdfSourceTextUnit
+    {
+        public string Text;
+        public bool Trusted;
+    }
+
     /// <summary>Текст одной страницы born-digital PDF (абзацы в порядке чтения).</summary>
     public class PdfPageText
     {
@@ -32,9 +43,13 @@ namespace ExcelMerger
         public double TopMarginPt;
         public double BottomMarginPt;
         // Все слова страницы с рамками (пространство отображения: X вправо, Y вверх) в порядке
-        // извлечения; слова текстового штампа уже убраны. «Сравнение» строит из них порядок
-        // чтения для ворд-диффа и рамки подсветки поверх отрендеренной страницы.
+        // извлечения. Export-режим Document может заменить слова текстового штампа изображением;
+        // Review сохраняет их для семантического сравнения и подсветки.
         internal List<PdfWord> Words = new List<PdfWord>();
+        // Декодированный порядок source-unit до GetWords(): только строки и флаги,
+        // без ссылок на PdfPig. Review использует его исключительно как положительное
+        // доказательство литерального пробела либо доказуемо пустой границы.
+        internal List<PdfSourceTextUnit> SourceUnits = new List<PdfSourceTextUnit>();
         // Собственный поворот страницы (/Rotate, градусы по часовой, 0/90/180/270). Извлечение
         // держит слова в НЕповёрнутом пространстве страницы; «Сравнению» нужен этот угол, чтобы
         // наложить рамки слов на отрендеренную страницу: системный рендерер показывает страницу
@@ -136,6 +151,10 @@ namespace ExcelMerger
                         // Какая ориентация текста станет горизонтальной после поворота страницы
                         // пользователем: только её и пускаем в поток (при 0° — прежний фильтр).
                         UglyToad.PdfPig.Content.TextOrientation keepOrientation = KeepOrientationFor(rotation);
+                        List<PdfSourceTextUnit> sourceUnits = SourceUnits(page.Letters,
+                            keepOrientation);
+                        Dictionary<UglyToad.PdfPig.Content.Letter, int> sourceOrdinals =
+                            SourceOrdinals(page.Letters);
                         // Разметка структуры страницы, если автор её оставил: по ней видно, какие
                         // строки автор считал ОДНИМ абзацем (см. StructureBlocks). Пусто — работаем
                         // как раньше, по зазорам.
@@ -149,6 +168,9 @@ namespace ExcelMerger
                             int color = 0;
                             string family = null;
                             string text = w.Text;
+                            int sourceStart = -1, sourceEnd = -1;
+                            string sourceText = null;
+                            bool sourceTrusted = false;
                             if (w.Letters != null && w.Letters.Count > 0)
                             {
                                 UglyToad.PdfPig.Content.Letter first = w.Letters[0];
@@ -189,6 +211,9 @@ namespace ExcelMerger
                             // несёт картинка, а текст рядом с ней давал бы кашу из двух слоёв.
                             if (CoveredByLowImage(RectOf(bb), imageRects))
                                 continue;
+                            sourceTrusted = TrySourceSpan(w.Letters, sourceOrdinals,
+                                sourceUnits, out sourceStart, out sourceEnd, out sourceText) &&
+                                string.Equals(sourceText, text, StringComparison.Ordinal);
                             // Виртуальная высота прочерков применяется ПОСЛЕ поворота страницы
                             // (ApplyUnderscoreHeights): рамка прочерка осмысленна в выправленном
                             // пространстве, а при 0° результат прежний.
@@ -205,6 +230,10 @@ namespace ExcelMerger
                                 BaselineXPt = baseX,
                                 BaselineYPt = baseY,
                                 BlockId = blockId,
+                                SourceStart = sourceTrusted ? sourceStart : -1,
+                                SourceEnd = sourceTrusted ? sourceEnd : -1,
+                                SourceText = sourceTrusted ? sourceText : null,
+                                SourceTrusted = sourceTrusted,
                                 FontSizePt = size,
                                 Bold = bold,
                                 Italic = italic,
@@ -223,8 +252,8 @@ namespace ExcelMerger
                         // Текстовый штамп → переносим картинкой (рендер-кроп), а его слова убираем
                         // из потока (иначе штамп задвоится: картинка + те же строки текстом).
                         // Печать, нарисованную ТЕКСТОМ, потоковый вывод переносит картинкой: в
-                        // строку её иначе не поставить. Слайду это не нужно и вредно — текст
-                        // печати должен остаться текстом, а её кольцо и линии придут подложкой.
+                        // строку её иначе не поставить. Slide сохраняет текст для редактирования,
+                        // Review — потому что видимые слова являются семантикой сравнения.
                         OcrImage stampImage = mode == PageLayoutMode.Document
                             ? ExtractTextStamp(words, page, path, rotation, pageW, pageH)
                             : null;
@@ -251,6 +280,7 @@ namespace ExcelMerger
                             Lines = lines,
                             Tables = det.Tables,
                             Words = words,
+                            SourceUnits = sourceUnits,
                             NativeRotation = (int)page.Rotation.Value
                         };
                         pt.Images = images;
@@ -271,6 +301,116 @@ namespace ExcelMerger
         }
 
         private const double UnderscoreMinHeightFactor = 0.35; // виртуальная высота прочерка в долях кегля
+
+        private sealed class LetterReferenceComparer :
+            IEqualityComparer<UglyToad.PdfPig.Content.Letter>
+        {
+            public bool Equals(UglyToad.PdfPig.Content.Letter x,
+                UglyToad.PdfPig.Content.Letter y)
+            {
+                return object.ReferenceEquals(x, y);
+            }
+
+            public int GetHashCode(UglyToad.PdfPig.Content.Letter value)
+            {
+                return value == null ? 0 : RuntimeHelpers.GetHashCode(value);
+            }
+        }
+
+        /// <summary>
+        /// Снять только декодированное значение и пригодность ориентации до GetWords().
+        /// Геометрия и предполагаемые зазоры сюда намеренно не входят.
+        /// </summary>
+        private static List<PdfSourceTextUnit> SourceUnits(
+            IReadOnlyList<UglyToad.PdfPig.Content.Letter> letters,
+            UglyToad.PdfPig.Content.TextOrientation keepOrientation)
+        {
+            var result = new List<PdfSourceTextUnit>(letters == null ? 0 : letters.Count);
+            if (letters == null)
+                return result;
+            for (int i = 0; i < letters.Count; i++)
+            {
+                UglyToad.PdfPig.Content.Letter letter = letters[i];
+                string value = letter == null ? null : letter.Value;
+                result.Add(new PdfSourceTextUnit
+                {
+                    Text = value,
+                    Trusted = letter != null && value != null && value.Length > 0 &&
+                        letter.TextOrientation == keepOrientation
+                });
+            }
+            return result;
+        }
+
+        private static Dictionary<UglyToad.PdfPig.Content.Letter, int> SourceOrdinals(
+            IReadOnlyList<UglyToad.PdfPig.Content.Letter> letters)
+        {
+            var result = new Dictionary<UglyToad.PdfPig.Content.Letter, int>(
+                new LetterReferenceComparer());
+            if (letters == null)
+                return result;
+            for (int i = 0; i < letters.Count; i++)
+            {
+                UglyToad.PdfPig.Content.Letter letter = letters[i];
+                if (letter == null)
+                    continue;
+                int previous;
+                if (result.TryGetValue(letter, out previous))
+                    result[letter] = -1;
+                else
+                    result.Add(letter, i);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Слово получает source-span лишь когда его Letter — уникальные соседние unit
+        /// исходной страницы, без пробельных/пустых значений и смены ориентации.
+        /// Любое расхождение заставляет Review воздержаться от whitespace-семантики.
+        /// </summary>
+        private static bool TrySourceSpan(
+            IReadOnlyList<UglyToad.PdfPig.Content.Letter> letters,
+            IDictionary<UglyToad.PdfPig.Content.Letter, int> ordinals,
+            IList<PdfSourceTextUnit> units, out int start, out int end,
+            out string text)
+        {
+            start = end = -1;
+            text = null;
+            if (letters == null || letters.Count == 0 || ordinals == null || units == null)
+                return false;
+            var value = new System.Text.StringBuilder();
+            int previous = -1;
+            for (int i = 0; i < letters.Count; i++)
+            {
+                UglyToad.PdfPig.Content.Letter letter = letters[i];
+                int ordinal;
+                if (letter == null || !ordinals.TryGetValue(letter, out ordinal) ||
+                    ordinal < 0 || ordinal >= units.Count ||
+                    (i > 0 && ordinal != previous + 1))
+                    return false;
+                PdfSourceTextUnit unit = units[ordinal];
+                if (unit == null || !unit.Trusted || string.IsNullOrEmpty(unit.Text) ||
+                    ContainsWhitespace(unit.Text))
+                    return false;
+                if (i == 0)
+                    start = ordinal;
+                previous = ordinal;
+                value.Append(unit.Text);
+            }
+            end = previous;
+            text = value.ToString();
+            return text.Length > 0;
+        }
+
+        private static bool ContainsWhitespace(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return false;
+            for (int i = 0; i < value.Length; i++)
+                if (char.IsWhiteSpace(value[i]))
+                    return true;
+            return false;
+        }
 
         /// <summary>
         /// Ориентация текста PdfPig, которая станет горизонтальной после поворота страницы

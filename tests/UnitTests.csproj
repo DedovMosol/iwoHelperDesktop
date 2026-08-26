@@ -7,10 +7,6 @@
        документов и страниц) не проверялись НИ РАЗУ. Своя пара obj/bin на разрядность: в общем
        каталоге инкрементальная очистка MSBuild сносила бы выход другой. -->
   <PropertyGroup>
-    <Arch Condition="'$(Arch)' == ''">x64</Arch>
-  </PropertyGroup>
-
-  <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net48</TargetFramework>
     <PlatformTarget>$(Arch)</PlatformTarget>
@@ -28,7 +24,6 @@
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
     <OutputPath Condition="'$(Arch)' == 'x64'">bin\</OutputPath>
     <OutputPath Condition="'$(Arch)' != 'x64'">bin\$(Arch)\</OutputPath>
-    <BaseIntermediateOutputPath Condition="'$(Arch)' != 'x64'">obj\$(Arch)\</BaseIntermediateOutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>

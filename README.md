@@ -4,7 +4,7 @@
 
 <br>
 
-[![CI](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml/badge.svg)](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/DedovMosol/iwoHelperDesktop?label=release&color=0F6CBD)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Privacy: offline‑only](https://img.shields.io/badge/Privacy-offline--only-5B4FBF)](docs/PRIVACY.md)
+[![CI](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml/badge.svg)](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/DedovMosol/iwoHelperDesktop?label=release&color=0F6CBD)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Privacy: local processing](https://img.shields.io/badge/Privacy-local%20processing-5B4FBF)](docs/PRIVACY.md)
 
 **Free, offline-first office tools in a single Windows app — merge Excel sheets, merge/split/compress and compare PDFs, and turn born-digital PDFs back into editable Word. No subscription, no admin rights; document processing stays local.**
 
@@ -20,11 +20,11 @@
 
 ## What is iwo Helper Desktop?
 
-A small, self‑contained Windows application that bundles the office tasks people do every day with `.xlsx` and `.pdf` files — without a paid suite. It runs **offline**, needs **no administrator rights**, makes **no network calls**, and ships either as a single portable `.exe` or a per‑user installer.
+A small, self‑contained Windows application that bundles the office tasks people do every day with `.xlsx` and `.pdf` files — without a paid suite. Document processing runs **locally**, it needs **no administrator rights**, and it ships either as a single portable `.exe` or a per‑user installer. The only built-in network feature is the GitHub update check: it reads the latest version tag and, only for a newer version, a short change summary; it sends no document contents, file names, or personal data, and its startup run can be turned off.
 
 ## 🚀 Features
 
-Six tools behind one start screen with two sections (PDF and everything else) — each opens in its own window, runs long tasks in the background (with a Cancel button and taskbar progress), and remembers your last settings.
+Seven tools behind one start screen with two sections (PDF and everything else) — each opens in its own window, runs long tasks in the background (with a Cancel button and taskbar progress), and remembers your last settings.
 
 ### 📊 Merge Excel
 Merge the first — or every — visible sheet of every workbook in a folder (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`) into one file with all formatting intact (styles, formulas, charts, pivots), plus a table of contents, optional formula→value conversion, and a Word cover note.
@@ -42,6 +42,21 @@ Build one PDF from several on a thumbnail grid — reorder, rotate, cut/copy/pas
 </details>
 ### ✂️ PDF Split
 Extract selected pages into one file, or split by page ranges, every N pages, or top‑level bookmarks — with per‑page **rotation** carried into the output in every mode. Original page numbers sit under the thumbnails, a long split can be **cancelled** (from five source pages, removing anything already written), and the source is never modified.
+### 🔎 PDF Compare (beta)
+Compare an earlier and a later **born-digital** PDF without converting either file. Exactly one document-wide comparison of canonical visible words remains the semantic authority; physical page pairing only lays out the viewer and corroborates conservative proofs. A bounded reconciliation removes a form/table extraction-order artifact only when the same words have one unambiguous geometric match, so reflow or re-pagination alone is not an edit and uncertain material remains marked. Earlier/left removals receive tight solid red (`#EC0808`) word backgrounds; later/right additions receive tight solid green (`#1BE91A`) word backgrounds. Clickable red/green side rails mark each changed line and select its corresponding trusted fragment. Only authoritative changed-word boxes are filled, without spanning spaces, unchanged text or geometric gaps; dark glyphs remain readable and chromatic source ink is preserved. Persistent `−`/`+` side legends keep ownership explicit, while Windows High Contrast deliberately switches to system-colour outlines and patterns instead of custom fills.
+
+<details><summary><b>Sources, navigation and comparison limits</b></summary>
+
+- **Choose sources your way** — browse, type or paste a path, or drop PDFs anywhere over the nested controls. Paths are validated in the background. A password-protected PDF remains selectable and uses the normal in-memory password prompt when comparison starts.
+- **Drop routing is explicit** — two PDFs fill left/right in their supplied order; one PDF dropped over a side replaces that side; one dropped on neutral space fills the first empty side. If both sides are already filled, a neutral drop asks for an explicit side instead of replacing one silently; more than two files are refused.
+- **Review original pages** — the alignment-row list covers paired and one-sided pages, with previous/next-change navigation and optional manual pairing. A normal wheel first scrolls only the pane under the pointer; at a page edge it continues to the nearest row containing a page on that same side, skips gaps, and never wraps. Ctrl+wheel zooms only that pane, keeps the PDF point under the pointer in place, and never changes the row.
+- **Select and copy trusted text** — both page panes remain read-only and keep independent selections. Drag over verified PDF words, press Ctrl+A to select the trusted text on the current page, or use Copy / Select all from the local context menu; Ctrl+C publishes Unicode text that can be pasted into an ordinary control or another application. Words come only from the final published PDF text layer and separators only from literal decoded source boundaries. Where no trusted boundary is available, copy inserts one readability space and reports that fallback; it never becomes a whitespace change. OCR, pixels, geometry, visible gaps, wrapping and page boundaries never invent copied content.
+- **Formatting is not content** — font family, size, weight, italic, colour, coordinates, page size/orientation, extraction fragmentation, coincident overlays and NFC-equivalent Unicode do not enter word equality. Physical page boundaries and manual page pairing are presentation data, not semantic edit boundaries.
+- **Extraction order is not accepted as an edit** — a bounded post-diff pass can reconcile exact repeated words in a table or form only on one explicit page pair and only with unique geometric proof. It does not run a second page-local diff; ambiguity, real movement, unrelated edits or exhausted work limits preserve the original Delete/Insert candidates.
+- **Whitespace requires source evidence** — `␠`, `NBSP`, `⇥` and `↵` markers appear only for literal decoded characters (or a positively proven empty boundary) in the PDF text layer. Visual gaps, reconstructed rows, wrapping, page edges and raster pixels never invent whitespace. Whitespace counters are separate from word counts and the word-based changed percentage.
+- **Raster refinement is word-only and subtractive** — it may remove only a pre-existing mixed Delete/Insert word hunk owned by one explicit physical-page pair when bounded local ink proves equivalence. It cannot create a match or reinterpret whitespace; a pure one-sided edit, renderer failure, cancellation, exhausted cap or inadequate render keeps the semantic candidate.
+- **Scope** — this beta compares PDFs that contain a usable text layer. It does not perform OCR; image-only/scanned documents are rejected with a clear message.
+</details>
 ### 📝 PDF → Word
 Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print to PDF”, exported from a browser) into a single editable `.docx`, preserving fonts, layout, tables, lists and images.
 
@@ -80,7 +95,7 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 - 🔑 **Password-protected PDFs** — open with a prompt that names the file; the password stays in memory only and is never written anywhere.
 - ⌨️ **Command line for PDF** — merge, extract, split, compress, grayscale, repair, pages to images and text to a file, over the same code the buttons use (`--help` lists them).
 - 🔖 **Bookmarks survive** merging and splitting, following their pages to wherever they end up.
-- 🔒 **Safe by design** — no network, no admin, not packed or obfuscated, and writes only to folders you choose and `%APPDATA%`.
+- 🔒 **Safe by design** — document processing stays local; no telemetry, no admin, no automatic downloads, not packed or obfuscated, and writes only to folders you choose and `%APPDATA%`. The sole built-in network feature is the GitHub update check described above.
 
 ## 📸 Screenshots
 
@@ -90,6 +105,7 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 | <img src="docs/screenshots/pdf-merge.png" width="400" alt="Merge PDF"><br>**Merge PDF** — thumbnails & four levels of compression | <img src="docs/screenshots/pdf-split.png" width="400" alt="Split PDF"><br>**Split PDF** — four modes, ready page ranges |
 | <img src="docs/screenshots/pdf-ops.png" width="400" alt="More operations"><br>**More operations** — convert, extract, print, properties | <img src="docs/screenshots/pdf-word.png" width="400" alt="PDF to Word"><br>**PDF → Word** — text & tables into an editable `.docx` |
 | <img src="docs/screenshots/pdf-pptx.png" width="400" alt="PDF to PowerPoint"><br>**PDF → PowerPoint** — pages into slides with editable text | <img src="docs/screenshots/excel.png" width="400" alt="Merge Excel"><br>**Merge Excel** — sheets of a folder into one digest |
+| <img src="docs/screenshots/review.png" width="400" alt="Compare PDF beta review"><br>**Compare PDF (beta) review** — earlier/left removals and later/right additions |  |
 
 ## ⬇️ Download
 
@@ -104,7 +120,7 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 - **Portable** — a single `iwoHelperDesktop-1.18.4.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
 - The x64 and x86 packages are functionally identical — take **x64** unless your Windows is 32‑bit.
 
-> Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split, Compression and PDF → PowerPoint** need no Office at all.
+> Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split, Compare, More operations and PDF → PowerPoint** need no Office at all.
 
 ## 🖥️ Usage
 
@@ -113,6 +129,7 @@ Launch the app, pick a section on the start screen (**PDF** or **Other tools**) 
 - **Merge Excel** — pick the source folder, set the output name and format, arrange or exclude files, click **Merge**. A report and an optional Word cover note are produced next to the digest.
 - **PDF Merge / Split** — add PDFs (button or drag‑and‑drop, including straight onto the page grid), reorder or select pages on the thumbnail grid, choose a **Compression** level if desired, and save. **Double‑click a page for a full‑size preview** — a right‑click there rotates it, and the window remembers its size (or double‑click a page number to move that page). Set the zoom **percentage** exactly in the “%” box (or the slider, Ctrl+wheel, Ctrl+«+»/«−», or Ctrl+0 to reset to 100%). The last zoom, compression level, and the window's size and position come back next time. The grid speaks keyboard: Ctrl+X/C/V move or duplicate pages (cut pages stay dimmed until pasted, Esc cancels, a click in a gap places the insertion caret — hovering a gap hints it), Ctrl+Z / Ctrl+Y undo and redo edits (rotations included), Ctrl+G jumps to a page, Home/End go to the first/last page, Ctrl+Shift+«+»/«−» rotates the selection — or hover a tile and click its ↺/↻ buttons (the right‑click menu also rotates **all** pages and moves the selection **after page N…**).
 - **More operations** — open the tool (or send a document to it from Split's **More operations** button, or the merged file from Merge's **☰ Menu**), add images if you need them, arrange the pages, then pick an action from the dropdown menus: **Convert...** (Save PDF, Compress, Grayscale, Repair) or **Extract...** (Pages to images with DPI submenu, Text to .txt). Each action works on the assembled document, writes a new file and leaves the source alone. While the grid differs from the file, the status line says how many pages are assembled in it. “Repair” asks for the file itself, since a damaged document cannot be shown as a grid.
+- **PDF Compare (beta)** — put the earlier born-digital PDF on the left and the later one on the right. Browse, type/paste paths, or drop two files in left/right order; a single file dropped over a side replaces that side, while a neutral drop fills only the first empty side. Click **Compare**, use the pair list or previous/next-change buttons, and inspect tight red removal backgrounds in the earlier/left pane and tight green addition backgrounds in the later/right pane; only authoritative word boxes are filled, while `␠`/`NBSP`/`⇥`/`↵` identify source-proven whitespace edits. Drag to select trusted text in either read-only pane, press Ctrl+A for the current page, and Ctrl+C to copy Unicode text for pasting elsewhere; if a source separator cannot be proven, the copy operation discloses its one-space readability fallback. Turn the wheel over a pane to scroll that pane only; hold Ctrl to zoom it around the pointer. High Contrast uses system-colour outlines/patterns and `−`/`+` ownership instead of custom fills. Scanned/image-only PDFs need OCR and are not supported.
 - **PDF → Word** — add one or several born‑digital PDFs (button or drag‑and‑drop — dropping onto the grid inserts at that spot), reorder with the mouse or Ctrl+X/C/V, **double‑click a page to preview it** and right‑click the preview to rotate (or double‑click its number to move it), or drop pages across all of them if needed, then **Convert to Word…** and choose the `.docx` name — they merge into one document.
 
 <details>
@@ -167,7 +184,7 @@ Format is derived from the path extension. `--toc` adds a table of contents, `--
 ```
 build.cmd
 ```
-Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`, `build.cmd x86` produces the 32‑bit exe in `dist\x86\`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split and document properties, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction (PDF → Word and the `.txt` export). PDF thumbnails, the full‑size preview and the image export use the system `Windows.Data.Pdf` (WinRT), PDF → Word writes the `.docx` through Word COM, and Ghostscript runs as a separate process for compression, grayscale and repair.
+Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET Framework 4.8) to a single `dist\iwoHelperDesktop.exe`, `build.cmd x86` produces the 32‑bit exe in `dist\x86\`. Managed dependencies are embedded as resources: `build/PdfSharp.dll` (MIT) for PDF create/merge/split and document properties, and `build/pdfpig/*` (**PdfPig**, Apache 2.0) for born‑digital text extraction (PDF → Word, PDF Compare and the `.txt` export). PDF thumbnails, full‑size previews, image export, and PDF Compare's page views and bounded visual confirmation use the system `Windows.Data.Pdf` (WinRT); PDF → Word writes the `.docx` through Word COM, and Ghostscript runs as a separate process for compression, grayscale and repair.
 
 <details>
 <summary><b>Signing, installer, release, CI and tests</b></summary>
@@ -190,7 +207,7 @@ Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open pro
 
 ## 🔒 Privacy
 
-**Your files never leave your computer.** No telemetry, no analytics, no accounts. Everything — Excel, PDF merge/split, compression, images, text, document properties, PDF → Word — runs locally, and the only network request is the update check, which reads the latest version tag from GitHub and sends no file contents or personal data. It runs when you press the button and once at startup — the startup one stays silent unless a newer version exists, and can be turned off. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
+**Your files never leave your computer.** No telemetry, no analytics, no accounts. Everything — Excel, PDF merge/split/compare, compression, images, text, document properties, PDF → Word — runs locally. The only built-in network feature is the update check: it reads the latest version tag from GitHub and, only when that version is newer, a short change summary; it sends no file contents, file names, or personal data. It runs when you press the button and once at startup — the startup one stays silent unless a newer version exists, and can be turned off. Full details: **[Privacy Policy](docs/PRIVACY.md)**.
 
 ## ⚖️ License
 

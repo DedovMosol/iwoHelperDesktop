@@ -25,6 +25,7 @@ if not os.path.isdir(engine.OUT_DIR):
 engine.doc.save(engine.OUT)
 engine.retheme(engine.OUT)   # шрифт темы — тоже Times New Roman
 engine.finalize_toc(engine.OUT)
+engine.request_field_update_on_open(engine.OUT)
 
 missing = [name for name in engine.FIG_ORDER if name not in engine._inserted]
 print("рисунков вставлено:", len(engine._inserted), "из", len(engine.FIG_ORDER))

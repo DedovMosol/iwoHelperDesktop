@@ -1,0 +1,8 @@
+<Project>
+  <!-- BaseIntermediateOutputPath должен задаваться до Microsoft.Common.props: иначе MSBuild
+       уже выбрал общий obj и предупреждает при x86-сборке. -->
+  <PropertyGroup>
+    <Arch Condition="'$(Arch)' == ''">x64</Arch>
+    <BaseIntermediateOutputPath Condition="'$(Arch)' != 'x64'">obj\$(Arch)\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

@@ -10,28 +10,42 @@
 # the last used paths and the conversion history.
 #
 # Usage: powershell -NoProfile -STA -File tools\make_readme_shots.ps1
+param(
+    [string]$ExePath = '',
+    [ValidateSet('en', 'ru')][string]$Language = 'en',
+    [string]$OutputDir = '',
+    [string]$SampleDirectory = ''
+)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
 $root = Split-Path -Parent $PSScriptRoot
-$exe = Join-Path $root 'dist\iwoHelperDesktop.exe'
-$outDir = Join-Path $root 'docs\screenshots'
-# The samples live under Public Documents, not under the temp folder: their path is VISIBLE
-# in the Excel window, and a scratch path with a machine's drive letters in it says more
-# about this computer than about the program. Falls back to the temp folder if that folder
-# cannot be written to.
-$work = 'C:\Users\Public\Documents\Reports'
-try {
-    # A full disk fails at write time, not at create time, so ask before trusting it.
-    $free = (Get-PSDrive -Name ([IO.Path]::GetPathRoot($work).Substring(0, 1))).Free
-    if ($free -lt 50MB) { throw 'no room' }
-    if (Test-Path $work) { Remove-Item $work -Recurse -Force }
-    [void](New-Item -ItemType Directory -Path $work -Force)
-} catch {
-    Write-Host 'Public Documents unavailable, falling back to the temp folder'
-    $work = Join-Path $env:TEMP 'iwo_readme_shots'
-    if (Test-Path $work) { Remove-Item $work -Recurse -Force }
+$exe = if ([string]::IsNullOrWhiteSpace($ExePath)) {
+    Join-Path $root 'dist\iwoHelperDesktop.exe'
+} else {
+    [IO.Path]::GetFullPath($ExePath)
 }
+if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+    throw "Application executable not found: $exe"
+}
+$outDir = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    Join-Path $root 'docs\screenshots'
+} else {
+    [IO.Path]::GetFullPath($OutputDir)
+}
+[void](New-Item -ItemType Directory -Path $outDir -Force)
+# The fixed default keeps visible paths and PNGs reproducible. Refuse an existing directory:
+# cleanup is allowed to remove only the directory this invocation created.
+$work = if ([string]::IsNullOrWhiteSpace($SampleDirectory)) {
+    Join-Path ([Environment]::GetFolderPath('CommonDocuments')) 'iwo-readme-shot-samples'
+} else {
+    [IO.Path]::GetFullPath($SampleDirectory)
+}
+if (Test-Path -LiteralPath $work) {
+    throw "Sample directory already exists; move it or pass an unused -SampleDirectory: $work"
+}
+[void](New-Item -ItemType Directory -Path $work)
+$createdWork = $true
 $books = Join-Path $work 'Workbooks'
 [void](New-Item -ItemType Directory -Path $books -Force)
 
@@ -49,7 +63,7 @@ public static class Shot {
 
 # ---------- sample documents ----------
 
-function New-Report([string]$path, [int]$pages, [string]$title) {
+function New-Report([string]$path, [int]$pages, [string]$title, [bool]$revised = $false) {
     $doc = New-Object PdfSharp.Pdf.PdfDocument
     $head = New-Object PdfSharp.Drawing.XFont('Times New Roman', 16.0, [PdfSharp.Drawing.XFontStyle]::Bold)
     $body = New-Object PdfSharp.Drawing.XFont('Times New Roman', 10.0)
@@ -67,6 +81,9 @@ function New-Report([string]$path, [int]$pages, [string]$title) {
         'single-supplier dependency described above and is tracked weekly until a second',
         'source is qualified.'
     )
+    if ($revised) {
+        $lines[0] = 'The quarter closed ahead of the plan in four of the five regions, and the revised forecast is shown below.'
+    }
     for ($p = 1; $p -le $pages; $p++) {
         $page = $doc.AddPage()
         $g = [PdfSharp.Drawing.XGraphics]::FromPdfPage($page)
@@ -143,9 +160,13 @@ function New-Workbook([string]$path, [string]$sheet) {
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $report = Join-Path $work 'Quarterly report.pdf'
 $appendix = Join-Path $work 'Appendix A.pdf'
+$reviewEarlier = Join-Path $work 'Earlier report.pdf'
+$reviewLater = Join-Path $work 'Later report.pdf'
 $deck = Join-Path $work 'Quarterly deck.pdf'
 New-Report $report 11 'Quarterly report'
 New-Report $appendix 4 'Appendix A'
+New-Report $reviewEarlier 3 'Quarterly report'
+New-Report $reviewLater 3 'Quarterly report' $true
 New-Deck $deck @('Quarterly report', 'Revenue by region', 'Delivery timeline', 'Team and roles', 'Next steps', 'Summary')
 foreach ($b in @('Revenue by region', 'Costs by department', 'Head count', 'Logistics routes', 'Risk register')) {
     New-Workbook (Join-Path $books ($b + '.xlsx')) 'Sheet1'
@@ -155,10 +176,10 @@ foreach ($b in @('Revenue by region', 'Costs by department', 'Head count', 'Logi
 
 $asm = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'iwoHelperDesktop' }
 $flags = [Reflection.BindingFlags]'NonPublic,Static'
-[string]$appData = Join-Path $env:TEMP 'iwo_readme_appdata'
+[string]$appData = Join-Path $work 'AppData'
 $asm.GetType('ExcelMerger.AppPaths').GetMethod('SetRootForTests', $flags).Invoke($null, [object[]]@($appData))
 $loc = $asm.GetType('ExcelMerger.Loc')
-[void]$loc.GetMethod('Init').Invoke($null, @($loc.GetMethod('Parse').Invoke($null, @('en'))))
+[void]$loc.GetMethod('Init').Invoke($null, @($loc.GetMethod('Parse').Invoke($null, @($Language))))
 
 # A plain backdrop: the desktop and other windows must not show through a rounded corner.
 $backdrop = New-Object System.Windows.Forms.Form
@@ -199,14 +220,20 @@ function Show-Form($form, [int]$w, [int]$h) {
     Pump 700
 }
 
-function Show-Loaded([string]$type, [string[]]$files, [int]$w, [int]$h) {
+function Show-Loaded([string]$type, [string[]]$files, [int]$w, [int]$h, [int]$wait = 4000) {
     $t = $asm.GetType($type)
     $ctor = $t.GetConstructor([type[]]@([Action]))
     $form = if ($ctor) { $ctor.Invoke(@($null)) } else { [Activator]::CreateInstance($t, $true) }
     Show-Form $form $w $h
     $accept = $t.GetInterface('ExcelMerger.IFileAcceptor').GetMethod('AcceptFiles')
     [void]$accept.Invoke($form, @(, [string[]]$files))
-    Pump 4000
+    if ($type -eq 'ExcelMerger.PdfReviewForm') {
+        Pump 3000
+        $inst = [Reflection.BindingFlags]'NonPublic,Instance'
+        $compare = $t.GetField('_compare', $inst).GetValue($form)
+        $compare.PerformClick()
+    }
+    Pump $wait
     return $form
 }
 
@@ -224,27 +251,32 @@ Pump 700
 Save-Shot $hub 'hub'
 $hub.Close(); $hub.Dispose(); Pump 300
 
-# 3. Merge PDF.
+# 3. Compare PDF (beta). The pair is generated above and contains no private or root-fixture path.
+$f = Show-Loaded 'ExcelMerger.PdfReviewForm' @($reviewEarlier, $reviewLater) 1120 760 7000
+Save-Shot $f 'review'
+$f.Close(); $f.Dispose(); Pump 300
+
+# 4. Merge PDF.
 $f = Show-Loaded 'ExcelMerger.PdfMergeForm' @($report, $appendix) 782 692
 Save-Shot $f 'pdf-merge'
 $f.Close(); $f.Dispose(); Pump 300
 
-# 4. Split PDF.
+# 5. Split PDF.
 $f = Show-Loaded 'ExcelMerger.PdfSplitForm' @($report) 802 692
 Save-Shot $f 'pdf-split'
 $f.Close(); $f.Dispose(); Pump 300
 
-# 5. PDF to Word.
+# 6. PDF to Word.
 $f = Show-Loaded 'ExcelMerger.OcrForm' @($report, $appendix) 802 692
 Save-Shot $f 'pdf-word'
 $f.Close(); $f.Dispose(); Pump 300
 
-# 6. PDF to PowerPoint.
+# 7. PDF to PowerPoint.
 $f = Show-Loaded 'ExcelMerger.PptxForm' @($deck) 816 699
 Save-Shot $f 'pdf-pptx'
 $f.Close(); $f.Dispose(); Pump 300
 
-# 7. Merge Excel.
+# 8. Merge Excel.
 $t = $asm.GetType('ExcelMerger.MainForm')
 $form = $t.GetConstructor([type[]]@([Action])).Invoke(@($null))
 Show-Form $form 782 760
@@ -256,4 +288,8 @@ Save-Shot $form 'excel'
 $form.Close(); $form.Dispose()
 
 $backdrop.Close(); $backdrop.Dispose()
-Write-Host ('samples: ' + $work)
+if ($createdWork -and (Test-Path -LiteralPath $work)) {
+    Remove-Item -LiteralPath $work -Recurse -Force
+}
+Write-Host ('cleaned samples: ' + $work)
+$asm.GetType('ExcelMerger.FastExit').GetMethod('Now').Invoke($null, [object[]]@(0))

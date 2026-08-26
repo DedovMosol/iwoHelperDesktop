@@ -18,16 +18,16 @@ def build():
 
     h2("1.1. What it is for")
     par = rich("iwo Helper Desktop is a desktop program for everyday work with documents: it "
-               "gathers the sheets of several Excel workbooks into one digest, merges and "
-               "splits PDF files, makes them smaller, and turns the text of a PDF into an "
+               "gathers the sheets of several Excel workbooks into one digest, merges, splits and "
+               "compares PDF files, makes them smaller, and turns the text of a PDF into an "
                "editable Word document or a PowerPoint presentation. Everything happens on "
                "your own computer; no file is sent anywhere.")
     footnote(par, "The program does not go to the internet for any operation on a document. "
                   "Its only network request is the check for a newer version, which can be "
                   "switched off in Settings.")
 
-    p("The program is six tools, laid out on the start screen in two sections: five work with "
-      "PDF, the sixth with Excel workbooks. Each does its own job and opens in its own window, "
+    p("The program is seven tools, laid out on the start screen in two sections: six work with "
+      "PDF, the seventh with Excel workbooks. Each does its own job and opens in its own window, "
       "so several can run at once: while one builds a digest, another can prepare a PDF.")
 
     table("The tools of the program",
@@ -39,6 +39,10 @@ def build():
             "Extracts the pages you need, or cuts a document into parts: by ranges, "
             "every N pages, or by bookmarks",
             "To take out of a thick document only what the recipient asked for"],
+           ["PDF Compare",
+            "Shows earlier and later born-digital PDFs side by side, marking removals only on "
+            "the left and additions only on the right",
+            "To review edits and copy trusted text without converting the document or using OCR"],
            ["PDF → Word",
             "Extracts the text and tables of a born-digital PDF into an editable .docx",
             "To edit text rather than type it again"],
@@ -47,8 +51,8 @@ def build():
             "editable, everything else arrives as a background",
             "To get back a presentation of which only the PDF is left"],
            ["More operations",
-            "Six actions on a single document: compression, pages as images, text into .txt, "
-            "grayscale, repair, document properties",
+            "Eight actions on one document: save PDF, compression, grayscale, repair, pages as "
+            "images, text into .txt, printing and document properties",
             "To do to a finished file what would otherwise send you looking for a separate program"],
            ["Merge Excel",
             "Moves the sheets of several workbooks into one — a digest, with contents and a "
@@ -123,7 +127,7 @@ def build():
     picture("hub", "The start screen: choosing a section")
     p("Inside a section are the same cards, one per tool %s. “Back” on the left of the header, "
       "or the Esc key, returns to the sections." % ref("hub-pdf"))
-    picture("hub-pdf", "The “PDF” section: five tools")
+    picture("hub-pdf", "The “PDF” section: six tools")
     p("A card only has to be clicked. A quicker way is to drag PDF files straight onto a card: "
       "the tool opens and takes those files at once, skipping the file dialog. Files can also "
       "be dropped on the “PDF” section card — the program goes inside and holds them until you "
@@ -523,9 +527,97 @@ def build():
 
     # ================================================================= 6
 
-    h1("6. PDF → Word")
+    h1("6. PDF Compare")
 
-    h2("6.1. What it is for")
+    h2("6.1. Purpose and scope")
+    p("The tool shows the earlier born-digital PDF on the left and the later one on the right, "
+      "marking which words disappeared and which appeared. The pages remain the originals: the "
+      "program neither reflows the document nor turns it into an editable file. This is a review "
+      "window, not an editor.")
+    p("The words of both documents are compared as one document-wide stream. Physical-page "
+      "pairing supplies the viewer rows and corroborates clear matches, but it does not start a "
+      "separate comparison for each page. Moving existing text across a page boundary is therefore "
+      "not an edit by itself.")
+    note("Compare works only with born-digital PDFs that have a usable text layer. It performs no "
+         "OCR: a scan or a document made only of images is refused with an explanation. The source "
+         "files remain unchanged.")
+
+    h2("6.2. The window and its marks")
+    p("The sources at the top are “Earlier version · left” and “Later version · right”. Browse for "
+      "a file, type or paste its path, or drop it onto the required side. Two files dropped together "
+      "take the sides in order; one file dropped on neutral space fills only the first empty side.")
+    picture("review", "The comparison result: earlier version left, later version right")
+    p("In normal mode a change background follows the verified word box tightly. It is not widened "
+      "over a space, neighbouring unchanged text or a visible geometry gap. The dark strokes of the "
+      "original glyphs remain readable, and coloured source elements keep their colour. A red or "
+      "green side rail marks each changed line; click the rail to select that line's corresponding "
+      "trusted fragment.")
+    bullet("A tight red background and − mean a word removed from the earlier version. This meaning "
+           "belongs only to the left pane.", bold_head="Earlier version, left. ")
+    bullet("A tight green background and + mean a word added to the later version. This meaning "
+           "belongs only to the right pane.", bold_head="Later version, right. ")
+    bullet("The ␠, NBSP, ⇥ and ↵ marks are separate from words and appear only when a space, "
+           "non-breaking space, tab or line break is literally proven by the PDF text layer.",
+           bold_head="Whitespace changes. ")
+    note("In High Contrast the program deliberately does not use its own red and green fills. "
+         "Windows system colours, outlines and patterns replace them, while − and + and ownership "
+         "by the left or right side keep the meaning independent of colour alone.")
+
+    h2("6.3. The order of review")
+    step(1, "put the earlier document on the left and the later one on the right. A separate button "
+            "swaps the sides if needed.",
+         bold_head="Choose two PDFs: ")
+    step(2, "The paths are validated first; the program then extracts the text, compares the whole "
+            "document once, and shows the original pages side by side.",
+         bold_head="Press “Compare”. ")
+    step(3, "Click alignment rows or move through changes with the buttons and F3 / Shift+F3. The "
+            "page field above either pane independently opens a physical page; the wheel scrolls "
+            "only the side under the pointer, while Ctrl+wheel zooms only that side.",
+         bold_head="Review every row with a change. ")
+    step(4, "If an automatic viewer row is inconvenient, “Pair pages…” joins two physical pages "
+            "for display and conservative corroboration. It does not begin a new page-local diff "
+            "or change the meaning of words already found.",
+         bold_head="Adjust only the displayed pair if necessary. ")
+
+    h2("6.4. Selecting and copying")
+    p("Both pages remain read-only, but trusted text can be selected. Drag over words, press Ctrl+A "
+      "to select trusted text on the current page, and Ctrl+C to copy it as Unicode. The local "
+      "“Copy” and “Select all page text” menu commands do the same. The result pastes into an "
+      "ordinary field, document or another application; text cannot be pasted into or edited in "
+      "the Review pane.")
+    bullet("Only words in the finally published text layer of this page reach the clipboard. The "
+           "page image, OCR, coordinates, gap width and display wrapping cannot create letters.",
+           bold_head="Words come only from the PDF. ")
+    bullet("Between adjacent words, only a separator literally decoded from the source text layer "
+           "is kept exactly: an empty boundary, one or more spaces, NBSP, a tab or a line break.",
+           bold_head="Whitespace needs proof. ")
+    bullet("If there is no trusted boundary, exactly one ordinary space is inserted for readability "
+           "and the status line says explicitly that separators were reconstructed. This fallback "
+           "space never becomes a reported whitespace change.",
+           bold_head="A fallback separator is disclosed. ")
+    note("The left and right panes keep independent selections. Moving to another page, replacing "
+         "a source, a missing counterpart or a render failure clears the old selection, so hidden "
+         "text from the previous page cannot be copied.")
+
+    h2("6.5. What counts as a change")
+    p("The comparison answers a question about words and literal whitespace characters, not visual "
+      "formatting. An uncertain case stays marked: the program does not hide a possible edit merely "
+      "to produce a quieter picture.")
+    bullet("Font, size, weight, colour, coordinates, page format and orientation are not part of "
+           "word equality. Reflow and a new division into pages do not by themselves count as an "
+           "insertion or deletion.", bold_head="Formatting is not content. ")
+    bullet("Form or table extraction order is reconciled only for one unambiguous match. An image "
+           "check may only remove an existing delete/insert pair when visible ink proves equality; "
+           "it cannot create words or whitespace.", bold_head="Corrections are conservative. ")
+    bullet("Whitespace changes are counted separately from deleted and inserted words. A visible "
+           "gap, a line or page edge, and the copy fallback space are not proof.",
+           bold_head="Whitespace is counted separately. ")
+
+    # ================================================================= 7
+
+    h1("7. PDF → Word")
+
+    h2("7.1. What it is for")
     p("The tool extracts the text and tables of a born-digital PDF into an editable Word "
       "document (.docx). Born-digital means saved from Word, from a browser or through "
       "“Microsoft Print to PDF”: in such a file the text is held as text, not as a picture.")
@@ -533,13 +625,13 @@ def build():
       "From the resulting .docx you can take a paragraph, a table or the whole document and "
       "work with it as usual.")
 
-    h2("6.2. The window")
+    h2("7.2. The window")
     p("The window is arranged like “Merge PDF”: on the left the grid of pages of all the added "
       "files, on the right the actions, at the bottom the zoom and the “Convert to Word…” "
       "button %s." % ref("ocr"))
     picture("ocr", "The “PDF → Word” window")
 
-    h2("6.3. The order of work")
+    h2("7.3. The order of work")
     step(1, "or drag them into the window. The pages of all the files are shown in one grid, "
             "so one Word document can be assembled from several PDFs.",
          bold_head="Add one or more PDFs with “Add PDF…” ")
@@ -553,7 +645,7 @@ def build():
     step(4, "and give the file a name. When it is done the document opens by itself.",
          bold_head="Press “Convert to Word…” ")
 
-    h2("6.4. What comes across and what does not")
+    h2("7.4. What comes across and what does not")
     p("What comes across: text in paragraphs in reading order — with its font, size, weight, "
       "colour, underline, alignment and first-line indent. Tables with visible lines are "
       "rebuilt as cells, merged ones included. Portrait and landscape orientation is kept page "
@@ -573,11 +665,11 @@ def build():
                   "it (Ctrl + C). If nonsense lands in the clipboard, the text layer of the "
                   "document was broken to begin with.")
 
-    # ================================================================= 7
+    # ================================================================= 8
 
-    h1("7. PDF → PowerPoint")
+    h1("8. PDF → PowerPoint")
 
-    h2("7.1. What it is for")
+    h2("8.1. What it is for")
     p("The tool turns the pages of a born-digital PDF into a PowerPoint presentation (.pptx). "
       "Every page becomes a slide, and the text on it stays TEXT: it can be selected, "
       "corrected, retyped — it is not a picture of letters.")
@@ -590,7 +682,7 @@ def build():
     footnote(par, "A .pptx file is a set of XML files in an archive, described by an open "
                   "standard. The program writes them directly.")
 
-    h2("7.2. How a slide is built")
+    h2("8.2. How a slide is built")
     p("A slide is made of two layers. The lower one is the page of the source PDF, rendered "
       "WITHOUT its text layer: background, frames, charts, logos, stamps. The upper one is the "
       "text boxes, placed exactly where the text stood in the original.")
@@ -602,14 +694,14 @@ def build():
          "from the text and the images alone — silently, without an error: it is still a "
          "working file, only without the background.")
 
-    h2("7.3. The window")
+    h2("8.3. The window")
     p("The window is the same as “PDF → Word”: on the left the grid of pages, on the right the "
       "actions, at the bottom the zoom and the “Convert to PowerPoint…” button %s. Every habit "
       "of the grid — selecting, ordering, rotating, previewing, undoing — works the same."
       % ref("pptx"))
     picture("pptx", "The “PDF → PowerPoint” window")
 
-    h2("7.4. The order of work")
+    h2("8.4. The order of work")
     step(1, "or drag them into the window. The pages of several files are gathered into one "
             "presentation.",
          bold_head="Add PDFs with “Add PDF…” ")
@@ -622,7 +714,7 @@ def build():
     step(4, "and give the file a name. The finished presentation opens by itself.",
          bold_head="Press “Convert to PowerPoint…” ")
 
-    h2("7.5. What comes across")
+    h2("8.5. What comes across")
     p("Text comes across in paragraphs, with its font, size, weight, colour, underline, "
       "super- and subscripts and hyperlinks. Tables become real slide tables, merged cells "
       "included. The slide size follows the page: a 16:9 deck stays 16:9, and an A4 document "
@@ -633,7 +725,7 @@ def build():
       "a paragraph arrives as one text box and is edited as a whole. Where there is no such "
       "structure, the boundaries are recovered from the distances between the lines.")
 
-    h2("7.6. What not to expect")
+    h2("8.6. What not to expect")
     bullet("pages saved as a picture in their entirety. Such slides arrive as a background "
            "without a single letter, and the program says honestly how many there were: only "
            "recognition can bring the text back from those.",
@@ -646,11 +738,11 @@ def build():
            "would stop being editable as a whole.",
            bold_head="Small differences in setting are possible: ")
 
-    # ================================================================= 8
+    # ================================================================= 9
 
-    h1("8. Merge Excel")
+    h1("9. Merge Excel")
 
-    h2("8.1. What it is for")
+    h2("9.1. What it is for")
     p("The tool gathers the sheets of several Excel workbooks into one workbook — a digest. "
       "The typical task: the divisions have each sent a file, and what is wanted is one "
       "document where each file is a separate sheet, there are contents with links, and it is "
@@ -659,12 +751,12 @@ def build():
       "pasting it, renaming it, and round again. The program does it in one pass, keeping the "
       "formatting, the formulas and the charts.")
 
-    h2("8.2. The window")
+    h2("9.2. The window")
     p("The window is divided into blocks by meaning: where to take from, where to save, with "
       "what options and what exactly to merge %s." % ref("excel"))
     picture("excel", "The “Merge Excel” window")
 
-    h2("8.3. The order of work")
+    h2("9.3. The order of work")
     step(1, "or drag it straight into the window. The program counts the files found at once "
             "and shows them in the list below.",
          bold_head="Give the folder of the source files with “Browse…” ")
@@ -680,7 +772,7 @@ def build():
             "run after the current file.",
          bold_head="Press “Merge”. ")
 
-    h2("8.4. The options")
+    h2("9.4. The options")
     bullet("“First sheet only” takes the first visible sheet of each workbook — the usual case "
            "when a file holds a single form. “All sheets” moves every visible sheet.",
            bold_head="Sheets. ")
@@ -693,7 +785,7 @@ def build():
            "into errors for want of a reference.",
            bold_head="Replace formulas with values. ")
 
-    h2("8.5. The result, the report and the cover note")
+    h2("9.5. The result, the report and the cover note")
     p("After the run the outcome for each file appears in the list itself — in the “Result” "
       "and “Note” columns. Broken and password-protected workbooks are skipped with the reason "
       "given, and the rest are moved across. Links appear at the bottom of the window: open "
@@ -706,18 +798,18 @@ def build():
     footnote(par, "Merge reports are kept in the user profile; the three most recent remain. "
                   "Their folder can be opened through Menu → “Reports folder”.")
 
-    h2("8.6. The Menu of the tool")
+    h2("9.6. The Menu of the tool")
     p("The Menu holds the built-in help, the statistics, the choice of language and “Reports "
       "folder”, which opens the folder with the most recent merge reports %s." % ref("excel-menu"))
     picture("excel-menu", "The Menu of the “Merge Excel” tool")
     note("The usual keys work in the file list: Alt + ↑ and Alt + ↓ change the order, Delete "
          "excludes a file, Ctrl + A selects everything, Ctrl + C copies the rows to the clipboard.")
 
-    # ================================================================= 9
+    # ================================================================= 10
 
-    h1("9. Reference")
+    h1("10. Reference")
 
-    h2("9.1. About the program")
+    h2("10.1. About the program")
     p("The About window is opened by the button on the start screen %s. It gives the version, "
       "the author, links to the project page and to the privacy policy, and the licence."
       % ref("about"))
@@ -731,7 +823,7 @@ def build():
     footnote(par, "The file is unpacked into the user profile, beside the settings of the "
                   "program. It may be deleted — it will appear again at the next request.")
 
-    h2("9.2. If something went wrong")
+    h2("10.2. If something went wrong")
     p("The program tries to explain failures in words rather than in error codes. Below are "
       "the situations that come up more often than others.")
 
@@ -765,7 +857,16 @@ def build():
             "it can be typed by hand"]],
           widths=[6.0, 10.0])
 
-    h2("9.3. A short reminder")
+    h2("10.3. Updating the contents after edits")
+    p("The contents in this manual are automatic: they are built from the Heading 1 and "
+      "Heading 2 styles rather than typed by hand. The finished file already contains every "
+      "entry and the current page numbers. If you add, remove or rename a section, apply one "
+      "of those built-in styles to its title, click inside the contents, choose Update Table, "
+      "then Update entire table. You can also press F9 inside the contents and choose the "
+      "entire-table update. Update page numbers only does not add a new heading. Merely opening "
+      "the file does not guarantee a complete contents refresh in every version of Word.")
+
+    h2("10.4. A short reminder")
     p("Three rules that answer most of the questions.")
     bullet("The program never changes the source files. The result is always a new file.")
     bullet("Anything done to the pages is undone with Ctrl + Z.")

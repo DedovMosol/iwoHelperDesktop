@@ -39,6 +39,11 @@ def update(path):
         if done.returncode != 0 or "ok" not in out:
             raise SystemExit("оглавление собрать не удалось (код %s):\n%s" % (done.returncode, out.strip()))
         shutil.move(ascii_copy, path)
+        # Word may remove w:updateFields while saving. Restore the macro-free request
+        # after the materialized TOC is safely on disk; it is a best-effort aid, while
+        # the explicit update above is the deterministic path.
+        import engine
+        engine.request_field_update_on_open(path)
         marks = " ".join(w for w in out.split() if w.startswith(("pages=", "toc_entries=")))
         print("%s: %s (было %d Б, стало %d Б)"
               % (os.path.basename(path), marks, before, os.path.getsize(path)))

@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Application:** iwo Helper Desktop
-**Last updated:** 2026-07-28
+**Last updated:** 2026-08-26
 
 ## Summary
 
@@ -9,9 +9,10 @@ iwo Helper Desktop is an **offline desktop application**. It does **not** collec
 transmit, sell, or share any personal data, and it does **not** contain any telemetry,
 analytics, advertising, or user accounts. Everything you do with your files happens
 **locally on your own computer**. The only time the app talks to the network is the
-update check — when **you** click “Check for updates,” and once at startup — and even
-then it only reads a version number from GitHub. No file contents or personal data are
-ever sent, and the startup check can be turned off.
+update check — when **you** click “Check for updates,” and once at startup. It reads the
+latest version tag from GitHub and, only when that version is newer, a short change summary.
+No file contents, file names, or personal data are ever sent, and the startup check can be
+turned off.
 
 ## What the app does with your files
 
@@ -19,6 +20,8 @@ The tools read the files you choose and write results to the folders you choose:
 
 - **PDF Merge** — build one PDF out of several,
 - **PDF Split** — extract or split pages,
+- **PDF Compare (beta)** — compare the trusted text layers of an earlier and a later
+  born-digital PDF while showing the original pages side by side,
 - **PDF → Word** — turn the text layer of a born‑digital PDF into a `.docx`,
 - **PDF → PowerPoint** — turn the pages of a born‑digital PDF into a `.pptx`,
 - **More operations** — assemble a document from its pages and from images you add, save it
@@ -33,18 +36,27 @@ This processing runs entirely on your machine using local components:
 - the embedded PdfSharp library for reading and writing PDFs (merge, split, blank pages,
   document properties),
 - the embedded PdfPig library for extracting the text layer of born‑digital PDFs
-  (PDF → Word and “extract text to `.txt`”),
+  (PDF → Word, PDF Compare, and “extract text to `.txt`”),
 - Ghostscript, run as a separate local process, for compression, grayscale conversion,
   repairing damaged files, and for rendering the picture regions that PDF → Word puts
   into the `.docx`,
 - the built‑in Windows PDF engine (`Windows.Data.Pdf`) for rendering page thumbnails,
-  the full‑size preview, and the images produced by “save pages as images,”
+  the full‑size preview, PDF Compare's original page views and bounded visual confirmation,
+  and the images produced by “save pages as images,”
 - the Windows imaging library (GDI+) for reading the images you add as pages — they are
   read from your disk, laid onto a page and never sent anywhere.
 
+**PDF Compare scope.** Comparison runs locally over text that is already decoded from the
+PDF text layer. It does not use OCR, send pages to an OCR service, or derive copied text or
+whitespace from pixels and visual gaps. Its page renderer may only conservatively suppress an
+existing word-change candidate; it cannot invent text or a semantic match. Image-only and
+scanned PDFs therefore cannot be compared in this beta and are rejected locally with a clear
+message. Both source documents remain read-only, and copied text comes only from the trusted
+published text layer.
+
 **Your documents are never uploaded, copied off your device, or transmitted anywhere.**
 The app does not modify your source files except where you explicitly ask it to write
-output. Split, PDF → Word, image export, and text export never change the source.
+output. Compare, Split, PDF → Word, image export, and text export never change the source.
 
 **Document properties.** The “document properties” screen shows what is already stored
 inside the PDF you opened — title, author, subject, keywords — and can be used to change
@@ -112,8 +124,12 @@ updates”, and once when the app starts:
 - It sends an HTTPS request to the GitHub Releases API
   (`https://api.github.com/repos/DedovMosol/iwoHelperDesktop/releases/latest`) with a
   generic `User-Agent` header and reads the latest published version tag.
-- No file contents, file names, identifiers, or personal data are included in the request.
-- The app never downloads or installs updates automatically, if a newer version exists,
+- Only if that tag is newer than the installed version, it also reads the short localized
+  change summary from the project's public `docs/whatsnew.json` on GitHub. If the summary
+  is unavailable, the version check still works and shows its ordinary message.
+- No file contents, file names, document identifiers, account identifiers, or personal data
+  are included in either request.
+- The app never downloads or installs updates automatically. If a newer version exists,
   it asks first and only then opens the release page in **your** browser.
 - The **startup** check says nothing unless a newer version exists: no network, no answer
   and “you are up to date” are all silent, because you did not ask the question. When it

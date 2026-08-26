@@ -18,6 +18,9 @@ namespace ExcelMerger
     public enum PageLayoutMode
     {
         Document,
-        Slide
+        Slide,
+        // Сохраняет document reading-order, но не применяет экспортные преобразования,
+        // которые заменяют видимый текст штампа/линий растром или синтетическими словами.
+        Review
     }
 }

@@ -25,6 +25,12 @@ namespace ExcelMerger
         // деление на абзацы, и угадывать границы по зазорам там, где автор их уже указал,
         // значит спорить с источником. Номер сквозной в пределах страницы. См. StructureBlocks.
         public int BlockId = -1;
+        // Позиция в декодированном text layer нужна только PDF Review. Диапазон
+        // включает видимые source-unit слова и не хранит объектов PdfPig.
+        internal int SourceStart = -1;
+        internal int SourceEnd = -1;
+        internal string SourceText;
+        internal bool SourceTrusted;
         public double FontSizePt; // кегль (pt); 0 — неизвестно
         public bool Bold;
         public bool Italic;
@@ -707,7 +713,7 @@ namespace ExcelMerger
         /// PdfPig раздробил один токен на куски, их склеиваем без пробела. refSize — кегль
         /// текущего слова (иначе высота рамки), чтобы порог был относительным.
         /// </summary>
-        private static bool HasSpaceBetween(PdfWord prev, PdfWord cur)
+        internal static bool HasSpaceBetween(PdfWord prev, PdfWord cur)
         {
             double refSize = cur.FontSizePt > 0 ? cur.FontSizePt : cur.Height;
             if (refSize <= 0) refSize = prev.Height;
