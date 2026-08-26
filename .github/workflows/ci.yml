@@ -51,23 +51,62 @@ jobs:
       # дальше можно, но проверять сжатие уже нечем, а зелёная сборка без этой проверки лжёт.
       - name: Ghostscript и Inno Setup (сжатие и установщик)
         shell: pwsh
+        timeout-minutes: 15
         run: |
+          function Test-PackageInstalled([string]$package) {
+            if ($package -eq 'ghostscript') {
+              $dll = if ('${{ matrix.arch }}' -eq 'x86') { 'gsdll32.dll' } else { 'gsdll64.dll' }
+              $roots = Get-ChildItem "$env:ProgramFiles\gs", "${env:ProgramFiles(x86)}\gs" `
+                -Directory -ErrorAction SilentlyContinue
+              return [bool]($roots | Where-Object { Test-Path (Join-Path $_.FullName "bin\$dll") })
+            }
+            $iscc = Get-ChildItem "$env:ProgramFiles", "${env:ProgramFiles(x86)}" `
+              -Directory -Filter 'Inno Setup *' -ErrorAction SilentlyContinue |
+              ForEach-Object { Join-Path $_.FullName 'ISCC.exe' } |
+              Where-Object { Test-Path $_ }
+            return [bool]$iscc
+          }
+
+          function Invoke-ChocoAttempt([string]$package, [string]$extra, [int]$number) {
+            $id = [guid]::NewGuid().ToString('N')
+            $stdout = Join-Path $env:RUNNER_TEMP "$package-$id.out"
+            $stderr = Join-Path $env:RUNNER_TEMP "$package-$id.err"
+            $arguments = @('install', $package, '--no-progress', '-y', '--execution-timeout=240')
+            if ($extra) { $arguments += $extra }
+            Write-Host "== $package, попытка $number из 3 (не более 4 минут) =="
+            try {
+              $process = Start-Process choco.exe -ArgumentList $arguments -PassThru -NoNewWindow `
+                -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+              $finished = $process.WaitForExit(240000)
+              if (-not $finished) {
+                Write-Host "::warning::$package: choco не завершился за 4 минуты"
+                try { $process.Kill($true) } catch { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+                $process.WaitForExit()
+              }
+              $log = ((Get-Content $stdout -Raw -ErrorAction SilentlyContinue) +
+                      (Get-Content $stderr -Raw -ErrorAction SilentlyContinue))
+              Write-Host $log
+              return [pscustomobject]@{ Finished = $finished; ExitCode = $process.ExitCode; Log = $log }
+            } finally {
+              Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+            }
+          }
+
           function Install-WithRetry([string]$package, [string]$extra) {
             for ($try = 1; $try -le 3; $try++) {
-              Write-Host "== $package, попытка $try из 3 =="
-              $log = & choco install $package --no-progress -y $extra 2>&1 | Out-String
-              Write-Host $log
-              if ($log -notmatch 'packages failed') { return }
+              $result = Invoke-ChocoAttempt $package $extra $try
+              if (($result.Finished -and $result.ExitCode -eq 0 -and
+                   $result.Log -notmatch 'packages failed') -or (Test-PackageInstalled $package)) {
+                Write-Host "$package установлен"
+                return
+              }
               if ($try -lt 3) { Start-Sleep -Seconds (15 * $try) }
             }
-            Write-Host "::error::$package не установлен после трёх попыток (фид Chocolatey недоступен?)"
+            Write-Host "::error::$package не установлен после трёх ограниченных попыток"
             exit 1
           }
           Install-WithRetry 'ghostscript' '${{ matrix.gs_choco }}'
           Install-WithRetry 'innosetup' ''
-          # Проверка НАЛИЧИЯ, а не текста вывода: «installed 0/1 packages» без слова failed
-          # означает «уже стоит», и разбирать английские фразы choco — ненадёжная опора.
-          # Каталог на месте — установка удалась, чем бы choco ни отчитался.
           $gs = Get-ChildItem "$env:ProgramFiles\gs", "${env:ProgramFiles(x86)}\gs" -Directory -ErrorAction SilentlyContinue
           if (-not $gs) { Write-Host '::error::Ghostscript не найден после установки'; exit 1 }
           Write-Host ('Ghostscript: ' + ($gs | ForEach-Object { $_.FullName }) -join ', ')
