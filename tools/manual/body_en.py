@@ -533,10 +533,10 @@ def build():
 
     h2("6.1. Purpose and scope")
     p("The tool compares earlier and later versions of a born-digital PDF. By default, the result "
-      "is a unified redline: the later page is the base, additions are green, and deleted fragments "
-      "from the earlier version are overlaid in red with a strike line. Side by side keeps both "
-      "original pages and can be enabled without rerunning the comparison. This is a review window, "
-      "not an editor; neither source file is changed.")
+      "is a unified redline: the later page is the base, additions and added whitespace are green, "
+      "while deleted fragments and removed whitespace from the earlier version are red. Side by "
+      "side keeps both original pages and can be enabled without rerunning the comparison. This is "
+      "a review window, not an editor; neither source file is changed.")
     p("The words of both documents are compared as one document-wide stream. Physical-page "
       "pairing supplies the viewer rows and corroborates clear matches, but it does not start a "
       "separate comparison for each page. Moving existing text across a page boundary is therefore "
@@ -554,9 +554,10 @@ def build():
     picture("review", "The unified comparison document; Side by side is available next to it")
     p("In the unified view, the later page remains the background: additions are green and only "
       "deleted earlier-version fragments are transferred in red—unchanged earlier-page pixels do "
-      "not cover the result. Double-click opens the same marked-up view full screen. In Side by side, "
-      "a change fill follows the verified word box tightly and is not widened over a space, nearby "
-      "unchanged text or a geometry gap; either marked-up side can also be opened full screen.")
+      "not cover the result. Green and red marks separately show added and removed whitespace. "
+      "Double-click opens the same marked-up view full screen. In Side by side, only the compact "
+      "‘Red — removed’ and ‘Green — added’ legends remain above the pages, so service text does "
+      "not crowd the document; either side can also be opened full screen.")
     bullet("A red fill, strike line and − mean a word removed from the earlier version. In the unified "
            "redline the fragment is overlaid on the later page; in Side by side it remains in the "
            "left pane.", bold_head="Removed from the earlier version. ")
@@ -589,11 +590,12 @@ def build():
          bold_head="Adjust only the displayed pair if necessary. ")
 
     h2("6.4. Selecting and copying")
-    p("Both pages remain read-only, but trusted text can be selected. Drag over words, press Ctrl+A "
-      "to select trusted text on the current page, and Ctrl+C to copy it as Unicode. The local "
-      "“Copy” and “Select all page text” menu commands do the same. The result pastes into an "
-      "ordinary field, document or another application; text cannot be pasted into or edited in "
-      "the Review pane.")
+    p("Both pages remain read-only, but trusted text can be selected. Selection can start and "
+      "continue in the natural white space immediately around a line, so drag through the required "
+      "words without pixel-perfect aiming. Press Ctrl+A to select trusted text on the current page, "
+      "and Ctrl+C to copy it as Unicode. The local “Copy” and “Select all page text” menu commands "
+      "do the same. The result pastes into an ordinary field, document or another application; text "
+      "cannot be pasted into or edited in the Review pane.")
     bullet("Only words in the finally published text layer of this page reach the clipboard. The "
            "page image, OCR, coordinates, gap width and display wrapping cannot create letters.",
            bold_head="Words come only from the PDF. ")

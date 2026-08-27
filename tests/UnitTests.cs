@@ -177,6 +177,7 @@ namespace ExcelMerger.Tests
             Run("PDF Review Form: wheel маршрутизируется по указателю, фильтр снимается", TestReviewWheelRoutingLive);
             Run("PDF Review Unified: поздняя база и ownership обеих пометок", TestReviewUnifiedContent);
             Run("PDF Review Unified: redline-композитор не переносит неизменённый фон", TestReviewUnifiedCompositor);
+            Run("PDF Review UI: единый режим показывает добавленные и удалённые пробелы", TestReviewUnifiedWhitespaceMarkers);
             Run("PDF Review UI: общий режим по умолчанию, splitter и полноэкранный canvas", TestReviewViewModesLive);
             Run("Что нового: версия, настройки, компактное окно и добровольная поддержка", TestWhatsNewExperience);
             Run("PdfSplitPlan: выделение после удаления берёт исходные страницы", TestSplitPlanSelected);
@@ -560,7 +561,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
-            const int ExactTests = 521;
+            const int ExactTests = 522;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total != ExactTests)
@@ -2223,23 +2224,25 @@ namespace ExcelMerger.Tests
                                    !summary.Bounds.IntersectsWith(compare.Bounds),
                             "нет наложений строки статуса (ширина " + width + ")");
 
-                        AssertReviewLegendUnobscured(
-                            ReviewPrivateField<Label>(form, "_leftLegend"),
-                            ReviewPrivateField<Label>(form, "_leftWhitespaceLegend"),
+                        Label leftLegend = ReviewPrivateField<Label>(form, "_leftLegend");
+                        Label rightLegend = ReviewPrivateField<Label>(form, "_rightLegend");
+                        AssertReviewCompactLegend(leftLegend,
                             ReviewPrivateField<TextBox>(form, "_leftPageInput"),
                             width, "левая");
-                        AssertReviewLegendUnobscured(
-                            ReviewPrivateField<Label>(form, "_rightLegend"),
-                            ReviewPrivateField<Label>(form, "_rightWhitespaceLegend"),
+                        AssertReviewCompactLegend(rightLegend,
                             ReviewPrivateField<TextBox>(form, "_rightPageInput"),
                             width, "правая");
+                        AssertEqual(Loc.T("review.legend.removed"), leftLegend.Text,
+                            "левая легенда содержит только краткое значение цвета");
+                        AssertEqual(Loc.T("review.legend.added"), rightLegend.Text,
+                            "правая легенда содержит только краткое значение цвета");
                         form.Close();
                     }
                 }
             });
         }
 
-        private static void AssertReviewLegendUnobscured(Label ownership, Label whitespace,
+        private static void AssertReviewCompactLegend(Label ownership,
             TextBox pageInput, int width, string side)
         {
             Control legendLayer = ownership.Parent;
@@ -2250,22 +2253,21 @@ namespace ExcelMerger.Tests
                 side + " легенда и навигатор имеют общий layout (ширина " + width + ")");
 
             Rectangle ownershipRect = ownership.RectangleToScreen(ownership.ClientRectangle);
-            Rectangle whitespaceRect = whitespace.RectangleToScreen(whitespace.ClientRectangle);
             Rectangle navigatorRect = navigator.RectangleToScreen(navigator.ClientRectangle);
             AssertTrue(ownership.Visible && ownershipRect.Width > 20 &&
                        ownershipRect.Height >= ownership.Font.Height,
-                side + " ownership-легенда имеет видимую область (ширина " + width + ")");
+                side + " легенда имеет видимую область (ширина " + width + ")");
             AssertTrue(!ownershipRect.IntersectsWith(navigatorRect),
-                side + " ownership-легенда не закрыта навигатором (ширина " + width + ")");
-            AssertTrue(!ownershipRect.IntersectsWith(whitespaceRect),
-                side + " ownership и whitespace-легенды не перекрываются (ширина " + width + ")");
+                side + " легенда не закрывает навигатор (ширина " + width + ")");
+            AssertTrue(top.Height <= 80,
+                side + " служебная полоса не отнимает место у PDF (ширина " + width + ")");
 
             Point center = new Point(ownershipRect.Left + ownershipRect.Width / 2,
                 ownershipRect.Top + ownershipRect.Height / 2);
             Control topmost = top.GetChildAtPoint(top.PointToClient(center),
                 GetChildAtPointSkip.Invisible);
             AssertTrue(ReferenceEquals(legendLayer, topmost),
-                side + " ownership-легенда находится в верхнем layout-слое (ширина " + width + ")");
+                side + " легенда находится в верхнем layout-слое (ширина " + width + ")");
         }
 
         private static void TestGhostscriptReprobe()
@@ -7252,6 +7254,16 @@ namespace ExcelMerger.Tests
                     surface.ClearSelection();
 
                     InvokeReviewSurfaceMouse(surface, "OnMouseDown",
+                        new MouseEventArgs(MouseButtons.Left, 1, 27, 34, 0));
+                    InvokeReviewSurfaceMouse(surface, "OnMouseMove",
+                        new MouseEventArgs(MouseButtons.Left, 0, 53, 34, 0));
+                    InvokeReviewSurfaceMouse(surface, "OnMouseUp",
+                        new MouseEventArgs(MouseButtons.Left, 1, 53, 34, 0));
+                    AssertEqual(3, surface.SelectedWordCount,
+                        "drag через белые промежутки рядом с текстом не имеет слепых зон");
+                    surface.ClearSelection();
+
+                    InvokeReviewSurfaceMouse(surface, "OnMouseDown",
                         new MouseEventArgs(MouseButtons.Left, 1, 18, 25, 0));
                     InvokeReviewSurfaceMouse(surface, "OnMouseMove",
                         new MouseEventArgs(MouseButtons.Left, 0, 58, 25, 0));
@@ -11500,11 +11512,12 @@ namespace ExcelMerger.Tests
                 "обычная пара использует позднюю версию как основу");
             AssertEqual(PdfReviewHighlightStyle.Added, content.BaseHighlight.Style,
                 "зелёная семантика принадлежит поздней основе");
-            AssertTrue(content.OverlayPage != null &&
-                content.OverlayPage.SourcePath == "left.pdf" &&
+            AssertTrue(content.OverlayPage == null &&
                 content.OverlayHighlight.Style == PdfReviewHighlightStyle.Removed,
-                "удалённые фрагменты приходят только из ранней версии");
+                "удаление передаётся как красная геометрия без старых глифов поверх поздней страницы");
             AssertEqual(42L, content.Revision, "revision переносится в единый canvas");
+            AssertTrue(content.IsComposite,
+                "красная deletion-геометрия остаётся частью единого content без второго raster");
 
             var leftOnly = new PdfReviewPagePair
             {
@@ -11539,38 +11552,71 @@ namespace ExcelMerger.Tests
             {
                 using (Graphics graphics = Graphics.FromImage(target))
                     graphics.Clear(Color.White);
-                Bitmap earlier = new Bitmap(200, 200);
-                using (Graphics graphics = Graphics.FromImage(earlier))
-                {
-                    graphics.Clear(Color.LightBlue);
-                    graphics.FillRectangle(Brushes.Black, 20, 50, 50, 30);
-                }
-                earlier = PdfReviewPageView.DrawHighlight(earlier, highlight, false);
-                try
-                {
-                    PdfReviewUnifiedRenderer.OverlayDeletedFragments(target, earlier,
-                        highlight);
-                    AssertEqual(Color.White.ToArgb(), target.GetPixel(180, 180).ToArgb(),
-                        "неизменённый фон ранней страницы не попал в redline");
-                    int changed = 0;
-                    for (int y = 0; y < target.Height; y++)
-                        for (int x = 0; x < target.Width; x++)
-                            if (target.GetPixel(x, y).ToArgb() != Color.White.ToArgb())
-                                changed++;
-                    AssertTrue(changed > 100 && changed < target.Width * target.Height / 3,
-                        "перенесён только ограниченный удалённый фрагмент: " + changed);
-                }
-                finally { earlier.Dispose(); }
+                PdfReviewUnifiedRenderer.DrawDeletedMarkers(target, highlight);
+                AssertEqual(Color.White.ToArgb(), target.GetPixel(45, 60).ToArgb(),
+                    "единый режим не переносит старые глифы и фон поверх поздней строки");
+                AssertTrue(ReviewHasColoredPixel(target, 16, 74, 42, 84),
+                    "красная deletion-рамка и перечёркивание остаются видимыми");
+                int changed = 0;
+                for (int y = 0; y < target.Height; y++)
+                    for (int x = 0; x < target.Width; x++)
+                        if (target.GetPixel(x, y).ToArgb() != Color.White.ToArgb())
+                            changed++;
+                AssertTrue(changed > 20 && changed < target.Width * target.Height / 20,
+                    "deletion-маркер ограничен рамкой и не наслаивает страницу: " + changed);
             }
+        }
 
-            using (var fallback = new Bitmap(200, 200))
+        private static void TestReviewUnifiedWhitespaceMarkers()
+        {
+            PdfReviewPage leftPage = ReviewPageFromWords(0,
+                W("old", 10, 100, 20, 10));
+            PdfReviewPage rightPage = ReviewPageFromWords(0,
+                W("new", 10, 100, 20, 10));
+            var left = new PdfReviewDocument { Path = "left.pdf" };
+            var right = new PdfReviewDocument { Path = "right.pdf" };
+            left.Pages.Add(leftPage);
+            right.Pages.Add(rightPage);
+            var result = new PdfReviewResult { Left = left, Right = right };
+            var pair = new PdfReviewPagePair
+                { LeftPageIndex = 0, RightPageIndex = 0 };
+            result.Pairs.Add(pair);
+            var removed = new PdfReviewWhitespaceMarker
             {
-                using (Graphics graphics = Graphics.FromImage(fallback))
-                    graphics.Clear(Color.White);
-                PdfReviewUnifiedRenderer.DrawDeletedMarkers(fallback, highlight);
-                AssertTrue(fallback.GetPixel(25, 60).ToArgb() != Color.White.ToArgb(),
-                    "при недоступном раннем растре красная deletion-рамка не исчезает");
-            }
+                Box = new PdfReviewBox { Left = 30, Bottom = 90, Right = 31, Top = 100 },
+                Text = "− ␠",
+                Style = PdfReviewHighlightStyle.Removed
+            };
+            var added = new PdfReviewWhitespaceMarker
+            {
+                Box = new PdfReviewBox { Left = 34, Bottom = 90, Right = 35, Top = 100 },
+                Text = "+ ↵",
+                Style = PdfReviewHighlightStyle.Added
+            };
+            result.DeletedWhitespaceByPage[0] =
+                new List<PdfReviewWhitespaceMarker> { removed };
+            result.InsertedWhitespaceByPage[0] =
+                new List<PdfReviewWhitespaceMarker> { added };
+
+            PdfReviewViewContent content = PdfReviewForm.BuildUnifiedContent(result,
+                pair, 73L);
+            AssertTrue(content != null && content.BaseHighlight != null,
+                "единый content построен на поздней странице");
+            AssertEqual(2, content.BaseHighlight.WhitespaceMarkers.Count,
+                "единый холст получает оба направления пробельного diff");
+            AssertTrue(object.ReferenceEquals(added,
+                           content.BaseHighlight.WhitespaceMarkers[0]) &&
+                       object.ReferenceEquals(removed,
+                           content.BaseHighlight.WhitespaceMarkers[1]),
+                "добавление и удаление сохраняют authoritative marker identity");
+            AssertEqual(PdfReviewHighlightStyle.Added,
+                content.BaseHighlight.WhitespaceMarkers[0].Style,
+                "зелёный marker остаётся добавлением");
+            AssertEqual(PdfReviewHighlightStyle.Removed,
+                content.BaseHighlight.WhitespaceMarkers[1].Style,
+                "красный marker остаётся удалением");
+            AssertTrue(content.OverlayPage == null && content.OverlayHighlight == null,
+                "whitespace-only изменение не создаёт deletion-слой без удалённых слов");
         }
 
         private static void TestReviewViewModesLive()
@@ -11597,8 +11643,11 @@ namespace ExcelMerger.Tests
                         AssertEqual(PdfReviewViewMode.Unified,
                             ReviewPrivateField<PdfReviewViewMode>(form, "_viewMode"),
                             "общий redline — режим по умолчанию");
-                        AssertTrue(unified.Visible && !side.Visible && unifiedButton.Selected,
-                            "по умолчанию виден один общий canvas");
+                        Panel unifiedLegend = ReviewPrivateField<Panel>(form,
+                            "_unifiedLegend");
+                        AssertTrue(unified.Visible && !side.Visible && unifiedButton.Selected &&
+                                   unifiedLegend.Visible,
+                            "по умолчанию виден один общий canvas с его легендой");
                         AssertTrue(!body.IsSplitterFixed && body.SplitterWidth >= 6,
                             "список сопоставления имеет заметный подвижный splitter");
                         int before = body.SplitterDistance;
@@ -11607,13 +11656,19 @@ namespace ExcelMerger.Tests
                         AssertTrue(body.SplitterDistance != before,
                             "ширина списка 1↔1 регулируется пользователем");
 
+                        AssertTrue(unified.Bounds == unified.Parent.ClientRectangle &&
+                                   side.Bounds == side.Parent.ClientRectangle,
+                            "оба режима заполняют весь view host при дефолтном размере");
+                        AssertTrue(unified.Width >= 400 && unified.Height >= 300,
+                            "единый холст остаётся рабочим при дефолтном размере окна");
                         sideButton.PerformClick();
                         Application.DoEvents();
                         AssertEqual(PdfReviewViewMode.SideBySide,
                             ReviewPrivateField<PdfReviewViewMode>(form, "_viewMode"),
                             "бок о бок остаётся доступен");
-                        AssertTrue(side.Visible && !unified.Visible && sideButton.Selected,
-                            "переключение меняет только представление");
+                        AssertTrue(side.Visible && !unified.Visible && sideButton.Selected &&
+                                   !unifiedLegend.Visible,
+                            "переключение скрывает общий canvas и его описание");
                         unifiedButton.PerformClick();
                         AssertTrue(unifiedView.AllowFullScreen,
                             "единый canvas разрешает полноэкранный просмотр с тем же content");
@@ -11631,8 +11686,9 @@ namespace ExcelMerger.Tests
                 "docs", "whatsnew.json"));
             string ru = UpdateChecker.ExtractNotes(json, "1.18.5", "ru");
             string en = UpdateChecker.ExtractNotes(json, "1.18.5", "en");
-            AssertTrue(ru.Contains("единый документ") && en.Contains("unified redline"),
-                "каталог 1.18.5 объясняет новый режим понятным языком");
+            AssertTrue(ru.Contains("Появилось сравнение") &&
+                       en.Contains("comparison is now available"),
+                "каталог 1.18.5 честно сообщает, что сравнение PDF появилось впервые");
             AssertTrue(ru.Split('\n').Length >= 5 && en.Split('\n').Length >= 5,
                 "окно получает краткий список заметных изменений");
             AssertTrue(WhatsNewCatalog.ShouldShow(new UserSettings(), "1.18.5"),
@@ -11661,12 +11717,46 @@ namespace ExcelMerger.Tests
                         form.Show();
                         Application.DoEvents();
                         Panel support = ReviewPrivateField<Panel>(form, "_supportPanel");
+                        Panel scroll = ReviewPrivateField<Panel>(form, "_scroll");
+                        LinkLabel supportLink = ReviewPrivateField<LinkLabel>(form,
+                            "_supportLink");
                         AccentCheckBox option = ReviewPrivateField<AccentCheckBox>(form,
                             "_dontShow");
+                        AssertEqual(0, -scroll.AutoScrollPosition.Y,
+                            "первое открытие начинается с первого пункта без пустого поля");
+                        Rectangle work = Screen.FromControl(form).WorkingArea;
+                        Point formCenter = new Point(form.Left + form.Width / 2,
+                            form.Top + form.Height / 2);
+                        AssertTrue(Math.Abs(formCenter.X - (work.Left + work.Width / 2)) <= 8 &&
+                                   Math.Abs(formCenter.Y - (work.Top + work.Height / 2)) <= 8,
+                            "ручное открытие без owner центрируется на рабочем экране");
                         AssertTrue(!support.Visible,
                             "реквизиты не навязываются и изначально свернуты");
                         AssertTrue(option.Checked,
                             "ручное окно отражает отключённый автопоказ");
+
+                        scroll.AutoScrollPosition = new Point(0,
+                            Math.Max(0, supportLink.Bottom - scroll.ClientSize.Height / 2));
+                        Application.DoEvents();
+                        int beforeExpand = -scroll.AutoScrollPosition.Y;
+                        int linkScreenY = supportLink.PointToScreen(Point.Empty).Y;
+                        supportLink.Links[0].LinkData = null;
+                        typeof(LinkLabel).GetMethod("OnLinkClicked", BindingFlags.Instance |
+                            BindingFlags.NonPublic).Invoke(supportLink,
+                                new object[] { new LinkLabelLinkClickedEventArgs(
+                                    supportLink.Links[0]) });
+                        Application.DoEvents();
+                        int afterExpand = -scroll.AutoScrollPosition.Y;
+                        AssertTrue(support.Visible,
+                            "поддержка раскрывается по явному запросу");
+                        AssertTrue(afterExpand >= beforeExpand,
+                            "раскрытие поддержки не прокручивает список наверх");
+                        AssertTrue(Math.Abs(supportLink.PointToScreen(Point.Empty).Y -
+                            linkScreenY) <= 2,
+                            "раскрытие поддержки не сдвигает нажатую ссылку и не создаёт пустую область над пунктом 1");
+                        AssertTrue(support.RectangleToScreen(support.ClientRectangle).Top <
+                            scroll.RectangleToScreen(scroll.ClientRectangle).Bottom,
+                            "раскрытые реквизиты попадают в видимую область");
                         var layoutProblems = new List<string>();
                         CheckFits(form, "WhatsNewForm", layoutProblems);
                         AssertTrue(layoutProblems.Count == 0,

@@ -168,6 +168,7 @@ namespace ExcelMerger
         public PdfReviewBox Box;
         public string Text;
         public string AccessibleDescription;
+        public PdfReviewHighlightStyle Style;
     }
 
     internal enum PdfReviewChangeBarSide

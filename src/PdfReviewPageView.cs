@@ -395,7 +395,6 @@ namespace ExcelMerger
                     }
 
                     BudgetedBitmap rendered = null;
-                    BudgetedBitmap overlay = null;
                     PdfReviewViewContent content = request.Content;
                     try
                     {
@@ -405,15 +404,8 @@ namespace ExcelMerger
                                 request.RenderWidth, content.BaseHighlight);
                             if (rendered != null && content.IsComposite)
                             {
-                                overlay = RenderHighlighted(renderer, content.OverlayPage,
-                                    request.RenderWidth, content.OverlayHighlight);
-                                if (overlay != null)
-                                    PdfReviewUnifiedRenderer.OverlayDeletedFragments(
-                                        rendered.Bitmap, overlay.Bitmap,
-                                        content.OverlayHighlight);
-                                else
-                                    PdfReviewUnifiedRenderer.DrawDeletedMarkers(
-                                        rendered.Bitmap, content.OverlayHighlight);
+                                PdfReviewUnifiedRenderer.DrawDeletedMarkers(
+                                    rendered.Bitmap, content.OverlayHighlight);
                             }
                         }
                     }
@@ -421,10 +413,6 @@ namespace ExcelMerger
                     {
                         if (rendered != null) rendered.Dispose();
                         rendered = null;
-                    }
-                    finally
-                    {
-                        if (overlay != null) overlay.Dispose();
                     }
                     BudgetedBitmap ready = rendered;
                     if (!Ui.OnUi(this, delegate
@@ -521,7 +509,7 @@ namespace ExcelMerger
                 {
                     graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     if (whitespace.Count > 0)
-                        PrepareWhitespacePlacements(graphics, copy, rectangles, whitespace);
+                        PrepareWhitespacePlacements(graphics, copy, whitespace);
                     Color color, edgeColor;
                     ResolveHighlightColors(highlight, false, out color, out edgeColor);
                     var railAnchors = new List<RectangleF>(
@@ -531,7 +519,7 @@ namespace ExcelMerger
                         railAnchors.Add(item.Anchor);
                     DrawChangeBars(graphics, copy, MergeLineBands(railAnchors), highlight,
                         edgeColor, color);
-                    DrawWhitespaceMarkers(graphics, whitespace, edgeColor, color);
+                    DrawWhitespaceMarkers(graphics, highlight, whitespace, edgeColor);
                 }
                 source.Dispose();
                 return copy;
@@ -557,7 +545,7 @@ namespace ExcelMerger
                 using (Graphics g = Graphics.FromImage(copy))
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
-                    PrepareWhitespacePlacements(g, copy, rectangles, whitespace);
+                    PrepareWhitespacePlacements(g, copy, whitespace);
                     using (var edge = new Pen(Color.FromArgb(255, edgeColor), 3f))
                     using (var primary = new Pen(Color.FromArgb(255, color), 1.5f))
                     {
@@ -583,7 +571,7 @@ namespace ExcelMerger
                         DrawChangeBars(g, copy, MergeLineBands(railAnchors), highlight,
                             edgeColor, color);
                     }
-                    DrawWhitespaceMarkers(g, whitespace, edgeColor, color);
+                    DrawWhitespaceMarkers(g, highlight, whitespace, edgeColor);
                 }
                 source.Dispose();
                 return copy;
@@ -710,106 +698,40 @@ namespace ExcelMerger
         }
 
         private static void PrepareWhitespacePlacements(Graphics graphics, Bitmap source,
-            IList<RectangleF> wordRectangles, IList<WhitespaceDrawInfo> whitespace)
+            IList<WhitespaceDrawInfo> whitespace)
         {
             if (graphics == null || source == null || whitespace == null)
                 return;
-            var occupied = new List<RectangleF>();
             float preferred = Math.Max(10f, Math.Min(18f, source.Width / 70f));
             foreach (WhitespaceDrawInfo item in whitespace)
             {
                 if (item == null || item.Marker == null)
                     continue;
-                for (float size = preferred; size >= 8f; size -= 2f)
-                {
-                    RectangleF bounds;
-                    using (var font = new Font(FontFamily.GenericSansSerif, size,
-                        FontStyle.Bold, GraphicsUnit.Pixel))
-                    {
-                        SizeF measured = graphics.MeasureString(item.Marker.Text, font,
-                            PointF.Empty, StringFormat.GenericTypographic);
-                        bounds = FindWhitespaceBounds(source, item.Anchor,
-                            (float)Math.Ceiling(measured.Width) + 6f,
-                            (float)Math.Ceiling(measured.Height) + 4f,
-                            wordRectangles, occupied);
-                    }
-                    if (!bounds.IsEmpty)
-                    {
-                        item.Bounds = bounds;
-                        item.FontSize = size;
-                        occupied.Add(bounds);
-                        break;
-                    }
-                }
-                // Если на этой строке нет чистого участка бумаги, текстовый token не
-                // рисуется поверх исходного ink. Rail/знак и AccessibleDescription остаются.
+                item.Bounds = VisibleWhitespaceBounds(graphics, source, item.Marker.Text,
+                    item.Anchor, preferred);
+                item.FontSize = preferred;
             }
         }
 
-        private static RectangleF FindWhitespaceBounds(Bitmap source, RectangleF anchor,
-            float width, float height, IList<RectangleF> words, IList<RectangleF> occupied)
+        private static RectangleF VisibleWhitespaceBounds(Graphics graphics, Bitmap source,
+            string text, RectangleF anchor, float fontSize)
         {
-            if (source == null || width <= 0 || height <= 0 ||
-                width > source.Width - 4 || height > source.Height - 4)
-                return RectangleF.Empty;
-            float y = Math.Max(2f, Math.Min(source.Height - height - 2f,
-                anchor.Top + anchor.Height / 2f - height / 2f));
-            var inline = new RectangleF(
-                Math.Max(2f, Math.Min(source.Width - width - 2f,
-                    anchor.Left + anchor.Width / 2f - width / 2f)),
-                y, width, height);
-            if (MarkerAreaAvailable(source, inline, words, occupied))
-                return inline;
-
-            // Inline часто узок: ищем чистое место той же строки от внешнего поля.
-            // Сторона определяется ближайшим краем marker-anchor и не меняет семантику.
-            bool fromLeft = anchor.Left + anchor.Width / 2f <= source.Width / 2f;
-            int max = Math.Max(2, (int)Math.Floor(source.Width - width - 2f));
-            if (fromLeft)
+            float width, height;
+            using (var font = new Font(FontFamily.GenericSansSerif, fontSize,
+                FontStyle.Bold, GraphicsUnit.Pixel))
             {
-                for (int x = 2; x <= max; x += 4)
-                {
-                    var candidate = new RectangleF(x, y, width, height);
-                    if (MarkerAreaAvailable(source, candidate, words, occupied))
-                        return candidate;
-                }
+                SizeF measured = graphics.MeasureString(text, font,
+                    PointF.Empty, StringFormat.GenericTypographic);
+                width = (float)Math.Ceiling(measured.Width) + 6f;
+                height = (float)Math.Ceiling(measured.Height) + 4f;
             }
-            else
-            {
-                for (int x = max; x >= 2; x -= 4)
-                {
-                    var candidate = new RectangleF(x, y, width, height);
-                    if (MarkerAreaAvailable(source, candidate, words, occupied))
-                        return candidate;
-                }
-            }
-            return RectangleF.Empty;
-        }
-
-        private static bool MarkerAreaAvailable(Bitmap source, RectangleF candidate,
-            IList<RectangleF> words, IList<RectangleF> occupied)
-        {
-            if (!IsClearPaperArea(source, candidate))
-                return false;
-            if (IntersectsInflated(candidate, words, 4f) ||
-                IntersectsInflated(candidate, occupied, 2f))
-                return false;
-            return true;
-        }
-
-        private static bool IntersectsInflated(RectangleF candidate,
-            IList<RectangleF> rectangles, float inflate)
-        {
-            if (rectangles == null)
-                return false;
-            foreach (RectangleF value in rectangles)
-            {
-                RectangleF blocked = value;
-                blocked.Inflate(inflate, inflate);
-                if (candidate.IntersectsWith(blocked))
-                    return true;
-            }
-            return false;
+            width = Math.Min(Math.Max(8f, width), Math.Max(8f, source.Width - 4f));
+            height = Math.Min(Math.Max(8f, height), Math.Max(8f, source.Height - 4f));
+            float x = anchor.Left + anchor.Width / 2f - width / 2f;
+            float y = anchor.Top + anchor.Height / 2f - height / 2f;
+            x = Math.Max(2f, Math.Min(source.Width - width - 2f, x));
+            y = Math.Max(2f, Math.Min(source.Height - height - 2f, y));
+            return new RectangleF(x, y, width, height);
         }
 
         private static bool IsClearPaperArea(Bitmap bitmap, RectangleF area)
@@ -946,7 +868,8 @@ namespace ExcelMerger
         }
 
         private static void DrawWhitespaceMarkers(Graphics graphics,
-            IList<WhitespaceDrawInfo> whitespace, Color edgeColor, Color color)
+            PdfReviewHighlight highlight, IList<WhitespaceDrawInfo> whitespace,
+            Color edgeColor)
         {
             if (graphics == null || whitespace == null)
                 return;
@@ -955,12 +878,30 @@ namespace ExcelMerger
                 if (item == null || item.Marker == null || item.Bounds.IsEmpty ||
                     item.FontSize <= 0)
                     continue;
+                PdfReviewHighlightStyle style = MarkerStyle(item.Marker,
+                    highlight == null ? PdfReviewHighlightStyle.Added : highlight.Style);
+                Color markerColor = style == PdfReviewHighlightStyle.Removed
+                    ? Theme.ReviewDeleteMarker : Theme.ReviewInsertMarker;
+                if (SystemInformation.HighContrast)
+                    markerColor = edgeColor;
                 using (var font = new Font(FontFamily.GenericSansSerif, item.FontSize,
                     FontStyle.Bold, GraphicsUnit.Pixel))
                     DrawOutlinedText(graphics, item.Marker.Text, font,
                         new PointF(item.Bounds.Left + 3f, item.Bounds.Top + 2f),
-                        edgeColor, color);
+                        markerColor, markerColor);
             }
+        }
+
+        private static PdfReviewHighlightStyle MarkerStyle(
+            PdfReviewWhitespaceMarker marker, PdfReviewHighlightStyle fallback)
+        {
+            if (marker == null || string.IsNullOrEmpty(marker.Text))
+                return fallback;
+            if (marker.Text.StartsWith("−", StringComparison.Ordinal))
+                return PdfReviewHighlightStyle.Removed;
+            if (marker.Text.StartsWith("+", StringComparison.Ordinal))
+                return PdfReviewHighlightStyle.Added;
+            return marker.Style;
         }
 
         private static void DrawOutlinedText(Graphics graphics, string text, Font font,

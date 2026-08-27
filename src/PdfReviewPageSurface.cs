@@ -27,7 +27,8 @@ namespace ExcelMerger
         private const int AutoScrollMargin = 28;
         private const int AutoScrollStep = 22;
         private const int ChangeBarHitWidth = 24;
-        private const int WordBucketHeight = 32;
+        private const int SelectionHitPadding = 6;
+        private const int SelectionLinePadding = 10;
 
         private sealed class ChangeBarHit
         {
@@ -48,8 +49,6 @@ namespace ExcelMerger
         private bool _dragging;
         private Size _rectangleSize;
         private readonly List<RectangleF> _wordRectangles = new List<RectangleF>();
-        private readonly Dictionary<int, List<int>> _wordBuckets =
-            new Dictionary<int, List<int>>();
         private readonly Dictionary<PdfReviewWord, int> _wordIndex =
             new Dictionary<PdfReviewWord, int>();
         private readonly List<ChangeBarHit> _changeBarHits = new List<ChangeBarHit>();
@@ -233,7 +232,7 @@ namespace ExcelMerger
                     }
                     return;
                 }
-                int hit = HitTestWord(e.Location, false);
+                int hit = HitTestWord(e.Location, true);
                 if (hit < 0)
                 {
                     ClearSelection();
@@ -444,39 +443,38 @@ namespace ExcelMerger
             EnsureRectangleCache();
             if (IsChangeBarHitX(point.X))
                 return -1;
-            int firstBucket = (int)Math.Floor((point.Y -
-                (nearest ? PdfReviewTextSelection.NearestDragDistance : 0f)) / WordBucketHeight);
-            int lastBucket = (int)Math.Floor((point.Y +
-                (nearest ? PdfReviewTextSelection.NearestDragDistance : 0f)) / WordBucketHeight);
-            var candidates = new HashSet<int>();
-            for (int bucket = firstBucket; bucket <= lastBucket; bucket++)
-            {
-                List<int> indexes;
-                if (_wordBuckets.TryGetValue(bucket, out indexes))
-                    foreach (int index in indexes)
-                        candidates.Add(index);
-            }
-            foreach (int index in candidates)
+            int bestExact = -1;
+            double bestExactDistance = double.MaxValue;
+            for (int index = 0; index < _wordRectangles.Count; index++)
             {
                 RectangleF rect = _wordRectangles[index];
-                if (!rect.IsEmpty && rect.Contains(point))
-                    return index;
+                if (rect.IsEmpty)
+                    continue;
+                RectangleF hit = rect;
+                hit.Inflate(SelectionHitPadding, SelectionLinePadding);
+                if (!hit.Contains(point))
+                    continue;
+                double distance = RectangleDistanceSquared(rect, point);
+                if (distance < bestExactDistance ||
+                    (Math.Abs(distance - bestExactDistance) < 0.0001 &&
+                     (bestExact < 0 || index < bestExact)))
+                {
+                    bestExactDistance = distance;
+                    bestExact = index;
+                }
             }
-            if (!nearest)
-                return -1;
+            if (bestExact >= 0 || !nearest)
+                return bestExact;
 
             double best = (double)PdfReviewTextSelection.NearestDragDistance *
                 PdfReviewTextSelection.NearestDragDistance;
             int bestIndex = -1;
-            foreach (int index in candidates)
+            for (int index = 0; index < _wordRectangles.Count; index++)
             {
                 RectangleF rect = _wordRectangles[index];
-                if (rect.IsEmpty) continue;
-                double dx = point.X < rect.Left ? rect.Left - point.X :
-                    point.X > rect.Right ? point.X - rect.Right : 0;
-                double dy = point.Y < rect.Top ? rect.Top - point.Y :
-                    point.Y > rect.Bottom ? point.Y - rect.Bottom : 0;
-                double distance = dx * dx + dy * dy;
+                if (rect.IsEmpty)
+                    continue;
+                double distance = RectangleDistanceSquared(rect, point);
                 if (distance < best || (Math.Abs(distance - best) < 0.0001 &&
                     (bestIndex < 0 || index < bestIndex)))
                 {
@@ -485,6 +483,15 @@ namespace ExcelMerger
                 }
             }
             return bestIndex;
+        }
+
+        private static double RectangleDistanceSquared(RectangleF rect, Point point)
+        {
+            double dx = point.X < rect.Left ? rect.Left - point.X :
+                point.X > rect.Right ? point.X - rect.Right : 0;
+            double dy = point.Y < rect.Top ? rect.Top - point.Y :
+                point.Y > rect.Bottom ? point.Y - rect.Bottom : 0;
+            return dx * dx + dy * dy;
         }
 
         private void EnsureRectangleCache()
@@ -507,15 +514,6 @@ namespace ExcelMerger
                     _wordIndex.Add(selectable.Word, i);
                 if (rect.IsEmpty)
                     continue;
-                int first = (int)Math.Floor(rect.Top / WordBucketHeight);
-                int last = (int)Math.Floor(rect.Bottom / WordBucketHeight);
-                for (int bucket = first; bucket <= last; bucket++)
-                {
-                    List<int> indexes;
-                    if (!_wordBuckets.TryGetValue(bucket, out indexes))
-                        _wordBuckets[bucket] = indexes = new List<int>();
-                    indexes.Add(i);
-                }
             }
             _rectangleSize = ClientSize;
         }
@@ -524,7 +522,6 @@ namespace ExcelMerger
         {
             _rectangleSize = Size.Empty;
             _wordRectangles.Clear();
-            _wordBuckets.Clear();
             _wordIndex.Clear();
         }
 

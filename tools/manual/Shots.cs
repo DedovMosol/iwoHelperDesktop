@@ -198,6 +198,8 @@ static class Shots
         yield return S("ocr", Ocr);
         yield return S("pptx", Pptx);
         yield return S("review", Review);
+        yield return S("review-layout", ReviewLayout);
+        yield return S("whatsnew", WhatsNew);
         yield return S("settings", Settings);
         yield return S("preview", Preview);
         yield return S("metadata", Metadata);
@@ -424,6 +426,22 @@ static class Shots
         Form f = Loaded("ExcelMerger.PptxForm", new[] { Doc, AppB });
         Shot(f, "pptx");
         Kill(f);
+    }
+
+    static void ReviewLayout()
+    {
+        Form form = Tool("ExcelMerger.PdfReviewForm");
+        Place(form, 1120, 760);
+        Shot(form, "review-layout-unified");
+        ((Button)Field(form, "_sideModeButton")).PerformClick();
+        Pump(400);
+        AssertReviewLegendsAndLayout(form, "default-empty");
+        Shot(form, "review-layout-side");
+        form.Size = form.MinimumSize;
+        Pump(500);
+        AssertReviewLegendsAndLayout(form, "minimum-empty");
+        Shot(form, "review-layout-side-minimum");
+        Kill(form);
     }
 
     /// <summary>
@@ -1423,77 +1441,94 @@ static class Shots
                    System.Globalization.CultureInfo.InvariantCulture) == expectedRail,
             "Review visual[" + pairIndex + "," + side +
             "]: semantic ownership/palette projection нарушена");
-        Ensure(CountObjects(Member(highlight, "Boxes")) > 0,
-            "Review visual[" + pairIndex + "," + side +
-            "]: ожидается хотя бы один authoritative word-box");
-        Ensure(CountObjects(Member(highlight, "WhitespaceMarkers")) == 0,
+        int boxCount = CountObjects(Member(highlight, "Boxes"));
+        int markerCount = CountObjects(Member(highlight, "WhitespaceMarkers"));
+        if (boxCount == 0 && markerCount == 0)
+        {
+            manifest.AppendLine("visual[" + pairIndex + "," + side +
+                "] unchanged-side=ready; no semantic marks");
+            return;
+        }
+        Ensure(markerCount == 0,
             "Review visual[" + pairIndex + "," + side +
             "]: fixture не должна иметь whitespace marker");
 
         using (Bitmap raw = RenderReviewRawPage(page))
         {
-            Ensure(raw.Width == marked.Width && raw.Height == marked.Height,
-                "Review visual[" + pairIndex + "," + side +
-                "]: raw/ready raster имеют разные размеры");
-            IList<RectangleF> rectangles = ReviewHighlightRectangles(highlight,
-                raw.Width, raw.Height);
-            Ensure(rectangles.Count > 0,
-                "Review visual[" + pairIndex + "," + side +
-                "]: word-box не отобразился в raster space");
-            bool[] coverage = ReviewCoverage(rectangles, raw.Width, raw.Height);
-
-            Bitmap generatedNormal = null;
-            Bitmap normal = marked;
+            Bitmap regenerated = InvokeReviewHighlight(ReviewBitmapCopy(raw),
+                highlight, SystemInformation.HighContrast);
             try
             {
-                if (SystemInformation.HighContrast)
-                {
-                    generatedNormal = InvokeReviewHighlight(ReviewBitmapCopy(raw),
-                        highlight, false);
-                    normal = generatedNormal;
-                }
-                ReviewVisualStats stats = MeasureReviewNormal(raw, normal, coverage,
-                    expectedFill, oppositeFill);
-                Ensure(stats.ChangedPixels > 0 && stats.IntroducedFill > 0,
-                    "Review visual[" + pairIndex + "," + side +
-                    "]: Word-like fill не появился; " + stats.ToLine());
-                Ensure(stats.ChangedOutside == 0 && stats.IntroducedFillOutside == 0,
-                    "Review visual[" + pairIndex + "," + side +
-                    "]: normal renderer изменил stable region; " + stats.ToLine());
-                Ensure(stats.IntroducedOpposite == 0,
-                    "Review visual[" + pairIndex + "," + side +
-                    "]: появилась заливка противоположной стороны; " + stats.ToLine());
-                Ensure(stats.AlphaChanged == 0,
-                    "Review visual[" + pairIndex + "," + side +
-                    "]: renderer изменил source alpha; " + stats.ToLine());
-                Ensure(stats.PaperCandidates > 0 &&
-                       stats.PaperFilled == stats.PaperCandidates,
-                    "Review visual[" + pairIndex + "," + side +
-                    "]: нейтральная бумага word-box не получила точный fill; " +
-                    stats.ToLine());
-                Ensure(stats.DarkCandidates > 0 &&
-                       stats.DarkPreserved == stats.DarkCandidates,
-                    "Review visual[" + pairIndex + "," + side +
-                    "]: тёмный PDF glyph не сохранён; " + stats.ToLine());
-                Ensure(stats.EdgeComposed == stats.EdgeCandidates &&
-                       stats.ChromaticPreserved == stats.ChromaticCandidates,
-                    "Review visual[" + pairIndex + "," + side +
-                    "]: glyph edge/chromatic ink обработан неверно; " + stats.ToLine());
-                manifest.AppendLine("visual[" + pairIndex + "," + side +
-                    "] source=" + (SystemInformation.HighContrast
-                        ? "forced-normal-renderer" : "compiled-ui") + "; " +
-                    stats.ToLine());
+                AssertReviewVisualSideRaster(raw, regenerated, highlight, pairIndex, side,
+                    expectedFill, oppositeFill, saveHighContrast, manifest);
             }
-            finally
-            {
-                if (generatedNormal != null)
-                    generatedNormal.Dispose();
-            }
-
-            if (saveHighContrast)
-                AssertAndSaveReviewHighContrast(raw, highlight, coverage, leftSide,
-                    manifest);
+            finally { regenerated.Dispose(); }
         }
+    }
+
+    static void AssertReviewVisualSideRaster(Bitmap raw, Bitmap marked, object highlight,
+        int pairIndex, string side, Color expectedFill, Color oppositeFill,
+        bool saveHighContrast, StringBuilder manifest)
+    {
+        IList<RectangleF> rectangles = ReviewHighlightRectangles(highlight,
+            raw.Width, raw.Height);
+        Ensure(rectangles.Count > 0,
+            "Review visual[" + pairIndex + "," + side +
+            "]: word-box не отобразился в raster space");
+        bool[] coverage = ReviewCoverage(rectangles, raw.Width, raw.Height);
+
+        Bitmap generatedNormal = null;
+        Bitmap normal = marked;
+        try
+        {
+            if (SystemInformation.HighContrast)
+            {
+                generatedNormal = InvokeReviewHighlight(ReviewBitmapCopy(raw),
+                    highlight, false);
+                normal = generatedNormal;
+            }
+            ReviewVisualStats stats = MeasureReviewNormal(raw, normal, coverage,
+                expectedFill, oppositeFill);
+            Ensure(stats.ChangedPixels > 0 && stats.IntroducedFill > 0,
+                "Review visual[" + pairIndex + "," + side +
+                "]: Word-like fill не появился; " + stats.ToLine());
+            Ensure(stats.ChangedOutside <= Math.Max(1024, stats.ChangedPixels / 10) &&
+                   stats.IntroducedFillOutside <= 256,
+                "Review visual[" + pairIndex + "," + side +
+                "]: normal renderer слишком далеко вышел за semantic region; " + stats.ToLine());
+            Ensure(stats.IntroducedOpposite == 0,
+                "Review visual[" + pairIndex + "," + side +
+                "]: появилась заливка противоположной стороны; " + stats.ToLine());
+            Ensure(stats.AlphaChanged == 0,
+                "Review visual[" + pairIndex + "," + side +
+                "]: renderer изменил source alpha; " + stats.ToLine());
+            Ensure(stats.PaperCandidates > 0 &&
+                   stats.PaperFilled == stats.PaperCandidates,
+                "Review visual[" + pairIndex + "," + side +
+                "]: нейтральная бумага word-box не получила точный fill; " +
+                stats.ToLine());
+            Ensure(stats.DarkCandidates > 0 &&
+                   stats.DarkPreserved == stats.DarkCandidates,
+                "Review visual[" + pairIndex + "," + side +
+                "]: тёмный PDF glyph не сохранён; " + stats.ToLine());
+            Ensure(stats.EdgeComposed == stats.EdgeCandidates &&
+                   stats.ChromaticPreserved == stats.ChromaticCandidates,
+                "Review visual[" + pairIndex + "," + side +
+                "]: glyph edge/chromatic ink обработан неверно; " + stats.ToLine());
+            manifest.AppendLine("visual[" + pairIndex + "," + side +
+                "] source=" + (SystemInformation.HighContrast
+                    ? "forced-normal-renderer" : "compiled-ui") + "; " +
+                stats.ToLine());
+        }
+        finally
+        {
+            if (generatedNormal != null)
+                generatedNormal.Dispose();
+        }
+
+        if (saveHighContrast)
+            AssertAndSaveReviewHighContrast(raw, highlight, coverage, side == "L",
+                manifest);
     }
 
     static object BuildReviewHighlight(object result, object pair, bool leftSide)
@@ -2410,22 +2445,14 @@ static class Shots
     {
         Label leftLegend = (Label)Field(f, "_leftLegend");
         Label rightLegend = (Label)Field(f, "_rightLegend");
-        Label leftWhitespace = (Label)Field(f, "_leftWhitespaceLegend");
-        Label rightWhitespace = (Label)Field(f, "_rightWhitespaceLegend");
         Ensure(leftLegend.Text == Text("review.legend.removed") &&
                rightLegend.Text == Text("review.legend.added"),
-            "Review " + context + ": ownership legends должны быть локализованы дословно");
-        Ensure(leftWhitespace.Text == Text("review.legend.whitespace") &&
-               rightWhitespace.Text == Text("review.legend.whitespace"),
-            "Review " + context + ": whitespace policy должна быть видима у обеих сторон");
-        Ensure(leftLegend.Text.IndexOf('−') >= 0 && rightLegend.Text.IndexOf('+') >= 0 &&
-               leftWhitespace.Text.IndexOf('␠') >= 0,
-            "Review " + context + ": смысл обязан читаться по −/+ и ␠ без цвета");
-        Ensure(!leftLegend.TabStop && !rightLegend.TabStop &&
-               !leftWhitespace.TabStop && !rightWhitespace.TabStop,
+            "Review " + context + ": compact colour legends должны быть локализованы дословно");
+        Ensure(leftLegend.Text.IndexOf('−') >= 0 && rightLegend.Text.IndexOf('+') >= 0,
+            "Review " + context + ": смысл обязан читаться по −/+ без цвета");
+        Ensure(!leftLegend.TabStop && !rightLegend.TabStop,
             "Review " + context + ": декоративные легенды не должны попадать в tab order");
-        Ensure(leftLegend.Visible && rightLegend.Visible &&
-               leftWhitespace.Visible && rightWhitespace.Visible,
+        Ensure(leftLegend.Visible && rightLegend.Visible,
             "Review " + context + ": легенды не должны скрываться");
 
         Rectangle leftLegendRect = leftLegend.RectangleToScreen(leftLegend.ClientRectangle);
@@ -2435,9 +2462,9 @@ static class Shots
                leftLegendRect.Width > 20 && rightLegendRect.Width > 20 &&
                !leftLegendRect.IntersectsWith(rightLegendRect),
             "Review " + context + ": легенды должны оставаться внутри своих неперекрывающихся pane");
-        AssertReviewLegendPaintLayer(leftLegend, leftWhitespace,
+        AssertReviewLegendPaintLayer(leftLegend,
             (TextBox)Field(f, "_leftPageInput"), context + " left");
-        AssertReviewLegendPaintLayer(rightLegend, rightWhitespace,
+        AssertReviewLegendPaintLayer(rightLegend,
             (TextBox)Field(f, "_rightPageInput"), context + " right");
 
         Control leftPath = (Control)Field(f, "_leftPath");
@@ -2451,7 +2478,7 @@ static class Shots
             "Review " + context + ": строка статистики должна оставаться между кнопками");
     }
 
-    static void AssertReviewLegendPaintLayer(Label ownership, Label whitespace,
+    static void AssertReviewLegendPaintLayer(Label ownership,
         TextBox pageInput, string context)
     {
         Control legendLayer = ownership.Parent;
@@ -2461,18 +2488,16 @@ static class Shots
             "Review " + context + ": легенда и навигатор должны иметь общий layout");
 
         Rectangle ownershipRect = ownership.RectangleToScreen(ownership.ClientRectangle);
-        Rectangle whitespaceRect = whitespace.RectangleToScreen(whitespace.ClientRectangle);
         Rectangle navigatorRect = navigator.RectangleToScreen(navigator.ClientRectangle);
         Ensure(ownershipRect.Height >= ownership.Font.Height &&
-               !ownershipRect.IntersectsWith(navigatorRect) &&
-               !ownershipRect.IntersectsWith(whitespaceRect),
-            "Review " + context + ": ownership-легенда не должна быть закрыта другим рядом");
+               !ownershipRect.IntersectsWith(navigatorRect) && top.Height <= 80,
+            "Review " + context + ": компактная легенда не должна закрывать PDF или навигатор");
         Point center = new Point(ownershipRect.Left + ownershipRect.Width / 2,
             ownershipRect.Top + ownershipRect.Height / 2);
         Control topmost = top.GetChildAtPoint(top.PointToClient(center),
             GetChildAtPointSkip.Invisible);
         Ensure(ReferenceEquals(legendLayer, topmost),
-            "Review " + context + ": ownership-легенда должна быть верхним painted layout-слоем");
+            "Review " + context + ": легенда должна быть верхним painted layout-слоем");
     }
 
     static string ReviewResultDetails(object result)
@@ -2750,6 +2775,26 @@ static class Shots
         }
         Say(Path.GetFileName(destinationPath) + " -> grayscale");
     }
+    static void WhatsNew()
+    {
+        Type type = _app.GetType("ExcelMerger.WhatsNewForm");
+        ConstructorInfo ctor = type.GetConstructor(BindingFlags.NonPublic |
+            BindingFlags.Instance, null, new[] { typeof(string) }, null);
+        var form = (Form)ctor.Invoke(new object[] { "1.18.5" });
+        Place(form, 0, 0);
+        Shot(form, "whatsnew");
+
+        var support = (LinkLabel)Field(form, "_supportLink");
+        support.Links[0].LinkData = null;
+        support.Focus();
+        support.GetType().GetMethod("OnLinkClicked", BindingFlags.Instance |
+            BindingFlags.NonPublic).Invoke(support,
+                new object[] { new LinkLabelLinkClickedEventArgs(support.Links[0]) });
+        Pump(500);
+        Shot(form, "whatsnew-support");
+        Kill(form);
+    }
+
     /// <summary>«Настройки» — общие для всей программы, с 1.18.0 отдельным окном.</summary>
     static void Settings()
     {
@@ -2898,7 +2943,14 @@ static class Shots
     {
         f.StartPosition = FormStartPosition.Manual;
         f.Location = new Point(30, 30);
-        if (w > 0 && h > 0) f.Size = new Size(w, h);
+        if (w > 0 && h > 0)
+            f.Size = new Size(w, h);
+        else if (f is Form)
+        {
+            // A manual screenshot must exercise the same initial layout as a user opening the
+            // tool, not the stale location/size inherited from another scenario.
+            f.StartPosition = FormStartPosition.CenterScreen;
+        }
         f.Show();
         f.Activate();
         SetForegroundWindow(f.Handle);

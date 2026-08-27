@@ -23,10 +23,9 @@ namespace ExcelMerger
         private TextBox _leftPageInput, _rightPageInput;
         private Label _leftPageRange, _rightPageRange;
         private Label _leftLegend, _rightLegend;
-        private Label _leftWhitespaceLegend, _rightWhitespaceLegend;
         private Button _pickLeft, _pickRight, _swap, _compare;
         private SplitContainer _body, _sourceSplit;
-        private Panel _viewHost, _unifiedHost;
+        private Panel _viewHost, _unifiedHost, _unifiedLegend;
         private RoundedButton _unifiedModeButton, _sideModeButton;
         private PdfReviewViewMode _viewMode = PdfReviewViewMode.Unified;
         private ListBox _pairs;
@@ -297,8 +296,10 @@ namespace ExcelMerger
             _viewHost.Controls.Add(_unifiedHost);
 
             _body.Panel2.Controls.Add(_viewHost);
+            _body.Panel2.Controls.Add(_unifiedLegend);
             _body.Panel2.Controls.Add(modeBar);
             modeBar.BringToFront();
+            _unifiedLegend.BringToFront();
             _leftSource.ShowEmpty(Loc.T("review.left"));
             _rightSource.ShowEmpty(Loc.T("review.right"));
             _unifiedSource.ShowEmpty(Loc.T("review.mode.unified"));
@@ -317,6 +318,14 @@ namespace ExcelMerger
                 BackColor = Color.White,
                 Size = new Size(600, 400)
             };
+            _unifiedLegend = BuildUnifiedLegend();
+            _unifiedSource = new PdfReviewPageView { Dock = DockStyle.Fill };
+            host.Controls.Add(_unifiedSource);
+            return host;
+        }
+
+        private Panel BuildUnifiedLegend()
+        {
             var legend = new Panel
             {
                 Dock = DockStyle.Top,
@@ -335,12 +344,7 @@ namespace ExcelMerger
             hint.AutoSize = false;
             hint.SetBounds(10, 33, 520, 32);
             hint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-
-            _unifiedSource = new PdfReviewPageView { Dock = DockStyle.Fill };
-            host.Controls.Add(_unifiedSource);
-            host.Controls.Add(legend);
-            legend.BringToFront();
-            return host;
+            return legend;
         }
 
         private void LayoutViewHosts()
@@ -364,6 +368,8 @@ namespace ExcelMerger
                 _unifiedModeButton.AccessibleDescription = unified
                     ? Loc.T("review.mode.selected") : "";
             }
+            if (_unifiedLegend != null)
+                _unifiedLegend.Visible = unified;
             if (_sideModeButton != null)
             {
                 _sideModeButton.Selected = !unified;
@@ -402,7 +408,7 @@ namespace ExcelMerger
             var top = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 116,
+                Height = 76,
                 RowCount = 2,
                 ColumnCount = 1,
                 Margin = Padding.Empty,
@@ -413,7 +419,7 @@ namespace ExcelMerger
             };
             top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             top.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-            top.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            top.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
             var navigator = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -485,8 +491,7 @@ namespace ExcelMerger
             navigator.Controls.Add(range, 2, 0);
 
             Label ownership;
-            Label whitespace;
-            TableLayoutPanel legend = BuildLegend(leftSide, out ownership, out whitespace);
+            TableLayoutPanel legend = BuildLegend(leftSide, out ownership);
             top.Controls.Add(navigator, 0, 0);
             top.Controls.Add(legend, 0, 1);
 
@@ -495,14 +500,12 @@ namespace ExcelMerger
                 _leftPageInput = input;
                 _leftPageRange = range;
                 _leftLegend = ownership;
-                _leftWhitespaceLegend = whitespace;
             }
             else
             {
                 _rightPageInput = input;
                 _rightPageRange = range;
                 _rightLegend = ownership;
-                _rightWhitespaceLegend = whitespace;
             }
             source.TabIndex = 1;
             host.Controls.Add(source);
@@ -511,8 +514,7 @@ namespace ExcelMerger
             return host;
         }
 
-        private TableLayoutPanel BuildLegend(bool leftSide, out Label ownership,
-            out Label whitespace)
+        private TableLayoutPanel BuildLegend(bool leftSide, out Label ownership)
         {
             Color background = SystemInformation.HighContrast
                 ? SystemColors.Window : Color.White;
@@ -522,13 +524,12 @@ namespace ExcelMerger
             var legend = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                RowCount = 2,
+                RowCount = 1,
                 ColumnCount = 1,
-                Padding = new Padding(8, 2, 8, 4),
+                Padding = new Padding(8, 1, 8, 3),
                 BackColor = background,
                 TabStop = false
             };
-            legend.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
             legend.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             legend.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
@@ -546,21 +547,7 @@ namespace ExcelMerger
                     "review.legend.added"),
                 TabStop = false
             };
-            whitespace = new Label
-            {
-                Text = Loc.T("review.legend.whitespace"),
-                Dock = DockStyle.Fill,
-                AutoSize = false,
-                Font = Ui.Font(Math.Max(8f, Font.Size - 0.5f)),
-                ForeColor = SystemInformation.HighContrast
-                    ? SystemColors.WindowText : Theme.TextMuted,
-                BackColor = background,
-                TextAlign = ContentAlignment.MiddleLeft,
-                AccessibleName = Loc.T("review.legend.whitespace"),
-                TabStop = false
-            };
             legend.Controls.Add(ownership, 0, 0);
-            legend.Controls.Add(whitespace, 0, 1);
             return legend;
         }
 
@@ -1218,9 +1205,15 @@ namespace ExcelMerger
             if (!baseLeft && pair.LeftPageIndex >= 0)
             {
                 PdfReviewHighlight deleted = BuildHighlight(result, pair, true);
-                if (deleted.Boxes.Count > 0 || deleted.WhitespaceMarkers.Count > 0)
+                AppendWhitespaceMarkers(baseHighlight, deleted.WhitespaceMarkers);
+                if (deleted.Boxes.Count > 0)
                 {
-                    overlayPage = PageRef(result.Left, pair.LeftPageIndex);
+                    // Deleted glyphs are intentionally not painted onto the later page. Reflow,
+                    // indentation and table edits make source coordinates incomparable and used to
+                    // stack two lines into an unreadable blob. Unified mode keeps the later page
+                    // clean with green additions and red deletion/whitespace markers; exact earlier
+                    // text remains available one click away in Side by side.
+                    overlayPage = null;
                     overlayHighlight = deleted;
                 }
             }
@@ -1229,6 +1222,16 @@ namespace ExcelMerger
                 pair.RightPageIndex < 0 ? "—" : (pair.RightPageIndex + 1).ToString());
             return new PdfReviewViewContent(basePage, baseReviewPage, baseHighlight,
                 overlayPage, overlayHighlight, revision, caption);
+        }
+
+        private static void AppendWhitespaceMarkers(PdfReviewHighlight target,
+            IList<PdfReviewWhitespaceMarker> markers)
+        {
+            if (target == null || markers == null)
+                return;
+            foreach (PdfReviewWhitespaceMarker marker in markers)
+                if (marker != null)
+                    target.WhitespaceMarkers.Add(marker);
         }
 
 

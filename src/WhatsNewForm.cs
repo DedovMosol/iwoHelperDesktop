@@ -16,12 +16,17 @@ namespace ExcelMerger
         private readonly LinkLabel _supportLink;
         private readonly Panel _supportPanel;
         private readonly AccentCheckBox _dontShow;
+        private readonly RoundedButton _close;
         private bool _persisted;
+        private bool _positioned;
 
         internal WhatsNewForm(string version)
         {
             _version = version;
             Ui.InitDialog(this, string.Format(Loc.T("whatsnew.title"), version));
+            // CenterParent is ignored by modeless Show(owner) on some WinForms/.NET versions.
+            // Position explicitly in OnShown so the automatic window never opens at (0,0).
+            StartPosition = FormStartPosition.Manual;
             ClientSize = new Size(WidthPx, 620);
             MinimumSize = Size;
             WindowChrome.Enable(this, Theme.HubBlue);
@@ -43,13 +48,7 @@ namespace ExcelMerger
 
             _supportLink = Ui.Link(_scroll, Loc.T("whatsnew.support.link"), Pad, 0);
             _supportLink.AccessibleDescription = Loc.T("whatsnew.support.hint");
-            _supportLink.LinkClicked += delegate
-            {
-                _supportPanel.Visible = !_supportPanel.Visible;
-                _supportLink.Text = Loc.T(_supportPanel.Visible
-                    ? "whatsnew.support.hide" : "whatsnew.support.link");
-                LayoutBody();
-            };
+            _supportLink.LinkClicked += delegate { ToggleSupport(); };
 
             _supportPanel = BuildSupportPanel();
             _supportPanel.Visible = false;
@@ -66,17 +65,20 @@ namespace ExcelMerger
                 Math.Min(optionSize.Width, WidthPx - 180), optionSize.Height);
             _dontShow.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 
-            var close = new RoundedButton(true)
+            _close = new RoundedButton(true)
             {
-                Text = Loc.T("common.close")
+                Text = Loc.T("common.close"),
+                TabIndex = 0
             };
-            close.SetBounds(WidthPx - Pad - 110, ClientSize.Height - 56, 110, 36);
-            close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            close.Click += delegate { Close(); };
-            Controls.Add(close);
-            AcceptButton = close;
-            CancelButton = close;
-            LayoutBody();
+            _close.SetBounds(WidthPx - Pad - 110, ClientSize.Height - 56, 110, 36);
+            _close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            _close.Click += delegate { Close(); };
+            Controls.Add(_close);
+            AcceptButton = _close;
+            CancelButton = _close;
+            // Adding child controls can make AutoScroll retain a stale offset. The initial
+            // publication is always the beginning of the notes; later relayouts preserve it.
+            LayoutBody(0);
         }
 
         private void BuildHeader()
@@ -137,6 +139,94 @@ namespace ExcelMerger
             return card;
         }
 
+        private void ToggleSupport()
+        {
+            int previousOffset = ScrollOffsetY();
+            int linkScreenY = _supportLink.PointToScreen(Point.Empty).Y;
+            bool expanding = !_supportPanel.Visible;
+            _supportPanel.Visible = expanding;
+            _supportLink.Text = Loc.T(expanding
+                ? "whatsnew.support.hide" : "whatsnew.support.link");
+            _close.Focus();
+            LayoutBody(previousOffset);
+            if (expanding)
+            {
+                // Keep the clicked link at the same screen position. The panel grows below it;
+                // WinForms must not auto-scroll a focused child back to the top of the list.
+                int moved = _supportLink.PointToScreen(Point.Empty).Y - linkScreenY;
+                SetScrollOffsetY(previousOffset + moved);
+            }
+        }
+
+        private int ScrollOffsetY()
+        {
+            return Math.Max(0, -_scroll.AutoScrollPosition.Y);
+        }
+
+        private void SetScrollOffsetY(int offset)
+        {
+            int maximum = Math.Max(0,
+                _scroll.AutoScrollMinSize.Height - _scroll.ClientSize.Height);
+            _scroll.AutoScrollPosition = new Point(0,
+                Math.Max(0, Math.Min(maximum, offset)));
+        }
+
+        private void LayoutBody(int preservedOffset)
+        {
+            _scroll.SuspendLayout();
+            try
+            {
+                int y = 18;
+                int width = Math.Max(280, _scroll.ClientSize.Width - 2 * Pad -
+                    (_scroll.VerticalScroll.Visible
+                        ? SystemInformation.VerticalScrollBarWidth : 0));
+                foreach (Panel card in _cards)
+                {
+                    card.SetBounds(Pad, y, width, card.Height);
+                    y = card.Bottom + 10;
+                }
+                _supportLink.Location = new Point(Pad, y + 4);
+                y = _supportLink.Bottom + 10;
+                _supportPanel.SetBounds(Pad, y, width, _supportPanel.Height);
+                if (_supportPanel.Visible)
+                    y = _supportPanel.Bottom + 16;
+                _scroll.AutoScrollMinSize = new Size(0, y);
+            }
+            finally
+            {
+                _scroll.ResumeLayout();
+            }
+            SetScrollOffsetY(preservedOffset);
+        }
+
+        private void CenterOnOwner()
+        {
+            Rectangle area;
+            if (Owner != null && Owner.IsHandleCreated && Owner.Visible &&
+                Owner.Width > 0 && Owner.Height > 0)
+                area = Owner.Bounds;
+            else
+                area = Screen.FromControl(this).WorkingArea;
+            int x = area.Left + (area.Width - Width) / 2;
+            int y = area.Top + (area.Height - Height) / 2;
+            Rectangle work = Screen.FromRectangle(area).WorkingArea;
+            x = Math.Max(work.Left, Math.Min(work.Right - Width, x));
+            y = Math.Max(work.Top, Math.Min(work.Bottom - Height, y));
+            Location = new Point(x, y);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (!_positioned)
+            {
+                _positioned = true;
+                CenterOnOwner();
+                SetScrollOffsetY(0);
+            }
+        }
+
+
         private Panel BuildSupportPanel()
         {
             var panel = new Panel
@@ -181,20 +271,7 @@ namespace ExcelMerger
 
         private void LayoutBody()
         {
-            int y = 18;
-            int width = Math.Max(280, _scroll.ClientSize.Width - 2 * Pad -
-                SystemInformation.VerticalScrollBarWidth);
-            foreach (Panel card in _cards)
-            {
-                card.SetBounds(Pad, y, width, card.Height);
-                y = card.Bottom + 10;
-            }
-            _supportLink.Location = new Point(Pad, y + 4);
-            y = _supportLink.Bottom + 10;
-            _supportPanel.SetBounds(Pad, y, width, _supportPanel.Height);
-            if (_supportPanel.Visible)
-                y = _supportPanel.Bottom + 16;
-            _scroll.AutoScrollMinSize = new Size(0, y);
+            LayoutBody(ScrollOffsetY());
         }
 
         protected override void OnResize(EventArgs e)

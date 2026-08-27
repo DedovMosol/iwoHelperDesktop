@@ -5594,7 +5594,9 @@ namespace ExcelMerger
                 Text = (deleted ? "− " : "+ ") + summary,
                 AccessibleDescription = string.Format(CultureInfo.CurrentCulture,
                     Loc.T(deleted ? "review.whitespace.removed" :
-                        "review.whitespace.added"), summary)
+                        "review.whitespace.added"), summary),
+                Style = deleted ? PdfReviewHighlightStyle.Removed :
+                    PdfReviewHighlightStyle.Added
             };
             List<PdfReviewWhitespaceMarker> markers;
             if (!index.TryGetValue(evidence.PageIndex, out markers))

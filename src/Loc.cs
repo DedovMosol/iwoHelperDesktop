@@ -321,8 +321,8 @@ namespace ExcelMerger
                 "Drag the splitter to resize the alignment list.");
             A("review.unified.legend", "Общий документ · поздняя версия с правками",
                 "Unified redline · later version with changes");
-            A("review.unified.hint", "Зелёным показано добавленное; удалённые фрагменты ранней версии наложены красным и перечёркнуты.",
-                "Added content is green; deleted earlier-version fragments are overlaid in red with a strike line.");
+            A("review.unified.hint", "Зелёным показано добавленное; удалённое обозначено красными рамками и перечёркиванием. Точный исходный текст доступен в режиме «Бок о бок».",
+                "Added content is green; removed content is marked with red outlines and strike lines. Exact source text remains available in Side by side.");
             A("review.unified.interactions", "Колесо листает общий документ, Ctrl+колесо масштабирует. Двойной щелчок открывает этот же документ с пометками на весь экран.",
                 "The wheel scrolls the unified document; Ctrl+wheel zooms. Double-click opens the same marked-up document full screen.");
             A("review.unified.caption", "Общий документ · {0} ↔ {1}",
@@ -372,10 +372,10 @@ namespace ExcelMerger
                 "There is no existing alignment row for that physical page.");
             A("review.stats", "Изменено страниц: {0} · только слева: {1} · только справа: {2} · слов −{3} / +{4} · пробелы: {6} изм., −{7} / +{8} знаков · изменено {5}%",
                 "Changed pages: {0} · left only: {1} · right only: {2} · words −{3} / +{4} · whitespace: {6} changes, −{7} / +{8} symbols · {5}% changed");
-            A("review.legend.removed", "− Красный фон: удалено из ранней версии · слева",
-                "− Red background: removed from earlier version · left");
-            A("review.legend.added", "+ Зелёный фон: добавлено в поздней версии · справа",
-                "+ Green background: added to later version · right");
+            A("review.legend.removed", "− Красный — удалено",
+                "− Red — removed");
+            A("review.legend.added", "+ Зелёный — добавлено",
+                "+ Green — added");
             A("review.legend.whitespace",
                 "␠ Пробельные изменения показываются только при наличии символов в текстовом слое PDF",
                 "␠ Whitespace changes are shown only when symbols are present in the PDF text layer");
@@ -724,7 +724,7 @@ namespace ExcelMerger
             // settings.* — окно «Настройки» (общее для всей программы, не для документа)
             A("whatsnew.title", "Что нового в версии {0}", "What's new in version {0}");
             A("whatsnew.header", "Что нового · {0}", "What's new · {0}");
-            A("whatsnew.subtitle", "Коротко о заметных изменениях — без технических подробностей.",
+            A("whatsnew.subtitle", "Коротко о заметных изменениях, без технических подробностей.",
                 "A concise overview of meaningful changes, without technical detail.");
             A("whatsnew.accessible", "Значок нового выпуска", "New release icon");
             A("whatsnew.item.accessible", "Новое, пункт {0}", "What's new, item {0}");
