@@ -868,7 +868,7 @@ namespace ExcelMerger
             A("about.author", "Автор: Dodonov Andrey (DedovMosol)", "Author: Dodonov Andrey (DedovMosol)");
             A("about.manual", "Инструкция по работе с программой:", "User guide:");
             A("about.manual.open", "открыть", "open");
-            A("about.license", "© 2026 · Лицензия MIT", "© 2026 · MIT License");
+            A("about.license", "© 2026 · GNU General Public License v3.0 only", "© 2026 · GNU General Public License v3.0 only");
             A("about.privacy", "Политика конфиденциальности", "Privacy Policy");
             A("about.thirdParty", "Лицензии компонентов", "Third-party licenses");
             A("about.privacyNote", "(документы обрабатываются локально; проверка обновлений обращается к GitHub)",

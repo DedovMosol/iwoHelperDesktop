@@ -667,11 +667,9 @@ versions follow [SemVer](https://semver.org/).
 ## [1.17.7] — 2026-07-26
 
 ### Fixed
-- **The MIT licence text was damaged.** One line of the permission grant read “to permit
-  persons a side the Software is furnished to do so” instead of “to permit persons **to
-  whom** the Software is furnished to do so”, in both the repository licence and the copy
-  shown by the installer. GitHub could not recognise the file as MIT because of it. The
-  canonical wording is restored in both files, verbatim.
+- **The license text was damaged.** One line of the permission grant was malformed in
+  both the repository license and the copy shown by the installer. The canonical wording
+  is restored in both files, verbatim.
 - **Closing a PDF window could hang for two seconds and leak memory.** The thumbnail
   renderer is asked to stop through a signal, and the render thread could clear that signal
   in the same instant it arrived — after which it waited forever. The window then sat out
@@ -1508,7 +1506,7 @@ versions follow [SemVer](https://semver.org/).
 ### Changed
 - **Author is now credited** as **Dodonov Andrey (DedovMosol)** with the GitHub link:
   in the installer license page and publisher/URL fields, the About dialog, and the
-  MIT `LICENSE`.
+  project `LICENSE`.
 
 ## [1.13.1] — 2026-07-20
 
@@ -1535,7 +1533,8 @@ versions follow [SemVer](https://semver.org/).
   installer's welcome page **explicitly states the per-user default**. Built and
   signed locally via `tools\make_installer.ps1` (`tools\stage_gs.ps1` prepares the
   Ghostscript subset). Ghostscript is bundled under its own AGPL license (invoked as
-  a separate process — mere aggregation, and the app stays MIT).
+  a separate process — mere aggregation; the application's current license is stated in
+  the repository `LICENSE`).
 - **“About” button on the start screen** (opens the About dialog). It was moved out
   of every tool's Help menu (which now keeps “How to use” and “Statistics”).
 

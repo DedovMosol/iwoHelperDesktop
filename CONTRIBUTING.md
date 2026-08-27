@@ -35,8 +35,9 @@ forms, so a windowless session cannot run them.
 - **Office COM rules are non-negotiable** — see
   [Office COM layer](docs/ARCHITECTURE.md#office-com-layer): release through
   `ComSafe`, never call a closed object, escape cell text via `CellText`.
-- **No new runtime dependencies** unless embedded as a resource and MIT-compatible,
-  copyleft tools may only run as separate processes (like Ghostscript does).
+- **No new runtime dependencies** unless embedded as a resource and compatible with
+  GPL-3.0-only and the existing third-party licenses. Copyleft tools may run as separate
+  processes, as Ghostscript does.
 - **UI strings go through `Loc`** in both languages, generated documents (cover note,
   TOC, reports) intentionally stay Russian.
 
@@ -52,5 +53,7 @@ Releases are cut by the maintainer (artifacts are signed locally) — see
 
 ## License
 
-MIT. By contributing you agree that your contribution is licensed under the
-[same terms](LICENSE).
+The project is licensed under the
+[GNU General Public License v3.0 only](LICENSE).
+By contributing, you agree that your contribution is licensed under the same terms,
+unless a separate written agreement says otherwise.

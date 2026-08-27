@@ -4,7 +4,7 @@
 
 <br>
 
-[![CI](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml/badge.svg)](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/DedovMosol/iwoHelperDesktop?label=release&color=0F6CBD)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Privacy: local processing](https://img.shields.io/badge/Privacy-local%20processing-5B4FBF)](docs/PRIVACY.md)
+[![CI](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml/badge.svg)](https://github.com/DedovMosol/iwoHelperDesktop/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/DedovMosol/iwoHelperDesktop?label=release&color=0F6CBD)](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest) [![Downloads](https://img.shields.io/github/downloads/DedovMosol/iwoHelperDesktop/total?color=107C41)](https://github.com/DedovMosol/iwoHelperDesktop/releases) [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE) [![Privacy: local processing](https://img.shields.io/badge/Privacy-local%20processing-5B4FBF)](docs/PRIVACY.md)
 
 **Free, offline-first office tools in a single Windows app — merge Excel sheets, merge/split/compress and compare PDFs, and turn born-digital PDFs back into editable Word. No subscription, no admin rights; document processing stays local.**
 
@@ -165,7 +165,7 @@ Both PDF tools have a **Compression** dropdown applied to the produced PDF:
 
 The two lowest levels downsample images while keeping text and vectors (the same idea as Adobe Acrobat / Foxit “Reduce File Size”), done by **Ghostscript** as a separate process. Whatever the level, the result is checked before it replaces anything: it has to open as a document and hold **the same number of pages**, and for compression it also has to be strictly smaller — an already‑optimized file is left untouched, and the status line says so instead of staying silent. Output is PDF 1.4, so a compressed file can still be re‑merged or re‑split by the app.
 
-**Signatures:** any real compression changes the file’s bytes, so a **signed** PDF’s signature becomes invalid afterwards (true of Acrobat too). Compress unsigned documents, or before signing. Ghostscript is used under its own AGPL license (invoked as a separate process — the app stays MIT), and the portable exe opens the official [download page](https://ghostscript.com/releases/gsdnld.html) if it is absent.
+**Signatures:** any real compression changes the file’s bytes, so a **signed** PDF’s signature becomes invalid afterwards (true of Acrobat too). Compress unsigned documents, or before signing. Ghostscript is used under its own AGPL license (invoked as a separate process — the app is GPL-3.0-only), and the portable exe opens the official [download page](https://ghostscript.com/releases/gsdnld.html) if it is absent.
 
 </details>
 
@@ -219,7 +219,7 @@ Needs the `dotnet` SDK (6+), and builds `iwoHelperDesktop.csproj` (target .NET F
 
 Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open projects:
 
-[![PdfSharp](https://img.shields.io/badge/PdfSharp-MIT-1f6feb)](https://github.com/empira/PDFsharp)
+[![PDFsharp](https://img.shields.io/badge/PDFsharp-MIT-1f6feb)](https://github.com/empira/PDFsharp)
 [![PdfPig](https://img.shields.io/badge/PdfPig-Apache%202.0-1f6feb)](https://github.com/UglyToad/PdfPig)
 [![Ghostscript](https://img.shields.io/badge/Ghostscript-AGPL-d32f2f)](https://ghostscript.com/)
 [![Inno Setup](https://img.shields.io/badge/Inno%20Setup-installer-107C41)](https://jrsoftware.org/isinfo.php)
@@ -233,4 +233,6 @@ Redistribution licenses and attribution notices are kept in [`licenses/`](licens
 
 ## ⚖️ License
 
-[MIT](LICENSE) © 2026 **Dodonov Andrey** ([DedovMosol](https://github.com/DedovMosol))
+[GNU General Public License v3.0 only](LICENSE) © 2026 **Dodonov Andrey** ([DedovMosol](https://github.com/DedovMosol))
+
+The application itself is licensed under GPL-3.0-only. PDFsharp, PdfPig, Ghostscript and other bundled components retain their own licenses; see [`licenses/THIRD-PARTY-NOTICES.md`](licenses/THIRD-PARTY-NOTICES.md). The GPL license applies to this project’s source code and does not relicense those independent components.

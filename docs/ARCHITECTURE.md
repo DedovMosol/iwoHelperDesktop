@@ -507,8 +507,7 @@ the output format. The `.pptx` differs only in what happens after it.
   different rotations. An evicted page silently re-renders when scrolled into view.
 - **User-visible strings go through `Loc.T`** (both languages), *generated documents*
   (cover note, TOC sheet, reports) are deliberately Russian regardless of UI language.
-- **No new runtime dependencies** unless embedded as a resource and MIT-compatible,
-  AGPL code (Ghostscript) is only ever invoked as a separate process.
+- **No new runtime dependencies** unless embedded as a resource and compatible with GPL-3.0-only and the existing third-party licenses. Copyleft tools (such as Ghostscript) are only ever invoked as separate processes.
 
 ## Tool pipelines
 
@@ -883,7 +882,7 @@ needs Office gets a `verify` script.
 | Level numbers are identifiers, positions are separate | The number goes into `settings.txt`. Inserting a level mid-enumeration to keep the list tidy would silently move everyone who had picked another one. |
 | Managed deps embedded as resources | Single-file distribution without ILMerge, resolver also kills binding-redirect pain. |
 | WinRT for thumbnails, loaded from memory | In-box rasterizer (no native deps), memory loading avoids the user-mapped-file lock on shown files. |
-| Ghostscript as a child process | Acrobat-grade downsampling, AGPL stays outside the MIT process boundary, graceful absence. |
+| Ghostscript as a child process | Acrobat-grade downsampling, its AGPL license remains separate from the GPL application's process boundary, graceful absence. |
 | The page buffer is in-window, not the system clipboard | Cut/copy/paste operate on page refs that only mean something inside one grid — same model as Acrobat's organizer. |
 | One GUI process, many independent windows | The tools already lived in one process and outlive the hub, so a second launch has nothing to add: it wakes the running instance instead of putting a second entry in Task Manager. |
 | The preview rotates through the grid, not by itself | The angle belongs to the shared `PdfPageRef`, and only the grid's path also checkpoints undo, prunes stale tiles and repaints — a direct write would quietly break Ctrl+Z. |
