@@ -37,7 +37,10 @@ namespace ExcelMerger
             BackColor = Color.White;
             Cursor = Cursors.Hand;
             TabStop = true;
+            AccessibleRole = AccessibleRole.PushButton;
             AccessibleName = Path.GetFileName(_path);
+            AccessibleDescription = string.IsNullOrEmpty(_operation)
+                ? _path : _operation + ". " + _path;
             _tip = new ToolTip();
             // В подсказке — что за операция и полный путь: на карточке помещается только имя.
             _tip.SetToolTip(this, string.IsNullOrEmpty(_operation)

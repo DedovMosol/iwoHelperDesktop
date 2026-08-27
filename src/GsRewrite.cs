@@ -14,6 +14,13 @@ namespace ExcelMerger
     /// серое или починка почти всегда дают другой размер и всё равно должны примениться.
     /// Различаются только аргументы и эта политика, всё остальное общее.
     /// </summary>
+    internal enum GsRewriteResult
+    {
+        Applied,
+        RejectedByPolicy,
+        Failed
+    }
+
     internal static class GsRewrite
     {
         /// <summary>
@@ -37,8 +44,29 @@ namespace ExcelMerger
         public static bool Run(string path, string tempOutput, string args, int timeoutMs,
             Func<long, long, bool> replace, Func<string, bool> verify = null)
         {
+            return RunDetailed(path, tempOutput, args, timeoutMs, replace, verify) ==
+                GsRewriteResult.Applied;
+        }
+
+        internal static GsRewriteResult RunDetailed(string path, string tempOutput,
+            string args, int timeoutMs, Func<long, long, bool> replace,
+            Func<string, bool> verify = null)
+        {
+            return RunCore(path, tempOutput, args, timeoutMs, replace, verify, true);
+        }
+
+        internal static GsRewriteResult RunDetailedUnpublished(string path,
+            string tempOutput, string args, int timeoutMs, Func<long, long, bool> replace,
+            Func<string, bool> verify = null)
+        {
+            return RunCore(path, tempOutput, args, timeoutMs, replace, verify, false);
+        }
+
+        private static GsRewriteResult RunCore(string path, string tempOutput,
+            string args, int timeoutMs, Func<long, long, bool> replace,
+            Func<string, bool> verify, bool recoverableTarget)
+        {
             string tmp = tempOutput;
-            string bak = path + ".iwo-gs-" + Guid.NewGuid().ToString("N") + ".bak";
             try
             {
                 long origSize = new FileInfo(path).Length;
@@ -51,24 +79,54 @@ namespace ExcelMerger
                 string stderr;
                 int exit = Ghostscript.Run(args, timeoutMs, out stderr);
                 if (!EngineSucceeded(exit, stderr))
-                    return false;
+                    return GsRewriteResult.Failed;
                 if (!PdfPageProbe.PagesKept(pagesBefore, PdfPageProbe.PageCount(tmp)))
-                    return false;
+                    return GsRewriteResult.Failed;
                 if (!replace(origSize, new FileInfo(tmp).Length))
-                    return false;
+                    return GsRewriteResult.RejectedByPolicy;
                 if (verify != null && !verify(tmp))
-                    return false;
-                ReplaceInPlace(path, tmp, bak);
-                return true;
+                    return GsRewriteResult.Failed;
+                if (recoverableTarget)
+                {
+                    using (var output = new AtomicOutput(path))
+                    {
+                        File.Move(tmp, output.TempPath);
+                        tmp = null;
+                        output.Commit();
+                    }
+                }
+                else
+                {
+                    ReplaceUnpublished(path, tmp);
+                    tmp = null;
+                }
+                return GsRewriteResult.Applied;
             }
             catch
             {
-                return false;
+                return GsRewriteResult.Failed;
             }
             finally
             {
                 TryDelete(tmp);
-                TryDelete(bak);
+            }
+        }
+
+        private static void ReplaceUnpublished(string path, string replacement)
+        {
+            try
+            {
+                File.Replace(replacement, path, null, true);
+            }
+            catch (PlatformNotSupportedException)
+            {
+                File.Delete(path);
+                File.Move(replacement, path);
+            }
+            catch (IOException)
+            {
+                File.Delete(path);
+                File.Move(replacement, path);
             }
         }
 
@@ -95,28 +153,6 @@ namespace ExcelMerger
         {
             return exitCode == 0 &&
                    (string.IsNullOrEmpty(stderr) || stderr.IndexOf("****", StringComparison.Ordinal) < 0);
-        }
-
-        /// <summary>
-        /// Безопасная замена: оригинал уводится в резервную копию, новый файл встаёт на его
-        /// место, копия затем удаляется. При сбое оригинал возвращается — файл не теряется
-        /// ни при каком исходе. Через переименование в той же папке: работает и на сетевых
-        /// дисках, где замена одним вызовом может отказать.
-        /// </summary>
-        private static void ReplaceInPlace(string path, string tmp, string bak)
-        {
-            TryDelete(bak);
-            File.Move(path, bak);       // оригинал — в сторону
-            try
-            {
-                File.Move(tmp, path);   // новый — на место
-            }
-            catch
-            {
-                if (!File.Exists(path)) // откат: вернуть оригинал
-                    File.Move(bak, path);
-                throw;
-            }
         }
 
         private static void TryDelete(string p)

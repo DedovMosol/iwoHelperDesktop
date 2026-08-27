@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Text;
-using System.Threading;
 
 namespace ExcelMerger
 {
@@ -175,120 +173,115 @@ namespace ExcelMerger
             public int AutoClearDays;
             /// <summary>Записи от старых к новым.</summary>
             public readonly List<HistoryEntry> Entries = new List<HistoryEntry>();
+            internal readonly List<string> UnknownLines = new List<string>();
         }
 
         public static Data Load()
         {
-            var d = new Data();
-            try
-            {
-                if (!File.Exists(FilePath))
-                    return d;
-                foreach (string line in File.ReadAllLines(FilePath))
-                {
-                    if (line.StartsWith(EnabledKey + "=", StringComparison.Ordinal))
-                    {
-                        bool flag;
-                        if (bool.TryParse(line.Substring(EnabledKey.Length + 1), out flag))
-                            d.Enabled = flag;
-                        continue;
-                    }
-                    if (line.StartsWith(AutoKey + "=", StringComparison.Ordinal))
-                    {
-                        int days;
-                        if (int.TryParse(line.Substring(AutoKey.Length + 1), out days))
-                            d.AutoClearDays = days;
-                        continue;
-                    }
-                    HistoryEntry entry = ParseEntry(line);
-                    if (entry != null) // испорченная строка пропускается молча, как в настройках
-                        d.Entries.Add(entry);
-                }
-                // Устаревшие записи отсеиваются ПРИ ЧТЕНИИ и в память — писать отсюда нельзя:
-                // Load зовут и снаружи блокировки (чтобы показать список), и запись без неё
-                // столкнулась бы с записью второй копии приложения. На диск отсев попадает
-                // первой же мутацией: Mutate сохраняет ровно то, что вернул Load.
-                List<HistoryEntry> fresh = KeepRecent(d.Entries, DateTime.UtcNow, d.AutoClearDays);
-                if (fresh.Count != d.Entries.Count)
-                {
-                    d.Entries.Clear();
-                    d.Entries.AddRange(fresh);
-                }
-            }
-            catch { } // повреждённая история не повод мешать работе
-            return d;
+            Data data;
+            return TryLoad(out data) ? data : new Data();
         }
 
-        private static void Save(Data d)
+        /// <summary>
+        /// Существующий, но временно непрочитанный файл — не пустая история: мутация должна
+        /// отказаться, а не перезаписать opt-out/defaults поверх неизвестного снимка.
+        /// </summary>
+        private static bool TryLoad(out Data data)
         {
-            try
+            data = new Data();
+            string[] lines;
+            if (!AppStateFile.TryReadLines(FilePath, out lines))
+                return false;
+
+            foreach (string line in lines)
             {
-                Directory.CreateDirectory(AppPaths.Root);
-                var lines = new List<string>
+                if (line.StartsWith(EnabledKey + "=", StringComparison.Ordinal))
                 {
-                    EnabledKey + "=" + d.Enabled,
-                    AutoKey + "=" + d.AutoClearDays
-                };
-                foreach (HistoryEntry e in Trim(d.Entries))
-                    lines.Add(FormatEntry(e));
-                File.WriteAllLines(FilePath, lines);
+                    bool flag;
+                    if (bool.TryParse(line.Substring(EnabledKey.Length + 1), out flag))
+                        data.Enabled = flag;
+                    continue;
+                }
+                if (line.StartsWith(AutoKey + "=", StringComparison.Ordinal))
+                {
+                    int days;
+                    if (int.TryParse(line.Substring(AutoKey.Length + 1), out days) && days >= 0)
+                        data.AutoClearDays = days;
+                    continue;
+                }
+                HistoryEntry entry = ParseEntry(line);
+                if (entry != null)
+                    data.Entries.Add(entry);
+                else
+                    data.UnknownLines.Add(line);
             }
-            catch { }
+            List<HistoryEntry> fresh = KeepRecent(data.Entries, DateTime.UtcNow,
+                data.AutoClearDays);
+            if (fresh.Count != data.Entries.Count)
+            {
+                data.Entries.Clear();
+                data.Entries.AddRange(fresh);
+            }
+            return true;
+        }
+
+        private static void Save(Data data)
+        {
+            var lines = new List<string>
+            {
+                EnabledKey + "=" + data.Enabled,
+                AutoKey + "=" + data.AutoClearDays
+            };
+            foreach (HistoryEntry entry in Trim(data.Entries))
+                lines.Add(FormatEntry(entry));
+            lines.AddRange(data.UnknownLines);
+            AppStateFile.WriteLines(FilePath, lines);
         }
 
         // ---------- атомарные мутации ----------
 
-        private static void Mutate(Action<Data> change)
+        private static bool Mutate(Func<Data, bool> change)
         {
-            // Та же межпроцессная блокировка, что у статистики, но СВОЯ: общий мьютекс на два
-            // файла заставлял бы запись истории ждать запись счётчиков без всякой причины.
-            using (var mutex = new Mutex(false, @"Local\iwoHelperDesktop.history"))
+            if (change == null)
+                return false;
+            return AppDataLock.TryRun(FilePath, delegate
             {
-                bool held = false;
-                try
-                {
-                    try { held = mutex.WaitOne(2000); }
-                    catch (AbandonedMutexException) { held = true; } // прежний держатель умер
-                    Data d = Load();
-                    change(d);
-                    Save(d);
-                }
-                finally
-                {
-                    if (held)
-                        mutex.ReleaseMutex();
-                }
-            }
+                Data data;
+                if (!TryLoad(out data) || !change(data))
+                    return false;
+                Save(data);
+                return true;
+            });
+        }
+
+        private static bool MutateAndNotify(Func<Data, bool> change)
+        {
+            bool success = Mutate(change);
+            if (success)
+                NotifyChanged();
+            return success;
         }
 
         /// <summary>
-        /// Записать завершённую операцию. Выключенная история молчит — и НЕ проверяет путь:
-        /// человек отказался от записи, значит ни читать файл, ни трогать диск не за чем.
+        /// Записать завершённую операцию. Проверка Enabled и добавление выполняются в одной
+        /// блокировке: выключенная история не переписывается, а непрочитанный файл не теряется.
         /// </summary>
         public static void Record(string operationKey, string path)
         {
             if (string.IsNullOrEmpty(path))
                 return;
-            // Быстрый выход БЕЗ блокировки и без записи. Иначе выключенная история всё равно
-            // перечитывала бы и переписывала файл на каждой операции — и воссоздавала бы его
-            // после того, как человек его удалил. Решает всё равно проверка внутри мутации:
-            // здесь мы лишь не трогаем диск понапрасну.
-            if (!Load().Enabled)
-                return;
-            Mutate(delegate(Data d)
+            MutateAndNotify(delegate(Data data)
             {
-                if (!d.Enabled)
-                    return;
-                d.Entries.Add(new HistoryEntry
+                if (!data.Enabled)
+                    return false;
+                data.Entries.Add(new HistoryEntry
                 {
                     WhenUtc = DateTime.UtcNow,
                     Operation = operationKey,
                     Path = path
                 });
+                return true;
             });
-            Action changed = Changed;
-            if (changed != null)
-                changed();   // стартовый экран обновляет список недавних, не дожидаясь перезапуска
         }
 
         /// <summary>
@@ -305,25 +298,46 @@ namespace ExcelMerger
         private static void NotifyChanged()
         {
             Action changed = Changed;
-            if (changed != null)
-                changed();
+            if (changed == null)
+                return;
+            foreach (Action handler in changed.GetInvocationList())
+                try { handler(); } catch { }
         }
 
-        public static void SetEnabled(bool enabled)
+        public static bool SetEnabled(bool enabled)
         {
             // Выключение СРАЗУ стирает накопленное: оставить перечень путей у того, кто
             // только что отказался от их хранения, — это не то, о чём он просил.
-            Mutate(delegate(Data d)
+            return MutateAndNotify(delegate(Data data)
             {
-                d.Enabled = enabled;
+                data.Enabled = enabled;
                 if (!enabled)
-                    d.Entries.Clear();
+                    data.Entries.Clear();
+                return true;
             });
         }
 
-        public static void SetAutoClear(int days) { Mutate(delegate(Data d) { d.AutoClearDays = days; }); }
+        public static bool SetAutoClear(int days)
+        {
+            int period = Math.Max(0, days);
+            return MutateAndNotify(delegate(Data data)
+            {
+                data.AutoClearDays = period;
+                List<HistoryEntry> fresh = KeepRecent(data.Entries, DateTime.UtcNow, period);
+                data.Entries.Clear();
+                data.Entries.AddRange(fresh);
+                return true;
+            });
+        }
 
-        public static void Clear() { Mutate(delegate(Data d) { d.Entries.Clear(); }); NotifyChanged(); }
+        public static bool Clear()
+        {
+            return MutateAndNotify(delegate(Data data)
+            {
+                data.Entries.Clear();
+                return true;
+            });
+        }
 
         /// <summary>
         /// Последние результаты, к которым имеет смысл вернуться: от новых к старым, без

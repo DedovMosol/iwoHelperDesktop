@@ -426,6 +426,8 @@ namespace ExcelMerger
         private const int RecentCardH = BottomRowH;   // ровно нижний ряд: он пуст между значками
         /// <summary>Полоса недавних — прямо над нижним рядом, считая от фактической высоты окна.</summary>
         private int RecentRowY() { return BottomRowTop(); }
+        private int _recentGeneration;
+        private bool _recentWorkerActive;
         private readonly List<RecentCard> _recentCards = new List<RecentCard>();
         private const int RecentGap = 10;        // между карточками
         private const int RecentMinWidth = 150;  // уже этого имя файла уже не прочесть
@@ -478,12 +480,40 @@ namespace ExcelMerger
         {
             if (IsDisposed || Disposing)
                 return;
-            Ui.RunWorker(delegate()
+            int generation = unchecked(++_recentGeneration);
+            if (_recentWorkerActive)
+                return; // captured generation already records that the latest result changed
+            StartRecentWorker(generation);
+        }
+
+        private void StartRecentWorker(int generation)
+        {
+            _recentWorkerActive = true;
+            var owner = new WeakReference(this);
+            Ui.RunWorker(delegate
             {
-                List<HistoryEntry> found;
-                try { found = OperationHistory.RecentFiles(OperationHistory.Load(), RecentCount, System.IO.File.Exists); }
-                catch { return; } // история недоступна — стартовому экрану это безразлично
-                Ui.OnUi(this, delegate { ShowRecentFiles(found); });
+                List<HistoryEntry> found = null;
+                try
+                {
+                    found = OperationHistory.RecentFiles(OperationHistory.Load(),
+                        RecentCount, System.IO.File.Exists);
+                }
+                catch { }
+                StartForm form = owner.Target as StartForm;
+                if (form == null)
+                    return;
+                Ui.OnUi(form, delegate
+                {
+                    form._recentWorkerActive = false;
+                    if (form.IsDisposed || form.Disposing)
+                        return;
+                    if (generation != form._recentGeneration)
+                    {
+                        form.StartRecentWorker(form._recentGeneration);
+                        return;
+                    }
+                    form.ShowRecentFiles(found);
+                });
             });
         }
 

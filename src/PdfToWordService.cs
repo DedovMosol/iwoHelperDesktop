@@ -3,11 +3,12 @@ using System.Collections.Generic;
 
 namespace ExcelMerger
 {
-    /// <summary>Итог конвертации «PDF → Word».</summary>
+    /// <summary>Итог конвертации «PDF → документ».</summary>
     public class ConvertResult
     {
         public int Pages;
         public int PagesWithText;
+        internal BackgroundRenderReport BackgroundReport;
     }
 
     /// <summary>

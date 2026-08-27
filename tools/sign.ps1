@@ -14,10 +14,18 @@ if (-not (Test-Path $ExePath)) {
     exit 1
 }
 
-$subject = 'CN=Svod Excel self-signed'
-$cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
-    Where-Object { $_.Subject -eq $subject -and $_.NotAfter -gt (Get-Date).AddDays(30) } |
+$subject = 'CN=iwo Helper Desktop self-signed'
+$legacySubject = 'CN=Svod Excel self-signed'
+$available = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
+    Where-Object { $_.NotAfter -gt (Get-Date).AddDays(30) }
+# Existing maintainers keep the established key/certificate continuity; a fresh machine no
+# longer creates the obsolete Excel-only identity.
+$cert = $available | Where-Object { $_.Subject -eq $legacySubject } |
     Sort-Object NotAfter -Descending | Select-Object -First 1
+if (-not $cert) {
+    $cert = $available | Where-Object { $_.Subject -eq $subject } |
+        Sort-Object NotAfter -Descending | Select-Object -First 1
+}
 if (-not $cert) {
     Write-Host 'Creating a new code-signing certificate...'
     $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $subject `

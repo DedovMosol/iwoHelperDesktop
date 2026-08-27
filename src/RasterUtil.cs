@@ -131,25 +131,66 @@ namespace ExcelMerger
             catch { return null; }
         }
 
-        /// <summary>Одноцветен ли растр (в пределах выборки). null — считаем одноцветным (показывать нечего).</summary>
+        /// <summary>Точно одноцветен ли растр; ни одна тонкая линия не теряется из-за выборки.</summary>
         public static bool IsSolidColor(Bitmap bmp)
         {
             if (bmp == null)
                 return true;
+            BitmapData data = null;
             try
             {
-                int w = bmp.Width, h = bmp.Height;
-                if (w < 2 || h < 2)
-                    return true; // 1-пиксельный растр смысла не несёт — считаем вырожденным
-                int stepX = Math.Max(1, w / 16), stepY = Math.Max(1, h / 16);
-                int first = bmp.GetPixel(0, 0).ToArgb();
-                for (int y = 0; y < h; y += stepY)
-                    for (int x = 0; x < w; x += stepX)
-                        if (bmp.GetPixel(x, y).ToArgb() != first)
-                            return false; // нашёлся другой цвет — не одноцветный
+                int width = bmp.Width, height = bmp.Height;
+                if (width < 2 || height < 2)
+                    return true;
+                int sampled = bmp.GetPixel(0, 0).ToArgb();
+                int stepX = Math.Max(1, width / 16), stepY = Math.Max(1, height / 16);
+                for (int y = 0; y < height; y += stepY)
+                    for (int x = 0; x < width; x += stepX)
+                        if (bmp.GetPixel(x, y).ToArgb() != sampled)
+                            return false; // definitive negative; full proof is unnecessary
+                int bits = Image.GetPixelFormatSize(bmp.PixelFormat);
+                int bytesPerPixel = bits / 8;
+                if (bytesPerPixel != 3 && bytesPerPixel != 4)
+                {
+                    int firstArgb = bmp.GetPixel(0, 0).ToArgb();
+                    for (int y = 0; y < height; y++)
+                        for (int x = 0; x < width; x++)
+                            if (bmp.GetPixel(x, y).ToArgb() != firstArgb)
+                                return false;
+                    return true;
+                }
+
+                data = bmp.LockBits(new Rectangle(0, 0, width, height),
+                    ImageLockMode.ReadOnly, bmp.PixelFormat);
+                int rowBytes = checked(width * bytesPerPixel);
+                var row = new byte[rowBytes];
+                int first = 0;
+                bool haveFirst = false;
+                for (int y = 0; y < height; y++)
+                {
+                    IntPtr start = IntPtr.Add(data.Scan0, y * data.Stride);
+                    System.Runtime.InteropServices.Marshal.Copy(start, row, 0, rowBytes);
+                    for (int x = 0; x < rowBytes; x += bytesPerPixel)
+                    {
+                        int argb = (bytesPerPixel >= 4 ? row[x + 3] : 255) << 24 |
+                            row[x + 2] << 16 | row[x + 1] << 8 | row[x];
+                        if (!haveFirst)
+                        {
+                            first = argb;
+                            haveFirst = true;
+                        }
+                        else if (argb != first)
+                            return false;
+                    }
+                }
                 return true;
             }
             catch { return false; }
+            finally
+            {
+                if (data != null)
+                    try { bmp.UnlockBits(data); } catch { }
+            }
         }
     }
 }

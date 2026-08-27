@@ -39,10 +39,15 @@ README when you bump the version**, so the buttons point at the new files.
    no need for an “Unreleased” heading and no reason to bump again.
 3. Update the four download buttons and the version note in the README (see above).
 4. Run the full local pyramid (`tests\run_all.cmd`). CI cannot run the parts that need
-   Excel and Word, so this is the last chance to catch them.
-5. Commit the changes (explicit paths only).
-6. Dry run — builds and signs all four artifacts, writes `dist\release-notes-<ver>.md`,
-   prints what would be published:
+   Excel and Word, so this is the last chance to catch them. For a public release, also run
+   `--selftest`, `--thumbcheck` and one PDF operation in the maintained Windows 8.1/10 VM:
+   GitHub's `windows-latest` runner cannot qualify the declared minimum OS.
+5. Commit the intended changes with explicit paths. Confirm `git status --short --untracked-files=all`
+   is empty: the release script refuses modified **and untracked** inputs because the project
+   compiles `src\**\*.cs`, and otherwise an asset could contain code absent from its tag.
+6. Dry run — builds and signs all four artifacts, requires an Authenticode timestamp on each,
+   verifies x64/x86 versions match, prints SHA-256 hashes, writes
+   `dist\release-notes-<ver>.md`, and prints what would be published:
 
    ```
    powershell -NoProfile -File tools\make_release.ps1

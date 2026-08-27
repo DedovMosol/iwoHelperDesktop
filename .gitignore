@@ -1,4 +1,8 @@
-# Артефакты сборки
+# Локальные каталоги целевых проверок и fault/stress-прогонов
+/.verify/
+/tests/.verify/
+/tests/.verify-bin/
+
 dist/
 selftest.log
 

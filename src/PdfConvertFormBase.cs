@@ -285,6 +285,17 @@ namespace ExcelMerger
             int without = result.Pages - result.PagesWithText;
             if (without > 0)
                 status += string.Format(Loc.T("convert.status.noTextPages"), without);
+            BackgroundRenderReport backgrounds = result.BackgroundReport;
+            if (backgrounds != null)
+            {
+                if (backgrounds.EngineMissing)
+                    status += Loc.T("convert.status.noBackgroundEngine");
+                else if (backgrounds.BudgetExhausted || backgrounds.Failed > 0)
+                    status += string.Format(Loc.T("convert.status.backgroundPartial"),
+                        backgrounds.Failed,
+                        backgrounds.BudgetExhausted ?
+                            Loc.T("convert.status.backgroundBudget") : "");
+            }
             return status;
         }
 

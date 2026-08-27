@@ -36,17 +36,21 @@ namespace ExcelMerger
             List<PdfPageText> pages = PdfPageExtraction.Load(order,
                 Scaled(progress, 0, units), cancelled, out withText, PageLayoutMode.Slide);
 
-            // Подложка — необязательная роскошь: без Ghostscript слой молча пропускается, и
-            // презентация получается из одного текста (см. PageBackgrounds).
-            Background[] backgrounds = PageBackgrounds.Render(order, Scaled(progress, 1, units), cancelled);
-
-            using (var output = new AtomicOutput(outputPath))
+            // Подложка — необязательная роскошь: без Ghostscript слой молча пропускается.
+            BackgroundRenderReport backgroundReport;
+            using (BackgroundRenderResult backgrounds = PageBackgrounds.Render(order,
+                Scaled(progress, 1, units), cancelled))
             {
+                backgroundReport = backgrounds.Report;
                 try
                 {
-                    PptxWriter.Write(pages, output.TempPath, DateTime.UtcNow,
-                        Scaled(progress, 2, units), cancelled, onCommitting, backgrounds);
-                    output.Commit();
+                    using (var output = new AtomicOutput(outputPath))
+                    {
+                        PptxWriter.Write(pages, output.TempPath, DateTime.UtcNow,
+                            Scaled(progress, 2, units), cancelled, onCommitting,
+                            backgrounds.Items);
+                        output.Commit();
+                    }
                 }
                 catch (Exception ex) when (MergeException.ShouldWrap(ex))
                 {
@@ -54,7 +58,12 @@ namespace ExcelMerger
                         Path.GetFileName(outputPath), DiskSpace.Describe(ex, outputPath)));
                 }
             }
-            return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
+            return new ConvertResult
+            {
+                Pages = pages.Count,
+                PagesWithText = withText,
+                BackgroundReport = backgroundReport
+            };
         }
 
         /// <summary>

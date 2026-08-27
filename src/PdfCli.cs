@@ -13,6 +13,19 @@ namespace ExcelMerger
     /// <summary>Как разбивать документ (только для <see cref="PdfCliKind.Split"/>).</summary>
     internal enum PdfCliSplitMode { Ranges = 0, Every, Bookmarks }
 
+    [Flags]
+    internal enum PdfCliOption
+    {
+        None = 0,
+        Level = 1,
+        Ranges = 2,
+        Every = 4,
+        Bookmarks = 8,
+        Dpi = 16,
+        Format = 32,
+        SplitSelectors = Ranges | Every | Bookmarks
+    }
+
     /// <summary>
     /// Разобранная команда. Отдельный тип, а не набор out-параметров: разбор проверяется
     /// тестами целиком, одним сравнением ожидаемого с полученным.
@@ -29,6 +42,7 @@ namespace ExcelMerger
         public int Every;                        // страниц в части
         public int Dpi = 150;
         public ImageExportFormat Format = ImageExportFormat.Png;
+        public PdfCliOption SeenOptions;
     }
 
     /// <summary>
@@ -119,8 +133,8 @@ namespace ExcelMerger
             return
                 "iwoHelperDesktop PDF commands:\r\n" +
                 "  --merge <out.pdf> <in.pdf> [in.pdf ...] [--level none|verygood|good|normal]\r\n" +
-                "  --extract <in.pdf> <pages> <out.pdf>            pages: 1-3,5\r\n" +
-                "  --split <in.pdf> <out_dir> [--ranges 1-3,5 | --every N | --bookmarks]\r\n" +
+                "  --extract <in.pdf> <pages> <out.pdf> [--level none|verygood|good|normal]  pages: 1-3,5\r\n" +
+                "  --split <in.pdf> <out_dir> [--ranges 1-3,5 | --every N | --bookmarks] [--level none|verygood|good|normal]\r\n" +
                 "  --compress <in.pdf> <out.pdf> [--level verygood|good|normal]\r\n" +
                 "  --grayscale <in.pdf> <out.pdf>\r\n" +
                 "  --repair <in.pdf> <out.pdf>\r\n" +
@@ -174,7 +188,7 @@ namespace ExcelMerger
         {
             cmd.Kind = PdfCliKind.Merge;
             List<string> plain = TakeOptions(cmd, rest);
-            if (cmd.Error != null)
+            if (cmd.Error != null || !ValidateOptions(cmd, PdfCliOption.Level))
                 return cmd;
             if (plain.Count < 2)
                 return Bad(cmd, "--merge needs an output file and at least one input");
@@ -188,7 +202,7 @@ namespace ExcelMerger
         {
             cmd.Kind = PdfCliKind.Extract;
             List<string> plain = TakeOptions(cmd, rest);
-            if (cmd.Error != null)
+            if (cmd.Error != null || !ValidateOptions(cmd, PdfCliOption.Level))
                 return cmd;
             if (plain.Count != 3)
                 return Bad(cmd, "--extract needs <in.pdf> <pages> <out.pdf>");
@@ -202,7 +216,8 @@ namespace ExcelMerger
         {
             cmd.Kind = PdfCliKind.Split;
             List<string> plain = TakeOptions(cmd, rest);
-            if (cmd.Error != null)
+            if (cmd.Error != null || !ValidateOptions(cmd,
+                PdfCliOption.Level | PdfCliOption.SplitSelectors))
                 return cmd;
             if (plain.Count != 2)
                 return Bad(cmd, "--split needs <in.pdf> <out_dir>");
@@ -217,14 +232,18 @@ namespace ExcelMerger
         {
             cmd.Kind = kind;
             List<string> plain = TakeOptions(cmd, rest);
-            if (cmd.Error != null)
+            PdfCliOption allowed = kind == PdfCliKind.Compress
+                ? PdfCliOption.Level : PdfCliOption.None;
+            if (cmd.Error != null || !ValidateOptions(cmd, allowed))
                 return cmd;
             if (plain.Count != 2)
                 return Bad(cmd, Name(kind) + " needs <in.pdf> <out>");
             cmd.Inputs.Add(plain[0]);
             cmd.Output = plain[1];
-            if (needLevel && cmd.Level == CompressionLevel.None)
-                cmd.Level = CompressionLevel.Good; // сжатие без уровня бессмысленно — берём средний
+            if (needLevel && (cmd.SeenOptions & PdfCliOption.Level) == 0)
+                cmd.Level = CompressionLevel.Good;
+            else if (needLevel && cmd.Level == CompressionLevel.None)
+                return Bad(cmd, "--compress does not accept --level none");
             return cmd;
         }
 
@@ -232,7 +251,8 @@ namespace ExcelMerger
         {
             cmd.Kind = PdfCliKind.ToImages;
             List<string> plain = TakeOptions(cmd, rest);
-            if (cmd.Error != null)
+            if (cmd.Error != null || !ValidateOptions(cmd,
+                PdfCliOption.Dpi | PdfCliOption.Format))
                 return cmd;
             if (plain.Count != 2)
                 return Bad(cmd, "--to-image needs <in.pdf> <out_dir>");
@@ -249,30 +269,48 @@ namespace ExcelMerger
         private static List<string> TakeOptions(PdfCliCommand cmd, List<string> rest)
         {
             var plain = new List<string>();
+            bool positionalOnly = false;
             for (int i = 0; i < rest.Count; i++)
             {
                 string arg = rest[i];
-                if (!arg.StartsWith("--", StringComparison.Ordinal))
+                if (positionalOnly || !arg.StartsWith("--", StringComparison.Ordinal))
                 {
                     plain.Add(arg);
+                    continue;
+                }
+                if (arg == "--")
+                {
+                    positionalOnly = true;
                     continue;
                 }
                 switch (arg.ToLowerInvariant())
                 {
                     case "--bookmarks":
+                        if ((cmd.SeenOptions & PdfCliOption.SplitSelectors) != 0)
+                            return Fail(cmd, plain, "split selectors are mutually exclusive");
+                        cmd.SeenOptions |= PdfCliOption.Bookmarks;
                         cmd.SplitMode = PdfCliSplitMode.Bookmarks;
                         break;
                     case "--level":
+                        if ((cmd.SeenOptions & PdfCliOption.Level) != 0)
+                            return Fail(cmd, plain, "--level specified more than once");
+                        cmd.SeenOptions |= PdfCliOption.Level;
                         if (++i >= rest.Count || !TryParseLevel(rest[i], out cmd.Level))
                             return Fail(cmd, plain, "--level: none|verygood|good|normal");
                         break;
                     case "--ranges":
+                        if ((cmd.SeenOptions & PdfCliOption.SplitSelectors) != 0)
+                            return Fail(cmd, plain, "split selectors are mutually exclusive");
+                        cmd.SeenOptions |= PdfCliOption.Ranges;
                         if (++i >= rest.Count)
                             return Fail(cmd, plain, "--ranges needs a value like 1-3,5");
                         cmd.Ranges = rest[i];
                         cmd.SplitMode = PdfCliSplitMode.Ranges;
                         break;
                     case "--every":
+                        if ((cmd.SeenOptions & PdfCliOption.SplitSelectors) != 0)
+                            return Fail(cmd, plain, "split selectors are mutually exclusive");
+                        cmd.SeenOptions |= PdfCliOption.Every;
                         int every;
                         if (++i >= rest.Count || !int.TryParse(rest[i], out every) || every < 1)
                             return Fail(cmd, plain, "--every needs a number of pages (1 or more)");
@@ -280,12 +318,20 @@ namespace ExcelMerger
                         cmd.SplitMode = PdfCliSplitMode.Every;
                         break;
                     case "--dpi":
+                        if ((cmd.SeenOptions & PdfCliOption.Dpi) != 0)
+                            return Fail(cmd, plain, "--dpi specified more than once");
+                        cmd.SeenOptions |= PdfCliOption.Dpi;
                         int dpi;
-                        if (++i >= rest.Count || !int.TryParse(rest[i], out dpi) || dpi < 1)
-                            return Fail(cmd, plain, "--dpi needs a positive number");
+                        if (++i >= rest.Count || !int.TryParse(rest[i], out dpi) ||
+                            !RasterBudget.IsValidExportDpi(dpi))
+                            return Fail(cmd, plain, "--dpi needs a number from 1 to " +
+                                RasterBudget.MaxExportDpi);
                         cmd.Dpi = dpi;
                         break;
                     case "--format":
+                        if ((cmd.SeenOptions & PdfCliOption.Format) != 0)
+                            return Fail(cmd, plain, "--format specified more than once");
+                        cmd.SeenOptions |= PdfCliOption.Format;
                         if (++i >= rest.Count)
                             return Fail(cmd, plain, "--format: png|jpg");
                         string format = rest[i].ToLowerInvariant();
@@ -298,6 +344,25 @@ namespace ExcelMerger
                 }
             }
             return plain;
+        }
+
+        private static bool ValidateOptions(PdfCliCommand cmd, PdfCliOption allowed)
+        {
+            PdfCliOption invalid = cmd.SeenOptions & ~allowed;
+            if (invalid == PdfCliOption.None)
+                return true;
+            cmd.Error = OptionName(invalid) + " is not valid for " + Name(cmd.Kind);
+            return false;
+        }
+
+        private static string OptionName(PdfCliOption options)
+        {
+            if ((options & PdfCliOption.Level) != 0) return "--level";
+            if ((options & PdfCliOption.Ranges) != 0) return "--ranges";
+            if ((options & PdfCliOption.Every) != 0) return "--every";
+            if ((options & PdfCliOption.Bookmarks) != 0) return "--bookmarks";
+            if ((options & PdfCliOption.Dpi) != 0) return "--dpi";
+            return "--format";
         }
 
         private static List<string> Fail(PdfCliCommand cmd, List<string> plain, string message)
@@ -389,13 +454,22 @@ namespace ExcelMerger
                 Say(log, "ERROR: Ghostscript not found (needed for compression)");
                 return Failed;
             }
-            CopyToOutput(cmd.Inputs[0], cmd.Output);
-            long before = new FileInfo(cmd.Output).Length;
-            bool shrank = PdfCompression.Compress(cmd.Output, cmd.Level);
-            long after = new FileInfo(cmd.Output).Length;
-            Say(log, shrank
-                ? string.Format("OK: {0} ({1} -> {2} bytes)", cmd.Output, before, after)
-                : string.Format("OK: {0} (not smaller, left as is)", cmd.Output));
+            using (AtomicOutput output = CopyToOutput(cmd.Inputs[0], cmd.Output))
+            {
+                long before = new FileInfo(output.TempPath).Length;
+                GsRewriteResult result = PdfCompression.CompressDetailedUnpublished(
+                    output.TempPath, cmd.Level);
+                if (result == GsRewriteResult.Failed)
+                {
+                    Say(log, "ERROR: Ghostscript failed or produced an invalid result");
+                    return Failed;
+                }
+                long after = new FileInfo(output.TempPath).Length;
+                output.Commit();
+                Say(log, result == GsRewriteResult.Applied
+                    ? string.Format("OK: {0} ({1} -> {2} bytes)", cmd.Output, before, after)
+                    : string.Format("OK: {0} (not smaller, left as is)", cmd.Output));
+            }
             return Ok;
         }
 
@@ -406,12 +480,14 @@ namespace ExcelMerger
                 Say(log, "ERROR: Ghostscript not found (needed for this command)");
                 return Failed;
             }
-            CopyToOutput(cmd.Inputs[0], cmd.Output);
-            if (!PdfConvert.Apply(cmd.Output, mode))
+            using (AtomicOutput output = CopyToOutput(cmd.Inputs[0], cmd.Output))
             {
-                TryDelete(cmd.Output);            // огрызок не оставляем — как и в окне
-                Say(log, "ERROR: the engine could not perform this conversion");
-                return Failed;
+                if (!PdfConvert.ApplyUnpublished(output.TempPath, mode))
+                {
+                    Say(log, "ERROR: the engine could not perform this conversion");
+                    return Failed;
+                }
+                output.Commit();
             }
             Say(log, "OK: " + cmd.Output);
             return Ok;
@@ -436,33 +512,48 @@ namespace ExcelMerger
             return Ok;
         }
 
-        /// <summary>Сжать готовый файл, если уровень задан. Молча: сжатие необязательно.</summary>
+        /// <summary>Сжать готовый файл, если уровень задан; отсутствие движка явно сообщается.</summary>
         private static void Compress(string path, CompressionLevel level, Action<string> log)
         {
-            if (level == CompressionLevel.None || !Ghostscript.Available)
+            if (level == CompressionLevel.None)
                 return;
-            if (!PdfCompression.Compress(path, level))
-                Say(log, "note: compression did not make " + Path.GetFileName(path) + " smaller");
+            if (!Ghostscript.Available)
+            {
+                Say(log, "WARNING: Ghostscript not found; output was left uncompressed: " +
+                    Path.GetFileName(path));
+                return;
+            }
+            GsRewriteResult result = PdfCompression.CompressDetailed(path, level);
+            if (result == GsRewriteResult.Failed)
+                Say(log, "WARNING: compression failed; output was left uncompressed: " +
+                    Path.GetFileName(path));
+            else if (result == GsRewriteResult.RejectedByPolicy)
+                Say(log, "NOTE: compression did not make " + Path.GetFileName(path) + " smaller");
         }
 
         /// <summary>
-        /// Команды, меняющие файл, работают с КОПИЕЙ: исходник приложение не трогает никогда,
-        /// и командная строка тут не исключение.
+        /// Подготовить копию во временном файле транзакции. Команды, меняющие файл,
+        /// публикуют его только после полного завершения движка — исходный target и
+        /// предыдущий результат остаются целыми при сбое или отмене.
         /// </summary>
-        private static void CopyToOutput(string source, string output)
+        private static AtomicOutput CopyToOutput(string source, string output)
         {
             if (string.Equals(Path.GetFullPath(source), Path.GetFullPath(output), StringComparison.OrdinalIgnoreCase))
                 throw new MergeException("input and output must be different files");
             string dir = Path.GetDirectoryName(Path.GetFullPath(output));
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
-            File.Copy(source, output, true);
-        }
-
-        private static void TryDelete(string path)
-        {
-            try { if (File.Exists(path)) File.Delete(path); }
-            catch { }
+            AtomicOutput transaction = new AtomicOutput(output);
+            try
+            {
+                File.Copy(source, transaction.TempPath, true);
+                return transaction;
+            }
+            catch
+            {
+                transaction.Dispose();
+                throw;
+            }
         }
 
         private static void Say(Action<string> log, string line)

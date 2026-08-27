@@ -373,8 +373,9 @@ namespace ExcelMerger
             bool skip;
             bool open = MessageForm.ShowConfirm(owner, Title, header, body,
                 withSkipOption ? Loc.T("update.skip") : null, out skip);
-            if (skip)
-                UserSettings.SaveSkippedVersion(UpdateChecker.Display(latest));
+            if (skip && !UserSettings.SaveSkippedVersion(UpdateChecker.Display(latest)))
+                Dialogs.Error(owner, Title, Loc.T("settings.err.save.title"),
+                    Loc.T("settings.err.save.body"));
             if (open)
                 Ui.OpenUrlOrShow(owner, Title, UpdateChecker.ReleasesPage);
         }

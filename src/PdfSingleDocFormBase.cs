@@ -33,6 +33,17 @@ namespace ExcelMerger
         protected abstract string PickFileTitle { get; }
 
         /// <summary>
+        /// Набор отличается от открытого файла. Это единый dirty-гейт для Split и More
+        /// operations: удаление, порядок, поворот и добавленные wrapper-страницы одинаково
+        /// опасны при открытии другого документа и не должны исчезать молча.
+        /// </summary>
+        protected bool IsPageSetDirty
+        {
+            get { return _sourcePath == null ? _order.Count > 0 :
+                !IsPristine(_order.ToList(), _sourcePath, _pageCount); }
+        }
+
+        /// <summary>
         /// Idle-статус: не открыт — подсказка открытия, иначе имя файла и число страниц В ФАЙЛЕ.
         /// Если в сетке собрано другое (страницы убрали, переставили или повернули), говорим и
         /// это: иначе окно молчит о том, что дальше операции пойдут не по исходнику.
@@ -136,8 +147,15 @@ namespace ExcelMerger
                 int pages = count;
                 string err = error;
                 bool needPassword = locked;
+                bool wasCancelled = LoadCancellationRequested;
                 OnUi(delegate
                 {
+                    if (wasCancelled || LoadCancellationRequested)
+                    {
+                        FinishCanceledLoad();
+                        OnLoadAttemptFinished(false);
+                        return;
+                    }
                     if (needPassword)
                     {
                         var errors = new List<string>();
@@ -204,7 +222,14 @@ namespace ExcelMerger
         /// добавляют своё («Прочие операции» — картинки): молча выбросить их значило бы стереть
         /// работу человека одним нажатием «Открыть PDF…».
         /// </summary>
-        protected virtual bool ConfirmReplacingPages() { return true; }
+        protected virtual bool ConfirmReplacingPages()
+        {
+            if (!IsPageSetDirty)
+                return true;
+            return Dialogs.ConfirmWarning(this, ToolTitle,
+                Loc.T("common.ask.replacePages.title"),
+                string.Format(Loc.T("common.ask.replacePages.body"), _order.Count));
+        }
 
         /// <summary>
         /// Набор страниц — это открытый файл КАК ЕСТЬ: все его страницы, в исходном порядке и

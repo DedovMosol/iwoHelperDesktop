@@ -640,6 +640,7 @@ namespace ExcelMerger
             UglyToad.PdfPig.Content.Page page, string pdfPath)
         {
             var result = new List<OcrImage>();
+            BudgetedBitmap pageRasterOwned = null;
             System.Drawing.Bitmap pageRaster = null; // ленивый рендер страницы — только если понадобится фолбэк
             bool rasterTried = false;
             try
@@ -665,7 +666,10 @@ namespace ExcelMerger
                         {
                             if (!rasterTried)
                             {
-                                pageRaster = PageRasterizer.RenderPage(pdfPath, page.Number);
+                                pageRasterOwned = PageRasterizer.RenderPage(pdfPath,
+                                    page.Number, page.Width, page.Height);
+                                pageRaster = pageRasterOwned == null
+                                    ? null : pageRasterOwned.Bitmap;
                                 rasterTried = true;
                             }
                             byte[] cropped = PageRasterizer.CropRegion(pageRaster, page.Width, page.Height,
@@ -687,13 +691,14 @@ namespace ExcelMerger
                             HeightPt = b.Height
                         });
                     }
+                    catch (OutOfMemoryException) { throw; }
                     catch { } // одна битая картинка не ломает остальные
                 }
             }
             finally
             {
-                if (pageRaster != null)
-                    pageRaster.Dispose();
+                if (pageRasterOwned != null)
+                    pageRasterOwned.Dispose();
             }
             return result;
         }
@@ -744,10 +749,13 @@ namespace ExcelMerger
 
             double left = stamp.Left - StampCropPadPt, top = stamp.Top + StampCropPadPt;
             double width = stamp.Width + 2 * StampCropPadPt, height = stamp.Height + 2 * StampCropPadPt;
+            BudgetedBitmap rasterOwned = null;
             System.Drawing.Bitmap raster = null;
             try
             {
-                raster = PageRasterizer.RenderPage(pdfPath, page.Number);
+                rasterOwned = PageRasterizer.RenderPage(pdfPath, page.Number,
+                    page.Width, page.Height);
+                raster = rasterOwned == null ? null : rasterOwned.Bitmap;
                 if (raster == null)
                     return null; // нет Ghostscript — штамп остаётся текстом
                 // Область кропа — в исходном (неповёрнутом) пространстве страницы: рендер
@@ -774,8 +782,12 @@ namespace ExcelMerger
                 words.RemoveAll(delegate(PdfWord w) { return remove.Contains(w); }); // снять текст печати
                 return new OcrImage { Png = png, LeftPt = left, TopPt = top, WidthPt = width, HeightPt = height };
             }
+            catch (OutOfMemoryException) { throw; }
             catch { return null; } // сбой рендера/кропа — штамп остаётся текстом
-            finally { if (raster != null) raster.Dispose(); }
+            finally
+            {
+                if (rasterOwned != null) rasterOwned.Dispose();
+            }
         }
 
         /// <summary>

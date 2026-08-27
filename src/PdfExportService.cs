@@ -27,7 +27,8 @@ namespace ExcelMerger
     public static class PdfExportService
     {
         /// <summary>Разрешения на выбор: экран, печать, высокое, очень высокое.</summary>
-        public static readonly int[] DpiChoices = { 96, 150, 300, 600 };
+        private static readonly int[] AllDpiChoices = { 96, 150, 300, 600 };
+        public static readonly int[] DpiChoices = SupportedDpiChoices();
 
         /// <summary>
         /// Качество JPEG. GDI+ по умолчанию берёт 75, и на сканах это видно кольцами вокруг
@@ -38,6 +39,15 @@ namespace ExcelMerger
 
         /// <summary>Ширина листа, когда настоящую узнать не удалось: A4 в пунктах.</summary>
         private const double DefaultWidthPt = 595.28;
+
+        private static int[] SupportedDpiChoices()
+        {
+            var result = new List<int>();
+            foreach (int dpi in AllDpiChoices)
+                if (dpi <= RasterBudget.MaxExportDpi)
+                    result.Add(dpi);
+            return result.ToArray();
+        }
 
         /// <summary>
         /// Ширина страницы в пикселях для заданного разрешения: ширина листа приходит в
@@ -77,6 +87,9 @@ namespace ExcelMerger
         {
             if (pageIndexes == null || pageIndexes.Count == 0)
                 throw new MergeException(Loc.T("err.export.noPages"));
+            if (!RasterBudget.IsValidExportDpi(dpi))
+                throw new MergeException(string.Format(Loc.T("err.export.badDpi"),
+                    RasterBudget.MaxExportDpi));
             Directory.CreateDirectory(outDir);
 
             // Ширины листов в пунктах. Отдельный разбор файла — вспомогательный: движок
@@ -105,25 +118,35 @@ namespace ExcelMerger
                             CurrentPage = pageIndex + 1,
                             Timestamp = startedAt
                         };
-                        string path = OutputFile.Unique(outDir,
-                            NameTemplate.Apply(template, values), Extension(format));
-
-                        double widthPt = pageIndex >= 0 && pageIndex < sizes.Count && sizes[pageIndex].WidthPt > 0
-                            ? sizes[pageIndex].WidthPt : DefaultWidthPt;
-                        using (Bitmap bmp = renderer.Render(sourcePath, pageIndex, PixelWidth(widthPt, dpi)))
+                        string safeName = NameTemplate.Apply(template, values);
+                        string path = null;
+                        using (var output = OutputFile.CreateUnique(outDir, safeName,
+                            Extension(format)))
                         {
-                            if (bmp == null)
-                                throw new MergeException(string.Format(Loc.T("err.export.pageFailed"), pageIndex + 1));
-                            try
+                            double widthPt = pageIndex >= 0 && pageIndex < sizes.Count && sizes[pageIndex].WidthPt > 0
+                                ? sizes[pageIndex].WidthPt : DefaultWidthPt;
+                            using (BudgetedBitmap owned = renderer.RenderOwned(sourcePath,
+                                pageIndex, PixelWidth(widthPt, dpi), 0,
+                                RasterBudget.ExportPixels))
                             {
-                                Save(bmp, path, format);
-                            }
-                            catch (Exception ex) when (MergeException.ShouldWrap(ex))
-                            {
-                                // GDI+ на любую неудачу записи отвечает «произошла общая ошибка»,
-                                // поэтому диск здесь особенно нужен: см. DiskSpace.Describe.
-                                throw new MergeException(string.Format(Loc.T("err.export.saveFailed"),
-                                    Path.GetFileName(path), DiskSpace.Describe(ex, path)));
+                                Bitmap bmp = owned == null ? null : owned.Bitmap;
+                                if (bmp == null)
+                                    throw new MergeException(string.Format(
+                                        Loc.T("err.export.pageFailed"), pageIndex + 1));
+                                try
+                                {
+                                    Save(bmp, output.TempPath, format);
+                                    Cancellation.ThrowIf(cancelled);
+                                    path = output.Commit();
+                                }
+                                catch (Exception ex) when (MergeException.ShouldWrap(ex))
+                                {
+                                    string expected = safeName + Extension(format);
+                                    throw new MergeException(string.Format(
+                                        Loc.T("err.export.saveFailed"), expected,
+                                        DiskSpace.Describe(ex,
+                                            Path.Combine(outDir, expected))));
+                                }
                             }
                         }
                         written.Add(path);

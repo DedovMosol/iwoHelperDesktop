@@ -33,6 +33,7 @@ namespace ExcelMerger
         private Label _zoomLabel;               // текущий масштаб в процентах
         private ContextMenuStrip _menu; // не дочерний контрол, освобождаем сами
         private Bitmap _image;          // показанный рендер — освобождаем при закрытии
+        private BudgetedBitmap _ownedImage;
         private int _appliedRotation;   // поворот, УЖЕ впечённый в _image (в градусах по часовой)
         private Thread _worker;
         private volatile bool _closed;  // окно закрыто: поздний рендер не применяем
@@ -154,18 +155,23 @@ namespace ExcelMerger
         private void RenderInBackground(int width)
         {
             PdfThumbnailRenderer renderer = null;
-            Bitmap page = null;
+            BudgetedBitmap page = null;
             try
             {
                 renderer = new PdfThumbnailRenderer();
-                page = renderer.Render(_page.SourcePath, _page.PageIndex, width); // без поворота, его наложит UI
+                page = renderer.RenderOwned(_page.SourcePath, _page.PageIndex, width, 0,
+                    RasterBudget.PreviewPixels); // без поворота, его наложит UI
             }
-            catch { page = null; } // предпросмотр не критичен — покажем сообщение
+            catch
+            {
+                if (page != null) page.Dispose();
+                page = null;
+            }
             finally { if (renderer != null) renderer.Dispose(); }
             Post(page);
         }
 
-        private void Post(Bitmap page)
+        private void Post(BudgetedBitmap page)
         {
             try
             {
@@ -182,7 +188,7 @@ namespace ExcelMerger
             }
         }
 
-        private void Apply(Bitmap page)
+        private void Apply(BudgetedBitmap page)
         {
             if (_closed)
             {
@@ -194,7 +200,8 @@ namespace ExcelMerger
                 _loading.Text = Loc.T("preview.unavailable");
                 return;
             }
-            _image = page;
+            _ownedImage = page;
+            _image = page.Bitmap;
             _appliedRotation = 0; // фон отдаёт страницу как есть
             _loading.Visible = false;
             _picture.Image = _image;
@@ -583,12 +590,11 @@ namespace ExcelMerger
             _closed = true;
             Application.RemoveMessageFilter(this); // снимаем всегда: фильтр держал бы ссылку на окно
             base.OnFormClosed(e);
-            _picture.Image = null; // снять ссылку до Dispose bitmap
-            if (_image != null)
-            {
-                _image.Dispose();
-                _image = null;
-            }
+            _picture.Image = null;
+            _image = null;
+            if (_ownedImage != null)
+                _ownedImage.Dispose();
+            _ownedImage = null;
         }
 
         protected override void Dispose(bool disposing)

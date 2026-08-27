@@ -51,7 +51,7 @@ jobs:
       # дальше можно, но проверять сжатие уже нечем, а зелёная сборка без этой проверки лжёт.
       - name: Ghostscript и Inno Setup (сжатие и установщик)
         shell: pwsh
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: |
           function Test-PackageInstalled([string]$package) {
             if ($package -eq 'ghostscript') {
@@ -79,7 +79,7 @@ jobs:
                 -RedirectStandardOutput $stdout -RedirectStandardError $stderr
               $finished = $process.WaitForExit(240000)
               if (-not $finished) {
-                Write-Host "::warning::$package: choco не завершился за 4 минуты"
+                Write-Host "::warning::${package}: choco не завершился за 4 минуты"
                 try { $process.Kill($true) } catch { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
                 $process.WaitForExit()
               }
@@ -121,7 +121,7 @@ jobs:
         shell: pwsh
         run: |
           $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--selftest' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode) (3 = окно не создалось, 4 = в exe нет руководства)"; exit 1 }
+          if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode) (3 = окно не создалось, 4 = в exe нет руководства/лицензий)"; exit 1 }
 
       - name: Проверка вшитого PdfSharp
         shell: pwsh
@@ -134,6 +134,10 @@ jobs:
         run: |
           $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--pdftextcheck' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Host "pdftextcheck exit=$($p.ExitCode)"; exit 1 }
+
+      - name: Проверка первого запуска embedded PDF-библиотек из пустой папки
+        shell: pwsh
+        run: .\tests\verify_embedded.ps1 -Arch ${{ matrix.arch }}
 
       - name: Проверка сборки .pptx своими силами (PDF → PowerPoint, без Office)
         shell: pwsh

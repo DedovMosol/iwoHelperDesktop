@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace ExcelMerger
 {
@@ -10,10 +11,20 @@ namespace ExcelMerger
     /// </summary>
     internal sealed class AtomicOutput : IDisposable
     {
+        private static readonly Regex MarkerName = new Regex(
+            @"^(?<target>.+)\.iwo-(?<id>[0-9a-fA-F]{32})\.txn$",
+            RegexOptions.Compiled);
+        private static readonly Regex TempName = new Regex(
+            @"^(?<stem>.+)\.iwo-(?<id>[0-9a-fA-F]{32})(?<ext>\.[^.]+)$",
+            RegexOptions.Compiled);
+
         public readonly string TargetPath;
         public readonly string TempPath;
         private readonly string _backupPath;
+        private readonly string _markerPath;
+        private FileStream _marker;
         private bool _committed;
+        private bool _disposed;
 
         public AtomicOutput(string targetPath)
         {
@@ -23,11 +34,30 @@ namespace ExcelMerger
             string dir = Path.GetDirectoryName(TargetPath);
             if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
                 throw new DirectoryNotFoundException(dir);
-            string suffix = ".iwo-" + Guid.NewGuid().ToString("N");
+            string id = Guid.NewGuid().ToString("N");
+            string suffix = ".iwo-" + id;
             string name = Path.GetFileNameWithoutExtension(TargetPath);
             string extension = Path.GetExtension(TargetPath);
             TempPath = Path.Combine(dir, name + suffix + extension);
-            _backupPath = Path.Combine(dir, name + suffix + ".bak");
+            // Полное имя target сохраняется перед суффиксом. После аварии StartupSweep
+            // однозначно восстановит result.pdf из result.pdf.iwo-<guid>.bak.
+            _backupPath = Path.Combine(dir, Path.GetFileName(TargetPath) + suffix + ".bak");
+            _markerPath = Path.Combine(dir, Path.GetFileName(TargetPath) + suffix + ".txn");
+
+            // Пустой marker одновременно задаёт схему путей своим именем и отличает живую
+            // транзакцию открытым handle. Полные пути из имени выводит этот же класс.
+            try
+            {
+                _marker = new FileStream(_markerPath, FileMode.CreateNew, FileAccess.ReadWrite,
+                    FileShare.Read);
+            }
+            catch
+            {
+                try { if (_marker != null) _marker.Dispose(); } catch { }
+                _marker = null;
+                DeleteQuietly(_markerPath);
+                throw;
+            }
         }
 
         public void Commit()
@@ -54,6 +84,8 @@ namespace ExcelMerger
             catch (PlatformNotSupportedException) { }
             catch (IOException) { }
 
+            // Только fallback создаёт окно без target: перед ним marker обязан попасть на диск.
+            _marker.Flush(true);
             File.Move(TargetPath, _backupPath);
             try
             {
@@ -71,18 +103,73 @@ namespace ExcelMerger
 
         public void Dispose()
         {
+            if (_disposed)
+                return;
+            _disposed = true;
             DeleteQuietly(TempPath);
-            if (!_committed && File.Exists(_backupPath) && !File.Exists(TargetPath))
+            bool unresolved = false;
+            if (_committed)
+            {
+                // После успешной публикации backup — только мусор. При неуспешной он
+                // может быть единственной копией исходника и ниже НИКОГДА не удаляется.
+                if (File.Exists(TargetPath))
+                    DeleteQuietly(_backupPath);
+                else if (File.Exists(_backupPath))
+                    unresolved = true;
+            }
+            else if (File.Exists(_backupPath) && !File.Exists(TargetPath))
             {
                 try { File.Move(_backupPath, TargetPath); }
                 catch
                 {
-                    // Откат намеренно молчаливый: это последняя попытка вернуть файл из
-                    // резервной копии в Dispose. Если даже она не вышла, .bak остаётся рядом
-                    // с результатом и содержимое пользователя всё равно не потеряно.
+                    // Последняя попытка вернуть файл не удалась. Backup и journal остаются
+                    // рядом: StartupSweep повторит восстановление, не уничтожая данные.
+                    unresolved = true;
                 }
             }
-            DeleteQuietly(_backupPath);
+
+            try { if (_marker != null) _marker.Dispose(); } catch { }
+            _marker = null;
+            if (!unresolved)
+                DeleteQuietly(_markerPath);
+        }
+
+        internal static bool TryGetRecoveryPaths(string markerPath, out string target,
+            out string temp, out string backup)
+        {
+            target = temp = backup = null;
+            try
+            {
+                string directory = Path.GetDirectoryName(Path.GetFullPath(markerPath));
+                Match match = MarkerName.Match(Path.GetFileName(markerPath));
+                if (!match.Success || string.IsNullOrEmpty(directory))
+                    return false;
+                string targetName = match.Groups["target"].Value;
+                string id = match.Groups["id"].Value;
+                target = Path.Combine(directory, targetName);
+                temp = Path.Combine(directory, Path.GetFileNameWithoutExtension(targetName) +
+                    ".iwo-" + id + Path.GetExtension(targetName));
+                backup = Path.Combine(directory, targetName + ".iwo-" + id + ".bak");
+                return true;
+            }
+            catch { return false; }
+        }
+
+        internal static bool TryGetMarkerForTemp(string tempPath, out string markerPath)
+        {
+            markerPath = null;
+            try
+            {
+                string full = Path.GetFullPath(tempPath);
+                Match match = TempName.Match(Path.GetFileName(full));
+                if (!match.Success)
+                    return false;
+                markerPath = Path.Combine(Path.GetDirectoryName(full),
+                    match.Groups["stem"].Value + match.Groups["ext"].Value +
+                    ".iwo-" + match.Groups["id"].Value + ".txn");
+                return true;
+            }
+            catch { return false; }
         }
 
         private static void DeleteQuietly(string path)

@@ -86,7 +86,15 @@ namespace ExcelMerger
             item.Image = Flags.For(lang);            // флаг страны перед кодом языка
             item.ImageScaling = ToolStripItemImageScaling.None; // показать флаг 24×16 без сжатия до 16
             item.Checked = Loc.Current == lang;
-            item.Click += delegate { Loc.Set(lang); };
+            item.Click += delegate
+            {
+                if (Loc.Set(lang))
+                    return;
+                ToolStrip parent = item.GetCurrentParent();
+                Form owner = parent == null ? null : parent.FindForm();
+                Dialogs.Error(owner, Loc.T("settings.title"),
+                    Loc.T("settings.err.save.title"), Loc.T("settings.err.save.body"));
+            };
             return item;
         }
     }

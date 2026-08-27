@@ -179,16 +179,18 @@ namespace ExcelMerger
                 try
                 {
                     poller.Check();
-                    if (renderPage == null)
+                    using (var renderer = renderPage == null ? new PdfThumbnailRenderer() : null)
                     {
-                        using (var renderer = new PdfThumbnailRenderer())
-                            anyRefined = RefineGroups(result, groups, pixelCap,
-                                renderer.Render, work);
-                    }
-                    else
-                    {
-                        anyRefined = RefineGroups(result, groups, pixelCap,
-                            renderPage, work);
+                        Func<string, int, int, int, VisualPage> render =
+                            delegate(string path, int pageIndex, int width, int maxHeight)
+                            {
+                                if (renderer != null)
+                                    return new VisualPage(renderer.RenderOwned(path, pageIndex,
+                                        width, maxHeight, pixelCap));
+                                return new VisualPage(renderPage(path, pageIndex,
+                                    width, maxHeight));
+                            };
+                        anyRefined = RefineGroups(result, groups, pixelCap, render, work);
                     }
                 }
                 catch (OperationCanceledException) { throw; }
@@ -220,9 +222,35 @@ namespace ExcelMerger
             PdfReviewDiff.PublishProjection(result, rebuilt, sourceWhitespace, cancelled);
         }
 
+        private sealed class VisualPage : IDisposable
+        {
+            private BudgetedBitmap _owned;
+            internal readonly Bitmap Bitmap;
+
+            internal VisualPage(BudgetedBitmap owned)
+            {
+                _owned = owned;
+                Bitmap = owned == null ? null : owned.Bitmap;
+            }
+
+            internal VisualPage(Bitmap bitmap)
+            {
+                Bitmap = bitmap;
+            }
+
+            public void Dispose()
+            {
+                if (_owned != null)
+                    _owned.Dispose();
+                else if (Bitmap != null)
+                    Bitmap.Dispose();
+                _owned = null;
+            }
+        }
+
         private static bool RefineGroups(PdfReviewResult result,
             IList<HunkGroup> groups, long pixelCap,
-            Func<string, int, int, int, Bitmap> renderPage, VisualWorkBudget work)
+            Func<string, int, int, int, VisualPage> renderPage, VisualWorkBudget work)
         {
             bool anyRefined = false;
             foreach (HunkGroup group in groups)
@@ -241,14 +269,16 @@ namespace ExcelMerger
                     continue;
                 int maxHeight = (int)Math.Max(1,
                     Math.Min(20000, pixelCap / width));
-                Bitmap left = null;
-                Bitmap right = null;
+                VisualPage leftPageRaster = null;
+                VisualPage rightPageRaster = null;
                 try
                 {
-                    left = renderPage(result.Left.Path, group.LeftPageIndex,
+                    leftPageRaster = renderPage(result.Left.Path, group.LeftPageIndex,
                         width, maxHeight);
-                    right = renderPage(result.Right.Path, group.RightPageIndex,
+                    rightPageRaster = renderPage(result.Right.Path, group.RightPageIndex,
                         width, maxHeight);
+                    Bitmap left = leftPageRaster == null ? null : leftPageRaster.Bitmap;
+                    Bitmap right = rightPageRaster == null ? null : rightPageRaster.Bitmap;
                     if (!WithinLimit(left, pixelCap) || !WithinLimit(right, pixelCap))
                         continue;
                     InkRaster leftInk = InkRaster.From(left, work.Poller);
@@ -277,18 +307,14 @@ namespace ExcelMerger
                 }
                 finally
                 {
-                    if (!ReferenceEquals(right, left))
-                        DisposeBitmap(right);
-                    DisposeBitmap(left);
+                    if (rightPageRaster != null && (leftPageRaster == null ||
+                        !ReferenceEquals(rightPageRaster.Bitmap, leftPageRaster.Bitmap)))
+                        rightPageRaster.Dispose();
+                    if (leftPageRaster != null)
+                        leftPageRaster.Dispose();
                 }
             }
             return anyRefined;
-        }
-
-        private static void DisposeBitmap(Bitmap bitmap)
-        {
-            if (bitmap != null)
-                bitmap.Dispose();
         }
 
         private static List<DiffSegment> Segments(IList<PdfReviewWordOp> operations,

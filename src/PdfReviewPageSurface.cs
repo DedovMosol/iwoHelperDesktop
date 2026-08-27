@@ -27,6 +27,7 @@ namespace ExcelMerger
         private const int AutoScrollMargin = 28;
         private const int AutoScrollStep = 22;
         private const int ChangeBarHitWidth = 24;
+        private const int WordBucketHeight = 32;
 
         private sealed class ChangeBarHit
         {
@@ -47,6 +48,10 @@ namespace ExcelMerger
         private bool _dragging;
         private Size _rectangleSize;
         private readonly List<RectangleF> _wordRectangles = new List<RectangleF>();
+        private readonly Dictionary<int, List<int>> _wordBuckets =
+            new Dictionary<int, List<int>>();
+        private readonly Dictionary<PdfReviewWord, int> _wordIndex =
+            new Dictionary<PdfReviewWord, int>();
         private readonly List<ChangeBarHit> _changeBarHits = new List<ChangeBarHit>();
         private PdfReviewSurfaceFeedback _feedback;
 
@@ -387,16 +392,13 @@ namespace ExcelMerger
             {
                 if (changedWord == null)
                     continue;
-                for (int i = 0; i < _selection.Words.Count; i++)
-                {
-                    if (!object.ReferenceEquals(_selection.Words[i].Word, changedWord))
-                        continue;
-                    RectangleF rect = i < _wordRectangles.Count
-                        ? _wordRectangles[i] : RectangleF.Empty;
-                    if (!rect.IsEmpty)
-                        changed.Add(Tuple.Create(i, rect));
-                    break;
-                }
+                int index;
+                if (!_wordIndex.TryGetValue(changedWord, out index))
+                    continue;
+                RectangleF rect = index < _wordRectangles.Count
+                    ? _wordRectangles[index] : RectangleF.Empty;
+                if (!rect.IsEmpty)
+                    changed.Add(Tuple.Create(index, rect));
             }
             changed.Sort(delegate(Tuple<int, RectangleF> left, Tuple<int, RectangleF> right)
             {
@@ -410,9 +412,6 @@ namespace ExcelMerger
                     ChangeBarHit previous = _changeBarHits[_changeBarHits.Count - 1];
                     if (SameTextLine(previous.Top, previous.Bottom, item.Item2))
                     {
-                        // Renderer merges every changed word on one visual line, even if
-                        // unchanged trusted words occur between them in extraction order.
-                        // The clickable rail must select that same complete line fragment.
                         previous.End = item.Item1;
                         previous.Top = Math.Min(previous.Top, item.Item2.Top);
                         previous.Bottom = Math.Max(previous.Bottom, item.Item2.Bottom);
@@ -443,22 +442,35 @@ namespace ExcelMerger
         private int HitTestWord(Point point, bool nearest)
         {
             EnsureRectangleCache();
-            // The rail owns its outer hit strip. A click there must never fall through to
-            // a word box that happens to start close to the page edge.
             if (IsChangeBarHitX(point.X))
                 return -1;
-            for (int i = 0; i < _wordRectangles.Count; i++)
-                if (!_wordRectangles[i].IsEmpty && _wordRectangles[i].Contains(point))
-                    return i;
+            int firstBucket = (int)Math.Floor((point.Y -
+                (nearest ? PdfReviewTextSelection.NearestDragDistance : 0f)) / WordBucketHeight);
+            int lastBucket = (int)Math.Floor((point.Y +
+                (nearest ? PdfReviewTextSelection.NearestDragDistance : 0f)) / WordBucketHeight);
+            var candidates = new HashSet<int>();
+            for (int bucket = firstBucket; bucket <= lastBucket; bucket++)
+            {
+                List<int> indexes;
+                if (_wordBuckets.TryGetValue(bucket, out indexes))
+                    foreach (int index in indexes)
+                        candidates.Add(index);
+            }
+            foreach (int index in candidates)
+            {
+                RectangleF rect = _wordRectangles[index];
+                if (!rect.IsEmpty && rect.Contains(point))
+                    return index;
+            }
             if (!nearest)
                 return -1;
 
             double best = (double)PdfReviewTextSelection.NearestDragDistance *
                 PdfReviewTextSelection.NearestDragDistance;
             int bestIndex = -1;
-            for (int i = 0; i < _wordRectangles.Count; i++)
+            foreach (int index in candidates)
             {
-                RectangleF rect = _wordRectangles[i];
+                RectangleF rect = _wordRectangles[index];
                 if (rect.IsEmpty) continue;
                 double dx = point.X < rect.Left ? rect.Left - point.X :
                     point.X > rect.Right ? point.X - rect.Right : 0;
@@ -466,10 +478,10 @@ namespace ExcelMerger
                     point.Y > rect.Bottom ? point.Y - rect.Bottom : 0;
                 double distance = dx * dx + dy * dy;
                 if (distance < best || (Math.Abs(distance - best) < 0.0001 &&
-                    (bestIndex < 0 || i < bestIndex)))
+                    (bestIndex < 0 || index < bestIndex)))
                 {
                     best = distance;
-                    bestIndex = i;
+                    bestIndex = index;
                 }
             }
             return bestIndex;
@@ -479,22 +491,46 @@ namespace ExcelMerger
         {
             if (_selection == null)
             {
-                _wordRectangles.Clear();
-                _rectangleSize = Size.Empty;
+                ClearRectangleCache();
                 return;
             }
             if (_rectangleSize == ClientSize && _wordRectangles.Count == _selection.Count)
                 return;
-            _wordRectangles.Clear();
+            ClearRectangleCache();
             for (int i = 0; i < _selection.Count; i++)
-                _wordRectangles.Add(_selection.WordRectangle(i, ClientSize));
+            {
+                RectangleF rect = _selection.WordRectangle(i, ClientSize);
+                _wordRectangles.Add(rect);
+                PdfReviewSelectableWord selectable = _selection.Words[i];
+                if (selectable != null && selectable.Word != null &&
+                    !_wordIndex.ContainsKey(selectable.Word))
+                    _wordIndex.Add(selectable.Word, i);
+                if (rect.IsEmpty)
+                    continue;
+                int first = (int)Math.Floor(rect.Top / WordBucketHeight);
+                int last = (int)Math.Floor(rect.Bottom / WordBucketHeight);
+                for (int bucket = first; bucket <= last; bucket++)
+                {
+                    List<int> indexes;
+                    if (!_wordBuckets.TryGetValue(bucket, out indexes))
+                        _wordBuckets[bucket] = indexes = new List<int>();
+                    indexes.Add(i);
+                }
+            }
             _rectangleSize = ClientSize;
+        }
+
+        private void ClearRectangleCache()
+        {
+            _rectangleSize = Size.Empty;
+            _wordRectangles.Clear();
+            _wordBuckets.Clear();
+            _wordIndex.Clear();
         }
 
         private void InvalidateRectangleCache()
         {
-            _rectangleSize = Size.Empty;
-            _wordRectangles.Clear();
+            ClearRectangleCache();
             Invalidate();
         }
 

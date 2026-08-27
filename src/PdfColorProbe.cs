@@ -127,8 +127,9 @@ namespace ExcelMerger
             {
                 foreach (int index in SamplePages(pages, MaxSampledPages))
                 {
-                    using (Bitmap bmp = renderer.Render(path, index, RenderWidth, MaxRenderHeight))
-                        if (HasColor(bmp))
+                    using (BudgetedBitmap rendered = renderer.RenderOwned(path, index,
+                        RenderWidth, MaxRenderHeight, RasterBudget.DefaultRenderPixels))
+                        if (HasColor(rendered == null ? null : rendered.Bitmap))
                             return true;
                 }
             }

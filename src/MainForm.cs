@@ -61,6 +61,21 @@ namespace ExcelMerger
         private Panel _dropLine;   // индикатор вставки при перетаскивании
         private System.Windows.Forms.Timer _inputDebounce; // отложенное сканирование папки
         private int _dragIndex = -1;
+        private readonly object _progressGate = new object();
+        private bool _progressPostPending;
+        private int _pendingProgressCurrent, _pendingProgressTotal;
+        private string _pendingProgressFile;
+        private int _scanGeneration;
+        private bool _scanBusy;
+        private bool _scanWorkerActive;
+        private ScanRequest _queuedScan;
+        private sealed class ScanRequest
+        {
+            public int Generation;
+            public string Folder;
+        }
+        private bool _folderExists;
+        private string _scannedFolder;
         private bool _populating;  // подавляет ItemChecked во время заполнения
         private bool _running;        // истина от нажатия «Объединить» до OnMergeFinished (только UI-поток)
         private bool _noteBusy;       // готовится записка Word (только UI-поток)
@@ -87,9 +102,12 @@ namespace ExcelMerger
             BuildUi();
 
             _settings = UserSettings.Load();
-            if (!string.IsNullOrEmpty(_settings.LastInputFolder) && Directory.Exists(_settings.LastInputFolder))
+            // Directory.Exists may block on an unavailable network share. Restore the saved
+            // text without probing here; the debounced worker validates it after the window
+            // has a handle and can safely publish the result.
+            if (!string.IsNullOrEmpty(_settings.LastInputFolder))
                 _txtInput.Text = _settings.LastInputFolder;
-            if (!string.IsNullOrEmpty(_settings.LastOutputFolder) && Directory.Exists(_settings.LastOutputFolder))
+            if (!string.IsNullOrEmpty(_settings.LastOutputFolder))
                 _txtOutDir.Text = _settings.LastOutputFolder;
             _txtName.Text = Loc.T("excel.defaultName") + DateTime.Now.ToString("yyyy-MM-dd");
             _chkToc.Checked = _settings.AddToc;
@@ -100,7 +118,6 @@ namespace ExcelMerger
             _cmbScope.SelectedIndex = _settings.AllSheets ? 1 : 0;
             if (_inputDebounce != null)
                 _inputDebounce.Stop(); // стартовая загрузка — сразу, без отложенного повтора
-            RefreshFileList();
             WindowPlacement.Attach(this); // размер и положение окна между запусками
         }
 
@@ -166,7 +183,18 @@ namespace ExcelMerger
             _inputDebounce = new System.Windows.Forms.Timer();
             _inputDebounce.Interval = 300;
             _inputDebounce.Tick += delegate { _inputDebounce.Stop(); RefreshFileList(); };
-            _txtInput.TextChanged += delegate { _inputDebounce.Stop(); _inputDebounce.Start(); };
+            _txtInput.TextChanged += delegate
+            {
+                // Invalidate the in-flight scan immediately. Waiting for the debounce
+                // tick would let an old folder briefly repopulate the list and enable
+                // Merge against a path the user has already changed.
+                unchecked { _scanGeneration++; }
+                _scanBusy = true;
+                SetFoundLabel(Loc.T("excel.found.scanning"), Theme.TextMuted);
+                UpdateReadiness();
+                _inputDebounce.Stop();
+                _inputDebounce.Start();
+            };
             _btnBrowseInput = AddButton(Loc.T("common.browse"), false, right - 100, 134, 100, 29);
             _btnBrowseInput.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseInput.Click += OnBrowseInput;
@@ -245,7 +273,7 @@ namespace ExcelMerger
             _list.ItemChecked += OnItemChecked;
             _list.ItemCheck += delegate(object s, ItemCheckEventArgs e)
             {
-                if (_running) // во время прогона состав не меняем
+                if (_running || _scanBusy) // во время прогона/сканирования состав не меняем
                     e.NewValue = e.CurrentValue;
             };
             _list.SelectedIndexChanged += delegate { UpdateListButtons(); };
@@ -491,24 +519,101 @@ namespace ExcelMerger
             return null;
         }
 
-        /// <summary>Перечитывает папку в список файлов (все включены, естественный порядок).</summary>
+        /// <summary>Перечитывает папку в фоне и применяет только последний запрос.</summary>
+        private bool FileListEditable
+        {
+            get { return !_running && !_scanBusy; }
+        }
+
         private void RefreshFileList()
         {
             if (_running)
                 return;
+            int generation = unchecked(++_scanGeneration);
             string folder = _txtInput.Text.Trim();
-            List<string> paths = new List<string>();
             if (folder.Length == 0)
-                SetFoundLabel(Loc.T("excel.found.chooseFolder"), Theme.TextMuted);
-            else if (!Directory.Exists(folder))
-                SetFoundLabel(Loc.T("excel.found.notFound"), Theme.ErrRed);
-            else
             {
-                try { paths = MergeService.FindSourceFiles(folder, null); }
-                catch (Exception ex) { SetFoundLabel(string.Format(Loc.T("excel.found.readError"), ex.Message), Theme.ErrRed); }
+                _queuedScan = null;
+                _scanBusy = false;
+                _folderExists = false;
+                _scannedFolder = folder;
+                SetFoundLabel(Loc.T("excel.found.chooseFolder"), Theme.TextMuted);
+                _files.SetFiles(new List<string>());
+                RebuildFileRows();
+                return;
             }
-            _files.SetFiles(paths);
-            RebuildFileRows();
+
+            _scanBusy = true;
+            SetFoundLabel(Loc.T("excel.found.scanning"), Theme.TextMuted);
+            UpdateReadiness();
+            var request = new ScanRequest { Generation = generation, Folder = folder };
+            if (_scanWorkerActive)
+            {
+                // Один filesystem worker максимум. Пока UNC/сеть отвечает, все промежуточные
+                // правки схлопываются в один последний запрос вместо множества blocked threads.
+                _queuedScan = request;
+                return;
+            }
+            StartScan(request);
+        }
+
+        private void StartScan(ScanRequest request)
+        {
+            _scanWorkerActive = true;
+            var owner = new WeakReference(this);
+            Ui.RunWorker(delegate
+            {
+                List<string> paths = null;
+                string error = null;
+                try
+                {
+                    if (!Directory.Exists(request.Folder))
+                        error = Loc.T("excel.found.notFound");
+                    else
+                        paths = MergeService.FindSourceFiles(request.Folder, null);
+                }
+                catch (Exception ex) { error = ex.Message; }
+                MainForm form = owner.Target as MainForm;
+                if (form == null)
+                    return;
+                List<string> found = paths;
+                string scanError = error;
+                Ui.OnUi(form, delegate { form.CompleteScan(request, found, scanError); });
+            });
+        }
+
+        private void CompleteScan(ScanRequest request, List<string> found, string scanError)
+        {
+            if (IsDisposed || Disposing)
+                return;
+            if (request.Generation == _scanGeneration)
+            {
+                _scanBusy = false;
+                _folderExists = scanError == null;
+                _scannedFolder = request.Folder;
+                if (scanError != null)
+                {
+                    _files.SetFiles(new List<string>());
+                    RebuildFileRows();
+                    SetFoundLabel(scanError == Loc.T("excel.found.notFound")
+                        ? scanError
+                        : string.Format(Loc.T("excel.found.readError"), scanError),
+                        Theme.ErrRed);
+                    UpdateReadiness();
+                }
+                else
+                {
+                    _files.SetFiles(found ?? new List<string>());
+                    RebuildFileRows();
+                }
+            }
+
+            ScanRequest next = _queuedScan;
+            _queuedScan = null;
+            if (next != null && next.Generation == _scanGeneration)
+                StartScan(next);
+            else
+                _scanWorkerActive = false;
         }
 
         private void RebuildFileRows()
@@ -540,7 +645,8 @@ namespace ExcelMerger
         {
             if (_files.Count == 0)
             {
-                if (_txtInput.Text.Trim().Length > 0 && Directory.Exists(_txtInput.Text.Trim()))
+                if (_folderExists && string.Equals(_scannedFolder, _txtInput.Text.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
                     SetFoundLabel(Loc.T("excel.found.noExcel"), Theme.ErrRed);
                 return;
             }
@@ -605,7 +711,7 @@ namespace ExcelMerger
         /// <summary>Delete в списке — снять галочку (исключить) у выбранных файлов.</summary>
         private void ExcludeSelectedRows()
         {
-            if (_running || _list.SelectedItems.Count == 0)
+            if (!FileListEditable || _list.SelectedItems.Count == 0)
                 return;
             _populating = true;
             foreach (ListViewItem item in _list.SelectedItems)
@@ -622,7 +728,7 @@ namespace ExcelMerger
 
         private void MoveSelectedFile(bool down)
         {
-            if (_running || _list.SelectedIndices.Count != 1)
+            if (!FileListEditable || _list.SelectedIndices.Count != 1)
                 return;
             int index = _list.SelectedIndices[0];
             int moved = down ? _files.MoveDown(index) : _files.MoveUp(index);
@@ -636,7 +742,7 @@ namespace ExcelMerger
 
         private void SortFilesByName()
         {
-            if (_running)
+            if (!FileListEditable)
                 return;
             _files.SortByName();
             RebuildFileRows();
@@ -644,7 +750,7 @@ namespace ExcelMerger
 
         private void SetAllChecked(bool included)
         {
-            if (_running)
+            if (!FileListEditable)
                 return;
             _files.SetAllIncluded(included);
             _populating = true;
@@ -657,19 +763,19 @@ namespace ExcelMerger
 
         private void UpdateListButtons()
         {
-            bool one = !_running && _list.SelectedIndices.Count == 1;
+            bool one = FileListEditable && _list.SelectedIndices.Count == 1;
             _btnUp.Enabled = one;
             _btnDown.Enabled = one;
-            _btnSortName.Enabled = !_running && _files.Count > 1;
-            _btnCheckAll.Enabled = !_running && _files.Count > 0;
-            _btnUncheckAll.Enabled = !_running && _files.Count > 0;
+            _btnSortName.Enabled = FileListEditable && _files.Count > 1;
+            _btnCheckAll.Enabled = FileListEditable && _files.Count > 0;
+            _btnUncheckAll.Enabled = FileListEditable && _files.Count > 0;
         }
 
         // ---------- перетаскивание строк ----------
 
         private void OnFileItemDrag(object sender, ItemDragEventArgs e)
         {
-            if (_running)
+            if (!FileListEditable)
                 return;
             var item = e.Item as ListViewItem;
             if (item != null)
@@ -681,7 +787,7 @@ namespace ExcelMerger
 
         private void OnFileDragOver(object sender, DragEventArgs e)
         {
-            if (_running || _dragIndex < 0)
+            if (!FileListEditable || _dragIndex < 0)
             {
                 e.Effect = DragDropEffects.None;
                 return;
@@ -694,7 +800,7 @@ namespace ExcelMerger
         private void OnFileDragDrop(object sender, DragEventArgs e)
         {
             HideDropLine();
-            if (_running || _dragIndex < 0)
+            if (!FileListEditable || _dragIndex < 0)
                 return;
             int target = DropTargetIndex(e);
             int from = _dragIndex;
@@ -747,13 +853,15 @@ namespace ExcelMerger
             UpdateListButtons();
             if (_running)
                 return;
-            _btnMerge.Enabled = _files.IncludedCount > 0 && _txtName.Text.Trim().Length > 0;
+            _btnMerge.Enabled = !_scanBusy && _files.IncludedCount > 0 && _txtName.Text.Trim().Length > 0;
         }
 
         // ---------- запуск объединения ----------
 
         private void OnMergeClick(object sender, EventArgs e)
         {
+            if (_running || _scanBusy)
+                return;
             string folder = _txtInput.Text.Trim();
             if (!Directory.Exists(folder))
             {
@@ -875,6 +983,11 @@ namespace ExcelMerger
         private void PrepareRun(string folder, string outputPath, MergeOptions options, bool clearAllRows)
         {
             _running = true;
+            lock (_progressGate)
+            {
+                _progressPostPending = false;
+                _pendingProgressFile = null;
+            }
             _isFreshRun = clearAllRows; // clearAllRows=false — это дослияние пропущенных
             SetRunning(true);
             if (clearAllRows)
@@ -941,14 +1054,41 @@ namespace ExcelMerger
 
         private void OnServiceProgress(int current, int total, string fileName)
         {
-            OnUi(delegate
+            bool post;
+            lock (_progressGate)
             {
-                _progress.Maximum = total; // реальное число файлов известно только сервису
-                if (current - 1 <= total)
-                    _progress.Value = current - 1;
-                SyncTaskbar();
-                SetStatus(string.Format(Loc.T("excel.status.fileProgress"), current, total, fileName), Theme.TextMuted);
-            });
+                _pendingProgressCurrent = current;
+                _pendingProgressTotal = total;
+                _pendingProgressFile = fileName;
+                post = !_progressPostPending;
+                _progressPostPending = true;
+            }
+            if (post)
+                OnUi(DrainServiceProgress);
+        }
+
+        /// <summary>
+        /// Apply only the newest progress sample. Hundreds of source files must not queue
+        /// hundreds of stale status repaints ahead of Cancel or the final result.
+        /// </summary>
+        private void DrainServiceProgress()
+        {
+            int current, total;
+            string fileName;
+            lock (_progressGate)
+            {
+                current = _pendingProgressCurrent;
+                total = _pendingProgressTotal;
+                fileName = _pendingProgressFile;
+                _progressPostPending = false;
+            }
+            if (!_running)
+                return;
+            _progress.Maximum = Math.Max(1, total);
+            _progress.Value = Math.Max(0, Math.Min(_progress.Maximum, current - 1));
+            SyncTaskbar();
+            SetStatus(string.Format(Loc.T("excel.status.fileProgress"), current, total, fileName),
+                Theme.TextMuted);
         }
 
         private void OnServiceFileDone(FileResult fr)
@@ -1143,6 +1283,7 @@ namespace ExcelMerger
         {
             base.OnLoad(e);
             Ui.HeaderLastInTabOrder(this);
+            RefreshFileList();
         }
 
         /// <summary>
@@ -1261,9 +1402,9 @@ namespace ExcelMerger
         {
             string input = _txtInput.Text.Trim();
             string outDir = _txtOutDir.Text.Trim();
-            if (Directory.Exists(input))
+            if (input.Length > 0)
                 _settings.LastInputFolder = input;
-            if (Directory.Exists(outDir))
+            if (outDir.Length > 0)
                 _settings.LastOutputFolder = outDir;
             _settings.AddToc = _chkToc.Checked;
             _settings.AllSheets = _cmbScope.SelectedIndex == 1;

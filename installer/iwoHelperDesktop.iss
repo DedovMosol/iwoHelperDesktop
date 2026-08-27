@@ -130,6 +130,7 @@ Source: "{#GsDir}\lib\*"; DestDir: "{app}\gs\lib"; Flags: ignoreversion recurses
 Source: "{#GsDir}\Resource\*"; DestDir: "{app}\gs\Resource"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#GsDir}\iccprofiles\*"; DestDir: "{app}\gs\iccprofiles"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#GsDir}\LICENSE"; DestDir: "{app}\gs"; DestName: "LICENSE.txt"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#GsDir}\SOURCE.txt"; DestDir: "{app}\gs"; Flags: ignoreversion
 ; Флаги для стартового выбора языка (извлекаются во временную папку, не устанавливаются).
 Source: "flag_en.bmp"; Flags: dontcopy
 Source: "flag_ru.bmp"; Flags: dontcopy

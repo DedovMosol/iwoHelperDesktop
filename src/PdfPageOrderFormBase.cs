@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -137,16 +138,32 @@ namespace ExcelMerger
             Ui.RunWorker(delegate()
             {
                 string error = null;
+                bool cancelled = false;
                 try
                 {
-                    double width, height;
-                    BlankPages.SheetSize(SizeOf(neighbour), out width, out height);
-                    BlankPages.WriteSheet(wrapper, width, height);
+                    if (LoadCancellationRequested)
+                        cancelled = true;
+                    else
+                    {
+                        double width, height;
+                        BlankPages.SheetSize(SizeOf(neighbour), out width, out height);
+                        if (LoadCancellationRequested)
+                            cancelled = true;
+                        else
+                            BlankPages.WriteSheet(wrapper, width, height);
+                    }
                 }
                 catch (Exception ex) { error = ex.Message; }
                 string err = error;
+                bool wasCancelled = cancelled || LoadCancellationRequested;
                 OnUi(delegate
                 {
+                    if (wasCancelled || LoadCancellationRequested)
+                    {
+                        try { System.IO.File.Delete(wrapper); } catch { }
+                        FinishCanceledLoad();
+                        return;
+                    }
                     EndLoad();
                     if (err != null)
                     {
@@ -244,12 +261,29 @@ namespace ExcelMerger
             // добавился ни один источник) — иначе статус залипал бы на загрузке.
             RefreshRestingStatus();
             SyncControls();
-            if (errors != null)
-                foreach (string err in errors)
-                    Dialogs.Error(this, ToolTitle, Loc.T("common.fileNotAdded"), err);
+            ShowLoadErrors(errors);
         }
 
         // ---------- перестановка, вставка, удаление ----------
+
+        private void ShowLoadErrors(IList<string> errors)
+        {
+            if (errors == null || errors.Count == 0)
+                return;
+            const int MaxShown = 30;
+            var text = new StringBuilder();
+            int shown = Math.Min(MaxShown, errors.Count);
+            for (int i = 0; i < shown; i++)
+            {
+                if (i > 0)
+                    text.AppendLine();
+                text.Append("• ").Append(errors[i]);
+            }
+            if (errors.Count > shown)
+                text.AppendLine().AppendLine().Append(string.Format(
+                    Loc.T("common.fileNotAddedMore"), errors.Count - shown));
+            Dialogs.Error(this, ToolTitle, Loc.T("common.fileNotAdded"), text.ToString());
+        }
 
         private void OnReorder(int from, int to)
         {

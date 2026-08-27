@@ -38,8 +38,21 @@ namespace ExcelMerger
         private const float MinRadius = 5f, MaxRadius = 10f;
 
         private readonly ButtonLook _look;
+        private bool _selected;
         private bool _hover;
         private bool _pressed;
+
+        public bool Selected
+        {
+            get { return _selected; }
+            set
+            {
+                if (_selected == value) return;
+                _selected = value;
+                Invalidate();
+            }
+        }
+
 
         /// <summary>true — главное действие окна (акцентная), false — обычная кнопка.</summary>
         public RoundedButton(bool primary) : this(primary ? ButtonLook.Primary : ButtonLook.Secondary) { }
@@ -113,7 +126,8 @@ namespace ExcelMerger
             if (Focused && Enabled)
             {
                 var inner = new RectangleF(3f, 3f, Width - 6f, Height - 6f);
-                Color ring = _look == ButtonLook.Secondary ? Theme.Accent : Color.White;
+                Color ring = _look == ButtonLook.Secondary && !_selected
+                    ? Theme.Accent : Color.White;
                 using (GraphicsPath ringPath = Ui.RoundedRect(inner, radius - 2f))
                 using (var p = new Pen(ring, 1.6f))
                     g.DrawPath(p, ringPath);
@@ -148,6 +162,15 @@ namespace ExcelMerger
                     return;
 
                 default:
+                    if (_selected)
+                    {
+                        text = Enabled ? Color.White : Theme.DisabledText;
+                        fill = !Enabled ? Theme.DisabledFill
+                            : _pressed ? Theme.AccentPressed
+                            : _hover ? Theme.AccentHover : Theme.Accent;
+                        border = Theme.AccentPressed;
+                        return;
+                    }
                     text = Enabled ? Theme.TextPrimary : Theme.DisabledText;
                     fill = !Enabled ? Theme.DisabledSecondaryFill
                         : _pressed ? Theme.SecondaryPressed

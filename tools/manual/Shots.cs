@@ -495,8 +495,16 @@ static class Shots
             {
                 return Field(f, "_result") != null && !ReviewWorking(f);
             }, 180000, delegate { return ReviewState(f); });
+            object unifiedView = Field(f, "_unifiedSource");
+            WaitUntil("Review: единый документ", delegate
+            {
+                return Member(unifiedView, "ViewState").ToString() == "Ready" &&
+                    !ReviewBool(unifiedView, "_renderWorker");
+            }, 45000, delegate { return ReviewState(f); });
+            ReviewShot(f, "review", false);
+            ((Button)Field(f, "_sideModeButton")).PerformClick();
+            Pump(300);
             WaitReviewPanes(f, "первая пара");
-
             object result = Field(f, "_result");
             AssertReviewFixtureResult(result, reverse);
             string semanticBefore = ReviewResultDetails(result);

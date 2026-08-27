@@ -31,18 +31,22 @@ namespace ExcelMerger
         public static void Init(Lang lang) { _current = lang; }
 
         /// <summary>Сменить язык: сохранить в настройки и уведомить подписчиков. No-op, если не изменился.</summary>
-        public static void Set(Lang lang)
+        public static bool Set(Lang lang)
         {
             if (lang == _current)
-                return;
-            _current = lang;
-            // Сохранить, сохранив прочие настройки: Load читает файл, Save пишет их обратно и
-            // проставляет язык из Loc.Current (см. UserSettings.Save).
-            try { UserSettings.Load().Save(); }
-            catch { } // не удалось сохранить — язык всё равно применится в этой сессии
+                return true;
+            Lang previous = _current;
+            _current = lang; // WriteAll reads the live language.
+            bool saved = UserSettings.SaveLanguage(Code(lang));
+            if (!saved)
+            {
+                _current = previous;
+                return false;
+            }
             Action h = Changed;
             if (h != null)
                 h();
+            return true;
         }
 
         /// <summary>Код языка для настроек: «ru»/«en».</summary>
@@ -212,6 +216,10 @@ namespace ExcelMerger
             // действия пойдут по собранному, и молчать об этом нельзя.
             A("common.status.assembled", " В сетке собрано страниц: {0}.", " Assembled in the grid: {0} pages.");
             A("common.err.fileNotOpened", "Файл не открыт", "File not opened");
+            A("common.ask.replacePages.title", "Заменить текущую сборку?", "Replace the current page set?");
+            A("common.ask.replacePages.body",
+                "В сетке есть несохранённые изменения ({0} стр.). Открытие другого PDF заменит текущую сборку. Продолжить?",
+                "The grid contains unsaved changes ({0} pages). Opening another PDF will replace the current page set. Continue?");
             A("common.grid.emptyOpen", "Перетащите PDF сюда\nили нажмите «Открыть PDF…»",
                 "Drop a PDF here\nor click “Open PDF…”");
             A("common.grid.dropOpen", "Отпустите, чтобы открыть", "Drop to open");
@@ -219,6 +227,7 @@ namespace ExcelMerger
             A("common.pdfSaveFilter", "Документ PDF (*.pdf)|*.pdf", "PDF document (*.pdf)|*.pdf");
             A("common.pickPdf", "Выберите PDF-файлы", "Choose PDF files");
             A("common.fileNotAdded", "Файл не добавлен", "File not added");
+            A("common.fileNotAddedMore", "И ещё ошибок: {0}.", "And {0} more error(s).");
             A("common.addPdf", "Добавить PDF…", "Add PDF…");
             A("common.tip.addPdf", "Файлы также можно перетащить в окно программы", "You can also drag files onto the program window");
             A("common.tip.removePages", "Удалить выбранные страницы (Delete)", "Remove the selected pages (Delete)");
@@ -227,6 +236,7 @@ namespace ExcelMerger
             A("grid.dropHint", "Отпустите, чтобы добавить", "Drop to add");
             A("common.status.saving", "Сохранение…", "Saving…");
             A("common.status.loading", "Загрузка…", "Loading…");
+            A("common.status.cancelingLoad", "Отмена загрузки…", "Cancelling the load…");
             // Сжатие идёт отдельным процессом (Ghostscript) и о ходе не сообщает, поэтому
             // фаза называется в статусе, а полоса на это время становится бегущей.
             A("common.status.compressing", "Сжатие…", "Compressing…");
@@ -304,6 +314,20 @@ namespace ExcelMerger
             A("review.source.interactions",
                 "Панель только для чтения: выделяйте проверенный текст PDF мышью, Ctrl+A выделяет страницу, Ctrl+C копирует для вставки в другое приложение. Колесо прокручивает только эту сторону; Ctrl+колесо масштабирует её вокруг указателя.",
                 "Read-only pane: select verified PDF text with the mouse, Ctrl+A selects the page, and Ctrl+C copies for pasting into another app. The wheel scrolls only this side; Ctrl+wheel zooms it around the pointer.");
+            A("review.mode.unified", "Общий документ", "Unified redline");
+            A("review.mode.sideBySide", "Бок о бок", "Side by side");
+            A("review.mode.selected", "Выбранный режим просмотра", "Selected view mode");
+            A("review.pairs.resizeTip", "Потяните разделитель, чтобы изменить ширину списка сопоставления.",
+                "Drag the splitter to resize the alignment list.");
+            A("review.unified.legend", "Общий документ · поздняя версия с правками",
+                "Unified redline · later version with changes");
+            A("review.unified.hint", "Зелёным показано добавленное; удалённые фрагменты ранней версии наложены красным и перечёркнуты.",
+                "Added content is green; deleted earlier-version fragments are overlaid in red with a strike line.");
+            A("review.unified.interactions", "Колесо листает общий документ, Ctrl+колесо масштабирует. Двойной щелчок открывает этот же документ с пометками на весь экран.",
+                "The wheel scrolls the unified document; Ctrl+wheel zooms. Double-click opens the same marked-up document full screen.");
+            A("review.unified.caption", "Общий документ · {0} ↔ {1}",
+                "Unified redline · {0} ↔ {1}");
+
             A("review.source.dropHere", "Отпустите PDF для этой стороны",
                 "Drop the PDF for this side");
             A("review.source.empty", "Выберите, введите или перетащите PDF",
@@ -477,8 +501,8 @@ namespace ExcelMerger
             A("ops.ask.replacePages.title", "Заменить собранные страницы?",
                 "Replace the assembled pages?");
             A("ops.ask.replacePages.body",
-                "В наборе есть добавленные картинки. Открытие другого PDF заменит набор целиком, и они из него исчезнут. Открыть?",
-                "The set contains images you added. Opening another PDF replaces the whole set and they will be gone. Open it?");
+                "В наборе есть несохранённые изменения: добавленные картинки или изменённые страницы. Открытие другого PDF заменит набор целиком, и эти изменения исчезнут. Открыть?",
+                "The set contains unsaved changes: added images or edited pages. Opening another PDF replaces the whole set and those changes will be lost. Open it?");
             A("ops.ask.jpeg.title", "Сохранить в JPEG?", "Save as JPEG?");
             A("ops.ask.jpeg.body",
                 "JPEG заметно компактнее, но сжимает с потерями. PNG крупнее и сохраняет страницу точно.\n\n«Да» — JPEG, «Нет» — PNG.",
@@ -562,6 +586,8 @@ namespace ExcelMerger
             A("preview.fit", "По окну", "Fit to window");
             A("preview.tip.zoomIn", "Увеличить (Ctrl+колесо)", "Zoom in (Ctrl+wheel)");
             A("preview.tip.zoomOut", "Уменьшить (Ctrl+колесо)", "Zoom out (Ctrl+wheel)");
+            A("err.img.tooLarge", "Изображение слишком велико для безопасной обработки (более {0} млн пикселей).", "The image is too large to process safely (more than {0} million pixels).");
+            A("err.export.badDpi", "Разрешение должно быть от 1 до {0} dpi.", "Resolution must be between 1 and {0} dpi.");
             A("err.export.noPages", "Не выбрано ни одной страницы для сохранения.",
                 "No pages are selected to save.");
             A("err.export.pageFailed", "Не удалось отрисовать страницу {0}.", "Page {0} could not be rendered.");
@@ -696,7 +722,30 @@ namespace ExcelMerger
             A("update.skip", "Больше не спрашивать", "Don't ask again");
 
             // settings.* — окно «Настройки» (общее для всей программы, не для документа)
+            A("whatsnew.title", "Что нового в версии {0}", "What's new in version {0}");
+            A("whatsnew.header", "Что нового · {0}", "What's new · {0}");
+            A("whatsnew.subtitle", "Коротко о заметных изменениях — без технических подробностей.",
+                "A concise overview of meaningful changes, without technical detail.");
+            A("whatsnew.accessible", "Значок нового выпуска", "New release icon");
+            A("whatsnew.item.accessible", "Новое, пункт {0}", "What's new, item {0}");
+            A("whatsnew.fallback", "В этой версии улучшены надёжность и удобство работы.",
+                "This version improves reliability and ease of use.");
+            A("whatsnew.dontShow", "Больше не показывать автоматически",
+                "Don't show this automatically again");
+            A("whatsnew.support.link", "Поддержать развитие проекта",
+                "Support the project's development");
+            A("whatsnew.support.hide", "Скрыть реквизиты", "Hide support details");
+            A("whatsnew.support.hint", "Необязательная поддержка независимой разработки.",
+                "Optional support for independent development.");
+            A("whatsnew.support.body", "Приложение разрабатывается и поддерживается одним автором своими силами. Если оно экономит ваше время, проект можно поддержать — это полностью добровольно.",
+                "The app is independently developed and maintained by one author. If it saves you time, you can support the project—entirely voluntarily.");
+            A("settings.chk.whatsNew", "Показывать «Что нового» после обновления",
+                "Show What's New after an update");
+            A("settings.btn.whatsNew", "Что нового в {0}", "What's new in {0}");
+
             A("settings.title", "Настройки", "Settings");
+            A("settings.err.save.title", "Настройки не сохранены", "Settings were not saved");
+            A("settings.err.save.body", "Файл настроек временно недоступен. Прежнее значение оставлено без изменений; повторите действие.", "The settings file is temporarily unavailable. The previous value was left unchanged; please try again.");
             A("settings.section.updates", "Обновления", "Updates");
             A("settings.chk.updateOnStart", "Проверять обновления при запуске", "Check for updates at startup");
             A("settings.tip.updateOnStart",
@@ -821,6 +870,7 @@ namespace ExcelMerger
             A("about.manual.open", "открыть", "open");
             A("about.license", "© 2026 · Лицензия MIT", "© 2026 · MIT License");
             A("about.privacy", "Политика конфиденциальности", "Privacy Policy");
+            A("about.thirdParty", "Лицензии компонентов", "Third-party licenses");
             A("about.privacyNote", "(документы обрабатываются локально; проверка обновлений обращается к GitHub)",
                 "(documents are processed locally; update checks contact GitHub)");
             A("about.project", "Проект и контакты", "Project and contacts");
@@ -832,12 +882,15 @@ namespace ExcelMerger
 
             // stats.* — окно «Статистика» (StatsForm)
             A("stats.since", "Считается с {0}.", "Counting since {0}.");
+            A("stats.err.save.title", "Статистика не сохранена", "Statistics were not saved");
+            A("stats.err.save.body", "Файл статистики временно недоступен. Прежние счётчики оставлены без изменений; повторите действие.", "The statistics file is temporarily unavailable. Existing counters were left unchanged; please try again.");
             A("stats.row.excel", "Своды Excel", "Excel digests");
             A("stats.row.merge", "Объединения PDF", "PDF merges");
             A("stats.row.extract", "Извлечения страниц (PDF)", "Page extractions (PDF)");
             A("stats.row.ranges", "Разбиение по диапазонам", "Split by ranges");
             A("stats.row.everyN", "Разбиение: каждые N страниц", "Split: every N pages");
             A("stats.row.bookmarks", "Разбиение по закладкам", "Split by bookmarks");
+            A("stats.row.compare", "Сравнения PDF", "PDF comparisons");
             A("stats.row.pdftoword", "Конвертации PDF → Word", "PDF → Word conversions");
             A("stats.row.pdftopptx", "Конвертации PDF → PowerPoint", "PDF → PowerPoint conversions");
             A("stats.row.compress", "Сжатия PDF (файлов)", "PDF compressions (files)");
@@ -1058,6 +1111,14 @@ namespace ExcelMerger
             // нет, и выглядит это как поломка перевода, а не как отсутствие текста в источнике.
             A("convert.status.noTextPages", " Без текста осталось страниц: {0} — там он картинкой, и вернуть его может только распознавание.",
                 " {0} page(s) have no text: there it is part of the picture, and only recognition can bring it back.");
+            A("convert.status.noBackgroundEngine",
+                " Подложки страниц не добавлены: Ghostscript недоступен, поэтому презентация содержит только извлечённые элементы.",
+                " Page backgrounds were not added because Ghostscript is unavailable; the presentation contains only the extracted elements.");
+            A("convert.status.backgroundPartial",
+                " Часть подложек не добавлена (сбоев: {0}){1}.",
+                " Some page backgrounds were not added (failures: {0}){1}.");
+            A("convert.status.backgroundBudget", "; достигнут безопасный предел размера презентации",
+                "; the safe presentation-size budget was reached");
             A("ocr.err.convertFailed", "Конвертация не выполнена", "Conversion failed");
             A("ocr.filter", "Документ Word (*.docx)|*.docx", "Word document (*.docx)|*.docx");
             A("ocr.defaultMerged", "Объединённый.docx", "Merged.docx");
@@ -1257,6 +1318,7 @@ namespace ExcelMerger
             A("excel.status.noteFailed", "Записка не создана.", "The note was not created.");
             A("excel.status.noteSaved", "Записка сохранена рядом со сводом.", "The note was saved next to the digest.");
             A("excel.status.waitNote", "Дождитесь завершения записки Word…", "Wait for the Word note to finish…");
+            A("excel.found.scanning", "Проверка папки…", "Scanning folder…");
             A("excel.found.chooseFolder", "Укажите папку или перетащите её в окно программы.", "Choose a folder or drag it onto the program window.");
             A("excel.found.notFound", "Папка не найдена.", "Folder not found.");
             A("excel.found.readError", "Не удалось прочитать папку: {0}", "Could not read the folder: {0}");

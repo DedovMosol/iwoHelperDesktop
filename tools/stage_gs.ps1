@@ -98,6 +98,23 @@ foreach ($lic in @('LICENSE', 'doc\COPYING', 'COPYING')) {
     $lp = Join-Path $Source $lic
     if (Test-Path $lp) { Copy-Item $lp (Join-Path $Dest 'LICENSE') -Force; break }
 }
+$gsVersion = ''
+try { $gsVersion = ((& $exe --version) | Out-String).Trim() } catch { }
+if (-not $gsVersion) { $gsVersion = (Split-Path $Source -Leaf) -replace '^gs', '' }
+$sourceNotice = @"
+Ghostscript version bundled by this installer: $gsVersion
+
+Corresponding source code is published by Artifex at:
+https://github.com/ArtifexSoftware/ghostpdl-downloads/releases
+https://ghostscript.com/releases/
+
+Choose the ghostpdl source archive whose version is exactly $gsVersion. iwo Helper Desktop
+invokes Ghostscript as a separate process and does not link it into the application executable.
+For redistribution questions or a source copy, open an issue at:
+https://github.com/DedovMosol/iwoHelperDesktop
+"@
+[IO.File]::WriteAllText((Join-Path $Dest 'SOURCE.txt'), $sourceNotice,
+    (New-Object Text.UTF8Encoding($false)))
 
 $size = [math]::Round(((Get-ChildItem $Dest -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
 Write-Host "Ghostscript ($Arch) staged in $Dest ($size MB)."

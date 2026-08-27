@@ -1,11 +1,11 @@
 # Privacy Policy
 
 **Application:** iwo Helper Desktop
-**Last updated:** 2026-08-26
+**Last updated:** 2026-08-27
 
 ## Summary
 
-iwo Helper Desktop is an **offline desktop application**. It does **not** collect,
+iwo Helper Desktop is an **offline-first desktop application**. It does **not** collect,
 transmit, sell, or share any personal data, and it does **not** contain any telemetry,
 analytics, advertising, or user accounts. Everything you do with your files happens
 **locally on your own computer**. The only time the app talks to the network is the
@@ -79,11 +79,22 @@ as soon as they are no longer needed — successfully or not:
 - **An action over an assembled document** (More operations) first writes that document to a
   temporary PDF in the same directory when the pages have been reordered, rotated or removed,
   and deletes it as soon as the action finishes. Untouched pages need no such file.
-- **Compression, grayscale, and repair** write the new copy beside the output file
-  (`<name>.pdf.gstmp`) and keep the original as `<name>.pdf.gsbak` while they swap them,
-  so a failure part‑way through cannot lose the file. Both are deleted afterwards.
-- **Page rendering through Ghostscript** writes one temporary `.png` in the system temp
-  directory and deletes it immediately after reading it.
+- **A document that can replace an existing destination** is first written to a uniquely
+  named `.iwo-<random>` neighbour. During a non-NTFS fallback swap, the full original name is
+  retained in a recoverable `.bak` file and an empty `.txn` recovery marker is held open. A
+  normal completion removes them; after a crash, the next safe sweep restores a missing
+  destination before deleting anything. A marker in a previously unknown output directory may
+  remain until that directory is encountered again; its filename carries only the destination
+  name and a random id, and it is never transmitted.
+- **Split parts and exported page images** have no old destination to protect: they are encoded
+  under a unique temporary name and published with one non-overwriting rename. A simultaneous
+  exporter that wins the intended name makes the other choose `_2`, never overwrite it.
+- **Compression, grayscale, and repair** write Ghostscript output to a unique
+  `<name>.pdf.iwo-gs-<random>.tmp`, validate it, then publish it through the same recovery
+  transaction. Parallel operations never share a temporary name.
+- **Page rendering through Ghostscript** writes bounded temporary `.png` files under the
+  system temp directory and deletes their directory after reading it. Cancellation terminates
+  an in-flight renderer rather than starting later ranges.
 
 ## Data the app stores on your computer
 
@@ -91,13 +102,15 @@ The app keeps a small amount of data **locally**, under
 `%APPDATA%\iwo Helper Desktop\`, and never sends it anywhere:
 
 - `settings.txt` — your last‑used folders and options (output format, thumbnail zoom,
-  compression level, interface language, and the size and position of each tool window
-  and of the full‑size page preview),
+  compression level, interface language, window placement, update preferences, and whether
+  the local version-aware What's New window should appear automatically),
 - `stats.txt` — local counters of how many operations you have run (no file names,
   no content), these exist only for your own reference and can be cleared manually or
   automatically from the app’s **Statistics** window,
-- `reports\` — text reports of the three most recent Excel Digest runs, saved next to
-  where you chose to save the digest and mirrored here,
+- `reports\` — text reports of the three most recent Excel Digest runs; command-line
+  runs instead write `<output>.report.txt` beside the chosen digest,
+- `settings.txt.lock`, `stats.txt.lock`, and `history.txt.lock` — empty lock files used only
+  to serialize state updates across processes and Windows sessions; they contain no data,
 - `crash.log` — a local, size‑rotated error log written only if the app hits an
   unexpected error (exception type, message and stack trace, which may include the path
   of the file being processed — never its contents). It is never transmitted anywhere,
@@ -106,7 +119,9 @@ The app keeps a small amount of data **locally**, under
   The app applies it at the first start and deletes the file,
 - `Инструкция пользователя.docx` — the user guide, unpacked from the program itself when you
   open it from **About**. It is a copy of what already sits inside the `.exe`, nothing is
-  downloaded.
+  downloaded,
+- `THIRD-PARTY-NOTICES.txt` — the embedded PDFsharp/PdfPig licenses and attribution notices,
+  unpacked locally only when you open **About → Third-party licenses**,
 - `history.txt` — a list of your recent operations: when, which tool, and the path of the
   result. **Paths and names only, never a copy of a file.** It is capped at the last 200
   entries, can be limited to a number of days, cleared with one button, and switched off

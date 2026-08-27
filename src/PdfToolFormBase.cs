@@ -34,6 +34,7 @@ namespace ExcelMerger
         protected ToolTip _tips;
         protected bool _busy; // идёт фоновая операция (только UI-поток)
         private bool _loading; // идёт фоновый разбор PDF (добавление/открытие) — только UI-поток
+        private bool _closeAfterLoadCancellation;
 
         /// <summary>Идёт фоновая операция ИЛИ фоновый разбор PDF: правки сетки и запуск заблокированы.</summary>
         protected bool Working { get { return _busy || _loading; } }
@@ -340,9 +341,14 @@ namespace ExcelMerger
         {
             if (Working)
                 return false;
+            _cancelRequested = false;
             _loading = true;
             SyncControls();
             SetStatus(loadingText, Theme.TextMuted);
+            // Loading can involve a large/network PDF and has no measurable progress. The
+            // worker polls the same volatile flag as document operations; cancellation never
+            // aborts a thread or publishes a partial page set.
+            ShowCancelButton(true);
             return true;
         }
 
@@ -350,7 +356,29 @@ namespace ExcelMerger
         protected void EndLoad()
         {
             _loading = false;
+            if (_cancelOffered)
+                ShowCancelButton(false);
             SyncControls();
+        }
+
+        /// <summary>Текущая загрузка отменена пользователем; читается фоновой работой.</summary>
+        protected bool LoadCancellationRequested
+        {
+            get { return _cancelRequested; }
+        }
+
+        /// <summary>
+        /// Завершить отменённую загрузку без применения частичного результата.
+        /// </summary>
+        protected void FinishCanceledLoad()
+        {
+            EndLoad();
+            SetStatus(Loc.T("common.status.canceled"), Theme.WarnOrange);
+            if (_closeAfterLoadCancellation)
+            {
+                _closeAfterLoadCancellation = false;
+                BeginInvoke((MethodInvoker)Close);
+            }
         }
 
         /// <summary>
@@ -665,6 +693,18 @@ namespace ExcelMerger
         {
             _actionButton = b;
             _cancelSlot = true;
+            ShowLoadCancelIfNeeded();
+        }
+
+        /// <summary>
+        /// If loading started before the concrete form registered its action/cancel slot,
+        /// expose Cancel as soon as that slot exists. Constructors commonly wire the slot
+        /// after accepting startup files from tests or the hub.
+        /// </summary>
+        private void ShowLoadCancelIfNeeded()
+        {
+            if (_loading && _cancelSlot && !_cancelOffered)
+                ShowCancelButton(true);
         }
 
         /// <summary>
@@ -680,6 +720,7 @@ namespace ExcelMerger
         {
             _cancelSlot = true;
             EnsureCancelButton(bounds, anchor);
+            ShowLoadCancelIfNeeded();
         }
 
         /// <summary>Создать скрытую кнопку «Отмена» в заданном месте (один раз на окно).</summary>
@@ -1126,8 +1167,22 @@ namespace ExcelMerger
         {
             if (Working) // _busy ИЛИ _loading: оба должны заблокировать закрытие
             {
-                SetStatus(BusyMessage, Theme.WarnOrange);
-                e.Cancel = true; // фоновая операция занимает секунды, иначе остался бы зомби-процесс
+                if (_loading)
+                {
+                    _closeAfterLoadCancellation = true;
+                    _cancelRequested = true;
+                    if (_btnCancel != null)
+                    {
+                        _btnCancel.Enabled = false;
+                        _btnCancel.Text = Loc.T("common.canceling");
+                    }
+                    SetStatus(Loc.T("common.status.cancelingLoad"), Theme.WarnOrange);
+                }
+                else
+                {
+                    SetStatus(BusyMessage, Theme.WarnOrange);
+                }
+                e.Cancel = true; // worker first leaves its owned renderer/parser safely
                 return;          // база не вызывается, поэтому границы окна тоже не сохранятся
             }
             SaveViewPrefs(); // запомнить масштаб и уровень сжатия между запусками

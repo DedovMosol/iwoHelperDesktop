@@ -72,6 +72,10 @@ namespace ExcelMerger.Tests
             Run("PdfSplitService.Sanitize: недопустимые символы", TestSanitize);
             Run("AtomicOutput: сбой сохраняет прежний target, commit заменяет", TestAtomicOutput);
             Run("StartupSweep: старые сироты .iwo-* убираются, живые файлы не трогаются", TestStartupSweep);
+            Run("StartupSweep: backup восстанавливается, живой journal не трогается", TestStartupRecovery);
+            Run("Состояние: непрочитанный снимок не перезаписывается defaults", TestUnreadableStateNotOverwritten);
+            Run("PdfMemoryBudget: lease освобождается ровно один раз", TestPdfMemoryLeases);
+            Run("Ghostscript: fatal stderr не теряется, timeout ограничен", TestGhostscriptBoundedRun);
             Run("Ghostscript: отсутствие не кэшируется навсегда", TestGhostscriptReprobe);
             Run("Сервисы: результат поверх источника отвергается", TestServiceSameSourceGuards);
             Run("PDF Review: нормализация Unicode, пробелов и переводов строк", TestReviewNormalize);
@@ -171,6 +175,10 @@ namespace ExcelMerger.Tests
             Run("PDF Review PageView: wheel и Ctrl+wheel прокручивают и масштабируют локально", TestReviewPageViewWheel);
             Run("PDF Review Form: физические страницы независимы и не меняют semantic result", TestReviewPhysicalPageNavigationLive);
             Run("PDF Review Form: wheel маршрутизируется по указателю, фильтр снимается", TestReviewWheelRoutingLive);
+            Run("PDF Review Unified: поздняя база и ownership обеих пометок", TestReviewUnifiedContent);
+            Run("PDF Review Unified: redline-композитор не переносит неизменённый фон", TestReviewUnifiedCompositor);
+            Run("PDF Review UI: общий режим по умолчанию, splitter и полноэкранный canvas", TestReviewViewModesLive);
+            Run("Что нового: версия, настройки, компактное окно и добровольная поддержка", TestWhatsNewExperience);
             Run("PdfSplitPlan: выделение после удаления берёт исходные страницы", TestSplitPlanSelected);
             Run("PdfSplitPlan: диапазоны фильтруют рабочий набор, сохраняя порядок", TestSplitPlanRanges);
             Run("PdfSplitPlan: каждые N страниц режут рабочий порядок", TestSplitPlanEveryN);
@@ -545,12 +553,14 @@ namespace ExcelMerger.Tests
             Run("Картинка → EXIF-поворот применяется, а не игнорируется", TestImageExifRotation);
             Run("Картинки (живое): JPEG переносится как есть, PNG и TIFF собираются", TestImageToPdfLive);
             Run("Прочие операции (живое): сетка правится, кнопки по составу набора", TestOpsGridEditableLive);
+            Run("RasterBudget: пиксели, ширина и DPI ограничены", TestRasterBudget);
+            Run("PageBackgrounds: runs не плодятся на разреженной выборке", TestBackgroundRenderRuns);
 
             Console.WriteLine();
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
-            const int ExactTests = 511;
+            const int ExactTests = 521;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total != ExactTests)
@@ -1428,10 +1438,11 @@ namespace ExcelMerger.Tests
             var s = new UsageStats
             {
                 ExcelDigests = 1, PdfMerges = 2, PdfExtracts = 3, PdfSplitRanges = 4,
-                PdfSplitEveryN = 5, PdfSplitBookmarks = 6, PdfToWord = 7, PdfCompressions = 99
+                PdfSplitEveryN = 5, PdfSplitBookmarks = 6, PdfComparisons = 7,
+                PdfToWord = 8, PdfToPptx = 9, PdfCompressions = 99
             };
-            // Total — сумма ОПЕРАЦИЙ (1+…+7); сжатие — параметр, в Total не входит.
-            AssertEqual(28, s.Total, "Total включает PdfToWord и исключает PdfCompressions");
+            // Total — сумма ОПЕРАЦИЙ (1+…+9); сжатие — параметр, в Total не входит.
+            AssertEqual(45, s.Total, "Total включает Compare/конвертации и исключает сжатия");
         }
 
         private static void TestMessageButtonX()
@@ -1527,7 +1538,159 @@ namespace ExcelMerger.Tests
             finally { Directory.Delete(dir, true); }
         }
 
-        /// <summary>Единый подсчёт знаков: суррогатная пара (эмодзи) — одна кодовая точка.</summary>
+        private static void TestStartupRecovery()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_recover_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                string id = new string('d', 32);
+                string target = Path.Combine(dir, "result.pdf");
+                string temp = Path.Combine(dir, "result.iwo-" + id + ".pdf");
+                string backup = Path.Combine(dir, "result.pdf.iwo-" + id + ".bak");
+                string marker = Path.Combine(dir, "result.pdf.iwo-" + id + ".txn");
+                File.WriteAllText(temp, "new");
+                File.WriteAllText(backup, "old");
+                File.WriteAllText(marker, "");
+
+                StartupSweep.Sweep(new[] { dir }, DateTime.UtcNow);
+                AssertEqual("old", File.ReadAllText(target),
+                    "при отсутствующем target восстановлена исходная backup");
+                AssertTrue(!File.Exists(temp) && !File.Exists(backup) && !File.Exists(marker),
+                    "после восстановления удалён только мусор транзакции");
+
+                string id2 = new string('e', 32);
+                string target2 = Path.Combine(dir, "live.pdf");
+                string temp2 = Path.Combine(dir, "live.iwo-" + id2 + ".pdf");
+                string backup2 = Path.Combine(dir, "live.pdf.iwo-" + id2 + ".bak");
+                string marker2 = Path.Combine(dir, "live.pdf.iwo-" + id2 + ".txn");
+                File.WriteAllText(temp2, "new-live");
+                File.WriteAllText(backup2, "old-live");
+                File.WriteAllText(marker2, "");
+                using (var active = new FileStream(marker2, FileMode.Open, FileAccess.ReadWrite,
+                    FileShare.Read))
+                {
+                    StartupSweep.Sweep(new[] { dir }, DateTime.UtcNow.AddDays(1));
+                    AssertTrue(!File.Exists(target2) && File.Exists(backup2) && File.Exists(temp2),
+                        "открытый journal защищает живую транзакцию");
+                }
+                StartupSweep.Sweep(new[] { dir }, DateTime.UtcNow.AddDays(1));
+                AssertEqual("old-live", File.ReadAllText(target2),
+                    "после аварийного освобождения journal backup восстановлена");
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+        }
+
+        private static void TestUnreadableStateNotOverwritten()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "iwo_locked_state_" +
+                Guid.NewGuid().ToString("N"));
+            AppPaths.SetRootForTests(root);
+            try
+            {
+                var settings = new UserSettings { LastInputFolder = "original" };
+                AssertTrue(settings.Save(), "исходные настройки записаны");
+                byte[] settingsBefore = File.ReadAllBytes(AppPaths.SettingsFile);
+                using (new FileStream(AppPaths.SettingsFile, FileMode.Open, FileAccess.Read,
+                    FileShare.None))
+                {
+                    AssertTrue(!settings.SaveView(333, 2),
+                        "SaveView сообщает отказ на непрочитанном снимке");
+                }
+                AssertEqual(Convert.ToBase64String(settingsBefore),
+                    Convert.ToBase64String(File.ReadAllBytes(AppPaths.SettingsFile)),
+                    "settings не заменены defaults");
+
+                OperationHistory.SetEnabled(true);
+                OperationHistory.Record("hist.op.merge", @"C:\original.pdf");
+                byte[] historyBefore = File.ReadAllBytes(AppPaths.HistoryFile);
+                using (new FileStream(AppPaths.HistoryFile, FileMode.Open, FileAccess.Read,
+                    FileShare.None))
+                {
+                    OperationHistory.Record("hist.op.merge", @"C:\lost.pdf");
+                    OperationHistory.Clear();
+                }
+                AssertEqual(Convert.ToBase64String(historyBefore),
+                    Convert.ToBase64String(File.ReadAllBytes(AppPaths.HistoryFile)),
+                    "history не очищена поверх непрочитанного снимка");
+
+                UsageStats.RecordPdfMerge();
+                byte[] statsBefore = File.ReadAllBytes(AppPaths.StatsFile);
+                using (new FileStream(AppPaths.StatsFile, FileMode.Open, FileAccess.Read,
+                    FileShare.None))
+                    UsageStats.RecordPdfCompare();
+                AssertEqual(Convert.ToBase64String(statsBefore),
+                    Convert.ToBase64String(File.ReadAllBytes(AppPaths.StatsFile)),
+                    "stats не сброшена поверх непрочитанного снимка");
+            }
+            finally
+            {
+                AppPaths.SetRootForTests(null);
+                try { Directory.Delete(root, true); } catch { }
+            }
+        }
+
+        private static void TestPdfMemoryLeases()
+        {
+            long before = PdfMemoryBudget.Used;
+            int releases = 0;
+            Action handler = delegate { releases++; };
+            PdfMemoryBudget.MemoryReleased += handler;
+            try
+            {
+                PdfMemoryLease lease;
+                AssertTrue(PdfMemoryBudget.TryAcquire(1024 * 1024, out lease),
+                    "малый lease допускается");
+                AssertEqual(before + 1024 * 1024, PdfMemoryBudget.Used,
+                    "резерв учтён до allocation");
+                PdfMemoryLease blocked;
+                AssertTrue(!PdfMemoryBudget.TryAcquire(PdfMemoryBudget.LimitBytes, out blocked),
+                    "реальное давление отмечает ожидающего");
+                lease.ReduceTo(256 * 1024);
+                AssertEqual(before + 256 * 1024, PdfMemoryBudget.Used,
+                    "лишний transient budget освобождён");
+                lease.Dispose();
+                lease.Dispose();
+                AssertEqual(before, PdfMemoryBudget.Used,
+                    "double Dispose не вычитает чужой резерв");
+                AssertTrue(releases >= 1, "ожидающий получил один coalesced сигнал освобождения");
+                PdfMemoryLease impossible;
+                AssertTrue(!PdfMemoryBudget.TryAcquire(PdfMemoryBudget.LimitBytes + 1,
+                    out impossible), "выше process cap резерв не выдаётся");
+            }
+            finally { PdfMemoryBudget.MemoryReleased -= handler; }
+        }
+
+        private static void TestGhostscriptBoundedRun()
+        {
+            string command = Environment.GetEnvironmentVariable("ComSpec");
+            if (string.IsNullOrEmpty(command) || !File.Exists(command))
+                return;
+            Ghostscript.ResetResolutionForTests();
+            try
+            {
+                Ghostscript.ResolveForTests = delegate { return command; };
+                string stderr;
+                int exit = Ghostscript.Run(
+                    "/d /c \"(for /L %i in (1,1,7000) do @echo 1234567890 1>&2) & " +
+                    "echo **** 1>&2 & exit /b 0\"", 10000, out stderr);
+                AssertEqual(0, exit, "helper завершился с нулём");
+                AssertTrue(!GsRewrite.EngineSucceeded(exit, stderr),
+                    "fatal sentinel после 64 KiB не потерян");
+                AssertTrue(stderr.Length < 70000, "сохранённая диагностика ограничена");
+
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                exit = Ghostscript.Run(
+                    "/d /c \"ping 127.0.0.1 -n 6 >nul\"", 100, out stderr);
+                watch.Stop();
+                AssertEqual(-1, exit, "таймаут — отказ");
+                AssertTrue(watch.ElapsedMilliseconds < 5000,
+                    "после timeout нет неограниченного WaitForExit");
+            }
+            finally { Ghostscript.ResetResolutionForTests(); }
+        }
+
+
         private static void TestReviewCodePoints()
         {
             AssertEqual(0, PdfReviewDiff.CodePoints(null), "null — ноль знаков");
@@ -1739,6 +1902,8 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
+                        ReviewPrivateField<RoundedButton>(form,
+                            "_sideModeButton").PerformClick();
                         Application.DoEvents();
                         TextBox left = ReviewPrivateField<TextBox>(form, "_leftPath");
                         TextBox right = ReviewPrivateField<TextBox>(form, "_rightPath");
@@ -1876,6 +2041,8 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
+                        ReviewPrivateField<RoundedButton>(form,
+                            "_sideModeButton").PerformClick();
                         Application.DoEvents();
                         AssertEqual(ReviewControlTreeCount(form), form.DropWiredControlCount,
                             "каждый существующий дочерний control подписан на drop");
@@ -2039,6 +2206,8 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
+                        ReviewPrivateField<RoundedButton>(form,
+                            "_sideModeButton").PerformClick();
                         form.ClientSize = new System.Drawing.Size(width, form.ClientSize.Height);
                         form.PerformLayout();
                         Application.DoEvents();
@@ -10550,6 +10719,8 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
+                        ReviewPrivateField<RoundedButton>(form,
+                            "_sideModeButton").PerformClick();
                         Application.DoEvents();
                         PdfReviewPageView left = ReviewPrivateField<PdfReviewPageView>(form,
                             "_leftSource");
@@ -10910,6 +11081,8 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
+                        ReviewPrivateField<RoundedButton>(form,
+                            "_sideModeButton").PerformClick();
                         Application.DoEvents();
                         AssertTrue(form.WheelFilterRegistered,
                             "форма регистрирует один wheel filter при показе");
@@ -11306,6 +11479,203 @@ namespace ExcelMerger.Tests
             AssertEqual(2, parts.Count, "пустая средняя глава пропущена");
             AssertEqual("A", parts[0].BookmarkTitle, "первая живая глава");
             AssertEqual("C", parts[1].BookmarkTitle, "следующая живая глава");
+        }
+
+        private static void TestReviewUnifiedContent()
+        {
+            PdfReviewDocument left = ReviewDocument("left.pdf", "old common");
+            PdfReviewDocument right = ReviewDocument("right.pdf", "new common");
+            left.Pages[0].Words[0].Box = new PdfReviewBox
+                { Left = 40, Bottom = 700, Right = 80, Top = 720 };
+            right.Pages[0].Words[0].Box = new PdfReviewBox
+                { Left = 40, Bottom = 700, Right = 85, Top = 720 };
+            PdfReviewResult result = PdfReviewDiff.Compare(left, right,
+                PdfReviewLimits.Default());
+            PdfReviewPagePair pair = result.Pairs[0];
+            PdfReviewViewContent content = PdfReviewForm.BuildUnifiedContent(result,
+                pair, 42);
+            AssertTrue(content != null && content.BasePage != null,
+                "общий canvas построен");
+            AssertEqual("right.pdf", content.BasePage.SourcePath,
+                "обычная пара использует позднюю версию как основу");
+            AssertEqual(PdfReviewHighlightStyle.Added, content.BaseHighlight.Style,
+                "зелёная семантика принадлежит поздней основе");
+            AssertTrue(content.OverlayPage != null &&
+                content.OverlayPage.SourcePath == "left.pdf" &&
+                content.OverlayHighlight.Style == PdfReviewHighlightStyle.Removed,
+                "удалённые фрагменты приходят только из ранней версии");
+            AssertEqual(42L, content.Revision, "revision переносится в единый canvas");
+
+            var leftOnly = new PdfReviewPagePair
+            {
+                LeftPageIndex = 0,
+                RightPageIndex = -1,
+                Status = PdfReviewPairStatus.LeftOnly
+            };
+            PdfReviewViewContent removedPage = PdfReviewForm.BuildUnifiedContent(result,
+                leftOnly, 43);
+            AssertEqual("left.pdf", removedPage.BasePage.SourcePath,
+                "left-only страница остаётся видимой как красная удалённая");
+            AssertEqual(PdfReviewHighlightStyle.Removed,
+                removedPage.BaseHighlight.Style, "left-only основа красная");
+            AssertTrue(!removedPage.IsComposite,
+                "left-only не рендерит несуществующую позднюю страницу");
+        }
+
+        private static void TestReviewUnifiedCompositor()
+        {
+            var highlight = new PdfReviewHighlight
+            {
+                ViewWidthPt = 100,
+                ViewHeightPt = 100,
+                Color = Theme.ReviewDeleteFill,
+                EdgeColor = Theme.ReviewDeleteMarker,
+                Style = PdfReviewHighlightStyle.Removed
+            };
+            highlight.Boxes.Add(new PdfReviewBox
+                { Left = 10, Bottom = 60, Right = 35, Top = 75 });
+
+            using (var target = new Bitmap(200, 200))
+            {
+                using (Graphics graphics = Graphics.FromImage(target))
+                    graphics.Clear(Color.White);
+                Bitmap earlier = new Bitmap(200, 200);
+                using (Graphics graphics = Graphics.FromImage(earlier))
+                {
+                    graphics.Clear(Color.LightBlue);
+                    graphics.FillRectangle(Brushes.Black, 20, 50, 50, 30);
+                }
+                earlier = PdfReviewPageView.DrawHighlight(earlier, highlight, false);
+                try
+                {
+                    PdfReviewUnifiedRenderer.OverlayDeletedFragments(target, earlier,
+                        highlight);
+                    AssertEqual(Color.White.ToArgb(), target.GetPixel(180, 180).ToArgb(),
+                        "неизменённый фон ранней страницы не попал в redline");
+                    int changed = 0;
+                    for (int y = 0; y < target.Height; y++)
+                        for (int x = 0; x < target.Width; x++)
+                            if (target.GetPixel(x, y).ToArgb() != Color.White.ToArgb())
+                                changed++;
+                    AssertTrue(changed > 100 && changed < target.Width * target.Height / 3,
+                        "перенесён только ограниченный удалённый фрагмент: " + changed);
+                }
+                finally { earlier.Dispose(); }
+            }
+
+            using (var fallback = new Bitmap(200, 200))
+            {
+                using (Graphics graphics = Graphics.FromImage(fallback))
+                    graphics.Clear(Color.White);
+                PdfReviewUnifiedRenderer.DrawDeletedMarkers(fallback, highlight);
+                AssertTrue(fallback.GetPixel(25, 60).ToArgb() != Color.White.ToArgb(),
+                    "при недоступном раннем растре красная deletion-рамка не исчезает");
+            }
+        }
+
+        private static void TestReviewViewModesLive()
+        {
+            RunSta(delegate
+            {
+                InIsolatedSettings("iwo_review_modes_", delegate
+                {
+                    using (var form = new PdfReviewForm(null))
+                    {
+                        form.Show();
+                        Application.DoEvents();
+                        SplitContainer body = ReviewPrivateField<SplitContainer>(form, "_body");
+                        Panel unified = ReviewPrivateField<Panel>(form, "_unifiedHost");
+                        SplitContainer side = ReviewPrivateField<SplitContainer>(form,
+                            "_sourceSplit");
+                        RoundedButton unifiedButton = ReviewPrivateField<RoundedButton>(form,
+                            "_unifiedModeButton");
+                        RoundedButton sideButton = ReviewPrivateField<RoundedButton>(form,
+                            "_sideModeButton");
+                        PdfReviewPageView unifiedView = ReviewPrivateField<PdfReviewPageView>(
+                            form, "_unifiedSource");
+
+                        AssertEqual(PdfReviewViewMode.Unified,
+                            ReviewPrivateField<PdfReviewViewMode>(form, "_viewMode"),
+                            "общий redline — режим по умолчанию");
+                        AssertTrue(unified.Visible && !side.Visible && unifiedButton.Selected,
+                            "по умолчанию виден один общий canvas");
+                        AssertTrue(!body.IsSplitterFixed && body.SplitterWidth >= 6,
+                            "список сопоставления имеет заметный подвижный splitter");
+                        int before = body.SplitterDistance;
+                        body.SplitterDistance = Math.Min(before + 24,
+                            body.Width - body.Panel2MinSize - body.SplitterWidth);
+                        AssertTrue(body.SplitterDistance != before,
+                            "ширина списка 1↔1 регулируется пользователем");
+
+                        sideButton.PerformClick();
+                        Application.DoEvents();
+                        AssertEqual(PdfReviewViewMode.SideBySide,
+                            ReviewPrivateField<PdfReviewViewMode>(form, "_viewMode"),
+                            "бок о бок остаётся доступен");
+                        AssertTrue(side.Visible && !unified.Visible && sideButton.Selected,
+                            "переключение меняет только представление");
+                        unifiedButton.PerformClick();
+                        AssertTrue(unifiedView.AllowFullScreen,
+                            "единый canvas разрешает полноэкранный просмотр с тем же content");
+                        AssertEqual(2000, PdfReviewPageView.RenderWidthFor(1000, 2400),
+                            "полноэкранный canvas получает честный повышенный raster width");
+                    }
+                });
+            });
+        }
+
+        private static void TestWhatsNewExperience()
+        {
+            string src = SourceDir();
+            string json = File.ReadAllText(Path.Combine(Path.GetDirectoryName(src),
+                "docs", "whatsnew.json"));
+            string ru = UpdateChecker.ExtractNotes(json, "1.18.5", "ru");
+            string en = UpdateChecker.ExtractNotes(json, "1.18.5", "en");
+            AssertTrue(ru.Contains("единый документ") && en.Contains("unified redline"),
+                "каталог 1.18.5 объясняет новый режим понятным языком");
+            AssertTrue(ru.Split('\n').Length >= 5 && en.Split('\n').Length >= 5,
+                "окно получает краткий список заметных изменений");
+            AssertTrue(WhatsNewCatalog.ShouldShow(new UserSettings(), "1.18.5"),
+                "новая версия показывается один раз по умолчанию");
+            AssertTrue(!WhatsNewCatalog.ShouldShow(new UserSettings
+            {
+                LastWhatsNewVersion = "1.18.5"
+            }, "1.18.5"), "уже просмотренная версия не мешает следующему запуску");
+            AssertTrue(!WhatsNewCatalog.ShouldShow(new UserSettings
+            {
+                ShowWhatsNewOnStart = false
+            }, "1.18.5"), "глобальное отключение соблюдается");
+
+            RunSta(delegate
+            {
+                InIsolatedSettings("iwo_whatsnew_", delegate
+                {
+                    AssertTrue(UserSettings.SaveWhatsNew(false, "1.18.5"),
+                        "настройка suppression сохраняется");
+                    UserSettings saved = UserSettings.Load();
+                    AssertTrue(!saved.ShowWhatsNewOnStart &&
+                        saved.LastWhatsNewVersion == "1.18.5",
+                        "suppression и seen-version записаны одной транзакцией");
+                    using (var form = new WhatsNewForm("1.18.5"))
+                    {
+                        form.Show();
+                        Application.DoEvents();
+                        Panel support = ReviewPrivateField<Panel>(form, "_supportPanel");
+                        AccentCheckBox option = ReviewPrivateField<AccentCheckBox>(form,
+                            "_dontShow");
+                        AssertTrue(!support.Visible,
+                            "реквизиты не навязываются и изначально свернуты");
+                        AssertTrue(option.Checked,
+                            "ручное окно отражает отключённый автопоказ");
+                        var layoutProblems = new List<string>();
+                        CheckFits(form, "WhatsNewForm", layoutProblems);
+                        AssertTrue(layoutProblems.Count == 0,
+                            "окно Что нового помещает все контролы: " +
+                            string.Join(" | ", layoutProblems.ToArray()));
+                        form.Close();
+                    }
+                });
+            });
         }
 
         private static void TestPdfSplitWorkingSetLive()
@@ -15632,6 +16002,83 @@ namespace ExcelMerger.Tests
         /// Картинка на листе: лист берёт ориентацию картинки, картинка вписана в поля целиком,
         /// по центру и БЕЗ искажения пропорций. Растянутый снимок — брак, который видно сразу.
         /// </summary>
+        private static void TestRasterBudget()
+        {
+            AssertEqual(300, RasterBudget.FitWidth(300, 600, 800, 1000000),
+                "в пределах бюджета ширина не меняется");
+            int fitted = RasterBudget.FitWidth(2000, 600, 800, 1000000);
+            AssertTrue(fitted < 2000,
+                "широкий растр уменьшается по числу пикселей");
+            AssertTrue((long)fitted * fitted * 800 / 600 <= 1000000,
+                "уменьшенная ширина укладывается в бюджет");
+            AssertTrue(RasterBudget.IsWithin(100, 100, 10000),
+                "точная граница пикселей разрешена");
+            AssertTrue(!RasterBudget.IsWithin(101, 100, 10000),
+                "выход за бюджет отклоняется");
+            AssertEqual(IntPtr.Size == 8, RasterBudget.IsValidExportDpi(600),
+                "600 dpi доступно только там, где x64 memory budget держит честный A4");
+            AssertTrue(!RasterBudget.IsValidExportDpi(RasterBudget.MaxExportDpi + 1),
+                "DPI выше архитектурного лимита отклоняется");
+            AssertTrue(!RasterBudget.IsValidExportDpi(0), "нулевой DPI отклоняется");
+            AssertEqual(640, PdfReviewPageView.RenderWidthFor(100),
+                "узкая Review-панель получает минимальный полезный растр");
+            AssertEqual(1000, PdfReviewPageView.RenderWidthFor(500),
+                "Review oversample следует ширине панели");
+            AssertEqual(1200, PdfReviewPageView.RenderWidthFor(900),
+                "Review не выходит за прежний безопасный потолок");
+            int ultraWide = RasterBudget.FitWidth(int.MaxValue, 14400, 3,
+                RasterBudget.DefaultRenderPixels);
+            AssertTrue(ultraWide > 0 && ultraWide <= RasterBudget.MaxRenderDimension,
+                "ультраширокий лист ограничен и по стороне, не только по площади");
+            if (IntPtr.Size == 8)
+            {
+                int a4Width = PdfExportService.PixelWidth(595.28, 600);
+                int a4Height = (int)Math.Ceiling(a4Width * 841.89 / 595.28);
+                AssertTrue(RasterBudget.IsWithin(a4Width, a4Height,
+                    RasterBudget.ExportPixels),
+                    "обещанные 600 dpi A4 не будут молча уменьшены на x64");
+            }
+            using (var bitmap = new Bitmap(257, 257))
+            {
+                using (Graphics graphics = Graphics.FromImage(bitmap))
+                    graphics.Clear(Color.White);
+                AssertTrue(RasterUtil.IsSolidColor(bitmap), "белый фон точно одноцветен");
+                bitmap.SetPixel(13, 17, Color.Black);
+                AssertTrue(!RasterUtil.IsSolidColor(bitmap),
+                    "одиночная линия/точка между старой 16x16 выборкой не теряется");
+            }
+        }
+
+        private static void TestBackgroundRenderRuns()
+        {
+            List<Tuple<int, int>> runs = PageBackgrounds.ContinuousRuns(
+                new[] { 1, 2, 4, 5, 9, 9, 0, -1 });
+            AssertEqual(3, runs.Count, "непрерывные runs объединяются");
+            AssertEqual("1-2|4-5|9-9", string.Join("|",
+                runs.ConvertAll(r => r.Item1 + "-" + r.Item2).ToArray()), "границы runs");
+
+            var sparse = new List<int>();
+            for (int i = 1; i <= 500; i += 2)
+                sparse.Add(i);
+            List<Tuple<int, int>> bounded = PageBackgrounds.RenderRuns(sparse);
+            AssertEqual(1, bounded.Count, "разреженная выборка не запускает сотни процессов");
+            AssertEqual(1, bounded[0].Item1, "начало общего диапазона");
+            AssertEqual(499, bounded[0].Item2, "конец общего диапазона");
+
+            var seventeen = new List<int>();
+            for (int i = 0; i < 17; i++)
+                seventeen.Add(1 + i * 1000);
+            List<Tuple<int, int>> farMany = PageBackgrounds.RenderRuns(seventeen);
+            AssertEqual(17, farMany.Count,
+                "17 далёких страниц не расширяются до 16001 ненужной страницы");
+
+            List<Tuple<int, int>> longRun = PageBackgrounds.RenderRuns(
+                new List<int>(System.Linq.Enumerable.Range(1, 1200)));
+            AssertEqual(3, longRun.Count, "длинный диапазон режется на bounded chunks");
+            AssertTrue(longRun[0].Item2 - longRun[0].Item1 + 1 <= 512,
+                "один процесс не получает больше 512 страниц");
+        }
+
         private static void TestImageLayoutOnPage()
         {
             double pageW, pageH, x, y, w, h;
@@ -17078,6 +17525,18 @@ namespace ExcelMerger.Tests
                 AssertEqual(300, after.ZoomWidth, "общий Save НЕ затёр масштаб");
                 AssertEqual(2, after.CompressionLevel, "общий Save НЕ затёр сжатие");
                 AssertEqual("X", after.LastInputFolder, "общий Save сохранил собственные поля экземпляра");
+
+                UserSettings staleView = UserSettings.Load();
+                UserSettings.SaveWindowBounds("PdfReviewForm", "1,2,700,500,0");
+                UserSettings.SaveSkippedVersion("1.18.5");
+                staleView.SaveView(360, 1);
+                UserSettings afterView = UserSettings.Load();
+                string reviewBounds;
+                AssertTrue(afterView.WindowBounds.TryGetValue("PdfReviewForm", out reviewBounds) &&
+                    reviewBounds == "1,2,700,500,0", "SaveView не затёр свежие границы");
+                AssertEqual("1.18.5", afterView.SkippedVersion,
+                    "SaveView не затёр свежую настройку обновлений");
+                AssertEqual(360, afterView.ZoomWidth, "SaveView записал только свой масштаб");
             }
             finally
             {
@@ -17843,9 +18302,8 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
-        /// Выбранный язык обязан пережить запись настроек чужим окном: WriteAll берёт язык из
-        /// ЖИВОГО Loc, а не из своего поля, ровно потому, что устаревший экземпляр однажды уже
-        /// стирал выбор пользователя. Ветки zoom/compression и границ окон покрыты отдельно.
+        /// Выбранный язык обязан пережить запись настроек чужим окном: Loc использует узкую
+        /// SaveLanguage-мутацию, а общий Save сохраняет свежий disk-snapshot.
         /// </summary>
         private static void TestSettingsLanguageNotClobbered()
         {
@@ -19137,6 +19595,26 @@ namespace ExcelMerger.Tests
             AssertTrue(!OutputFile.IsSameFile(null, a), "null — не тот же файл");
             AssertTrue(!OutputFile.IsSameFile(a, ""), "пустой путь — не тот же файл");
             AssertTrue(!OutputFile.IsSameFile(a, "|негодный<путь>"), "негодный путь не роняет проверку");
+
+            string uniqueDir = Path.Combine(Path.GetTempPath(), "iwo_unique_" +
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(uniqueDir);
+            try
+            {
+                using (UniqueOutput first = OutputFile.CreateUnique(uniqueDir, "result", ".txt"))
+                using (UniqueOutput second = OutputFile.CreateUnique(uniqueDir, "result", ".txt"))
+                {
+                    File.WriteAllText(first.TempPath, "one");
+                    File.WriteAllText(second.TempPath, "two");
+                    string one = first.Commit();
+                    string two = second.Commit();
+                    AssertEqual("result.txt", Path.GetFileName(one),
+                        "первый rename занимает свободное имя");
+                    AssertEqual("result_2.txt", Path.GetFileName(two),
+                        "второй rename атомарно уходит на следующий суффикс");
+                }
+            }
+            finally { try { Directory.Delete(uniqueDir, true); } catch { } }
         }
 
         /// <summary>
@@ -19875,8 +20353,11 @@ namespace ExcelMerger.Tests
             {
                 PdfPage page = doc.AddPage();
                 using (XGraphics g = XGraphics.FromPdfPage(page))
+                {
+                    g.DrawRectangle(new XSolidBrush(XColors.DarkBlue), 36, 36, 180, 24);
                     g.DrawString("Проверка", new XFont("Times New Roman", 14), XBrushes.Black,
                         new XPoint(50, 100));
+                }
                 doc.SecuritySettings.UserPassword = "1234";
                 doc.Save(path);
             }
@@ -20442,10 +20923,18 @@ namespace ExcelMerger.Tests
                 new[] { "--to-image", "a.pdf", "d", "--dpi", "-5" },   // отрицательное разрешение
                 new[] { "--to-image", "a.pdf", "d", "--format", "tiff" }, // нет такого формата
                 new[] { "--merge", "o.pdf", "a.pdf", "--wat" },        // неизвестный ключ
+                new[] { "--merge", "o.pdf", "a.pdf", "--dpi", "150" }, // чужой ключ
+                new[] { "--split", "a.pdf", "dir", "--every", "2", "--bookmarks" },
+                new[] { "--compress", "a.pdf", "b.pdf", "--level", "none" },
+                new[] { "--repair", "a.pdf", "b.pdf", "--format", "png" },
                 new[] { "--nonsense", "a" }                            // неизвестная команда
             })
                 AssertTrue(!string.IsNullOrEmpty(PdfCli.Parse(bad).Error),
                     "отказ объяснён: " + string.Join(" ", bad));
+
+            PdfCliCommand dashed = PdfCli.Parse(new[] { "--merge", "--", "--out.pdf", "--in.pdf" });
+            AssertEqual(null, dashed.Error, "-- завершает разбор ключей");
+            AssertEqual("--out.pdf", dashed.Output, "путь, начинающийся с --, допустим после terminator");
 
             // Справка — тоже команда, иначе «--help» открывал бы окно вместо ответа: строка
             // запуска с неизвестным первым словом уводит приложение в обычный запуск с
@@ -20644,6 +21133,23 @@ namespace ExcelMerger.Tests
                 PdfMergeService.Merge(new List<PdfPageRef> {
                     new PdfPageRef { SourcePath = locked, PageIndex = 0 } }, result);
                 AssertEqual(1, PdfPageProbe.PageCount(result), "результат собран и открывается без пароля");
+                if (Ghostscript.Available)
+                {
+                    using (BackgroundRenderResult backgrounds = PageBackgrounds.Render(
+                        new List<PdfPageRef>
+                        {
+                            new PdfPageRef { SourcePath = locked, PageIndex = 0 }
+                        }, null, null))
+                    {
+                        AssertEqual(1, backgrounds.Report.Added,
+                            "парольный PDF сохранил нетекстовую подложку PowerPoint");
+                        AssertTrue(backgrounds.Items.Length == 1 &&
+                            backgrounds.Items[0] != null &&
+                            backgrounds.Items[0].Data != null &&
+                            backgrounds.Items[0].Data.Length > 0,
+                            "подложка парольной страницы реально закодирована");
+                    }
+                }
 
                 // 4. Неверный пароль — снова отказ, и снова опознанный как парольный.
                 PdfPasswords.Remember(locked, "не тот");
@@ -21148,13 +21654,10 @@ namespace ExcelMerger.Tests
             // Умеренно вытянутый лист: потолок достижим, и ширина считается точно под него.
             AssertEqual(100, PdfThumbnailRenderer.FitWidth(140, 100, 2000, 2000),
                 "ширина подбирается ровно под потолок высоты");
-            // Предельный лист 3×14400: при ширине 140 высота была бы 672000 px. Ужать ровно
-            // под потолок тут нельзя — ширина упирается в один пиксель, — но именно это и
-            // требуется: растр выходит в 19 КБ вместо 376 МБ.
-            int narrow = PdfThumbnailRenderer.FitWidth(140, 3, 14400, 2000);
-            AssertEqual(1, narrow, "предельно длинная страница ужимается до минимальной ширины");
-            long pixels = (long)(narrow * 14400.0 / 3) * narrow;
-            AssertTrue(pixels < 10000L * 1024 / 4, "и растр остаётся копеечным: " + pixels + " пикселей");
+            // Предельный лист 3×14400 не может уложиться в потолок даже при ширине 1:
+            // безопаснее отказаться от растра, чем нарушить объявленный dimension cap.
+            AssertEqual(0, PdfThumbnailRenderer.FitWidth(140, 3, 14400, 2000),
+                "невместимая геометрия честно отклоняется");
             // Ровно на границе — ужимать незачем.
             AssertEqual(100, PdfThumbnailRenderer.FitWidth(100, 100, 2000, 2000), "высота ровно по потолку — как есть");
             // Мусор на входе не должен превращаться в деление на ноль.

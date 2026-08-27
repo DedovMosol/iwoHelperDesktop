@@ -110,11 +110,28 @@ namespace ExcelMerger
         /// </summary>
         public static int Run(string argsLine, int timeoutMs, out string stderr)
         {
+            return Run(argsLine, timeoutMs, out stderr, null);
+        }
+
+        /// <summary>Внутренняя отменяемая перегрузка для длинных диапазонов рендера.</summary>
+        internal static int Run(string argsLine, int timeoutMs, out string stderr,
+            Func<bool> cancelled)
+        {
             stderr = string.Empty;
+            if (timeoutMs <= 0)
+            {
+                stderr = "invalid timeout";
+                return -1;
+            }
             string exe = Exe;
             if (exe == null)
                 return -1;
+            const int MaxErrorChars = 64 * 1024;
             var err = new StringBuilder();
+            object errGate = new object();
+            bool errTruncated = false;
+            bool engineErrorSeen = false;
+            Process process = null;
             try
             {
                 var psi = new ProcessStartInfo
@@ -127,35 +144,112 @@ namespace ExcelMerger
                     CreateNoWindow = true,
                     WindowStyle = ProcessWindowStyle.Hidden
                 };
-                using (var p = Process.Start(psi))
+                process = Process.Start(psi);
+                if (process == null)
+                    return -1;
+                process.OutputDataReceived += delegate { };
+                process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
                 {
-                    if (p == null)
-                        return -1;
-                    p.OutputDataReceived += delegate { }; // осушаем stdout, чтобы буфер не блокировал
-                    p.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
+                    if (e.Data == null)
+                        return;
+                    lock (errGate)
                     {
-                        if (e.Data != null)
+                        // Диагностику ограничиваем, но fatal sentinel продолжаем искать во
+                        // ВСЁМ потоке: exit=0 у Ghostscript не гарантирует успех.
+                        if (e.Data.IndexOf("****", StringComparison.Ordinal) >= 0)
+                            engineErrorSeen = true;
+                        if (err.Length >= MaxErrorChars)
+                        {
+                            errTruncated = true;
+                            return;
+                        }
+                        int remaining = MaxErrorChars - err.Length;
+                        if (e.Data.Length + Environment.NewLine.Length <= remaining)
                             err.AppendLine(e.Data);
-                    };
-                    p.BeginOutputReadLine();
-                    p.BeginErrorReadLine();
-                    if (!p.WaitForExit(timeoutMs))
-                    {
-                        try { p.Kill(); } catch { }
-                        try { p.WaitForExit(); } catch { } // дать ОС высвободить процесс
-                        stderr = "timeout";
-                        return -1;
+                        else
+                        {
+                            if (remaining > 0)
+                                err.Append(e.Data.Substring(0, Math.Min(e.Data.Length, remaining)));
+                            errTruncated = true;
+                        }
                     }
-                    p.WaitForExit(); // дождаться флаша асинхронных обработчиков
-                    stderr = err.ToString();
-                    return p.ExitCode;
+                };
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                bool stopped;
+                string stopReason = null;
+                if (cancelled == null)
+                {
+                    stopped = process.WaitForExit(timeoutMs);
+                    if (!stopped) stopReason = "timeout";
                 }
+                else
+                {
+                    var elapsed = Stopwatch.StartNew();
+                    stopped = false;
+                    while (!stopped)
+                    {
+                        int remaining = timeoutMs - (int)Math.Min(timeoutMs,
+                            elapsed.ElapsedMilliseconds);
+                        if (remaining <= 0)
+                        {
+                            stopReason = "timeout";
+                            break;
+                        }
+                        if (cancelled())
+                        {
+                            stopReason = "cancelled";
+                            break;
+                        }
+                        stopped = process.WaitForExit(Math.Min(remaining, 100));
+                    }
+                }
+                if (!stopped)
+                {
+                    TerminateBounded(process);
+                    stderr = stopReason ?? "timeout";
+                    return -1;
+                }
+
+                // Процесс уже завершён; этот вызов лишь дожидается флаша async handlers.
+                process.WaitForExit();
+                lock (errGate)
+                {
+                    stderr = err.ToString();
+                    if (errTruncated)
+                        stderr += "\r\n[stderr truncated]";
+                    if (engineErrorSeen && stderr.IndexOf("****", StringComparison.Ordinal) < 0)
+                        stderr += "\r\n**** [engine error beyond diagnostic limit]";
+                }
+                return process.ExitCode;
             }
             catch (Exception ex)
             {
                 stderr = ex.Message;
                 return -1;
             }
+            finally
+            {
+                if (process != null)
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                            TerminateBounded(process);
+                    }
+                    catch { TerminateBounded(process); }
+                    try { process.Dispose(); } catch { }
+                }
+            }
+        }
+
+        private static void TerminateBounded(Process process)
+        {
+            if (process == null)
+                return;
+            try { if (!process.HasExited) process.Kill(); } catch { }
+            try { process.WaitForExit(2000); } catch { }
         }
 
         // ---- Кандидаты на путь к gswin*c.exe, в порядке приоритета ----

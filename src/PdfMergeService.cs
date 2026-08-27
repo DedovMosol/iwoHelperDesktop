@@ -86,6 +86,20 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>
+        /// Записать в путь, уже принадлежащий внешней транзакции. Никакой второй
+        /// AtomicOutput/journal здесь не создаётся; публикует только вызывающий.
+        /// </summary>
+        internal static void WriteUnpublished(IList<PdfPageRef> order, string path,
+            Action<int, int> progress = null, Func<bool> cancelled = null,
+            bool padToEven = false)
+        {
+            if (order == null || order.Count == 0)
+                throw new MergeException(Loc.T("err.pdf.noPages"));
+            EmbeddedAssemblies.Ensure();
+            MergeCore(order, path, progress, cancelled, padToEven);
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<PdfPageInfo> LoadPagesCore(string path)
         {

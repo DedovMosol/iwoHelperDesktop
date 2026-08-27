@@ -266,9 +266,11 @@ def build():
       "tool." % ref("settings"))
     picture("settings", "The settings of the program")
     p("“Check for updates at startup” is the only request the program makes to the network. "
-      "Only a request for the latest version number is sent; no files and no data of yours are "
-      "ever sent. The check can be switched off entirely, and the “Check now” button asks on "
-      "demand.")
+      "Only the latest version number is requested; no files and no data of yours are ever sent. "
+      "The “Check now” button asks on demand. A separate setting controls What's New: it appears "
+      "once for a new version, can be disabled, and can always be reopened with “What's new in "
+      "1.18.5”. Optional details for supporting this independently developed app are collapsed "
+      "inside that window by default.")
     p("“Keep a history of operations” switches on a log: what exactly the program did, when, "
       "and which file came out. It exists so that yesterday's result can be found without "
       "recalling where it was saved: the “History” button opens the list, and from there the "
@@ -530,10 +532,11 @@ def build():
     h1("6. PDF Compare")
 
     h2("6.1. Purpose and scope")
-    p("The tool shows the earlier born-digital PDF on the left and the later one on the right, "
-      "marking which words disappeared and which appeared. The pages remain the originals: the "
-      "program neither reflows the document nor turns it into an editable file. This is a review "
-      "window, not an editor.")
+    p("The tool compares earlier and later versions of a born-digital PDF. By default, the result "
+      "is a unified redline: the later page is the base, additions are green, and deleted fragments "
+      "from the earlier version are overlaid in red with a strike line. Side by side keeps both "
+      "original pages and can be enabled without rerunning the comparison. This is a review window, "
+      "not an editor; neither source file is changed.")
     p("The words of both documents are compared as one document-wide stream. Physical-page "
       "pairing supplies the viewer rows and corroborates clear matches, but it does not start a "
       "separate comparison for each page. Moving existing text across a page boundary is therefore "
@@ -544,18 +547,22 @@ def build():
 
     h2("6.2. The window and its marks")
     p("The sources at the top are “Earlier version · left” and “Later version · right”. Browse for "
-      "a file, type or paste its path, or drop it onto the required side. Two files dropped together "
-      "take the sides in order; one file dropped on neutral space fills only the first empty side.")
-    picture("review", "The comparison result: earlier version left, later version right")
-    p("In normal mode a change background follows the verified word box tightly. It is not widened "
-      "over a space, neighbouring unchanged text or a visible geometry gap. The dark strokes of the "
-      "original glyphs remain readable, and coloured source elements keep their colour. A red or "
-      "green side rail marks each changed line; click the rail to select that line's corresponding "
-      "trusted fragment.")
-    bullet("A tight red background and − mean a word removed from the earlier version. This meaning "
-           "belongs only to the left pane.", bold_head="Earlier version, left. ")
-    bullet("A tight green background and + mean a word added to the later version. This meaning "
-           "belongs only to the right pane.", bold_head="Later version, right. ")
+      "a file, type or paste its path, or drop it onto the required side. After comparison, the "
+      "Unified redline and Side by side buttons change only the presentation. The 1 ↔ 1 alignment "
+      "list has a visible splitter: drag it to give the list or page more room. Two files dropped "
+      "together take the sides in order; one file dropped on neutral space fills the first empty side.")
+    picture("review", "The unified comparison document; Side by side is available next to it")
+    p("In the unified view, the later page remains the background: additions are green and only "
+      "deleted earlier-version fragments are transferred in red—unchanged earlier-page pixels do "
+      "not cover the result. Double-click opens the same marked-up view full screen. In Side by side, "
+      "a change fill follows the verified word box tightly and is not widened over a space, nearby "
+      "unchanged text or a geometry gap; either marked-up side can also be opened full screen.")
+    bullet("A red fill, strike line and − mean a word removed from the earlier version. In the unified "
+           "redline the fragment is overlaid on the later page; in Side by side it remains in the "
+           "left pane.", bold_head="Removed from the earlier version. ")
+    bullet("A green fill and + mean a word added to the later version. It belongs to the later page "
+           "in both the unified redline and the right pane of Side by side.",
+           bold_head="Added in the later version. ")
     bullet("The ␠, NBSP, ⇥ and ↵ marks are separate from words and appear only when a space, "
            "non-breaking space, tab or line break is literally proven by the PDF text layer.",
            bold_head="Whitespace changes. ")
@@ -568,11 +575,13 @@ def build():
             "swaps the sides if needed.",
          bold_head="Choose two PDFs: ")
     step(2, "The paths are validated first; the program then extracts the text, compares the whole "
-            "document once, and shows the original pages side by side.",
+            "document once, and opens the unified redline. Switch to Side by side if needed—the "
+            "comparison result itself remains unchanged.",
          bold_head="Press “Compare”. ")
-    step(3, "Click alignment rows or move through changes with the buttons and F3 / Shift+F3. The "
-            "page field above either pane independently opens a physical page; the wheel scrolls "
-            "only the side under the pointer, while Ctrl+wheel zooms only that side.",
+    step(3, "Click alignment rows or move through changes with the buttons and F3 / Shift+F3. Drag "
+            "the splitter to resize the list. The wheel scrolls the active view, Ctrl+wheel zooms, "
+            "and a double-click opens the page full screen with its red and green markup. In Side by "
+            "side, the page field above either pane independently opens a physical page.",
          bold_head="Review every row with a change. ")
     step(4, "If an automatic viewer row is inconvenient, “Pair pages…” joins two physical pages "
             "for display and conservative corroboration. It does not begin a new page-local diff "

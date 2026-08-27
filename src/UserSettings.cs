@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 
 namespace ExcelMerger
 {
@@ -11,187 +10,181 @@ namespace ExcelMerger
         public string LastOutputFolder;
         // «Заменить формулы значениями» сознательно НЕ запоминается: режим меняет
         // содержимое свода, включать его нужно осознанно на каждый запуск.
-        public bool AddToc = true;              // «Содержание» по умолчанию включено
-        public bool AllSheets;                  // все листы (по умолчанию — только первый)
+        public bool AddToc = true;
+        public bool AllSheets;
         public string OutputExtension = ".xlsx";
-        // Язык интерфейса «ru»/«en» (см. Loc). null = не задан (первый запуск без настроек):
-        // Program берёт язык по системной локали. Установленную версию сидит инсталлер.
         public string Language;
-        // Вид PDF-инструментов между запусками: ширина плитки (0 — не задана, брать умолчание)
-        // и уровень сжатия (индекс CompressionLevel). Применяет/сохраняет PdfToolFormBase.
         public int ZoomWidth;
         public int CompressionLevel;
-        // Размер/положение окон между запусками: ключ — имя типа формы, значение «x,y,w,h,m»
-        // (см. WindowPlacement). Кросс-настройка (не «своя» ни у одного окна) — сохраняется из
-        // свежей загрузки, поэтому долгоживущее окно не затрёт границы, записанные другим окном.
         public readonly Dictionary<string, string> WindowBounds =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        // Проверять обновления при запуске. По умолчанию включено, выключается в настройках.
         public bool UpdateCheckOnStart = true;
-        // Версия, о которой пользователь просил больше не напоминать («v1.18.0» → «1.18.0»).
-        // Хранится ИМЕННО версия, а не флаг «никогда»: иначе один флажок отключил бы
-        // уведомления навсегда, и о следующих выпусках человек не узнал бы вовсе.
+        public bool ShowWhatsNewOnStart = true;
+        public string LastWhatsNewVersion;
         public string SkippedVersion;
 
-        private static string FilePath
-        {
-            get { return AppPaths.SettingsFile; }
-        }
+        // Незнакомые строки сохраняются при downgrade: старая версия не должна стирать
+        // настройки, добавленные более новой, только потому что пользователь закрыл окно.
+        private readonly List<string> _unknownLines = new List<string>();
+
+        private static string FilePath { get { return AppPaths.SettingsFile; } }
 
         public static UserSettings Load()
         {
-            var s = new UserSettings();
-            try
+            UserSettings settings;
+            return TryLoad(out settings) ? settings : new UserSettings();
+        }
+
+        /// <summary>
+        /// true означает достоверный снимок: файл прочитан либо действительно отсутствует.
+        /// Существующий, но временно непрочитанный файл НЕЛЬЗЯ подменять defaults при мутации.
+        /// </summary>
+        private static bool TryLoad(out UserSettings settings)
+        {
+            settings = new UserSettings();
+            string[] lines;
+            if (!AppStateFile.TryReadLines(FilePath, out lines))
+                return false;
+
+            foreach (string line in lines)
             {
-                if (!File.Exists(FilePath))
-                    return s;
-                foreach (string line in File.ReadAllLines(FilePath))
+                int eq = line.IndexOf('=');
+                if (eq <= 0)
                 {
-                    int eq = line.IndexOf('=');
-                    if (eq <= 0)
-                        continue;
-                    string key = line.Substring(0, eq).Trim();
-                    string value = line.Substring(eq + 1).Trim();
-                    bool flag;
-                    if (key == "lastInputFolder") s.LastInputFolder = value;
-                    else if (key == "lastOutputFolder") s.LastOutputFolder = value;
-                    else if (key == "addToc" && bool.TryParse(value, out flag)) s.AddToc = flag;
-                    else if (key == "allSheets" && bool.TryParse(value, out flag)) s.AllSheets = flag;
-                    else if (key == "outputExtension" && OutputFormats.FileFormatFor("x" + value) != 0) s.OutputExtension = value;
-                    else if (key == "language" && (value == "ru" || value == "en")) s.Language = value;
-                    else if (key == "zoomWidth") { int z; if (int.TryParse(value, out z)) s.ZoomWidth = z; }
-                    else if (key == "compression") { int c; if (int.TryParse(value, out c)) s.CompressionLevel = c; }
-                    else if (key == "updateCheckOnStart" && bool.TryParse(value, out flag)) s.UpdateCheckOnStart = flag;
-                    // Пустая строка — «ничего не пропущено»: иначе пустое значение стало бы
-                    // версией, которую не разобрать, и проверка молча перестала бы срабатывать.
-                    else if (key == "skippedVersion") s.SkippedVersion = value.Length == 0 ? null : value;
-                    else if (key.StartsWith("wnd.", StringComparison.Ordinal) && key.Length > 4)
-                        s.WindowBounds[key.Substring(4)] = value;
+                    settings._unknownLines.Add(line);
+                    continue;
                 }
+                string key = line.Substring(0, eq).Trim();
+                string value = line.Substring(eq + 1).Trim();
+                bool known = true;
+                bool flag;
+                if (key == "lastInputFolder") settings.LastInputFolder = value;
+                else if (key == "lastOutputFolder") settings.LastOutputFolder = value;
+                else if (key == "addToc" && bool.TryParse(value, out flag)) settings.AddToc = flag;
+                else if (key == "allSheets" && bool.TryParse(value, out flag)) settings.AllSheets = flag;
+                else if (key == "outputExtension" && OutputFormats.FileFormatFor("x" + value) != 0) settings.OutputExtension = value;
+                else if (key == "language" && (value == "ru" || value == "en")) settings.Language = value;
+                else if (key == "zoomWidth") { int z; if (int.TryParse(value, out z)) settings.ZoomWidth = z; }
+                else if (key == "compression") { int c; if (int.TryParse(value, out c)) settings.CompressionLevel = c; }
+                else if (key == "updateCheckOnStart" && bool.TryParse(value, out flag)) settings.UpdateCheckOnStart = flag;
+                else if (key == "showWhatsNewOnStart" && bool.TryParse(value, out flag)) settings.ShowWhatsNewOnStart = flag;
+                else if (key == "lastWhatsNewVersion") settings.LastWhatsNewVersion = value.Length == 0 ? null : value;
+                else if (key == "skippedVersion") settings.SkippedVersion = value.Length == 0 ? null : value;
+                else if (key.StartsWith("wnd.", StringComparison.Ordinal) && key.Length > 4)
+                    settings.WindowBounds[key.Substring(4)] = value;
+                else
+                    known = false;
+                if (!known)
+                    settings._unknownLines.Add(line);
             }
-            catch { } // повреждённые настройки не должны мешать запуску
-            return s;
+            return true;
         }
 
         /// <summary>
-        /// Сохранить настройки. Масштаб и уровень сжатия PDF-инструментов НЕ берутся из
-        /// полей этого экземпляра, а сохраняются из свежайшего значения на диске: их
-        /// владелец — PDF-окна, а долгоживущие окна (MainForm держит копию с запуска)
-        /// иначе затёрли бы устаревшим значением чужой правкой (та же ловушка, что с
-        /// языком). Осознанно эти поля пишет только <see cref="SaveView"/>.
+        /// Сохранить настройки владельца Excel поверх свежего снимка. Возвращает false,
+        /// если блокировку/чтение/атомарную публикацию выполнить не удалось.
         /// </summary>
-        public void Save()
+        public bool Save()
         {
-            // Свежий снимок с диска, на него переносим ТОЛЬКО свои поля. Так список
-            // «чужих» полей не приходится держать в голове: всё, что здесь не названо,
-            // остаётся с диска и достаётся своему владельцу в целости. Каждое новое поле
-            // по умолчанию оказывается чужим — это безопасная сторона ошибки.
-            UserSettings disk = Load();
-            disk.LastInputFolder = LastInputFolder;
-            disk.LastOutputFolder = LastOutputFolder;
-            disk.AddToc = AddToc;
-            disk.AllSheets = AllSheets;
-            disk.OutputExtension = OutputExtension;
-            disk.WriteAll();
+            return Change(delegate(UserSettings disk)
+            {
+                disk.LastInputFolder = LastInputFolder;
+                disk.LastOutputFolder = LastOutputFolder;
+                disk.AddToc = AddToc;
+                disk.AllSheets = AllSheets;
+                disk.OutputExtension = OutputExtension;
+            });
         }
 
         /// <summary>
-        /// Сохранить настройки вместе с видом PDF-инструмента: масштаб и уровень сжатия
-        /// пишутся ЯВНО (вызывает <see cref="PdfToolFormBase"/> при закрытии окна поверх
-        /// свежей загрузки, поэтому прочие поля тоже актуальны).
+        /// Сохранить только вид PDF-инструмента поверх свежей загрузки: устаревший экземпляр
+        /// окна не затирает пути, границы, язык и настройки обновлений другого окна.
         /// </summary>
-        public void SaveView(int zoomWidth, int compressionLevel)
+        public bool SaveView(int zoomWidth, int compressionLevel)
         {
-            ZoomWidth = zoomWidth;
-            CompressionLevel = compressionLevel;
-            WriteAll();
+            bool saved = Change(delegate(UserSettings disk)
+            {
+                disk.ZoomWidth = zoomWidth;
+                disk.CompressionLevel = compressionLevel;
+            });
+            if (saved)
+            {
+                ZoomWidth = zoomWidth;
+                CompressionLevel = compressionLevel;
+            }
+            return saved;
         }
 
-        /// <summary>
-        /// Сохранить размер/положение одного окна (ключ — имя типа формы), не тронув прочие
-        /// настройки и границы других окон: read-modify-write свежей загрузки (как SaveView для
-        /// масштаба). Долгоживущее окно так не затрёт границы, записанные другим окном.
-        /// </summary>
         public static void SaveWindowBounds(string formKey, string bounds)
         {
             Change(delegate(UserSettings s) { s.WindowBounds[formKey] = bounds; });
         }
 
-        /// <summary>
-        /// Запомнить версию, о которой просили не напоминать. Отдельным узким методом, а не
-        /// парой «флажок + версия» в одном вызове: совмещённый метод требовал бы от каждого
-        /// вызывающего передавать И текущее состояние проверки, а забытый параметр молча
-        /// включил бы обратно то, что пользователь выключил.
-        /// </summary>
-        public static void SaveSkippedVersion(string version)
+        public static bool SaveSkippedVersion(string version)
         {
-            Change(delegate(UserSettings s) { s.SkippedVersion = version; });
+            return Change(delegate(UserSettings s) { s.SkippedVersion = version; });
         }
 
-        /// <summary>Включить или выключить проверку обновлений при запуске.</summary>
-        public static void SaveUpdateCheckOnStart(bool checkOnStart)
+        public static bool SaveUpdateCheckOnStart(bool checkOnStart)
         {
-            Change(delegate(UserSettings s) { s.UpdateCheckOnStart = checkOnStart; });
+            return Change(delegate(UserSettings s) { s.UpdateCheckOnStart = checkOnStart; });
         }
 
-        /// <summary>
-        /// Поменять одно поле поверх СВЕЖЕЙ загрузки. Общий приём для настроек, у которых нет
-        /// окна-владельца: правится ровно названное поле, остальные попадают на диск такими,
-        /// какими их оставил их собственный владелец. Мьютекс защищает от гонки при
-        /// одновременном закрытии нескольких окон (совпадает с UsageStats и OperationHistory).
-        /// </summary>
-        private static void Change(Action<UserSettings> change)
+        public static bool SaveWhatsNew(bool showOnStart, string seenVersion)
         {
-            using (var mutex = new System.Threading.Mutex(false, @"Local\iwoHelperDesktop.settings"))
+            return Change(delegate(UserSettings settings)
             {
-                bool held = false;
-                try { held = mutex.WaitOne(2000, false); }
-                catch (System.Threading.AbandonedMutexException) { held = true; } // прежний держатель умер
-                if (!held)
-                    return; // таймаут — не писать поверх чужой операции
-                try
-                {
-                    UserSettings disk = Load();
-                    change(disk);
-                    disk.WriteAll();
-                }
-                finally
-                {
-                    if (held)
-                        mutex.ReleaseMutex();
-                }
-            }
+                settings.ShowWhatsNewOnStart = showOnStart;
+                settings.LastWhatsNewVersion = seenVersion;
+            });
+        }
+
+        public static bool SaveLanguage(string language)
+        {
+            if (language != "ru" && language != "en")
+                return false;
+            return Change(delegate(UserSettings s) { s.Language = language; });
+        }
+
+        private static bool Change(Action<UserSettings> change)
+        {
+            if (change == null)
+                return false;
+            return AppDataLock.TryRun(FilePath, delegate
+            {
+                UserSettings disk;
+                if (!TryLoad(out disk))
+                    return false;
+                change(disk);
+                disk.WriteAll();
+                return true;
+            });
         }
 
         private void WriteAll()
         {
-            try
+            var lines = new List<string>
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
-                var lines = new List<string>
-                {
-                    "lastInputFolder=" + (LastInputFolder ?? ""),
-                    "lastOutputFolder=" + (LastOutputFolder ?? ""),
-                    "addToc=" + AddToc,
-                    "allSheets=" + AllSheets,
-                    "outputExtension=" + (OutputExtension ?? ".xlsx"),
-                    "zoomWidth=" + ZoomWidth,
-                    "compression=" + CompressionLevel,
-                    "updateCheckOnStart=" + UpdateCheckOnStart,
-                    "skippedVersion=" + (SkippedVersion ?? ""),
-                    // Язык — из живого Loc (единый источник истины), а НЕ из поля этого
-                    // экземпляра: другие формы держат устаревшую копию настроек и иначе
-                    // затёрли бы язык обратно при своём Save.
-                    "language=" + Loc.Code(Loc.Current)
-                };
-                // Границы окон (wnd.<Форма>=x,y,w,h,m) — отсортированно: детерминированный файл.
-                var keys = new List<string>(WindowBounds.Keys);
-                keys.Sort(StringComparer.Ordinal);
-                foreach (string k in keys)
-                    lines.Add("wnd." + k + "=" + WindowBounds[k]);
-                File.WriteAllLines(FilePath, lines);
-            }
-            catch { }
+                "lastInputFolder=" + (LastInputFolder ?? ""),
+                "lastOutputFolder=" + (LastOutputFolder ?? ""),
+                "addToc=" + AddToc,
+                "allSheets=" + AllSheets,
+                "outputExtension=" + (OutputExtension ?? ".xlsx"),
+                "zoomWidth=" + ZoomWidth,
+                "compression=" + CompressionLevel,
+                "updateCheckOnStart=" + UpdateCheckOnStart,
+                "showWhatsNewOnStart=" + ShowWhatsNewOnStart,
+                "lastWhatsNewVersion=" + (LastWhatsNewVersion ?? ""),
+                "skippedVersion=" + (SkippedVersion ?? ""),
+                "language=" + (Language == "en" ? "en" :
+                    Language == "ru" ? "ru" : Loc.Code(Loc.Current))
+            };
+            var keys = new List<string>(WindowBounds.Keys);
+            keys.Sort(StringComparer.Ordinal);
+            foreach (string key in keys)
+                lines.Add("wnd." + key + "=" + WindowBounds[key]);
+            lines.AddRange(_unknownLines);
+            AppStateFile.WriteLines(FilePath, lines);
         }
     }
 }

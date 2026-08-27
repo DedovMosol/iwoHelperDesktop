@@ -71,8 +71,14 @@ namespace ExcelMerger
             Ui.RunWorker(delegate()
             {
                 var locked = new List<string>();
+                bool cancelled = false;
                 foreach (string path in toLoad)
                 {
+                    if (LoadCancellationRequested)
+                    {
+                        cancelled = true;
+                        break;
+                    }
                     // Ловим ШИРОКО (как операционные воркеры): один битый/занятый/аварийный файл
                     // (в т.ч. редкий OOM, который LoadPages НЕ оборачивает) не должен ронять
                     // фоновый поток — остальные файлы пакета всё равно добавляются.
@@ -88,8 +94,14 @@ namespace ExcelMerger
                             errors.Add(string.Format(Loc.T("err.pdf.cantOpen"), Path.GetFileName(path), ex.Message));
                     }
                 }
+                bool wasCancelled = cancelled || LoadCancellationRequested;
                 OnUi(delegate
                 {
+                    if (wasCancelled || LoadCancellationRequested)
+                    {
+                        FinishCanceledLoad();
+                        return; // пакет — один жест: частично разобранные файлы не публикуются
+                    }
                     // Что бы ни случилось при опросе паролей, окно обязано выйти из состояния
                     // загрузки: иначе кнопки и сетка останутся заблокированными навсегда, и
                     // человеку придётся закрывать инструмент.

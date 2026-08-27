@@ -6,6 +6,8 @@ using System.Windows.Forms;
 
 namespace ExcelMerger
 {
+    internal enum PdfReviewViewMode { Unified, SideBySide }
+
     /// <summary>
     /// Сравнение двух выбранных пользователем born-digital PDF. Инструмент read-only:
     /// ранняя версия всегда слева с красным фоном удалений, поздняя справа с зелёным
@@ -17,14 +19,18 @@ namespace ExcelMerger
         private static string Title { get { return Loc.T("hub.review.name"); } }
 
         private TextBox _leftPath, _rightPath;
+        private Label _leftPathLabel, _rightPathLabel;
         private TextBox _leftPageInput, _rightPageInput;
         private Label _leftPageRange, _rightPageRange;
         private Label _leftLegend, _rightLegend;
         private Label _leftWhitespaceLegend, _rightWhitespaceLegend;
         private Button _pickLeft, _pickRight, _swap, _compare;
         private SplitContainer _body, _sourceSplit;
+        private Panel _viewHost, _unifiedHost;
+        private RoundedButton _unifiedModeButton, _sideModeButton;
+        private PdfReviewViewMode _viewMode = PdfReviewViewMode.Unified;
         private ListBox _pairs;
-        private PdfReviewPageView _leftSource, _rightSource;
+        private PdfReviewPageView _leftSource, _rightSource, _unifiedSource;
         private Label _summary, _position;
         private Button _previous, _next, _manual;
         private PdfReviewResult _result;
@@ -37,6 +43,8 @@ namespace ExcelMerger
         private bool _pageTextSync, _leftPageDirty, _rightPageDirty;
         private int _leftSourceGeneration, _rightSourceGeneration;
         private bool _leftSourceChecking, _rightSourceChecking;
+        private bool _leftProbeActive, _rightProbeActive;
+        private bool _leftProbeQueued, _rightProbeQueued;
         private PdfReviewSourceError _leftSourceError, _rightSourceError;
         private bool _sourceCallbacksStopped;
         private bool _wheelFilterRegistered;
@@ -90,12 +98,16 @@ namespace ExcelMerger
             InitShell(Title, new Size(1120, 760), new Size(900, 640), Theme.ReviewBlue);
             BuildReviewHeader();
             int menu = HelpMenu.Height;
-            int top = menu + 88;
+            int top = menu + 106;
             _pathTop = top;
             int right = ClientSize.Width - 20;
 
             // Границы ряда задаёт LayoutPathRow (единая точка на построение и ресайз):
             // якоря ширину полей не меняют, и при сжатии окна колонки наезжали друг на друга.
+            _leftPathLabel = Ui.Label(this, Loc.T("review.left"), 20, top - 22, Font, Theme.TextPrimary);
+            _rightPathLabel = Ui.Label(this, Loc.T("review.right"), 20, top - 22, Font, Theme.TextPrimary);
+            _leftPathLabel.AutoSize = _rightPathLabel.AutoSize = false;
+            _leftPathLabel.TextAlign = _rightPathLabel.TextAlign = ContentAlignment.MiddleLeft;
             _leftPath = PathBox(20, top, 300, Loc.T("review.left"));
             WirePathBox(_leftPath, true);
             _leftPath.Anchor = AnchorStyles.Top | AnchorStyles.Left;
@@ -134,12 +146,18 @@ namespace ExcelMerger
             _body = new SplitContainer();
             _body.SetBounds(20, top + 80, right - 20, ClientSize.Height - (top + 80) - 112);
             _body.Orientation = Orientation.Vertical;
-            _body.FixedPanel = FixedPanel.Panel1;
-            _body.Panel1MinSize = 190;
-            _body.Panel2MinSize = 500;
+            _body.FixedPanel = FixedPanel.None;
+            _body.IsSplitterFixed = false;
+            _body.Panel1MinSize = 160;
+            _body.Panel2MinSize = 420;
+            _body.SplitterWidth = 8;
+            _body.SplitterIncrement = 1;
             _body.SplitterDistance = 250;
+            _body.BackColor = SystemInformation.HighContrast
+                ? SystemColors.ControlDark : Theme.Border;
             _body.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(_body);
+            _tips.SetToolTip(_body, Loc.T("review.pairs.resizeTip"));
 
             _pairs = new ListBox();
             _pairs.Dock = DockStyle.Fill;
@@ -217,28 +235,166 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Единственный вид сравнения — исходные страницы бок о бок. Semantic ownership
-        /// подписано над каждой стороной и не зависит от оттенка: removed/solid/− слева,
-        /// added/dashed/+ справа. Поле физической страницы перемещает только свою сторону.
+        /// Unified redline is the default; side-by-side remains one click away. Both modes use
+        /// the same semantic result and page renderer—switching never recomputes the diff.
         /// </summary>
         private void BuildViews()
         {
-            _sourceSplit = new SplitContainer();
-            _sourceSplit.Dock = DockStyle.Fill;
-            _sourceSplit.Orientation = Orientation.Vertical;
+            var modeBar = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 44,
+                BackColor = SystemInformation.HighContrast
+                    ? SystemColors.Control : Color.White
+            };
+            _unifiedModeButton = new RoundedButton(false);
+            _unifiedModeButton.SetBounds(8, 6, 150, 32);
+            _unifiedModeButton.Text = Loc.T("review.mode.unified");
+            _unifiedModeButton.AccessibleName = Loc.T("review.mode.unified");
+            _unifiedModeButton.Click += delegate
+            {
+                SetViewMode(PdfReviewViewMode.Unified);
+            };
+            modeBar.Controls.Add(_unifiedModeButton);
+
+            _sideModeButton = new RoundedButton(false);
+            _sideModeButton.SetBounds(166, 6, 150, 32);
+            _sideModeButton.Text = Loc.T("review.mode.sideBySide");
+            _sideModeButton.AccessibleName = Loc.T("review.mode.sideBySide");
+            _sideModeButton.Click += delegate
+            {
+                SetViewMode(PdfReviewViewMode.SideBySide);
+            };
+            modeBar.Controls.Add(_sideModeButton);
+
+            _viewHost = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Size = new Size(600, 400)
+            };
+            _viewHost.Resize += delegate { LayoutViewHosts(); };
+            _sourceSplit = new SplitContainer
+            {
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Vertical,
+                SplitterWidth = 8,
+                IsSplitterFixed = false,
+                Size = new Size(600, 400),
+                SplitterDistance = 300,
+                Panel1MinSize = 220,
+                Panel2MinSize = 220,
+                BackColor = SystemInformation.HighContrast
+                    ? SystemColors.ControlDark : Theme.Border
+            };
             _leftSource = new PdfReviewPageView { Dock = DockStyle.Fill };
             _rightSource = new PdfReviewPageView { Dock = DockStyle.Fill };
+            _sourceSplit.Panel1.Controls.Add(BuildPageHost(_leftSource, true));
+            _sourceSplit.Panel2.Controls.Add(BuildPageHost(_rightSource, false));
+            _viewHost.Controls.Add(_sourceSplit);
 
-            Panel leftHost = BuildPageHost(_leftSource, true);
-            Panel rightHost = BuildPageHost(_rightSource, false);
-            _sourceSplit.Panel1.Controls.Add(leftHost);
-            _sourceSplit.Panel2.Controls.Add(rightHost);
-            _body.Panel2.Controls.Add(_sourceSplit);
+            _unifiedHost = BuildUnifiedHost();
+            _viewHost.Controls.Add(_unifiedHost);
+
+            _body.Panel2.Controls.Add(_viewHost);
+            _body.Panel2.Controls.Add(modeBar);
+            modeBar.BringToFront();
             _leftSource.ShowEmpty(Loc.T("review.left"));
             _rightSource.ShowEmpty(Loc.T("review.right"));
+            _unifiedSource.ShowEmpty(Loc.T("review.mode.unified"));
             _tips.SetToolTip(_leftSource, Loc.T("review.source.interactions"));
             _tips.SetToolTip(_rightSource, Loc.T("review.source.interactions"));
+            _tips.SetToolTip(_unifiedSource, Loc.T("review.unified.interactions"));
+            LayoutViewHosts();
+            SetViewMode(PdfReviewViewMode.Unified);
         }
+
+        private Panel BuildUnifiedHost()
+        {
+            var host = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                Size = new Size(600, 400)
+            };
+            var legend = new Panel
+            {
+                Dock = DockStyle.Top,
+                Size = new Size(600, 72),
+                Height = 72,
+                BackColor = SystemInformation.HighContrast
+                    ? SystemColors.Window : Color.White
+            };
+            Label title = Ui.Label(legend, Loc.T("review.unified.legend"), 10, 8,
+                Ui.Font(Font.Size, FontStyle.Bold), Theme.TextPrimary);
+            title.AutoSize = false;
+            title.SetBounds(10, 7, 520, 24);
+            title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            Label hint = Ui.Label(legend, Loc.T("review.unified.hint"), 10, 34,
+                Ui.Font(Math.Max(8f, Font.Size - 0.5f)), Theme.TextMuted);
+            hint.AutoSize = false;
+            hint.SetBounds(10, 33, 520, 32);
+            hint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
+            _unifiedSource = new PdfReviewPageView { Dock = DockStyle.Fill };
+            host.Controls.Add(_unifiedSource);
+            host.Controls.Add(legend);
+            legend.BringToFront();
+            return host;
+        }
+
+        private void LayoutViewHosts()
+        {
+            if (_viewHost == null)
+                return;
+            Rectangle bounds = _viewHost.ClientRectangle;
+            if (_sourceSplit != null) _sourceSplit.Bounds = bounds;
+            if (_unifiedHost != null) _unifiedHost.Bounds = bounds;
+        }
+
+        private void SetViewMode(PdfReviewViewMode mode)
+        {
+            _viewMode = mode;
+            bool unified = mode == PdfReviewViewMode.Unified;
+            if (_unifiedHost != null) _unifiedHost.Visible = unified;
+            if (_sourceSplit != null) _sourceSplit.Visible = !unified;
+            if (_unifiedModeButton != null)
+            {
+                _unifiedModeButton.Selected = unified;
+                _unifiedModeButton.AccessibleDescription = unified
+                    ? Loc.T("review.mode.selected") : "";
+            }
+            if (_sideModeButton != null)
+            {
+                _sideModeButton.Selected = !unified;
+                _sideModeButton.AccessibleDescription = !unified
+                    ? Loc.T("review.mode.selected") : "";
+            }
+            if (_result == null || _pairIndex < 0)
+                return;
+            if (unified)
+                RenderUnified(PdfReviewPagePosition.Default);
+            else
+            {
+                CenterSourceSplitter();
+                RenderSource(true, PdfReviewPagePosition.Default);
+                RenderSource(false, PdfReviewPagePosition.Default);
+            }
+        }
+
+        private void CenterSourceSplitter()
+        {
+            if (_sourceSplit == null || _sourceSplit.ClientSize.Width <=
+                _sourceSplit.SplitterWidth)
+                return;
+            int available = _sourceSplit.ClientSize.Width - _sourceSplit.SplitterWidth;
+            int wanted = available / 2;
+            int min = _sourceSplit.Panel1MinSize;
+            int max = available - _sourceSplit.Panel2MinSize;
+            if (max >= min)
+                _sourceSplit.SplitterDistance = Math.Max(min, Math.Min(max, wanted));
+        }
+
 
         private Panel BuildPageHost(PdfReviewPageView source, bool leftSide)
         {
@@ -382,7 +538,7 @@ namespace ExcelMerger
                     "review.legend.added"),
                 Dock = DockStyle.Fill,
                 AutoSize = false,
-                Font = new Font(Font, FontStyle.Bold),
+                Font = Ui.Font(Font.Size, FontStyle.Bold),
                 ForeColor = foreground,
                 BackColor = background,
                 TextAlign = ContentAlignment.MiddleLeft,
@@ -395,7 +551,7 @@ namespace ExcelMerger
                 Text = Loc.T("review.legend.whitespace"),
                 Dock = DockStyle.Fill,
                 AutoSize = false,
-                Font = new Font(Font.FontFamily, Math.Max(8f, Font.Size - 0.5f)),
+                Font = Ui.Font(Math.Max(8f, Font.Size - 0.5f)),
                 ForeColor = SystemInformation.HighContrast
                     ? SystemColors.WindowText : Theme.TextMuted,
                 BackColor = background,
@@ -427,11 +583,15 @@ namespace ExcelMerger
 
             _leftPath.SetBounds(20, _pathTop, leftPathWidth, _leftPath.Height);
             _pickLeft.SetBounds(20 + leftPathWidth + browseGap, _pathTop - 1, browseWidth, _pickLeft.Height);
+            if (_leftPathLabel != null)
+                _leftPathLabel.SetBounds(20, _pathTop - 22, leftPathWidth, 18);
 
             int rightStart = 20 + half + gap;
             int rightPathWidth = Math.Max(60, right - rightStart - browseGap - browseWidth);
             _rightPath.SetBounds(rightStart, _pathTop, rightPathWidth, _rightPath.Height);
             _pickRight.SetBounds(rightStart + rightPathWidth + browseGap, _pathTop - 1, browseWidth, _pickRight.Height);
+            if (_rightPathLabel != null)
+                _rightPathLabel.SetBounds(rightStart, _pathTop - 22, rightPathWidth, 18);
         }
 
         protected override void OnResize(EventArgs e)
@@ -569,6 +729,22 @@ namespace ExcelMerger
                 return;
             }
 
+            // Probe is deliberately single-flight per side. A fast sequence of edits/Leave
+            // events queues only the latest source instead of reading several large PDFs in
+            // parallel; the generation check still rejects every stale completion.
+            bool active = left ? _leftProbeActive : _rightProbeActive;
+            if (active)
+            {
+                if (left) _leftProbeQueued = true;
+                else _rightProbeQueued = true;
+                if (left) _leftSourceChecking = true;
+                else _rightSourceChecking = true;
+                SetStatus(Loc.T("review.status.checkingSource"), Theme.TextMuted);
+                SyncControls();
+                return;
+            }
+            if (left) _leftProbeActive = true;
+            else _rightProbeActive = true;
             if (left) _leftSourceChecking = true;
             else _rightSourceChecking = true;
             SetStatus(Loc.T("review.status.checkingSource"), Theme.TextMuted);
@@ -584,9 +760,22 @@ namespace ExcelMerger
         {
             // Probe завершается в фоне. Закрытие формы инвалидирует поколения до Dispose,
             // поэтому уже поставленный в очередь UI-callback не трогает закрытые контролы.
-            if (_sourceCallbacksStopped || IsDisposed ||
-                (left ? _leftSourceGeneration : _rightSourceGeneration) != generation)
+            bool currentGeneration = (left ? _leftSourceGeneration : _rightSourceGeneration) == generation;
+            if (left) _leftProbeActive = false;
+            else _rightProbeActive = false;
+            if (_sourceCallbacksStopped || IsDisposed)
                 return;
+            if (!currentGeneration)
+            {
+                bool queued = left ? _leftProbeQueued : _rightProbeQueued;
+                if (queued)
+                {
+                    if (left) _leftProbeQueued = false;
+                    else _rightProbeQueued = false;
+                    CommitSource(left, false);
+                }
+                return;
+            }
             if (left) _leftSourceChecking = false;
             else _rightSourceChecking = false;
 
@@ -874,6 +1063,7 @@ namespace ExcelMerger
             }
             if (!FinishOperation(error, Loc.T("review.status.failed"), Loc.T("review.err.failed")))
                 return;
+            UsageStats.RecordPdfCompare();
             ApplyResult(result);
         }
 
@@ -889,7 +1079,10 @@ namespace ExcelMerger
             for (int i = 0; i < result.Pairs.Count; i++)
                 _pairs.Items.Add(PairLabel(result.Pairs[i]));
             _pairs.EndUpdate();
-            _summary.Text = StatsText(result.Stats);
+            string stats = StatsText(result.Stats);
+            _summary.Text = stats;
+            _summary.AccessibleDescription = stats;
+            _tips.SetToolTip(_summary, stats);
             if (_pairs.Items.Count > 0)
                 _pairs.SelectedIndex = 0;
             else
@@ -936,7 +1129,12 @@ namespace ExcelMerger
                 return;
             }
 
-            if (side == 1)
+            if (_viewMode == PdfReviewViewMode.Unified)
+            {
+                _leftRowIndex = _rightRowIndex = index;
+                RenderUnified(position);
+            }
+            else if (side == 1)
             {
                 _leftRowIndex = index;
                 RenderSource(true, position);
@@ -984,10 +1182,56 @@ namespace ExcelMerger
                     BuildHighlight(_result, pair, leftSide), position);
         }
 
-        /// <summary>
-        /// Выбирает существующую viewer-строку для одной стороны. SelectedIndex остаётся
-        /// навигационным указателем, но противоположная сторона не меняется.
-        /// </summary>
+        private void RenderUnified(PdfReviewPagePosition position)
+        {
+            if (_result == null || _pairIndex < 0 ||
+                _pairIndex >= _result.Pairs.Count)
+                return;
+            PdfReviewViewContent content = BuildUnifiedContent(_result,
+                _result.Pairs[_pairIndex], _contentRevision);
+            if (content == null)
+            {
+                _unifiedSource.ShowEmpty(Loc.T("review.mode.unified"));
+                return;
+            }
+            if (!_unifiedSource.IsShowing(content.BasePage, content.Revision))
+                _unifiedSource.ShowContent(content, position);
+        }
+
+        internal static PdfReviewViewContent BuildUnifiedContent(PdfReviewResult result,
+            PdfReviewPagePair pair, long revision)
+        {
+            if (result == null || pair == null)
+                return null;
+            bool hasRight = pair.RightPageIndex >= 0;
+            bool baseLeft = !hasRight;
+            PdfReviewDocument baseDocument = baseLeft ? result.Left : result.Right;
+            int baseIndex = baseLeft ? pair.LeftPageIndex : pair.RightPageIndex;
+            PdfPageRef basePage = PageRef(baseDocument, baseIndex);
+            PdfReviewPage baseReviewPage = PdfReviewDiff.PageAt(baseDocument, baseIndex);
+            if (basePage == null || baseReviewPage == null)
+                return null;
+            PdfReviewHighlight baseHighlight = BuildHighlight(result, pair, baseLeft);
+
+            PdfPageRef overlayPage = null;
+            PdfReviewHighlight overlayHighlight = null;
+            if (!baseLeft && pair.LeftPageIndex >= 0)
+            {
+                PdfReviewHighlight deleted = BuildHighlight(result, pair, true);
+                if (deleted.Boxes.Count > 0 || deleted.WhitespaceMarkers.Count > 0)
+                {
+                    overlayPage = PageRef(result.Left, pair.LeftPageIndex);
+                    overlayHighlight = deleted;
+                }
+            }
+            string caption = string.Format(Loc.T("review.unified.caption"),
+                pair.LeftPageIndex < 0 ? "—" : (pair.LeftPageIndex + 1).ToString(),
+                pair.RightPageIndex < 0 ? "—" : (pair.RightPageIndex + 1).ToString());
+            return new PdfReviewViewContent(basePage, baseReviewPage, baseHighlight,
+                overlayPage, overlayHighlight, revision, caption);
+        }
+
+
         private bool SelectViewerRow(int index, bool leftSide,
             PdfReviewPagePosition position)
         {
@@ -1182,8 +1426,8 @@ namespace ExcelMerger
                 Application.AddMessageFilter(this);
                 _wheelFilterRegistered = true;
             }
-            if (_sourceSplit.ClientSize.Width > _sourceSplit.SplitterWidth)
-                _sourceSplit.SplitterDistance = (_sourceSplit.ClientSize.Width - _sourceSplit.SplitterWidth) / 2;
+            if (_viewMode == PdfReviewViewMode.SideBySide)
+                CenterSourceSplitter();
         }
 
         bool IMessageFilter.PreFilterMessage(ref Message m)
@@ -1197,6 +1441,34 @@ namespace ExcelMerger
 
         internal bool RouteWheel(Point screenPoint, int delta, bool controlDown)
         {
+            if (_viewMode == PdfReviewViewMode.Unified)
+            {
+                if (_unifiedSource == null ||
+                    !_unifiedSource.ContainsViewport(screenPoint))
+                    return false;
+                PdfReviewWheelResult unifiedOutcome = _unifiedSource.HandleWheel(
+                    screenPoint, delta, controlDown);
+                if (unifiedOutcome == PdfReviewWheelResult.Zoomed ||
+                    unifiedOutcome == PdfReviewWheelResult.Scrolled)
+                    return true;
+                if (unifiedOutcome != PdfReviewWheelResult.AtPreviousBoundary &&
+                    unifiedOutcome != PdfReviewWheelResult.AtNextBoundary)
+                    return false;
+                int unifiedDirection = unifiedOutcome ==
+                    PdfReviewWheelResult.AtPreviousBoundary ? -1 : 1;
+                int unifiedNext = FindUnifiedRow(_result == null ? null : _result.Pairs,
+                    _pairIndex, unifiedDirection);
+                if (unifiedNext < 0)
+                    return false;
+                _navigationPosition = unifiedDirection < 0
+                    ? PdfReviewPagePosition.Bottom : PdfReviewPagePosition.Top;
+                if (_pairs.SelectedIndex == unifiedNext)
+                    SelectPair(unifiedNext);
+                else
+                    _pairs.SelectedIndex = unifiedNext;
+                return true;
+            }
+
             bool leftSide;
             PdfReviewPageView view;
             if (_leftSource != null && _leftSource.ContainsViewport(screenPoint))
@@ -1232,7 +1504,23 @@ namespace ExcelMerger
                 ? PdfReviewPagePosition.Bottom : PdfReviewPagePosition.Top);
         }
 
-        /// <summary>Ближайшая строка без wrap, где у активной стороны есть страница.</summary>
+        internal static int FindUnifiedRow(IList<PdfReviewPagePair> pairs, int current,
+            int direction)
+        {
+            if (pairs == null || current < 0 || current >= pairs.Count || direction == 0)
+                return -1;
+            int step = direction < 0 ? -1 : 1;
+            for (int index = current + step; index >= 0 && index < pairs.Count;
+                index += step)
+            {
+                PdfReviewPagePair pair = pairs[index];
+                if (pair != null && (pair.RightPageIndex >= 0 || pair.LeftPageIndex >= 0))
+                    return index;
+            }
+            return -1;
+        }
+
+
         internal static int FindViewerRow(IList<PdfReviewPagePair> pairs, int current,
             bool leftSide, int direction)
         {
@@ -1328,6 +1616,7 @@ namespace ExcelMerger
             _rightSourceGeneration++;
             _leftSourceChecking = false;
             _rightSourceChecking = false;
+            _leftProbeQueued = _rightProbeQueued = false;
         }
 
         private void RemoveWheelFilter()
@@ -1365,6 +1654,8 @@ namespace ExcelMerger
             _navigationPosition = PdfReviewPagePosition.Default;
             _pairs.Items.Clear();
             _summary.Text = Loc.T("review.status.pickBoth");
+            _summary.AccessibleDescription = _summary.Text;
+            _tips.SetToolTip(_summary, _summary.Text);
             ClearViews();
             SyncPageInputs();
         }
@@ -1373,6 +1664,7 @@ namespace ExcelMerger
         {
             _leftSource.ShowEmpty(Loc.T("review.left"));
             _rightSource.ShowEmpty(Loc.T("review.right"));
+            _unifiedSource.ShowEmpty(Loc.T("review.mode.unified"));
             _position.Text = "";
         }
 
@@ -1392,6 +1684,8 @@ namespace ExcelMerger
             _pairs.Enabled = !Working && _result != null;
             _previous.Enabled = _next.Enabled = !Working && _result != null && _result.Pairs.Count > 0;
             _manual.Enabled = !Working && _result != null && _pairIndex >= 0;
+            if (_unifiedModeButton != null) _unifiedModeButton.Enabled = !Working;
+            if (_sideModeButton != null) _sideModeButton.Enabled = !Working;
             bool canNavigate = !Working && _result != null && _result.Pairs.Count > 0;
             _leftPageInput.Enabled = canNavigate && _result.Left != null &&
                 _result.Left.Pages.Count > 0;

@@ -1,21 +1,11 @@
+using System;
 using System.IO;
 
 namespace ExcelMerger
 {
-    /// <summary>
-    /// Выбор имени для создаваемого файла. Отделено от <see cref="NameTemplate"/> нарочно:
-    /// там чистая сборка имени из шаблона (и потому всё под тестами), а здесь единственное,
-    /// что требует обращения к диску — проверка занятости имени.
-    /// </summary>
+    /// <summary>Проверка идентичности путей и race-safe публикация под свободным именем.</summary>
     public static class OutputFile
     {
-        /// <summary>
-        /// Указывает ли путь на тот же файл, что и исходник. Инструменты, пишущие результат
-        /// рядом (свойства, оттенки серого, восстановление), обязаны это проверять: приложение
-        /// исходники не меняет, а запись «в самого себя» вдобавок портит файл — источник в этот
-        /// момент открыт на чтение. Сравнение по полному пути и без учёта регистра, как в
-        /// файловой системе Windows. Чистая — под тест.
-        /// </summary>
         public static bool IsSameFile(string a, string b)
         {
             if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))
@@ -23,29 +13,79 @@ namespace ExcelMerger
             try
             {
                 return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b),
-                    System.StringComparison.OrdinalIgnoreCase);
+                    StringComparison.OrdinalIgnoreCase);
             }
-            catch
+            catch { return false; }
+        }
+
+        internal static UniqueOutput CreateUnique(string dir, string safeName,
+            string extension)
+        {
+            return new UniqueOutput(dir, safeName, extension);
+        }
+
+        internal static string Candidate(string dir, string safeName, string extension,
+            int number)
+        {
+            return Path.Combine(dir, safeName + (number <= 1 ? "" : "_" + number) +
+                extension);
+        }
+    }
+
+    /// <summary>
+    /// Новый результат без placeholder/check-then-create: запись идёт в уникальный temp,
+    /// Commit публикует rename-ом без overwrite и при коллизии пробует следующий суффикс.
+    /// </summary>
+    internal sealed class UniqueOutput : IDisposable
+    {
+        private readonly string _directory;
+        private readonly string _safeName;
+        private readonly string _extension;
+        private bool _committed;
+
+        internal readonly string TempPath;
+        internal string TargetPath { get; private set; }
+
+        internal UniqueOutput(string directory, string safeName, string extension)
+        {
+            _directory = Path.GetFullPath(directory);
+            _safeName = safeName;
+            _extension = extension;
+            Directory.CreateDirectory(_directory);
+            TempPath = Path.Combine(_directory, safeName + ".iwo-" +
+                Guid.NewGuid().ToString("N") + extension);
+        }
+
+        internal string Commit()
+        {
+            if (_committed)
+                return TargetPath;
+            if (!File.Exists(TempPath))
+                throw new FileNotFoundException(TempPath);
+            for (int number = 1; ; number++)
             {
-                return false; // негодный путь — пусть отвечает тот, кто будет писать
+                string candidate = OutputFile.Candidate(_directory, _safeName,
+                    _extension, number);
+                try
+                {
+                    File.Move(TempPath, candidate); // never overwrites on .NET Framework
+                    TargetPath = candidate;
+                    _committed = true;
+                    return candidate;
+                }
+                catch (IOException)
+                {
+                    if (!File.Exists(candidate))
+                        throw;
+                }
             }
         }
 
-        /// <summary>
-        /// Путь в папке со СВОБОДНЫМ именем: «имя.pdf», занято — «имя_2.pdf», «имя_3.pdf»…
-        /// Ни один инструмент не перезаписывает молча: результат прошлого запуска остаётся
-        /// на месте, а новый ложится рядом. Имя уже должно быть очищено вызывающим.
-        /// </summary>
-        public static string Unique(string dir, string safeName, string extension)
+        public void Dispose()
         {
-            string path = Path.Combine(dir, safeName + extension);
-            int n = 2;
-            while (File.Exists(path))
-            {
-                path = Path.Combine(dir, safeName + "_" + n + extension);
-                n++;
-            }
-            return path;
+            if (_committed)
+                return;
+            try { if (File.Exists(TempPath)) File.Delete(TempPath); } catch { }
         }
     }
 }

@@ -41,9 +41,48 @@ def anchor_of(heading):
     return "#" + "".join(ch for ch in text if ch.isalnum() or ch in "-_️")
 
 
+def assembly_version(root):
+    path = os.path.join(root, "src", "AssemblyInfo.cs")
+    try:
+        source = io.open(path, encoding="utf-8").read()
+    except OSError:
+        return None
+    match = re.search(r'AssemblyFileVersion\("([0-9]+\.[0-9]+\.[0-9]+)', source)
+    return match.group(1) if match else None
+
+
+def is_pending_asset_url(target, version):
+    if not version:
+        return False
+    prefix = "https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v%s/" % version
+    if not target.startswith(prefix):
+        return False
+    name = target[len(prefix):]
+    return name in {
+        "iwoHelperDesktop-%s.exe" % version,
+        "iwoHelperDesktop-%s-x86.exe" % version,
+        "iwoHelperDesktop-setup-%s.exe" % version,
+        "iwoHelperDesktop-setup-%s-x86.exe" % version,
+    }
+
+
+def release_exists(version):
+    url = "https://api.github.com/repos/DedovMosol/iwoHelperDesktop/releases/tags/v%s" % version
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=TIMEOUT):
+            return True
+    except urllib.error.HTTPError as error:
+        return False if error.code == 404 else None
+    except Exception:
+        return None
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "README.md"
     root = os.path.dirname(os.path.abspath(path)) or "."
+    version = assembly_version(root)
+    published = None
+    published_checked = False
     text = io.open(path, encoding="utf-8").read()
 
     anchors = set()
@@ -80,8 +119,20 @@ def main():
                     if response.status >= 400:
                         broken.append("%s -> HTTP %s" % (target, response.status))
             except urllib.error.HTTPError as error:
-                where = broken if error.code in (404, 410) else flaky
-                where.append("%s -> HTTP %s" % (target, error.code))
+                if error.code == 404 and is_pending_asset_url(target, version):
+                    if not published_checked:
+                        published = release_exists(version)
+                        published_checked = True
+                    if published is False:
+                        flaky.append("%s -> pending release v%s (name is valid)" %
+                                     (target, version))
+                    elif published is None:
+                        flaky.append("%s -> HTTP 404; release status unavailable" % target)
+                    else:
+                        broken.append("%s -> HTTP 404 (release exists, asset missing)" % target)
+                else:
+                    where = broken if error.code in (404, 410) else flaky
+                    where.append("%s -> HTTP %s" % (target, error.code))
             except Exception as error:
                 flaky.append("%s -> %s" % (target, error))
         elif target.startswith("mailto:"):

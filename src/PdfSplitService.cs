@@ -221,9 +221,9 @@ namespace ExcelMerger
                     Cancellation.ThrowIf(cancelled);
                     PdfSplitPart part = parts[i];
                     string legacy = LegacyPartName(baseName, part, i + 1);
-                    string path = UniquePath(outDir, PartName(template, legacy,
+                    string safeName = Sanitize(PartName(template, legacy,
                         ValuesFor(part, baseName, i + 1, parts.Count, startedAt)));
-                    WritePart(sourcePath, part, path, cancelled);
+                    string path = WritePart(sourcePath, part, outDir, safeName, cancelled);
                     created.Add(path);
                     if (progress != null)
                         progress(created.Count, parts.Count);
@@ -233,19 +233,17 @@ namespace ExcelMerger
             });
         }
 
-        private static void WritePart(string sourcePath, PdfSplitPart part,
-            string path, Func<bool> cancelled)
+        private static string WritePart(string sourcePath, PdfSplitPart part,
+            string directory, string safeName, Func<bool> cancelled)
         {
             if (part == null || part.Pages.Count == 0)
                 throw new MergeException(Loc.T("err.split.noPages"));
-            if (OutputFile.IsSameFile(sourcePath, path))
-                throw new MergeException(Loc.T("err.output.sameSource"));
-            using (var output = new AtomicOutput(path))
+            using (var output = OutputFile.CreateUnique(directory, safeName, ".pdf"))
             {
-                PdfMergeService.Merge(part.Pages, output.TempPath, null, cancelled);
+                PdfMergeService.WriteUnpublished(part.Pages, output.TempPath, null, cancelled);
                 EnsurePartBookmark(output.TempPath, sourcePath, part);
                 Cancellation.ThrowIf(cancelled);
-                output.Commit();
+                return output.Commit();
             }
         }
 
@@ -338,11 +336,6 @@ namespace ExcelMerger
         internal static string PartName(string template, string legacyName, NameValues values)
         {
             return string.IsNullOrEmpty(template) ? legacyName : NameTemplate.Apply(template, values);
-        }
-
-        private static string UniquePath(string dir, string baseName)
-        {
-            return OutputFile.Unique(dir, Sanitize(baseName), ".pdf");
         }
 
         internal static string Sanitize(string name)

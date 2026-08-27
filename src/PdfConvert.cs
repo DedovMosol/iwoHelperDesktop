@@ -96,12 +96,27 @@ namespace ExcelMerger
         /// </summary>
         public static bool Apply(string path, PdfConvertMode mode)
         {
+            return ApplyCore(path, mode, true);
+        }
+
+        internal static bool ApplyUnpublished(string path, PdfConvertMode mode)
+        {
+            return ApplyCore(path, mode, false);
+        }
+
+        private static bool ApplyCore(string path, PdfConvertMode mode,
+            bool recoverableTarget)
+        {
             if (!Ghostscript.Available)
                 return false;
             string temp = GsRewrite.TempOutput(path);
             string args = BuildArguments(path, temp, mode, Ghostscript.BundledRoot);
-            return GsRewrite.Run(path, temp, args, TimeoutMs, ShouldReplace,
-                delegate(string produced) { return Verify(produced, mode); });
+            GsRewriteResult result = recoverableTarget
+                ? GsRewrite.RunDetailed(path, temp, args, TimeoutMs, ShouldReplace,
+                    delegate(string produced) { return Verify(produced, mode); })
+                : GsRewrite.RunDetailedUnpublished(path, temp, args, TimeoutMs,
+                    ShouldReplace, delegate(string produced) { return Verify(produced, mode); });
+            return result == GsRewriteResult.Applied;
         }
 
         private static string Quote(string s)

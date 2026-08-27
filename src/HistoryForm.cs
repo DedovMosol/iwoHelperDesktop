@@ -101,9 +101,11 @@ namespace ExcelMerger
             SyncButtons();
         }
 
+        private bool _checkingPath;
+
         private void SyncButtons()
         {
-            bool has = _list.SelectedItems.Count == 1;
+            bool has = !_checkingPath && _list.SelectedItems.Count == 1;
             _openFile.Enabled = has;
             _openFolder.Enabled = has;
         }
@@ -115,27 +117,40 @@ namespace ExcelMerger
         /// </summary>
         private void OpenSelected(bool folder)
         {
-            if (_list.SelectedItems.Count != 1)
+            if (_checkingPath || _list.SelectedItems.Count != 1)
                 return;
-            var path = (string)_list.SelectedItems[0].Tag;
-            bool isFile = File.Exists(path);
-            bool isFolder = Directory.Exists(path);
-            if (!isFile && !isFolder)
+            string path = (string)_list.SelectedItems[0].Tag;
+            _checkingPath = true;
+            SyncButtons();
+            var owner = new WeakReference(this);
+            Ui.RunWorker(delegate
             {
-                Dialogs.Error(this, Loc.T("history.title"), Loc.T("history.err.gone.title"),
-                    string.Format(Loc.T("history.err.gone.body"), path));
-                return;
-            }
-            if (!folder)
-            {
-                Ui.OpenPathOrWarn(this, Loc.T("history.title"), path);
-                return;
-            }
-            // Для файла показываем его в папке, для папки — открываем её саму.
-            if (isFile)
-                Ui.OpenPathOrWarn(this, Loc.T("history.title"), path, true);
-            else
-                Ui.OpenPathOrWarn(this, Loc.T("history.title"), path);
+                bool isFile = false, isFolder = false;
+                try
+                {
+                    isFile = File.Exists(path);
+                    if (!isFile)
+                        isFolder = Directory.Exists(path);
+                }
+                catch { }
+                HistoryForm form = owner.Target as HistoryForm;
+                if (form == null)
+                    return;
+                Ui.OnUi(form, delegate
+                {
+                    form._checkingPath = false;
+                    form.SyncButtons();
+                    if (!isFile && !isFolder)
+                    {
+                        Dialogs.Error(form, Loc.T("history.title"),
+                            Loc.T("history.err.gone.title"),
+                            string.Format(Loc.T("history.err.gone.body"), path));
+                        return;
+                    }
+                    Ui.OpenPathOrWarn(form, Loc.T("history.title"), path,
+                        folder && isFile);
+                });
+            });
         }
     }
 }

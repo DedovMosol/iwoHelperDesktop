@@ -102,6 +102,12 @@
     <EmbeddedResource Include="docs\User manual.docx">
       <LogicalName>manual.en.docx</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="docs\whatsnew.json">
+      <LogicalName>whatsnew.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="licenses\THIRD-PARTY-NOTICES.txt">
+      <LogicalName>thirdparty.notices.txt</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

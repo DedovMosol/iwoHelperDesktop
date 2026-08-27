@@ -87,8 +87,10 @@ namespace ExcelMerger
                     // Ширину рендера считаем от РЕАЛЬНОГО размера листа принтера, а не страницы
                     // PDF: так одинаково печатаются и A4, и нестандартные вставки.
                     int width = Math.Max(1, e.PageBounds.Width * RenderDpi / 100);
-                    using (Bitmap page = owned.Render(ref_.SourcePath, ref_.PageIndex, width))
+                    using (BudgetedBitmap rendered = owned.RenderOwned(ref_.SourcePath,
+                        ref_.PageIndex, width, 0, RasterBudget.DefaultRenderPixels))
                     {
+                        Bitmap page = rendered == null ? null : rendered.Bitmap;
                         if (page != null)
                         {
                             // Поворот, назначенный пользователем в сетке, обязан попасть и на

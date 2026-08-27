@@ -49,6 +49,7 @@ namespace ExcelMerger
         private readonly Label _status;
         private readonly RoundedButton _minus, _plus, _fit;
         private Bitmap _bitmap;
+        private BudgetedBitmap _ownedBitmap;
         private PdfPageRef _page;
         private PdfReviewPage _reviewPage;
         private PdfPageRef _targetPage;
@@ -63,15 +64,16 @@ namespace ExcelMerger
         private RenderRequest _pending;
         private bool _renderWorker;
 
+        private PdfReviewViewContent _currentContent;
+        internal bool AllowFullScreen { get; set; } = true;
+        internal int RenderWidthLimit { get; set; } = 1200;
+
         private sealed class RenderRequest
         {
             public int Generation;
-            public long ContentRevision;
-            public PdfPageRef Page;
-            public PdfReviewPage ReviewPage;
-            public string Caption;
-            public PdfReviewHighlight Highlight;
+            public PdfReviewViewContent Content;
             public PdfReviewPagePosition Position;
+            public int RenderWidth;
         }
 
         public PdfReviewPageView()
@@ -124,9 +126,9 @@ namespace ExcelMerger
             };
             _picture.DoubleClick += delegate
             {
-                if (_page != null)
-                    PagePreviewForm.Show(FindForm(), _page,
-                        string.Format(Loc.T("preview.title"), _page.PageIndex + 1), null);
+                if (AllowFullScreen && _currentContent != null &&
+                    _currentContent.BasePage != null)
+                    PdfReviewFullScreenForm.Show(FindForm(), _currentContent);
             };
             _viewport.Controls.Add(_picture);
 
@@ -219,16 +221,35 @@ namespace ExcelMerger
             string caption, PdfReviewHighlight highlight,
             PdfReviewPagePosition position = PdfReviewPagePosition.Default)
         {
+            ShowContent(new PdfReviewViewContent(page, reviewPage, highlight, null, null,
+                contentRevision, caption), position);
+        }
+
+        internal void ShowCompositePage(PdfPageRef basePage, PdfReviewPage baseReviewPage,
+            long contentRevision, string caption, PdfReviewHighlight baseHighlight,
+            PdfPageRef overlayPage, PdfReviewHighlight overlayHighlight,
+            PdfReviewPagePosition position = PdfReviewPagePosition.Default)
+        {
+            ShowContent(new PdfReviewViewContent(basePage, baseReviewPage, baseHighlight,
+                overlayPage, overlayHighlight, contentRevision, caption), position);
+        }
+
+        internal void ShowContent(PdfReviewViewContent content,
+            PdfReviewPagePosition position = PdfReviewPagePosition.Default)
+        {
             int generation = ++_generation;
             CancelPendingRender();
             DisposeBitmap();
+            _currentContent = content;
+            PdfPageRef page = content == null ? null : content.BasePage;
             _page = null;
             _reviewPage = null;
             _targetPage = page == null ? null : page.Clone();
-            _targetContentRevision = contentRevision;
-            _caption = caption ?? "";
+            _targetContentRevision = content == null ? 0L : content.Revision;
+            _caption = content == null ? "" : content.Caption;
             AccessibleName = _caption;
-            ApplyHighlightAccessibility(highlight);
+            ApplyHighlightAccessibility(content == null ? null : content.BaseHighlight,
+                content == null ? null : content.OverlayHighlight);
             if (page == null)
             {
                 _state = PdfReviewPageViewState.MissingCounterpart;
@@ -239,17 +260,13 @@ namespace ExcelMerger
             bool start = false;
             lock (_renderGate)
             {
-                // Только последний запрос заслуживает рендера. Один worker на pane не даёт
-                // быстрому листанию плодить десятки WinRT-документов и растров параллельно.
                 _pending = new RenderRequest
                 {
                     Generation = generation,
-                    ContentRevision = contentRevision,
-                    Page = _targetPage.Clone(),
-                    ReviewPage = reviewPage,
-                    Caption = caption,
-                    Highlight = highlight,
-                    Position = position
+                    Content = content,
+                    Position = position,
+                    RenderWidth = RenderWidthFor(_viewport.ClientSize.Width,
+                        RenderWidthLimit)
                 };
                 if (!_renderWorker)
                 {
@@ -283,34 +300,43 @@ namespace ExcelMerger
             _generation++;
             CancelPendingRender();
             DisposeBitmap();
+            _currentContent = null;
             _page = null;
             _reviewPage = null;
             _targetPage = null;
             _targetContentRevision = 0L;
             _caption = caption ?? "";
             AccessibleName = _caption;
-            ApplyHighlightAccessibility(null);
+            ApplyHighlightAccessibility(null, null);
             _state = state;
             ApplyVisualState();
         }
 
-        private void ApplyHighlightAccessibility(PdfReviewHighlight highlight)
+        private void ApplyHighlightAccessibility(PdfReviewHighlight primary,
+            PdfReviewHighlight overlay)
         {
-            var descriptions = new List<string>();
-            descriptions.Add(Loc.T("review.source.interactions"));
-            if (highlight != null)
-            {
-                descriptions.Add(Loc.T(highlight.Style == PdfReviewHighlightStyle.Added
-                    ? "review.legend.added" : "review.legend.removed"));
-                var seen = new HashSet<string>(StringComparer.CurrentCulture);
-                foreach (PdfReviewWhitespaceMarker marker in highlight.WhitespaceMarkers)
-                    if (marker != null && !string.IsNullOrWhiteSpace(
-                        marker.AccessibleDescription) &&
-                        seen.Add(marker.AccessibleDescription))
-                        descriptions.Add(marker.AccessibleDescription);
-            }
+            var descriptions = new List<string>
+                { Loc.T("review.source.interactions") };
+            var seen = new HashSet<string>(StringComparer.CurrentCulture);
+            AppendHighlightAccessibility(descriptions, seen, primary);
+            AppendHighlightAccessibility(descriptions, seen, overlay);
             _highlightDescription = string.Join(". ", descriptions.ToArray());
             UpdateSelectionAccessibility();
+        }
+
+        private static void AppendHighlightAccessibility(List<string> descriptions,
+            HashSet<string> seen, PdfReviewHighlight highlight)
+        {
+            if (highlight == null)
+                return;
+            string ownership = Loc.T(highlight.Style == PdfReviewHighlightStyle.Added
+                ? "review.legend.added" : "review.legend.removed");
+            if (seen.Add(ownership))
+                descriptions.Add(ownership);
+            foreach (PdfReviewWhitespaceMarker marker in highlight.WhitespaceMarkers)
+                if (marker != null && !string.IsNullOrWhiteSpace(
+                    marker.AccessibleDescription) && seen.Add(marker.AccessibleDescription))
+                    descriptions.Add(marker.AccessibleDescription);
         }
 
         private void UpdateSelectionAccessibility()
@@ -337,57 +363,129 @@ namespace ExcelMerger
                 _pending = null;
         }
 
+        internal static int RenderWidthFor(int viewportWidth)
+        {
+            return RenderWidthFor(viewportWidth, 1200);
+        }
+
+        internal static int RenderWidthFor(int viewportWidth, int limit)
+        {
+            int width = viewportWidth > 0 ? viewportWidth * 2 : 640;
+            int cap = Math.Max(640, Math.Min(RasterBudget.MaxRenderDimension, limit));
+            if (width < 640) return 640;
+            return width > cap ? cap : width;
+        }
+
         private void RenderLoop()
         {
-            while (true)
+            PdfThumbnailRenderer renderer = null;
+            try
             {
-                RenderRequest request;
-                lock (_renderGate)
+                try { renderer = new PdfThumbnailRenderer(); }
+                catch { }
+                while (true)
                 {
-                    request = _pending;
-                    _pending = null;
-                    if (request == null)
+                    RenderRequest request;
+                    lock (_renderGate)
                     {
-                        _renderWorker = false;
-                        return;
+                        request = _pending;
+                        _pending = null;
+                        if (request == null)
+                            return; // _renderWorker меняется только в finally после Dispose renderer
+                    }
+
+                    BudgetedBitmap rendered = null;
+                    BudgetedBitmap overlay = null;
+                    PdfReviewViewContent content = request.Content;
+                    try
+                    {
+                        if (renderer != null && content != null)
+                        {
+                            rendered = RenderHighlighted(renderer, content.BasePage,
+                                request.RenderWidth, content.BaseHighlight);
+                            if (rendered != null && content.IsComposite)
+                            {
+                                overlay = RenderHighlighted(renderer, content.OverlayPage,
+                                    request.RenderWidth, content.OverlayHighlight);
+                                if (overlay != null)
+                                    PdfReviewUnifiedRenderer.OverlayDeletedFragments(
+                                        rendered.Bitmap, overlay.Bitmap,
+                                        content.OverlayHighlight);
+                                else
+                                    PdfReviewUnifiedRenderer.DrawDeletedMarkers(
+                                        rendered.Bitmap, content.OverlayHighlight);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        if (rendered != null) rendered.Dispose();
+                        rendered = null;
+                    }
+                    finally
+                    {
+                        if (overlay != null) overlay.Dispose();
+                    }
+                    BudgetedBitmap ready = rendered;
+                    if (!Ui.OnUi(this, delegate
+                    {
+                        ApplyRenderedWithHighlight(request.Generation,
+                            content == null ? 0L : content.Revision,
+                            content == null ? null : content.BasePage,
+                            content == null ? null : content.BaseReviewPage,
+                            content == null ? null : content.BaseHighlight,
+                            ready, content == null ? "" : content.Caption,
+                            request.Position);
+                    }))
+                    {
+                        if (ready != null) ready.Dispose();
                     }
                 }
-
-                Bitmap rendered = null;
-                try
+            }
+            finally
+            {
+                if (renderer != null)
+                    renderer.Dispose();
+                bool restart;
+                lock (_renderGate)
                 {
-                    using (var renderer = new PdfThumbnailRenderer())
-                        rendered = renderer.Render(request.Page.SourcePath,
-                            request.Page.PageIndex, 1200, 20000); // ≤24 млн пикселей
-                    if (rendered != null && request.Page.Rotation != 0)
-                        rendered.RotateFlip(PageRotation.FlipFor(request.Page.Rotation));
-                    // Подсветка рисуется СРАЗУ на копии растра в воркере: переключение пар
-                    // и зум тогда ничего не перерисовывают (картинка уже готова).
-                    if (rendered != null)
-                        rendered = DrawHighlight(rendered, request.Highlight);
+                    restart = _pending != null;
+                    _renderWorker = restart;
                 }
-                catch
-                {
-                    // Сбой рендера одной страницы не должен ронять воркер: явное состояние
-                    // Unavailable покажет ApplyRendered, а следующая пара всё равно отрисуется.
-                }
-                Bitmap ready = rendered;
-                if (!Ui.OnUi(this, delegate
-                {
-                    ApplyRenderedWithHighlight(request.Generation, request.ContentRevision,
-                        request.Page, request.ReviewPage, request.Highlight, ready, request.Caption,
-                        request.Position);
-                }))
-                    if (ready != null) ready.Dispose();
+                if (restart && !IsDisposed)
+                    Ui.RunWorker(RenderLoop);
             }
         }
 
-        /// <summary>
-        /// В normal mode превращает paper внутри authoritative word-box в Word-подобный
-        /// фон, сохраняя тёмный PDF ink. Whitespace markers остаются отдельными. В high
-        /// contrast используется системная outline/pattern-грамматика. Успешный результат
-        /// забирает и освобождает source; при сбое source возвращается неизменённым.
-        /// </summary>
+        private static BudgetedBitmap RenderHighlighted(PdfThumbnailRenderer renderer,
+            PdfPageRef page, int width, PdfReviewHighlight highlight)
+        {
+            if (renderer == null || page == null)
+                return null;
+            BudgetedBitmap rendered = renderer.RenderOwned(page.SourcePath,
+                page.PageIndex, width, RasterBudget.MaxRenderDimension,
+                RasterBudget.PreviewPixels);
+            if (rendered == null)
+                return null;
+            Bitmap bitmap = rendered.Bitmap;
+            if (page.Rotation != 0)
+                bitmap.RotateFlip(PageRotation.FlipFor(page.Rotation));
+            bool hasMarks = highlight != null &&
+                (highlight.Boxes.Count > 0 || highlight.WhitespaceMarkers.Count > 0);
+            if (!hasMarks)
+                return rendered;
+            long extra = PdfMemoryBudget.EstimateBitmapBytes(bitmap.Width, bitmap.Height);
+            if (!rendered.TryGrow(extra))
+            {
+                rendered.Dispose();
+                return null;
+            }
+            bitmap = DrawHighlight(bitmap, highlight);
+            rendered.ReplaceAfterTransform(bitmap);
+            return rendered;
+        }
+
+
         internal static Bitmap DrawHighlight(Bitmap source, PdfReviewHighlight highlight)
         {
             return DrawHighlight(source, highlight, SystemInformation.HighContrast);
@@ -887,13 +985,24 @@ namespace ExcelMerger
             PdfReviewPage reviewPage, Bitmap rendered, string caption,
             PdfReviewPagePosition position)
         {
+            BudgetedBitmap owned = null;
+            if (rendered != null)
+            {
+                PdfMemoryLease lease;
+                long bytes = PdfMemoryBudget.EstimateBitmapBytes(
+                    rendered.Width, rendered.Height);
+                if (PdfMemoryBudget.TryAcquire(bytes, out lease))
+                    owned = new BudgetedBitmap(rendered, lease);
+                else
+                    rendered.Dispose();
+            }
             ApplyRenderedWithHighlight(generation, contentRevision, request, reviewPage,
-                null, rendered, caption, position);
+                null, owned, caption, position);
         }
 
         private void ApplyRenderedWithHighlight(int generation, long contentRevision,
             PdfPageRef request, PdfReviewPage reviewPage, PdfReviewHighlight highlight,
-            Bitmap rendered, string caption, PdfReviewPagePosition position)
+            BudgetedBitmap rendered, string caption, PdfReviewPagePosition position)
         {
             if (generation != _generation || contentRevision != _targetContentRevision ||
                 IsDisposed)
@@ -902,7 +1011,8 @@ namespace ExcelMerger
                 return;
             }
             DisposeBitmap();
-            _bitmap = rendered;
+            _ownedBitmap = rendered;
+            _bitmap = rendered == null ? null : rendered.Bitmap;
             _page = request;
             _reviewPage = null;
             _targetPage = request == null ? null : request.Clone();
@@ -1129,7 +1239,9 @@ namespace ExcelMerger
             _picture.Image = null;
             _picture.Visible = false;
             _picture.Size = Size.Empty;
-            if (_bitmap != null) _bitmap.Dispose();
+            if (_ownedBitmap != null)
+                _ownedBitmap.Dispose();
+            _ownedBitmap = null;
             _bitmap = null;
             _reviewPage = null;
         }

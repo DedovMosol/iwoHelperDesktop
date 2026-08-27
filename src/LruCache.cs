@@ -89,7 +89,7 @@ namespace ExcelMerger
             _map[key] = value;
             _order.AddFirst(key);
             if (_map.Count > _capacity)
-                EvictOldest();
+                TryEvictOldest();
         }
 
         /// <summary>Освобождает все элементы (onEvict) и очищает кэш.</summary>
@@ -102,11 +102,12 @@ namespace ExcelMerger
             _order.Clear();
         }
 
-        private void EvictOldest()
+        /// <summary>Вытеснить самый несвежий элемент сейчас. false — кэш пуст.</summary>
+        public bool TryEvictOldest()
         {
             LinkedListNode<string> oldest = _order.Last;
             if (oldest == null)
-                return;
+                return false;
             _order.RemoveLast();
             TValue value;
             if (_map.TryGetValue(oldest.Value, out value))
@@ -115,6 +116,7 @@ namespace ExcelMerger
                 if (_onEvict != null)
                     _onEvict(value);
             }
+            return true;
         }
 
         private void Touch(string key)

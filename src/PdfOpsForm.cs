@@ -36,6 +36,7 @@ namespace ExcelMerger
 
         private Button _btnOpen, _btnAddImages, _btnConvert, _btnExtract, _btnPrint, _btnMeta;
         private ContextMenuStrip _convertMenu, _extractMenu;
+        private ToolStripMenuItem _miSavePdf, _miCompress, _miGrayscale, _miRepair, _miRepairQuick;
 
         // Картинки живут в наборе одностраничными PDF-обёртками: их показывает та же сетка,
         // что и страницы документа, и они попадают во все действия окна без единой особой
@@ -77,8 +78,10 @@ namespace ExcelMerger
             // элементов (два способа набрать страницы, три заголовка групп и восемь действий).
             // Минимум по высоте дальше считается ПО ФАКТУ собранной панели — см. конец метода.
             InitShell(Title, new Size(820, 720), new Size(720, 620), Theme.PdfRed);
+            _miRepairQuick = new ToolStripMenuItem(Loc.T("ops.btn.repair"), null,
+                delegate { RepairChosenFile(); });
             BuildHeaderWithHome(Title, Loc.T("ops.header.subtitle"),
-                Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
+                Theme.PdfRed, Theme.PdfRedDark, ShowHelp, _miRepairQuick);
 
             int m = HelpMenu.Height;
             int right = ClientSize.Width - 20;
@@ -192,9 +195,9 @@ namespace ExcelMerger
             _btnConvert.Enabled = ready;
             _btnExtract.Enabled = ready;
             _btnPrint.Enabled = ready;
-            // Свойства читаются из ОТКРЫТОГО документа: у набора из картинок их взять негде, а
-            // предлагать правку пустоты — обещать то, чего не будет.
             _btnMeta.Enabled = !Working && _sourcePath != null;
+            if (_miRepairQuick != null)
+                _miRepairQuick.Enabled = !Working;
         }
 
         // ---------- картинки страницами ----------
@@ -254,10 +257,13 @@ namespace ExcelMerger
         /// </summary>
         protected override bool ConfirmReplacingPages()
         {
-            if (!HasWrappedImages())
-                return true;
-            return Dialogs.ConfirmWarning(this, Title, Loc.T("ops.ask.replacePages.title"),
-                Loc.T("ops.ask.replacePages.body"));
+            // Manual page edits are just as valuable as added image pages. Opening another
+            // document replaces the complete assembled set, so the warning must cover both
+            // cases rather than protecting only the wrapper files.
+            if (HasWrappedImages())
+                return Dialogs.ConfirmWarning(this, Title, Loc.T("ops.ask.replacePages.title"),
+                    Loc.T("ops.ask.replacePages.body"));
+            return base.ConfirmReplacingPages();
         }
 
         private bool HasWrappedImages()
@@ -316,26 +322,50 @@ namespace ExcelMerger
                 var loaded = new List<LoadedDoc>();
                 var origins = new List<string>();
                 var errors = new List<string>();
+                bool cancelled = false;
                 for (int i = 0; i < toLoad.Length; i++)
                 {
+                    if (LoadCancellationRequested)
+                    {
+                        cancelled = true;
+                        break;
+                    }
                     string wrapper = Path.Combine(dir, "img" + Guid.NewGuid().ToString("N") + ".pdf");
                     // Ловим ШИРОКО (как остальные воркеры): битая, чужая или огромная картинка
                     // (в том числе OOM, который сервис НЕ маскирует) не должна ронять поток —
                     // остальные картинки пакета всё равно добавляются.
                     try
                     {
-                        int pages = ImageToPdfService.WritePages(toLoad[i], wrapper);
+                        int pages = ImageToPdfService.WritePages(toLoad[i], wrapper,
+                            delegate { return LoadCancellationRequested; });
                         loaded.Add(new LoadedDoc { Path = wrapper, PageCount = pages });
                         origins.Add(toLoad[i]);
                     }
                     catch (MergeException ex) { errors.Add(ex.Message); }
+                    catch (OutOfMemoryException ex)
+                    {
+                        errors.Add(string.Format(Loc.T("err.img.cantRead"),
+                            Path.GetFileName(toLoad[i]), ex.Message));
+                        break; // после OOM новые крупные allocations небезопасны
+                    }
                     catch (Exception ex)
                     {
                         errors.Add(string.Format(Loc.T("err.img.cantRead"),
                             Path.GetFileName(toLoad[i]), ex.Message));
                     }
                 }
-                OnUi(delegate { ApplyAddedImages(loaded, origins, errors); });
+                bool wasCancelled = cancelled || LoadCancellationRequested;
+                OnUi(delegate
+                {
+                    if (wasCancelled || LoadCancellationRequested)
+                    {
+                        Cancellation.DeleteQuietly(loaded.ConvertAll(
+                            delegate(LoadedDoc doc) { return doc.Path; }));
+                        FinishCanceledLoad();
+                        return; // пакет картинок не публикуется частично
+                    }
+                    ApplyAddedImages(loaded, origins, errors);
+                });
             });
         }
 
@@ -362,7 +392,7 @@ namespace ExcelMerger
             if (pages == null || IsPristine(pages, source, pageCount))
                 File.Copy(source, outPath, true);
             else
-                PdfMergeService.Merge(pages, outPath);
+                PdfMergeService.WriteUnpublished(pages, outPath);
         }
 
         /// <summary>
@@ -422,7 +452,7 @@ namespace ExcelMerger
             private static string Materialize(IList<PdfPageRef> pages, Func<bool> cancelled)
             {
                 string temp = Path.Combine(Path.GetTempPath(), "iwo_ops_" + Guid.NewGuid().ToString("N") + ".pdf");
-                PdfMergeService.Merge(pages, temp, null, cancelled);
+                PdfMergeService.WriteUnpublished(pages, temp, null, cancelled);
                 return temp;
             }
 
@@ -472,8 +502,9 @@ namespace ExcelMerger
                 return;
             string source = _sourcePath;
             List<PdfPageRef> pages = _order.ToList();
-            int pageCount = _pageCount;
+            int pageCount = pages.Count;
             CompressionLevel level = _compress.Level;
+            bool compressed = false;
             BeginOperation(Loc.T("ops.status.savingPdf"), pages.Count, Loc.T("ops.status.savingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
@@ -482,28 +513,33 @@ namespace ExcelMerger
                 Exception error = null;
                 try
                 {
-                    // Отмена не оставляет половины документа: файл появляется в самом конце
-                    // сборки, а брошенный на сжатии — удаляется (общий инвариант приложения).
-                    Cancellation.NoPartialOutput(delegate(List<string> created)
+                    // AtomicOutput keeps an existing target intact until the complete
+                    // assembled/compressed result is ready. Cancellation before Commit
+                    // therefore removes only this transaction's temp file.
+                    using (var output = new AtomicOutput(outPath))
                     {
-                        if (IsPristine(pages, source, pageCount))
-                            File.Copy(source, outPath, true); // ничего не меняли — копия без потерь
+                        if (IsPristine(pages, source, _pageCount))
+                            File.Copy(source, output.TempPath, true); // ничего не меняли — копия без потерь
                         else
-                            PdfMergeService.Merge(pages, outPath, onProgress, cancel);
-                        created.Add(outPath);
+                            PdfMergeService.WriteUnpublished(pages, output.TempPath, onProgress, cancel);
                         Cancellation.ThrowIf(cancel);
                         if (level != CompressionLevel.None)
-                            PdfCompression.Compress(outPath, level);
+                            compressed = PdfCompression.CompressDetailedUnpublished(
+                                output.TempPath, level) == GsRewriteResult.Applied;
                         Cancellation.ThrowIf(cancel);
-                    });
+                        output.Commit();
+                    }
                 }
                 catch (Exception ex) { error = ex; }
+                bool didCompress = compressed;
                 OnUi(delegate
                 {
                     if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("ops.err.saveFailed")))
                         return;
-                    SetStatus(SuccessStatus(string.Format(Loc.T("ops.status.savedPdf"), pages.Count)),
-                        Theme.OkGreen);
+                    SetStatus(SuccessStatus(string.Format(Loc.T("ops.status.savedPdf"), pageCount),
+                        CompressedPart(didCompress, level)), Theme.OkGreen);
+                    if (didCompress)
+                        UsageStats.RecordPdfCompress();
                     Ui.OpenPath(outPath);
                 });
             });
@@ -557,13 +593,18 @@ namespace ExcelMerger
                 double imageShare = PdfContentProfile.Unknown;
                 try
                 {
-                    WriteWorkingCopy(source, pages, pageCount, outPath);
-                    shrank = PdfCompression.Compress(outPath, level);
-                    // Состав документа выясняем ТОЛЬКО когда сжатие не помогло: иначе это
-                    // лишнее чтение файла на каждой удачной операции. И здесь же, в фоне, —
-                    // на UI-поток такую работу выносить нельзя.
-                    if (!shrank)
-                        imageShare = PdfContentProfile.ImageShare(outPath);
+                    using (var output = new AtomicOutput(outPath))
+                    {
+                        WriteWorkingCopy(source, pages, pageCount, output.TempPath);
+                        shrank = PdfCompression.CompressDetailedUnpublished(
+                            output.TempPath, level) == GsRewriteResult.Applied;
+                        // Состав документа выясняем ТОЛЬКО когда сжатие не помогло: иначе это
+                        // лишнее чтение файла на каждой удачной операции. И здесь же, в фоне, —
+                        // на UI-поток такую работу выносить нельзя.
+                        if (!shrank)
+                            imageShare = PdfContentProfile.ImageShare(output.TempPath);
+                        output.Commit();
+                    }
                 }
                 catch (Exception ex) { error = ex; }
                 bool smaller = shrank;
@@ -615,10 +656,13 @@ namespace ExcelMerger
                 bool ok = false;
                 try
                 {
-                    WriteWorkingCopy(source, pages, pageCount, outPath);
-                    ok = PdfConvert.Apply(outPath, mode);
-                    if (!ok)
-                        try { File.Delete(outPath); } catch { } // не вышло — огрызок не оставляем
+                    using (var output = new AtomicOutput(outPath))
+                    {
+                        WriteWorkingCopy(source, pages, pageCount, output.TempPath);
+                        ok = PdfConvert.ApplyUnpublished(output.TempPath, mode);
+                        if (ok)
+                            output.Commit();
+                    }
                 }
                 catch (Exception ex) { error = ex; }
                 bool applied = ok;
@@ -685,15 +729,35 @@ namespace ExcelMerger
         /// <summary>Меню "Преобразовать документ": Сохранить PDF, Сжать, В оттенки серого, Восстановить.</summary>
         private void ShowConvertMenu()
         {
-            if (Working || _order.Count == 0)
+            if (Working)
                 return;
             if (_convertMenu == null)
             {
                 _convertMenu = new ContextMenuStrip();
-                _convertMenu.Items.Add(Loc.T("ops.btn.savePdf"), null, delegate { SavePdf(); });
-                _convertMenu.Items.Add(Loc.T("ops.btn.compress"), null, delegate { CompressCopy(); });
-                _convertMenu.Items.Add(Loc.T("ops.btn.grayscale"), null, delegate { ConvertCopy(PdfConvertMode.Grayscale, NameSource(), true); });
-                _convertMenu.Items.Add(Loc.T("ops.btn.repair"), null, delegate { RepairChosenFile(); });
+                _miSavePdf = new ToolStripMenuItem(Loc.T("ops.btn.savePdf"), null,
+                    delegate { SavePdf(); });
+                _miCompress = new ToolStripMenuItem(Loc.T("ops.btn.compress"), null,
+                    delegate { CompressCopy(); });
+                _miGrayscale = new ToolStripMenuItem(Loc.T("ops.btn.grayscale"), null,
+                    delegate { ConvertCopy(PdfConvertMode.Grayscale, NameSource(), true); });
+                _miRepair = new ToolStripMenuItem(Loc.T("ops.btn.repair"), null,
+                    delegate { RepairChosenFile(); });
+                _convertMenu.Items.Add(_miSavePdf);
+                _convertMenu.Items.Add(_miCompress);
+                _convertMenu.Items.Add(_miGrayscale);
+                _convertMenu.Items.Add(new ToolStripSeparator());
+                _convertMenu.Items.Add(_miRepair);
+                _convertMenu.Opening += delegate
+                {
+                    bool ready = !Working && _order.Count > 0;
+                    _miSavePdf.Enabled = ready;
+                    _miCompress.Enabled = ready;
+                    _miGrayscale.Enabled = ready;
+                    // Repair deliberately remains available with an empty grid: the damaged
+                    // source cannot be opened there, so requiring pages would make this command
+                    // unreachable in the very case it is needed.
+                    _miRepair.Enabled = !Working;
+                };
             }
             _convertMenu.Show(_btnConvert, new Point(0, _btnConvert.Height), ToolStripDropDownDirection.BelowRight);
         }

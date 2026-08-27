@@ -36,6 +36,7 @@ namespace ExcelMerger
         private static readonly int[] AutoDays = { 0, 1, 7, 30 }; // индекс списка -> дни (как в статистике)
 
         private readonly AccentCheckBox _checkOnStart;
+        private readonly AccentCheckBox _showWhatsNew;
         private readonly RoundedButton _unskip;
         private readonly AccentCheckBox _keepHistory;
         private readonly ComboBox _historyAuto;
@@ -75,19 +76,31 @@ namespace ExcelMerger
             RichTextBox hint = JustifiedText.Paragraph(this, Loc.T("settings.hint.updates"),
                 Pad, _checkOnStart.Bottom + 6, width - 2 * Pad, Theme.TextMuted);
 
-            RoundedButton checkNow = AddButton(Loc.T("settings.btn.checkNow"), Pad, hint.Bottom + Gap + 4);
+            _showWhatsNew = new AccentCheckBox
+            {
+                Text = Loc.T("settings.chk.whatsNew")
+            };
+            Controls.Add(_showWhatsNew);
+            Size whatsNewSize = _showWhatsNew.GetPreferredSize(Size.Empty);
+            _showWhatsNew.SetBounds(Pad, hint.Bottom + 8,
+                Math.Min(whatsNewSize.Width, width - 2 * Pad), whatsNewSize.Height);
+            _showWhatsNew.CheckedChanged += OnShowWhatsNewChanged;
+
+            RoundedButton[] updateActions = RowButtons(new[]
+                {
+                    Loc.T("settings.btn.checkNow"),
+                    string.Format(Loc.T("settings.btn.whatsNew"),
+                        WhatsNewCatalog.CurrentVersion)
+                }, Pad, _showWhatsNew.Bottom + Gap + 2, width - 2 * Pad);
+            RoundedButton checkNow = updateActions[0];
             checkNow.Click += delegate
             {
-                // Кнопка гасится на время запроса: сеть с таймаутом 10 с, а нетерпеливые
-                // нажатия плодили бы по воркеру и по окну с ответом на каждое.
                 checkNow.Enabled = false;
                 UpdateUi.Check(this, delegate { checkNow.Enabled = true; });
             };
+            updateActions[1].Click += delegate { WhatsNewUi.ShowDialog(this); };
 
-            // «Снова напоминать» — СВОЕЙ строкой, а не рядом: подпись несёт номер версии и на
-            // разных языках разной длины, и в паре кнопок она рано или поздно не поместилась
-            // бы по ширине. Место под неё держим всегда, даже когда она спрятана, иначе окно
-            // меняло бы высоту от того, отказывался ли человек от напоминаний.
+            // «Снова напоминать» — СВОЕЙ строкой: подпись несёт номер версии.
             _unskip = AddButton("", Pad, checkNow.Bottom + Gap);
             _unskip.Name = UnskipName; // чтобы проверка находила кнопку по имени, а не по пустой подписи
             _unskip.Click += OnUnskip;
@@ -141,6 +154,7 @@ namespace ExcelMerger
 
             _tips = new ToolTip();
             _tips.SetToolTip(_checkOnStart, Loc.T("settings.tip.updateOnStart"));
+            _tips.SetToolTip(_showWhatsNew, Loc.T("settings.chk.whatsNew"));
             _tips.SetToolTip(_keepHistory, Loc.T("settings.tip.history"));
 
             LoadAndShow();
@@ -234,6 +248,7 @@ namespace ExcelMerger
             UserSettings s = UserSettings.Load();
             _loading = true; // не считать программную установку флажка за выбор человека
             _checkOnStart.Checked = s.UpdateCheckOnStart;
+            _showWhatsNew.Checked = s.ShowWhatsNewOnStart;
             _loading = false;
 
             bool skipped = !string.IsNullOrEmpty(s.SkippedVersion);
@@ -260,6 +275,19 @@ namespace ExcelMerger
         /// </summary>
         internal Func<bool> ConfirmClearHistory { get; set; }
 
+        private void OnShowWhatsNewChanged(object sender, EventArgs e)
+        {
+            if (_loading)
+                return;
+            UserSettings current = UserSettings.Load();
+            if (!UserSettings.SaveWhatsNew(_showWhatsNew.Checked,
+                current.LastWhatsNewVersion))
+            {
+                ShowSaveError();
+                LoadAndShow();
+            }
+        }
+
         private void OnKeepHistoryChanged(object sender, EventArgs e)
         {
             if (_loading)
@@ -279,7 +307,8 @@ namespace ExcelMerger
                 _loading = false;
                 return;
             }
-            OperationHistory.SetEnabled(wanted);
+            if (!OperationHistory.SetEnabled(wanted))
+                ShowSaveError();
             LoadAndShow();
         }
 
@@ -295,7 +324,8 @@ namespace ExcelMerger
         {
             if (_loading)
                 return;
-            OperationHistory.SetAutoClear(AutoDays[_historyAuto.SelectedIndex]);
+            if (!OperationHistory.SetAutoClear(AutoDays[_historyAuto.SelectedIndex]))
+                ShowSaveError();
             LoadAndShow(); // применённая давность могла убрать часть записей
         }
 
@@ -303,7 +333,8 @@ namespace ExcelMerger
         {
             if (AskClearHistory())
             {
-                OperationHistory.Clear();
+                if (!OperationHistory.Clear())
+                    ShowSaveError();
                 LoadAndShow();
             }
         }
@@ -312,13 +343,24 @@ namespace ExcelMerger
         {
             if (_loading)
                 return;
-            UserSettings.SaveUpdateCheckOnStart(_checkOnStart.Checked);
+            if (!UserSettings.SaveUpdateCheckOnStart(_checkOnStart.Checked))
+            {
+                ShowSaveError();
+                LoadAndShow();
+            }
         }
 
         private void OnUnskip(object sender, EventArgs e)
         {
-            UserSettings.SaveSkippedVersion(null);
+            if (!UserSettings.SaveSkippedVersion(null))
+                ShowSaveError();
             LoadAndShow(); // кнопка исчезает: напоминать больше нечего отменять
+        }
+
+        private void ShowSaveError()
+        {
+            Dialogs.Error(this, Loc.T("settings.title"), Loc.T("settings.err.save.title"),
+                Loc.T("settings.err.save.body"));
         }
 
         protected override void Dispose(bool disposing)

@@ -82,8 +82,15 @@ namespace ExcelMerger
         {
             if (source == null || !source.IsValid)
                 return source ?? Error(PdfReviewSourceError.InvalidPath);
-            EmbeddedAssemblies.Ensure();
-            return ProbeCore(source.Path);
+            try
+            {
+                EmbeddedAssemblies.Ensure();
+                return ProbeCore(source.Path);
+            }
+            catch
+            {
+                return Error(PdfReviewSourceError.Unreadable);
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

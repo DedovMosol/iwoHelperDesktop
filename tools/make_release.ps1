@@ -16,6 +16,14 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $ps = (Get-Process -Id $PID).Path
 
+# Release assets must be reproducible from the commit carrying the tag. The project compiles
+# src\**\*.cs, so even one untracked .cs silently changes the exe without changing HEAD.
+$status = @(& git -C $root status --porcelain --untracked-files=all)
+if ($LASTEXITCODE -ne 0) { throw 'git status failed' }
+if ($status.Count -ne 0) {
+    throw "working tree is not clean; commit or remove every release input first:`n$($status -join "`n")"
+}
+
 # 1. Build + sign both architectures (portable exe + installer each)
 if (-not $SkipBuild) {
     foreach ($arch in @('x64', 'x86')) {
@@ -69,6 +77,13 @@ $body = "# iwo Helper Desktop $tag`r`n" + (($section -join "`r`n").Trim()) + "`r
 Write-Host "Release notes: $notes"
 
 $assets = @($portable64, $portable86, $installer, $installer86)
+foreach ($asset in $assets) {
+    $signature = Get-AuthenticodeSignature $asset
+    if (-not $signature.SignerCertificate) { throw "asset is not signed: $asset" }
+    if (-not $signature.TimeStamperCertificate) { throw "asset has no trusted timestamp: $asset" }
+    Write-Host ("SHA256 {0}  {1}" -f (Get-FileHash $asset -Algorithm SHA256).Hash,
+        [IO.Path]::GetFileName($asset))
+}
 
 # 4. Publish
 if (-not $Publish) {
@@ -85,26 +100,37 @@ if (-not $Publish) {
 # that would crash the script. Switch to Continue temporarily and decide by exit code.
 $eap = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
+try {
+    # Tag: an existing release may be refreshed only from the exact tagged commit.
+    $head = (& git -C $root rev-parse HEAD).Trim()
+    & git -C $root rev-parse --verify --quiet "refs/tags/$tag" 1>$null 2>$null
+    $tagExists = ($LASTEXITCODE -eq 0)
+    if ($tagExists) {
+        $tagCommit = (& git -C $root rev-list -n 1 $tag).Trim()
+        if ($tagCommit -ne $head) {
+            throw "tag $tag points to $tagCommit, but assets were built from $head"
+        }
+    } else {
+        & git -C $root tag $tag
+        if ($LASTEXITCODE -ne 0) { throw "failed to create tag $tag" }
+        & git -C $root push origin $tag
+        if ($LASTEXITCODE -ne 0) { throw "failed to push tag $tag" }
+    }
 
-# Tag (create and push if it does not exist yet)
-& git -C $root rev-parse --verify --quiet "refs/tags/$tag" 1>$null 2>$null
-if ($LASTEXITCODE -ne 0) {
-    & git -C $root tag $tag
-    & git -C $root push origin $tag
-    if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = $eap; throw "failed to push tag $tag" }
+    # Release: create if missing; otherwise update the artifacts and notes.
+    & gh release view $tag 1>$null 2>$null
+    $releaseExists = ($LASTEXITCODE -eq 0)
+    if (-not $releaseExists) {
+        & gh release create $tag @assets --title $tag --notes-file $notes
+    } else {
+        & gh release upload $tag @assets --clobber
+        & gh release edit $tag --notes-file $notes
+    }
+    $rc = $LASTEXITCODE
 }
-
-# Release: create if missing; otherwise update the artifacts and notes.
-& gh release view $tag 1>$null 2>$null
-$releaseExists = ($LASTEXITCODE -eq 0)
-if (-not $releaseExists) {
-    & gh release create $tag @assets --title $tag --notes-file $notes
-} else {
-    & gh release upload $tag @assets --clobber
-    & gh release edit $tag --notes-file $notes
+finally {
+    $ErrorActionPreference = $eap
 }
-$rc = $LASTEXITCODE
-$ErrorActionPreference = $eap
 if ($rc -ne 0) { throw 'gh release failed' }
 Write-Host "OK: release $tag published (portable + installer, x64 + x86)."
 exit 0

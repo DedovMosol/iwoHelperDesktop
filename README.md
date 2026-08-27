@@ -43,13 +43,13 @@ Build one PDF from several on a thumbnail grid — reorder, rotate, cut/copy/pas
 ### ✂️ PDF Split
 Extract selected pages into one file, or split by page ranges, every N pages, or top‑level bookmarks — with per‑page **rotation** carried into the output in every mode. Original page numbers sit under the thumbnails, a long split can be **cancelled** (from five source pages, removing anything already written), and the source is never modified.
 ### 🔎 PDF Compare (beta)
-Compare an earlier and a later **born-digital** PDF without converting either file. Exactly one document-wide comparison of canonical visible words remains the semantic authority; physical page pairing only lays out the viewer and corroborates conservative proofs. A bounded reconciliation removes a form/table extraction-order artifact only when the same words have one unambiguous geometric match, so reflow or re-pagination alone is not an edit and uncertain material remains marked. Earlier/left removals receive tight solid red (`#EC0808`) word backgrounds; later/right additions receive tight solid green (`#1BE91A`) word backgrounds. Clickable red/green side rails mark each changed line and select its corresponding trusted fragment. Only authoritative changed-word boxes are filled, without spanning spaces, unchanged text or geometric gaps; dark glyphs remain readable and chromatic source ink is preserved. Persistent `−`/`+` side legends keep ownership explicit, while Windows High Contrast deliberately switches to system-colour outlines and patterns instead of custom fills.
+Compare an earlier and a later **born-digital** PDF without converting either file. The default **Unified redline** uses the later page as its base: additions stay green, while only deleted fragments from the earlier page are projected in red with a strike line; unchanged pixels from the earlier version never cover the result. **Side by side** remains one click away and switching views never reruns the semantic comparison. Double-click either canvas for a maximized view with the exact same colour markup. Exactly one document-wide comparison of canonical visible words remains the semantic authority; physical page pairing only lays out the viewer and corroborates conservative proofs. A bounded reconciliation removes a form/table extraction-order artifact only when the same words have one unambiguous geometric match, so reflow or re-pagination alone is not an edit and uncertain material remains marked. Earlier removals use tight red (`#EC0808`) marks and later additions use tight green (`#1BE91A`) marks; Windows High Contrast deliberately switches to system-colour outlines and patterns.
 
 <details><summary><b>Sources, navigation and comparison limits</b></summary>
 
 - **Choose sources your way** — browse, type or paste a path, or drop PDFs anywhere over the nested controls. Paths are validated in the background. A password-protected PDF remains selectable and uses the normal in-memory password prompt when comparison starts.
 - **Drop routing is explicit** — two PDFs fill left/right in their supplied order; one PDF dropped over a side replaces that side; one dropped on neutral space fills the first empty side. If both sides are already filled, a neutral drop asks for an explicit side instead of replacing one silently; more than two files are refused.
-- **Review original pages** — the alignment-row list covers paired and one-sided pages, with previous/next-change navigation and optional manual pairing. A normal wheel first scrolls only the pane under the pointer; at a page edge it continues to the nearest row containing a page on that same side, skips gaps, and never wraps. Ctrl+wheel zooms only that pane, keeps the PDF point under the pointer in place, and never changes the row.
+- **Review as a redline or source pages** — Unified redline is the default, and Side by side remains available without recomputing the comparison. The resizable alignment list covers paired and one-sided pages, with previous/next-change navigation and optional manual pairing. Double-click opens the active marked-up page full screen. In side-by-side mode, a normal wheel first scrolls only the pane under the pointer; at a page edge it continues to the nearest row containing a page on that same side, skips gaps, and never wraps. Ctrl+wheel zooms only the active canvas and keeps the PDF point under the pointer in place.
 - **Select and copy trusted text** — both page panes remain read-only and keep independent selections. Drag over verified PDF words, press Ctrl+A to select the trusted text on the current page, or use Copy / Select all from the local context menu; Ctrl+C publishes Unicode text that can be pasted into an ordinary control or another application. Words come only from the final published PDF text layer and separators only from literal decoded source boundaries. Where no trusted boundary is available, copy inserts one readability space and reports that fallback; it never becomes a whitespace change. OCR, pixels, geometry, visible gaps, wrapping and page boundaries never invent copied content.
 - **Formatting is not content** — font family, size, weight, italic, colour, coordinates, page size/orientation, extraction fragmentation, coincident overlays and NFC-equivalent Unicode do not enter word equality. Physical page boundaries and manual page pairing are presentation data, not semantic edit boundaries.
 - **Extraction order is not accepted as an edit** — a bounded post-diff pass can reconcile exact repeated words in a table or form only on one explicit page pair and only with unique geometric proof. It does not run a second page-local diff; ambiguity, real movement, unrelated edits or exhausted work limits preserve the original Delete/Insert candidates.
@@ -111,13 +111,13 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 
 | Windows | Download |
 |----|----------|
-| **64‑bit** — Windows 8.1 / 10 / 11 *(most PCs)* | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-setup-1.18.4.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-1.18.4.exe) |
-| **32‑bit** — 32‑bit editions of Windows 8.1 / 10 | [![Installer](https://img.shields.io/badge/Installer-x86-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-setup-1.18.4-x86.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x86-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-1.18.4-x86.exe) |
+| **64‑bit** — Windows 8.1 / 10 / 11 *(most PCs)* | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.5/iwoHelperDesktop-setup-1.18.5.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.5/iwoHelperDesktop-1.18.5.exe) |
+| **32‑bit** — 32‑bit editions of Windows 8.1 / 10 | [![Installer](https://img.shields.io/badge/Installer-x86-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.5/iwoHelperDesktop-setup-1.18.5-x86.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x86-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.5/iwoHelperDesktop-1.18.5-x86.exe) |
 
-*The buttons download the current release (**v1.18.4**) directly, each file name carries its version. The newest build and the full file list are always on the [releases page](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest).*
+*The buttons download the current release (**v1.18.5**) directly, each file name carries its version. The newest build and the full file list are always on the [releases page](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest).*
 
 - **Installer** *(recommended)* — bundles Ghostscript of the matching bitness, so PDF compression works out of the box. Installs **per‑user without admin** by default (choose “for all users” for a machine‑wide install).
-- **Portable** — a single `iwoHelperDesktop-1.18.4.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
+- **Portable** — a single `iwoHelperDesktop-1.18.5.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
 - The x64 and x86 packages are functionally identical — take **x64** unless your Windows is 32‑bit.
 
 > Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split, Compare, More operations and PDF → PowerPoint** need no Office at all.
@@ -179,6 +179,26 @@ Format is derived from the path extension. `--toc` adds a table of contents, `--
 
 </details>
 
+<details>
+<summary><b>PDF command-line mode (for scripts)</b></summary>
+
+The PDF commands call the same services as the windows. Input files are never modified; commands that transform a document require a different output path.
+
+```text
+iwoHelperDesktop.exe --merge <out.pdf> <in.pdf> [in.pdf ...] [--level none|verygood|good|normal]
+iwoHelperDesktop.exe --extract <in.pdf> <pages> <out.pdf>
+iwoHelperDesktop.exe --split <in.pdf> <out_dir> [--ranges 1-3,5 | --every N | --bookmarks]
+iwoHelperDesktop.exe --compress <in.pdf> <out.pdf> [--level verygood|good|normal]
+iwoHelperDesktop.exe --grayscale <in.pdf> <out.pdf>
+iwoHelperDesktop.exe --repair <in.pdf> <out.pdf>
+iwoHelperDesktop.exe --to-image <in.pdf> <out_dir> [--dpi 150] [--format png|jpg]
+iwoHelperDesktop.exe --to-text <in.pdf> <out.txt>
+```
+
+`--help` prints the same list. PDF page numbers are one-based (`1-3,5`). Image export accepts 1–600 dpi. Exit codes: `0` done, `1` failed, `2` bad usage. When optional compression was explicitly requested but Ghostscript is unavailable, the command reports that the output was left uncompressed rather than silently implying compression happened.
+
+</details>
+
 ## 🛠️ Build from source
 
 ```
@@ -204,6 +224,8 @@ Written in **C#** (.NET Framework 4.8, Windows Forms), powered by these open pro
 [![Ghostscript](https://img.shields.io/badge/Ghostscript-AGPL-d32f2f)](https://ghostscript.com/)
 [![Inno Setup](https://img.shields.io/badge/Inno%20Setup-installer-107C41)](https://jrsoftware.org/isinfo.php)
 [![Windows.Data.Pdf](https://img.shields.io/badge/Windows.Data.Pdf-WinRT-0078D6?logo=windows&logoColor=white)](https://learn.microsoft.com/uwp/api/windows.data.pdf)
+
+Redistribution licenses and attribution notices are kept in [`licenses/`](licenses/THIRD-PARTY-NOTICES.md) and embedded in the portable executable (**About → Third-party licenses**). Installer-bundled Ghostscript remains a separate process; its AGPL license is installed beside it and its corresponding source is available from the linked upstream project.
 
 ## 🔒 Privacy
 

@@ -54,7 +54,13 @@ namespace ExcelMerger
                 UpdateUi.CheckOnStart(_hub);
         }
 
-        /// <summary>Показать экран выбора инструмента; создать заново, если был закрыт.</summary>
+        public void ShowWhatsNewOnStart()
+        {
+            if (_hub != null && !_hub.IsDisposed)
+                Ui.OnUi(_hub, delegate { WhatsNewUi.ShowIfNeeded(_hub); });
+        }
+
+
         public void ShowHub()
         {
             ShowHub(null, null);

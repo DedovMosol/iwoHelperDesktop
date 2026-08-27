@@ -94,6 +94,14 @@ namespace ExcelMerger
                 "https://github.com/DedovMosol/iwoHelperDesktop/blob/main/docs/PRIVACY.md");
             privacy.Name = "aboutPrivacy";
             _privacyRow.Controls.Add(privacy);
+            LinkLabel notices = Ui.Link(_privacyRow, Loc.T("about.thirdParty"),
+                privacy.Right + 16, 2);
+            notices.Name = "aboutThirdParty";
+            notices.LinkClicked += delegate
+            {
+                ThirdPartyNotices.Open(this, Loc.T("hub.about"));
+            };
+            _privacyRow.Controls.Add(notices);
             _scroll.Controls.Add(_privacyRow);
 
             _privacyNote = new Label();

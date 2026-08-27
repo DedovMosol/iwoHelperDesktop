@@ -18,30 +18,81 @@ namespace ExcelMerger
     {
         private const int Dpi = 200;             // чётко для штрих-кода и мелкой графики
         private const int RenderTimeoutMs = 60000;
+        internal const int MaxRangePages = 512;
         private const int RangeTimeoutMs = 300000; // диапазон страниц — один запуск на весь файл
 
         /// <summary>
         /// Отрендерить страницу (1-based) в Bitmap через Ghostscript. null — GS недоступен или
         /// рендер не удался. Возвращённый Bitmap принадлежит вызывающему (обязан Dispose).
         /// </summary>
-        public static Bitmap RenderPage(string pdfPath, int pageNumber)
+        internal static BudgetedBitmap RenderPage(string pdfPath, int pageNumber,
+            double pageWidthPt, double pageHeightPt)
         {
             if (!Ghostscript.Available || string.IsNullOrEmpty(pdfPath) || pageNumber < 1)
                 return null;
-            string outPng = Path.Combine(Path.GetTempPath(), "iwo_pg_" + Guid.NewGuid().ToString("N") + ".png");
+            string outPng = Path.Combine(Path.GetTempPath(), "iwo_pg_" +
+                Guid.NewGuid().ToString("N") + ".png");
+            string decryptedPdf = null;
+            string renderPath = pdfPath;
+            int renderPage = pageNumber;
+            PdfMemoryLease working = null;
+            Bitmap result = null;
             try
             {
-                string stderr;
-                int exit = Ghostscript.Run(BuildArgs(pdfPath, pageNumber, pageNumber, Dpi, outPng, false),
-                    RenderTimeoutMs, out stderr);
-                if (exit != 0 || !File.Exists(outPng))
+                int pixelWidth, pixelHeight;
+                int dpi = SafePageDpi(pageWidthPt, pageHeightPt, Dpi,
+                    out pixelWidth, out pixelHeight);
+                if (dpi <= 0 || !PdfMemoryBudget.TryAcquire(
+                    RasterBudget.BitmapWorkingSetBytes(pixelWidth, pixelHeight, 2),
+                    out working))
                     return null;
-                using (var fs = File.OpenRead(outPng))
-                using (var decoded = new Bitmap(fs))
-                    return new Bitmap(decoded); // копия, независимая от временного файла
+                if (!string.IsNullOrEmpty(PdfPasswords.For(pdfPath)))
+                {
+                    decryptedPdf = Path.Combine(Path.GetTempPath(), "iwo_pg_dec_" +
+                        Guid.NewGuid().ToString("N") + ".pdf");
+                    PdfMergeService.WriteUnpublished(new[]
+                    {
+                        new PdfPageRef { SourcePath = pdfPath, PageIndex = pageNumber - 1 }
+                    }, decryptedPdf);
+                    renderPath = decryptedPdf;
+                    renderPage = 1;
+                }
+                string stderr;
+                int exit = Ghostscript.Run(BuildArgs(renderPath, renderPage, renderPage, dpi,
+                    outPng, false), RenderTimeoutMs, out stderr);
+                if (!GsRewrite.EngineSucceeded(exit, stderr) || !File.Exists(outPng))
+                    return null;
+                using (var stream = File.OpenRead(outPng))
+                using (var decoded = new Bitmap(stream))
+                {
+                    if (!RasterBudget.IsWithin(decoded.Width, decoded.Height,
+                        RasterBudget.BackgroundPixels))
+                        return null;
+                    result = new Bitmap(decoded);
+                }
+                working.ReduceTo(PdfMemoryBudget.EstimateBitmapBytes(
+                    result.Width, result.Height));
+                var owned = new BudgetedBitmap(result, working);
+                result = null;
+                working = null;
+                return owned;
             }
-            catch { return null; }
-            finally { try { File.Delete(outPng); } catch { } }
+            catch (OutOfMemoryException)
+            {
+                if (result != null) result.Dispose();
+                throw;
+            }
+            catch
+            {
+                if (result != null) result.Dispose();
+                return null;
+            }
+            finally
+            {
+                if (working != null) working.Dispose();
+                try { File.Delete(outPng); } catch { }
+                try { if (decryptedPdf != null) File.Delete(decryptedPdf); } catch { }
+            }
         }
 
         /// <summary>
@@ -58,6 +109,10 @@ namespace ExcelMerger
                 leftPt, topPt, widthPt, heightPt);
             if (rect.Width < 1 || rect.Height < 1)
                 return null;
+            PdfMemoryLease working;
+            if (!PdfMemoryBudget.TryAcquire(
+                RasterBudget.BitmapWorkingSetBytes(rect.Width, rect.Height, 2), out working))
+                return null;
             try
             {
                 using (Bitmap crop = pageBitmap.Clone(rect, pageBitmap.PixelFormat))
@@ -67,7 +122,9 @@ namespace ExcelMerger
                     return ms.ToArray();
                 }
             }
+            catch (OutOfMemoryException) { throw; }
             catch { return null; }
+            finally { working.Dispose(); }
         }
 
         /// <summary>
@@ -103,30 +160,81 @@ namespace ExcelMerger
         /// какой страницы начали, — проверено), поэтому вызывающий сопоставляет их сам.
         /// Возвращает пути к созданным файлам по порядку; пустой список — не получилось.
         /// </summary>
-        public static List<string> RenderPagesWithoutText(string pdfPath, int firstPage, int lastPage, int dpi, string outDir)
+        public static List<string> RenderPagesWithoutText(string pdfPath, int firstPage,
+            int lastPage, int dpi, string outDir, Func<bool> cancelled)
         {
             var result = new List<string>();
-            if (!Ghostscript.Available || string.IsNullOrEmpty(pdfPath) || firstPage < 1 || lastPage < firstPage)
+            if (!Ghostscript.Available || string.IsNullOrEmpty(pdfPath) || firstPage < 1 ||
+                lastPage < firstPage || (long)lastPage - firstPage + 1L > MaxRangePages)
                 return result;
+            string decrypted = null;
             try
             {
+                Cancellation.ThrowIf(cancelled);
                 Directory.CreateDirectory(outDir);
+                string renderPath = pdfPath;
+                int renderFirst = firstPage, renderLast = lastPage;
+                if (!string.IsNullOrEmpty(PdfPasswords.For(pdfPath)))
+                {
+                    decrypted = Path.Combine(outDir, "decrypted.pdf");
+                    var pages = new List<PdfPageRef>();
+                    for (int page = firstPage; page <= lastPage; page++)
+                        pages.Add(new PdfPageRef
+                        {
+                            SourcePath = pdfPath,
+                            PageIndex = page - 1
+                        });
+                    PdfMergeService.WriteUnpublished(pages, decrypted, null, cancelled);
+                    renderPath = decrypted;
+                    renderFirst = 1;
+                    renderLast = pages.Count;
+                }
                 string pattern = Path.Combine(outDir, "bg-%04d.png");
                 string stderr;
-                int exit = Ghostscript.Run(BuildArgs(pdfPath, firstPage, lastPage, dpi, pattern, true),
-                    RangeTimeoutMs, out stderr);
-                if (exit != 0)
+                int exit = Ghostscript.Run(BuildArgs(renderPath, renderFirst, renderLast, dpi,
+                    pattern, true), RangeTimeoutMs, out stderr, cancelled);
+                Cancellation.ThrowIf(cancelled);
+                if (!GsRewrite.EngineSucceeded(exit, stderr))
                     return result;
+                long tempBytes = 0;
+                long tempLimit = IntPtr.Size == 8 ? 256L << 20 : 96L << 20;
                 for (int i = 1; i <= lastPage - firstPage + 1; i++)
                 {
-                    string file = Path.Combine(outDir, "bg-" + i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + ".png");
-                    if (!File.Exists(file))
-                        break; // движок оборвался на середине — берём то, что успел
+                    Cancellation.ThrowIf(cancelled);
+                    string file = Path.Combine(outDir, "bg-" +
+                        i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + ".png");
+                    var info = new FileInfo(file);
+                    if (!info.Exists)
+                        break;
+                    tempBytes += info.Length;
+                    if (tempBytes > tempLimit)
+                    {
+                        result.Clear();
+                        break;
+                    }
                     result.Add(file);
                 }
             }
+            catch (OperationCanceledException) { throw; }
             catch { result.Clear(); }
+            finally
+            {
+                try { if (decrypted != null) File.Delete(decrypted); } catch { }
+            }
             return result;
+        }
+
+        private static int SafePageDpi(double widthPt, double heightPt, int requestedDpi,
+            out int pixelWidth, out int pixelHeight)
+        {
+            pixelWidth = pixelHeight = 0;
+            int dpi = RasterBudget.SafeDpi(widthPt, heightPt, requestedDpi,
+                RasterBudget.BackgroundPixels);
+            if (dpi <= 0)
+                return 0;
+            pixelWidth = Math.Max(1, (int)Math.Ceiling(widthPt / 72.0 * dpi));
+            pixelHeight = Math.Max(1, (int)Math.Ceiling(heightPt / 72.0 * dpi));
+            return dpi;
         }
 
         private static string BuildArgs(string input, int firstPage, int lastPage, int dpi, string output, bool withoutText)

@@ -195,13 +195,34 @@ namespace ExcelMerger
         /// </summary>
         public static bool Compress(string path, CompressionLevel level)
         {
-            if (level == CompressionLevel.None || !Ghostscript.Available)
-                return false;
-            string temp = GsRewrite.TempOutput(path);
-            string args = BuildArguments(path, temp, level, Ghostscript.BundledRoot);
-            return GsRewrite.Run(path, temp, args, TimeoutMs, ShouldReplace);
+            return CompressDetailed(path, level) == GsRewriteResult.Applied;
         }
 
+        internal static GsRewriteResult CompressDetailed(string path, CompressionLevel level)
+        {
+            return CompressDetailed(path, level, true);
+        }
+
+        internal static GsRewriteResult CompressDetailedUnpublished(string path,
+            CompressionLevel level)
+        {
+            return CompressDetailed(path, level, false);
+        }
+
+        private static GsRewriteResult CompressDetailed(string path, CompressionLevel level,
+            bool recoverableTarget)
+        {
+            if (level == CompressionLevel.None)
+                return GsRewriteResult.RejectedByPolicy;
+            if (!Ghostscript.Available)
+                return GsRewriteResult.Failed;
+            string temp = GsRewrite.TempOutput(path);
+            string args = BuildArguments(path, temp, level, Ghostscript.BundledRoot);
+            return recoverableTarget
+                ? GsRewrite.RunDetailed(path, temp, args, TimeoutMs, ShouldReplace)
+                : GsRewrite.RunDetailedUnpublished(path, temp, args, TimeoutMs,
+                    ShouldReplace);
+        }
         /// <summary>
         /// Первые байты — заголовок «%PDF-». Дешёвая проба для самопроверки сборки
         /// (<c>--gscheck</c>): там нужно лишь убедиться, что движок вообще выдал PDF.

@@ -1,15 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Threading;
 
 namespace ExcelMerger
 {
     /// <summary>
     /// Локальные счётчики операций (без телеметрии): %APPDATA%\iwo Helper Desktop\stats.txt.
-    /// Мутации — read-modify-write под межпроцессным мьютексом: в одном процессе они идут
-    /// только с UI-потока, а две КОПИИ приложения без блокировки теряли бы инкременты.
-    /// Поддержана ручная очистка и опциональная авто-очистка раз в N дней (0 — выключена).
+    /// Все мутации и автоматический сброс — один read-modify-write под межпроцессной
+    /// файловой блокировкой, поэтому параллельный процесс не теряет свежий инкремент.
     /// </summary>
     public class UsageStats
     {
@@ -19,18 +16,25 @@ namespace ExcelMerger
         public int PdfSplitRanges;
         public int PdfSplitEveryN;
         public int PdfSplitBookmarks;
-        public int PdfToWord;                  // конвертаций «цифровой PDF → Word (.docx)»
-        public int PdfToPptx;                  // конвертаций «цифровой PDF → PowerPoint (.pptx)»
-        public int PdfCompressions;            // сжатых файлов; НЕ входит в Total (это параметр, не операция)
-        public int AutoClearDays;              // 0 — выкл; 1 / 7 / 30
+        public int PdfComparisons;
+        public int PdfToWord;
+        public int PdfToPptx;
+        public int PdfCompressions;
+        public int AutoClearDays;
         public DateTime SinceUtc = DateTime.UtcNow;
+
+        private readonly List<string> _unknownLines = new List<string>();
 
         public int Total
         {
-            get { return ExcelDigests + PdfMerges + PdfExtracts + PdfSplitRanges + PdfSplitEveryN + PdfSplitBookmarks + PdfToWord + PdfToPptx; }
+            get
+            {
+                long total = (long)ExcelDigests + PdfMerges + PdfExtracts + PdfSplitRanges +
+                    PdfSplitEveryN + PdfSplitBookmarks + PdfComparisons + PdfToWord + PdfToPptx;
+                return total > int.MaxValue ? int.MaxValue : (int)Math.Max(0, total);
+            }
         }
 
-        /// <summary>Пора ли авто-очистка (период прошёл). Чистая — под тест.</summary>
         public static bool ShouldAutoClear(DateTime sinceUtc, DateTime nowUtc, int periodDays)
         {
             return periodDays > 0 && (nowUtc - sinceUtc).TotalDays >= periodDays;
@@ -38,70 +42,107 @@ namespace ExcelMerger
 
         public static UsageStats Load()
         {
-            var s = new UsageStats();
-            try
+            UsageStats result = null;
+            bool locked = AppDataLock.TryRun(AppPaths.StatsFile, delegate
             {
-                if (File.Exists(AppPaths.StatsFile))
-                {
-                    foreach (string line in File.ReadAllLines(AppPaths.StatsFile))
-                    {
-                        int eq = line.IndexOf('=');
-                        if (eq <= 0)
-                            continue;
-                        string k = line.Substring(0, eq).Trim();
-                        string v = line.Substring(eq + 1).Trim();
-                        int n;
-                        long ticks;
-                        if (k == "excelDigests" && int.TryParse(v, out n)) s.ExcelDigests = n;
-                        else if (k == "pdfMerges" && int.TryParse(v, out n)) s.PdfMerges = n;
-                        else if (k == "pdfExtracts" && int.TryParse(v, out n)) s.PdfExtracts = n;
-                        else if (k == "pdfSplitRanges" && int.TryParse(v, out n)) s.PdfSplitRanges = n;
-                        else if (k == "pdfSplitEveryN" && int.TryParse(v, out n)) s.PdfSplitEveryN = n;
-                        else if (k == "pdfSplitBookmarks" && int.TryParse(v, out n)) s.PdfSplitBookmarks = n;
-                        else if (k == "pdfToWord" && int.TryParse(v, out n)) s.PdfToWord = n;
-                        else if (k == "pdfToPptx" && int.TryParse(v, out n)) s.PdfToPptx = n;
-                        else if (k == "pdfCompressions" && int.TryParse(v, out n)) s.PdfCompressions = n;
-                        else if (k == "autoClearDays" && int.TryParse(v, out n)) s.AutoClearDays = n;
-                        else if (k == "sinceUtc" && long.TryParse(v, out ticks)) s.SinceUtc = new DateTime(ticks, DateTimeKind.Utc);
-                    }
-                }
-            }
-            catch { } // повреждённая статистика не должна мешать работе
+                UsageStats snapshot;
+                if (!TryLoadRaw(out snapshot))
+                    return false;
+                if (ApplyAutoClear(snapshot, DateTime.UtcNow))
+                    snapshot.SaveCore();
+                result = snapshot;
+                return true;
+            });
+            if (locked)
+                return result;
 
-            if (ShouldAutoClear(s.SinceUtc, DateTime.UtcNow, s.AutoClearDays))
-            {
-                int keepPeriod = s.AutoClearDays;
-                s.ResetCounters();
-                s.AutoClearDays = keepPeriod; // период очистки сохраняется
-                s.Save();
-            }
-            return s;
+            // Таймаут блокировки не мешает показать статистику. Это только чтение: никаких
+            // defaults поверх чужого файла и никакого сброса без lock здесь нет.
+            if (TryLoadRaw(out result))
+                return result;
+            return new UsageStats();
         }
 
-        private void Save()
+        private static bool TryLoadRaw(out UsageStats stats)
         {
-            try
+            stats = new UsageStats();
+            string[] lines;
+            if (!AppStateFile.TryReadLines(AppPaths.StatsFile, out lines))
+                return false;
+
+            foreach (string line in lines)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(AppPaths.StatsFile));
-                File.WriteAllLines(AppPaths.StatsFile, new List<string>
+                int eq = line.IndexOf('=');
+                if (eq <= 0)
                 {
-                    "excelDigests=" + ExcelDigests,
-                    "pdfMerges=" + PdfMerges,
-                    "pdfExtracts=" + PdfExtracts,
-                    "pdfSplitRanges=" + PdfSplitRanges,
-                    "pdfSplitEveryN=" + PdfSplitEveryN,
-                    "pdfSplitBookmarks=" + PdfSplitBookmarks,
-                    "pdfToWord=" + PdfToWord,
-                    "pdfToPptx=" + PdfToPptx,
-                    "pdfCompressions=" + PdfCompressions,
-                    "autoClearDays=" + AutoClearDays,
-                    "sinceUtc=" + SinceUtc.Ticks
-                });
+                    stats._unknownLines.Add(line);
+                    continue;
+                }
+                string key = line.Substring(0, eq).Trim();
+                string value = line.Substring(eq + 1).Trim();
+                int number;
+                bool known = true;
+                if (key == "excelDigests" && TryCounter(value, out number)) stats.ExcelDigests = number;
+                else if (key == "pdfMerges" && TryCounter(value, out number)) stats.PdfMerges = number;
+                else if (key == "pdfExtracts" && TryCounter(value, out number)) stats.PdfExtracts = number;
+                else if (key == "pdfSplitRanges" && TryCounter(value, out number)) stats.PdfSplitRanges = number;
+                else if (key == "pdfSplitEveryN" && TryCounter(value, out number)) stats.PdfSplitEveryN = number;
+                else if (key == "pdfSplitBookmarks" && TryCounter(value, out number)) stats.PdfSplitBookmarks = number;
+                else if (key == "pdfComparisons" && TryCounter(value, out number)) stats.PdfComparisons = number;
+                else if (key == "pdfToWord" && TryCounter(value, out number)) stats.PdfToWord = number;
+                else if (key == "pdfToPptx" && TryCounter(value, out number)) stats.PdfToPptx = number;
+                else if (key == "pdfCompressions" && TryCounter(value, out number)) stats.PdfCompressions = number;
+                else if (key == "autoClearDays" && int.TryParse(value, out number) && number >= 0) stats.AutoClearDays = number;
+                else if (key == "sinceUtc")
+                {
+                    long ticks;
+                    if (long.TryParse(value, out ticks) && ticks >= DateTime.MinValue.Ticks &&
+                        ticks <= DateTime.MaxValue.Ticks)
+                        stats.SinceUtc = new DateTime(ticks, DateTimeKind.Utc);
+                }
+                else
+                    known = false;
+                if (!known)
+                    stats._unknownLines.Add(line);
             }
-            catch { }
+            return true;
         }
 
-        private void ResetCounters()
+        private static bool TryCounter(string value, out int number)
+        {
+            return int.TryParse(value, out number) && number >= 0;
+        }
+
+        private static bool ApplyAutoClear(UsageStats stats, DateTime nowUtc)
+        {
+            if (!ShouldAutoClear(stats.SinceUtc, nowUtc, stats.AutoClearDays))
+                return false;
+            stats.ResetCounters(nowUtc);
+            return true;
+        }
+
+        private void SaveCore()
+        {
+            var lines = new List<string>
+            {
+                "excelDigests=" + ExcelDigests,
+                "pdfMerges=" + PdfMerges,
+                "pdfExtracts=" + PdfExtracts,
+                "pdfSplitRanges=" + PdfSplitRanges,
+                "pdfSplitEveryN=" + PdfSplitEveryN,
+                "pdfSplitBookmarks=" + PdfSplitBookmarks,
+                "pdfComparisons=" + PdfComparisons,
+                "pdfToWord=" + PdfToWord,
+                "pdfToPptx=" + PdfToPptx,
+                "pdfCompressions=" + PdfCompressions,
+                "autoClearDays=" + AutoClearDays,
+                "sinceUtc=" + SinceUtc.Ticks
+            };
+            lines.AddRange(_unknownLines);
+            AppStateFile.WriteLines(AppPaths.StatsFile, lines);
+        }
+
+        private void ResetCounters(DateTime nowUtc)
         {
             ExcelDigests = 0;
             PdfMerges = 0;
@@ -109,50 +150,48 @@ namespace ExcelMerger
             PdfSplitRanges = 0;
             PdfSplitEveryN = 0;
             PdfSplitBookmarks = 0;
+            PdfComparisons = 0;
             PdfToWord = 0;
             PdfToPptx = 0;
             PdfCompressions = 0;
-            SinceUtc = DateTime.UtcNow;
+            SinceUtc = nowUtc;
         }
 
-        // ---------- атомарные мутации (read-modify-write) ----------
-
-        private static void Mutate(Action<UsageStats> change)
+        private static bool Mutate(Action<UsageStats> change)
         {
-            // Межпроцессная блокировка: в одном процессе мутации идут только с UI-потока,
-            // но ДВЕ КОПИИ приложения без неё теряли бы инкременты read-modify-write.
-            // Не дождались за 2 с (нереально: запись мгновенна) — работаем без блокировки,
-            // счётчики не стоят зависшего UI.
-            using (var mutex = new Mutex(false, @"Local\iwoHelperDesktop.stats"))
+            if (change == null)
+                return false;
+            return AppDataLock.TryRun(AppPaths.StatsFile, delegate
             {
-                bool held = false;
-                try
-                {
-                    try { held = mutex.WaitOne(2000); }
-                    catch (AbandonedMutexException) { held = true; } // прежний держатель умер — блокировка наша
-                    UsageStats s = Load();
-                    change(s);
-                    s.Save();
-                }
-                finally
-                {
-                    if (held)
-                        mutex.ReleaseMutex();
-                }
-            }
+                UsageStats stats;
+                if (!TryLoadRaw(out stats))
+                    return false;
+                ApplyAutoClear(stats, DateTime.UtcNow);
+                change(stats);
+                stats.SaveCore();
+                return true;
+            });
         }
 
-        public static void RecordExcelDigest() { Mutate(delegate(UsageStats s) { s.ExcelDigests++; }); }
-        public static void RecordPdfMerge() { Mutate(delegate(UsageStats s) { s.PdfMerges++; }); }
-        public static void RecordPdfExtract() { Mutate(delegate(UsageStats s) { s.PdfExtracts++; }); }
-        public static void RecordPdfSplitRanges() { Mutate(delegate(UsageStats s) { s.PdfSplitRanges++; }); }
-        public static void RecordPdfSplitEveryN() { Mutate(delegate(UsageStats s) { s.PdfSplitEveryN++; }); }
-        public static void RecordPdfSplitBookmarks() { Mutate(delegate(UsageStats s) { s.PdfSplitBookmarks++; }); }
-        public static void RecordPdfToWord() { Mutate(delegate(UsageStats s) { s.PdfToWord++; }); }
-        public static void RecordPdfToPptx() { Mutate(delegate(UsageStats s) { s.PdfToPptx++; }); }
-        public static void RecordPdfCompress(int count = 1) { if (count > 0) Mutate(delegate(UsageStats s) { s.PdfCompressions += count; }); }
+        private static void Increment(ref int value, int amount = 1)
+        {
+            if (amount <= 0 || value == int.MaxValue)
+                return;
+            value = amount > int.MaxValue - value ? int.MaxValue : value + amount;
+        }
 
-        public static void SetAutoClear(int days) { Mutate(delegate(UsageStats s) { s.AutoClearDays = days; }); }
-        public static void ClearCounters() { Mutate(delegate(UsageStats s) { s.ResetCounters(); }); }
+        public static void RecordExcelDigest() { Mutate(delegate(UsageStats s) { Increment(ref s.ExcelDigests); }); }
+        public static void RecordPdfMerge() { Mutate(delegate(UsageStats s) { Increment(ref s.PdfMerges); }); }
+        public static void RecordPdfExtract() { Mutate(delegate(UsageStats s) { Increment(ref s.PdfExtracts); }); }
+        public static void RecordPdfSplitRanges() { Mutate(delegate(UsageStats s) { Increment(ref s.PdfSplitRanges); }); }
+        public static void RecordPdfSplitEveryN() { Mutate(delegate(UsageStats s) { Increment(ref s.PdfSplitEveryN); }); }
+        public static void RecordPdfSplitBookmarks() { Mutate(delegate(UsageStats s) { Increment(ref s.PdfSplitBookmarks); }); }
+        public static void RecordPdfCompare() { Mutate(delegate(UsageStats s) { Increment(ref s.PdfComparisons); }); }
+        public static void RecordPdfToWord() { Mutate(delegate(UsageStats s) { Increment(ref s.PdfToWord); }); }
+        public static void RecordPdfToPptx() { Mutate(delegate(UsageStats s) { Increment(ref s.PdfToPptx); }); }
+        public static void RecordPdfCompress(int count = 1) { if (count > 0) Mutate(delegate(UsageStats s) { Increment(ref s.PdfCompressions, count); }); }
+
+        public static bool SetAutoClear(int days) { return Mutate(delegate(UsageStats s) { s.AutoClearDays = Math.Max(0, days); }); }
+        public static bool ClearCounters() { return Mutate(delegate(UsageStats s) { s.ResetCounters(DateTime.UtcNow); }); }
     }
 }

@@ -38,15 +38,23 @@ namespace ExcelMerger
                 return RunReviewCheck();
             // PDF-команды: те же операции, что и в окнах, для пакетной обработки и сценариев.
             // Стоят рядом с режимом Excel и до создания окон — интерфейс им не нужен.
-            if (PdfCli.IsCommand(args))
+            if (PdfCli.IsCommand(args) || (args.Length > 0 &&
+                args[0].StartsWith("--", StringComparison.Ordinal) &&
+                !string.Equals(args[0], "--cli", StringComparison.OrdinalIgnoreCase)))
             {
                 AttachConsole(-1);
                 int code = PdfCli.Execute(PdfCli.Parse(args), WriteConsole);
                 FastExit.Now(code);   // как прочие безоконные режимы: без выгрузки WinRT
                 return code;
             }
-            if (args.Length >= 3 && string.Equals(args[0], "--cli", StringComparison.OrdinalIgnoreCase))
+            if (args.Length >= 1 && string.Equals(args[0], "--cli", StringComparison.OrdinalIgnoreCase))
             {
+                if (args.Length < 3)
+                {
+                    AttachConsole(-1);
+                    WriteConsole("ERROR: " + Loc.T("cli.usage"));
+                    return 1;
+                }
                 MergeOptions options;
                 string parseError;
                 if (!TryParseCliOptions(args, 3, out options, out parseError))
@@ -75,16 +83,21 @@ namespace ExcelMerger
                 // Выбор установщика применён: убираем маркер и переносим язык в настройки
                 // приложения штатным путём (UTF-8, прочие поля на месте). Дальше язык живёт
                 // там, и следующая смена в самой программе уже никем не перебивается.
-                SetupLanguage.Consume();
-                UserSettings.Load().Save();
+                // Сначала подтверждаем атомарную запись, и только затем удаляем одноразовый
+                // маркер. Таймаут lock/диск не должны навсегда съесть выбор установщика.
+                if (UserSettings.SaveLanguage(Loc.Code(Loc.Current)))
+                    SetupLanguage.Consume();
             }
-            // Уборка осиротевших временных файлов после прошлого аварийного сеанса.
-            // Стоит после мьютекса единственного экземпляра: живых «своих» файлов нет,
-            // второй процесс запущен быть не может (см. StartupSweep).
-            StartupSweep.Sweep(StartupSweep.DirectoriesToSweep(startup), DateTime.UtcNow);
             var shell = new ShellContext(); // хаб + инструменты как независимые окна
+            // Сеть/UNC и большие папки не имеют права задерживать первый показ. Восстановление
+            // всё равно безопасно параллельно: живые AtomicOutput-журналы держат exclusive handle.
+            Ui.RunWorker(delegate
+            {
+                StartupSweep.Sweep(StartupSweep.DirectoriesToSweep(startup), DateTime.UtcNow);
+            });
             // Проверка обновлений идёт ФОНОМ и показа окна не задерживает: запрос уходит
             // с таймаутом 10 с, а ответ доставляется в UI-поток уже работающего хаба.
+            shell.ShowWhatsNewOnStart();
             shell.CheckForUpdatesOnStart();
             Application.Run(shell);
             // Все окна закрыты, настройки/COM уже освобождены детерминированно.
@@ -143,6 +156,8 @@ namespace ExcelMerger
                     }
                 }
                 Loc.Init(wasLanguage);
+                if (!ThirdPartyNotices.IsPacked() || !WhatsNewCatalog.IsPacked())
+                    return 4;
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Action noop = delegate { };

@@ -87,8 +87,23 @@ namespace ExcelMerger
         private sealed class CachedPage
         {
             public string Key;
-            public Bitmap Bmp;
+            public BudgetedBitmap Rendered;
             public int Width;
+            public Bitmap Bmp { get { return Rendered == null ? null : Rendered.Bitmap; } }
+        }
+
+        private sealed class CachedTile
+        {
+            public BudgetedBitmap Rendered;
+            public Bitmap Bitmap { get { return Rendered == null ? null : Rendered.Bitmap; } }
+        }
+
+        private struct ThumbRequest
+        {
+            public string SourcePath;
+            public int PageIndex;
+            public string Key;
+            public int Generation;
         }
 
         [DllImport("user32.dll")]
@@ -106,12 +121,12 @@ namespace ExcelMerger
         private readonly LruCache<CachedPage> _pageCache;
         // Плитки текущего масштаба по ключу «страница|поворот»: составляются лениво при
         // отрисовке из кэша страниц, живут только для закэшированных страниц. UI-поток.
-        private readonly Dictionary<string, Bitmap> _tiles =
-            new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, CachedTile> _tiles =
+            new Dictionary<string, CachedTile>(StringComparer.OrdinalIgnoreCase);
         private readonly int _renderBase; // ширина рендера для обычного масштаба (физ. пиксели)
         private readonly int _renderHi;   // для крупного зума (> ThumbZoom.BaseWidth)
         private volatile int _renderTarget; // читает фоновый воркер в момент рендера
-        private bool _shuttingDown;        // Dispose: вытеснение не трогает UI, только освобождает bitmap
+        private volatile bool _shuttingDown; // Dispose: поздние callbacks только освобождают bitmap
         // Ключи страниц, показываемых сейчас (обновляется в SetPages, только UI-поток).
         // Поздний результат рендера уже снятой страницы отбрасывается по этому набору.
         private HashSet<string> _currentKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -127,11 +142,12 @@ namespace ExcelMerger
         private string _dropHint;  // текст подсказки во время дропа файла (задаёт форма)
 
         private readonly object _qLock = new object();
-        private readonly Queue<PdfPageRef> _thumbQueue = new Queue<PdfPageRef>();
+        private readonly Queue<ThumbRequest> _thumbQueue = new Queue<ThumbRequest>();
         private readonly HashSet<string> _thumbRequested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly ManualResetEventSlim _thumbSignal = new ManualResetEventSlim(false);
         private Thread _thumbThread;
         private volatile bool _thumbStop;
+        private int _thumbGeneration;
 
         // Буфер страниц окна (не системный клипборд: ссылки имеют смысл только здесь).
         // Вырезанные до вставки остаются на месте и приглушаются (как в Проводнике).
@@ -269,6 +285,7 @@ namespace ExcelMerger
             _dragScrollTimer.Tick += OnDragScrollTick;
 
             StartThumbWorker();
+            PdfMemoryBudget.MemoryReleased += OnMemoryReleased;
         }
 
         // ---------- публичный API ----------
@@ -338,6 +355,7 @@ namespace ExcelMerger
             _currentKeys = BuildKeySet(pages);
             lock (_qLock)
             {
+                _thumbGeneration++;
                 _thumbQueue.Clear();     // снятые заявки на рендер отсутствующих страниц
                 _thumbRequested.Clear(); // дедуп сбрасывается; кэш-проверка в EnqueueThumb не даёт перерендер
             }
@@ -413,7 +431,7 @@ namespace ExcelMerger
             {
                 CachedPage page;
                 if (_pageCache.Remove(key, out page))
-                    page.Bmp.Dispose();
+                    DisposeCachedPage(page);
                 RemoveTilesOf(key);
             }
         }
@@ -423,15 +441,29 @@ namespace ExcelMerger
         /// снять её плитки — при следующем показе страница перерендерится (заявки в
         /// _thumbRequested на неё уже нет). Только UI-поток.
         /// </summary>
+        private void OnMemoryReleased()
+        {
+            if (_shuttingDown)
+                return;
+            Ui.OnUi(this, ScheduleVisibleUpdate);
+        }
+
         private void OnPageEvicted(CachedPage page)
         {
-            page.Bmp.Dispose();
+            DisposeCachedPage(page);
             if (_shuttingDown)
                 return; // Dispose: всё остальное освобождается целиком
             RemoveTilesOf(page.Key);
-            // Если вытесненная страница ещё видна (кэш меньше видимого окна — крайний
-            // случай), заявка на перерендер уйдёт ближайшим тиком, а не ждёт скролла.
             ScheduleVisibleUpdate();
+        }
+
+        private static void DisposeCachedPage(CachedPage page)
+        {
+            if (page == null)
+                return;
+            if (page.Rendered != null)
+                page.Rendered.Dispose();
+            page.Rendered = null;
         }
 
         /// <summary>Снять плитки страницы (все её повороты) и перерисовать её элементы (появится заглушка).</summary>
@@ -439,12 +471,12 @@ namespace ExcelMerger
         {
             string prefix = pageKey + "|r";
             var stale = new List<string>();
-            foreach (KeyValuePair<string, Bitmap> kv in _tiles)
+            foreach (KeyValuePair<string, CachedTile> kv in _tiles)
                 if (kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                     stale.Add(kv.Key);
             foreach (string tileKey in stale)
             {
-                _tiles[tileKey].Dispose();
+                DisposeTile(_tiles[tileKey]);
                 _tiles.Remove(tileKey);
             }
             RedrawItemsOf(pageKey);
@@ -740,24 +772,56 @@ namespace ExcelMerger
         private Bitmap GetTile(PdfPageRef page)
         {
             string tileKey = TileKey(page);
-            Bitmap tile;
+            CachedTile tile;
             if (_tiles.TryGetValue(tileKey, out tile))
-                return tile;
+                return tile.Bitmap;
             CachedPage cached;
             if (!_pageCache.TryPeek(ThumbKey(page), out cached))
                 return null;
             Size logical = ThumbZoom.TileSize(_tileWidth);
-            tile = ComposeTile(cached.Bmp, new Size(Px(logical.Width), Px(logical.Height)), page.Rotation);
-            _tiles[tileKey] = tile;
-            return tile;
+            Size size = new Size(Px(logical.Width), Px(logical.Height));
+            long tileBytes = PdfMemoryBudget.EstimateBitmapBytes(size.Width, size.Height);
+            long peak = tileBytes + (page.Rotation == 0 ? 0 :
+                PdfMemoryBudget.EstimateBitmapBytes(cached.Bmp.Width, cached.Bmp.Height));
+            PdfMemoryLease lease;
+            if (!PdfMemoryBudget.TryAcquire(peak, out lease))
+                return null;
+            Bitmap bitmap = null;
+            try
+            {
+                bitmap = ComposeTile(cached.Bmp, size, page.Rotation);
+                lease.ReduceTo(tileBytes);
+                tile = new CachedTile
+                {
+                    Rendered = new BudgetedBitmap(bitmap, lease)
+                };
+                _tiles[tileKey] = tile;
+                lease = null;
+                bitmap = null;
+                return tile.Bitmap;
+            }
+            finally
+            {
+                if (bitmap != null) bitmap.Dispose();
+                if (lease != null) lease.Dispose();
+            }
         }
 
         /// <summary>Сбросить все плитки (смена масштаба): пересоставятся лениво при отрисовке.</summary>
         private void ClearTiles()
         {
-            foreach (Bitmap tile in _tiles.Values)
-                tile.Dispose();
+            foreach (CachedTile tile in _tiles.Values)
+                DisposeTile(tile);
             _tiles.Clear();
+        }
+
+        private static void DisposeTile(CachedTile tile)
+        {
+            if (tile == null)
+                return;
+            if (tile.Rendered != null)
+                tile.Rendered.Dispose();
+            tile.Rendered = null;
         }
 
         // ---------- ленивый рендер видимых ----------
@@ -793,11 +857,45 @@ namespace ExcelMerger
             }
             int lo, hi;
             ClampWindow(first, last, count, EnqueueBuffer, out lo, out hi);
-            for (int i = lo; i <= hi; i++)
+            // A fast scroll makes the old viewport irrelevant. Remove only queued (not
+            // in-flight) requests, then enqueue the current visible row first and its buffer
+            // second. This keeps one renderer and avoids both duplicate work and stale FIFO lag.
+            DropQueuedThumbs();
+            for (int i = first; i <= last; i++)
             {
                 var page = _list.Items[i].Tag as PdfPageRef;
                 if (page != null)
                     EnqueueThumb(page);
+            }
+            for (int distance = 1; first - distance >= lo || last + distance <= hi; distance++)
+            {
+                int before = first - distance;
+                if (before >= lo)
+                {
+                    var page = _list.Items[before].Tag as PdfPageRef;
+                    if (page != null)
+                        EnqueueThumb(page);
+                }
+                int after = last + distance;
+                if (after <= hi)
+                {
+                    var page = _list.Items[after].Tag as PdfPageRef;
+                    if (page != null)
+                        EnqueueThumb(page);
+                }
+            }
+        }
+
+        private void DropQueuedThumbs()
+        {
+            lock (_qLock)
+            {
+                while (_thumbQueue.Count > 0)
+                {
+                    ThumbRequest queued = _thumbQueue.Dequeue();
+                    if (!string.IsNullOrEmpty(queued.Key))
+                        _thumbRequested.Remove(queued.Key);
+                }
             }
         }
 
@@ -1303,12 +1401,12 @@ namespace ExcelMerger
                 }
             string prefix = pageKey + "|r";
             var stale = new List<string>();
-            foreach (KeyValuePair<string, Bitmap> kv in _tiles)
+            foreach (KeyValuePair<string, CachedTile> kv in _tiles)
                 if (kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && !used.Contains(kv.Key))
                     stale.Add(kv.Key);
             foreach (string tileKey in stale)
             {
-                _tiles[tileKey].Dispose();
+                DisposeTile(_tiles[tileKey]);
                 _tiles.Remove(tileKey);
             }
         }
@@ -1593,7 +1691,13 @@ namespace ExcelMerger
             {
                 if (!_thumbRequested.Add(key))
                     return;
-                _thumbQueue.Enqueue(page);
+                _thumbQueue.Enqueue(new ThumbRequest
+                {
+                    SourcePath = page.SourcePath,
+                    PageIndex = page.PageIndex,
+                    Key = key,
+                    Generation = _thumbGeneration
+                });
             }
             _thumbSignal.Set();
         }
@@ -1616,13 +1720,13 @@ namespace ExcelMerger
             {
                 while (!_thumbStop)
                 {
-                    PdfPageRef req = null;
+                    ThumbRequest? pending = null;
                     lock (_qLock)
                     {
-                        if (_thumbQueue.Count > 0) req = _thumbQueue.Dequeue();
+                        if (_thumbQueue.Count > 0) pending = _thumbQueue.Dequeue();
                         else _thumbSignal.Reset();
                     }
-                    if (req == null)
+                    if (!pending.HasValue)
                     {
                         // Флаг перечитываем ПОСЛЕ Reset и ДО ожидания. StopRendering ставит
                         // _thumbStop и зовёт Set() НЕ под _qLock, поэтому его сигнал мог
@@ -1634,18 +1738,22 @@ namespace ExcelMerger
                         _thumbSignal.Wait();
                         continue;
                     }
+                    ThumbRequest request = pending.Value;
                     int width = _renderTarget; // текущая целевая ширина (могла смениться зумом)
-                    Bitmap page = renderer.Render(req.SourcePath, req.PageIndex, width);
+                    BudgetedBitmap page = renderer.RenderOwned(request.SourcePath,
+                        request.PageIndex, width, 0, RasterBudget.ThumbnailPixels);
                     if (page == null)
                     {
-                        // Сбой рендера (файл занят антивирусом/сетью и т.п.): снять ключ дедупа,
-                        // иначе страница осталась бы заглушкой НАВСЕГДА — EnqueueThumb больше не
-                        // поставил бы её в очередь. Ближайший тик видимых повторит заявку.
+                        if (PdfMemoryBudget.Used > PdfMemoryBudget.LimitBytes -
+                            RasterBudget.ThumbnailPixels * 12L)
+                            Ui.OnUi(this, delegate { _pageCache.TryEvictOldest(); });
+                        // Сбой рендера: снять ключ дедупа, чтобы видимый тик мог повторить.
                         lock (_qLock)
-                            _thumbRequested.Remove(ThumbKey(req));
+                            if (request.Generation == _thumbGeneration)
+                                _thumbRequested.Remove(request.Key);
                         continue;
                     }
-                    PostPage(req, page, width);
+                    PostPage(request.Key, page, width, request.Generation);
                 }
             }
             finally
@@ -1654,12 +1762,15 @@ namespace ExcelMerger
             }
         }
 
-        private void PostPage(PdfPageRef req, Bitmap page, int width)
+        private void PostPage(string key, BudgetedBitmap page, int width, int generation)
         {
             try
             {
-                if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke((MethodInvoker)delegate { ApplyPage(req, page, width); });
+                if (!_shuttingDown && IsHandleCreated && !IsDisposed)
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        ApplyPage(key, page, width, generation);
+                    });
                 else
                     page.Dispose();
             }
@@ -1669,16 +1780,20 @@ namespace ExcelMerger
             }
         }
 
-        private void ApplyPage(PdfPageRef req, Bitmap page, int width)
+        private void ApplyPage(string key, BudgetedBitmap page, int width, int generation)
         {
-            string key = ThumbKey(req);
+            if (_shuttingDown || IsDisposed || generation != _thumbGeneration)
+            {
+                page.Dispose();
+                return;
+            }
             // Заявка исполнена: снять дедуп, чтобы вытесненная позже страница могла
             // перерендериться (иначе после вытеснения она навсегда осталась бы заглушкой).
             lock (_qLock)
                 _thumbRequested.Remove(key);
             if (!_currentKeys.Contains(key))
             {
-                page.Dispose(); // страница уже снята из набора — поздний результат рендера отбрасываем
+                page.Dispose();
                 return;
             }
             CachedPage existing;
@@ -1686,21 +1801,21 @@ namespace ExcelMerger
             {
                 if (existing.Width >= width)
                 {
-                    page.Dispose(); // уже есть не хуже (гонка зум-аута) — свежий не нужен
+                    page.Dispose();
                     return;
                 }
-                // Дорендер крупнее: прежний рендер и его плитки заменяются.
                 CachedPage old;
                 if (_pageCache.Remove(key, out old))
-                    old.Bmp.Dispose();
+                    DisposeCachedPage(old);
                 RemoveTilesOf(key);
             }
-            _pageCache.Add(key, new CachedPage { Key = key, Bmp = page, Width = width });
-            RedrawItemsOf(key); // плитка составится лениво при отрисовке
-            // Пока страница рендерилась, масштаб мог вырасти: заявку на больший размер
-            // дедуп подавил (ключ был занят ЭТОЙ заявкой), поэтому просим обновить видимые
-            // ещё раз. Иначе плитка осталась бы растянутой из мелкого рендера до тех пор,
-            // пока пользователь случайно не прокрутит сетку.
+            _pageCache.Add(key, new CachedPage
+            {
+                Key = key,
+                Rendered = page,
+                Width = width
+            });
+            RedrawItemsOf(key);
             if (width < _renderTarget)
                 ScheduleVisibleUpdate();
         }
@@ -1747,6 +1862,14 @@ namespace ExcelMerger
         {
             if (disposing)
             {
+                _shuttingDown = true;
+                lock (_qLock)
+                {
+                    _thumbGeneration++;
+                    _thumbQueue.Clear();
+                    _thumbRequested.Clear();
+                }
+                PdfMemoryBudget.MemoryReleased -= OnMemoryReleased;
                 StopRendering();
                 // Дождаться выхода фонового рендера, прежде чем освобождать сигнал,
                 // которого он касается (_thumbSignal.Wait/Reset): иначе поток упал бы
@@ -1764,7 +1887,6 @@ namespace ExcelMerger
                 if (_selFill != null)
                     _selFill.Dispose();
                 _metrics.Dispose(); // пустой ImageList метрик (не дочерний компонент)
-                _shuttingDown = true;    // вытеснение при Clear только освобождает bitmap
                 _pageCache.Clear();
                 ClearTiles();
                 if (stopped)

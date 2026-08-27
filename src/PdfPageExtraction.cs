@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace ExcelMerger
 {
@@ -79,7 +80,22 @@ namespace ExcelMerger
                 bySource[src] = PdfTextExtract.Extract(src, extractCb, rotations, cancelled, mode);
             }
 
-            List<PdfPageText> pages = Assemble(bySource, order);
+            var pages = new List<PdfPageText>(order.Count);
+            foreach (PdfPageRef reference in order)
+            {
+                List<PdfPageText> sourcePages;
+                if (reference == null || string.IsNullOrEmpty(reference.SourcePath) ||
+                    !bySource.TryGetValue(reference.SourcePath, out sourcePages) ||
+                    reference.PageIndex < 0 || reference.PageIndex >= sourcePages.Count)
+                {
+                    string name = reference == null ? "?" :
+                        Path.GetFileName(reference.SourcePath ?? "?");
+                    int number = reference == null ? 0 : reference.PageIndex + 1;
+                    throw new MergeException(string.Format(Loc.T("err.pdf.pageGone"),
+                        name, number));
+                }
+                pages.Add(sourcePages[reference.PageIndex]);
+            }
 
             pagesWithText = 0;
             foreach (PdfPageText page in pages)

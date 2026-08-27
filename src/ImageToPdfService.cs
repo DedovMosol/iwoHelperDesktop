@@ -62,20 +62,32 @@ namespace ExcelMerger
         /// </summary>
         public static int WritePages(string imagePath, string outPdfPath)
         {
+            return WritePages(imagePath, outPdfPath, null);
+        }
+
+        public static int WritePages(string imagePath, string outPdfPath, Func<bool> cancelled)
+        {
             EmbeddedAssemblies.Ensure(); // PdfSharp вшит ресурсом — подгрузить до первого его типа
-            return WriteCore(imagePath, outPdfPath);
+            return WriteCore(imagePath, outPdfPath, cancelled);
         }
 
         // NoInlining: в теле типы PdfSharp, и без этого они потребовались бы вызывающему методу
         // ещё до Ensure() (та же причина, что в PdfMergeService).
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static int WriteCore(string imagePath, string outPdfPath)
+        private static int WriteCore(string imagePath, string outPdfPath, Func<bool> cancelled)
         {
             // Потоки живут до Save: PdfSharp читает их отложенно, и закрытый поток означал бы
             // пустую страницу в готовом файле.
             var pageStreams = new List<MemoryStream>();
+            var pageLeases = new List<PdfMemoryLease>();
+            PdfMemoryLease sourceLease = null;
+            bool writingOutput = false;
             try
             {
+                long sourceBytes = PdfMemoryBudget.EstimateDocumentBytes(
+                    new FileInfo(imagePath).Length);
+                if (!PdfMemoryBudget.TryAcquire(sourceBytes, out sourceLease))
+                    throw TooLarge();
                 byte[] bytes = File.ReadAllBytes(imagePath);
                 using (var source = new MemoryStream(bytes))
                 using (Image image = Image.FromStream(source, true, false))
@@ -85,15 +97,59 @@ namespace ExcelMerger
                     int orientation = ExifOrientation(image);
                     for (int i = 0; i < frames; i++)
                     {
+                        Cancellation.ThrowIf(cancelled);
                         if (frames > 1)
                             image.SelectActiveFrame(FrameDimension.Page, i);
-                        MemoryStream encoded = Encode(image, bytes, imagePath, orientation, frames);
+                        if (!RasterBudget.IsValidImageDimensions(image.Width, image.Height))
+                            throw TooLarge();
+
+                        MemoryStream encoded;
+                        bool passthrough = CanPassThroughJpeg(imagePath, orientation, frames);
+                        if (passthrough)
+                        {
+                            encoded = new MemoryStream(bytes);
+                        }
+                        else
+                        {
+                            PdfMemoryLease working;
+                            long peak = RasterBudget.BitmapWorkingSetBytes(
+                                image.Width, image.Height, 2);
+                            if (!PdfMemoryBudget.TryAcquire(peak, out working))
+                                throw TooLarge();
+                            try { encoded = Encode(image, imagePath, orientation); }
+                            finally { working.Dispose(); }
+                        }
+
+                        PdfMemoryLease encodedLease = null;
+                        if (!passthrough && (encoded == null || !PdfMemoryBudget.TryAcquire(
+                            Math.Max(1L, encoded.Length), out encodedLease)))
+                        {
+                            if (encoded != null) encoded.Dispose();
+                            throw TooLarge();
+                        }
                         pageStreams.Add(encoded);
+                        if (encodedLease != null)
+                            pageLeases.Add(encodedLease);
                         AddPage(doc, encoded);
                     }
-                    doc.Save(outPdfPath);
+                    Cancellation.ThrowIf(cancelled);
+                    writingOutput = true;
+                    using (var output = new AtomicOutput(outPdfPath))
+                    {
+                        doc.Save(output.TempPath);
+                        Cancellation.ThrowIf(cancelled);
+                        output.Commit();
+                    }
                     return frames;
                 }
+            }
+            catch (MergeException) { throw; }
+            catch (OperationCanceledException) { throw; }
+            catch (OutOfMemoryException) { throw; }
+            catch (Exception ex) when (writingOutput && MergeException.ShouldWrap(ex))
+            {
+                throw new MergeException(string.Format(Loc.T("err.pdf.saveFailed"),
+                    DiskSpace.Describe(ex, outPdfPath)));
             }
             catch (Exception ex) when (MergeException.ShouldWrap(ex))
             {
@@ -102,8 +158,12 @@ namespace ExcelMerger
             }
             finally
             {
-                foreach (MemoryStream s in pageStreams)
-                    s.Dispose();
+                foreach (MemoryStream stream in pageStreams)
+                    stream.Dispose();
+                foreach (PdfMemoryLease lease in pageLeases)
+                    lease.Dispose();
+                if (sourceLease != null)
+                    sourceLease.Dispose();
             }
         }
 
@@ -189,17 +249,23 @@ namespace ExcelMerger
             return 1;
         }
 
-        /// <summary>
-        /// Байты страницы. JPEG без поворота и без второго кадра уходит в PDF КАК ЕСТЬ — это и
-        /// быстро, и без потерь, и файл остаётся размером с исходный снимок. Всё остальное
-        /// приходится пересобрать: снять прозрачность на белое и применить EXIF-поворот.
-        /// </summary>
-        private static MemoryStream Encode(Image frame, byte[] original, string path, int orientation, int frames)
+        private static bool CanPassThroughJpeg(string path, int orientation, int frames)
+        {
+            return frames == 1 &&
+                (HasExtension(path, ".jpg") || HasExtension(path, ".jpeg")) &&
+                ExifRotation(orientation) == RotateFlipType.RotateNoneFlipNone;
+        }
+
+        private static MergeException TooLarge()
+        {
+            return new MergeException(string.Format(Loc.T("err.img.tooLarge"),
+                RasterBudget.ImagePixels / 1000000L));
+        }
+
+        /// <summary>Перекодировать кадр: снять прозрачность и применить EXIF-поворот.</summary>
+        private static MemoryStream Encode(Image frame, string path, int orientation)
         {
             bool jpeg = HasExtension(path, ".jpg") || HasExtension(path, ".jpeg");
-            if (jpeg && frames == 1 && ExifRotation(orientation) == RotateFlipType.RotateNoneFlipNone)
-                return new MemoryStream(original);
-
             using (Bitmap flat = Flatten(frame, orientation))
             {
                 var ms = new MemoryStream();
