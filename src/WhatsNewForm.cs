@@ -51,7 +51,15 @@ namespace ExcelMerger
             MaximizeBox = true;
             MinimizeBox = true;
             ShowInTaskbar = true;
-            ClientSize = new Size(DefaultWidth, DefaultHeight);
+            // Дефолт не должен превышать рабочую область: на маленьком экране большое окно
+            // уезжало бы за край ещё до CenterOnOwner, и центрирование ломалось клампом.
+            Rectangle workArea = Screen.FromPoint(Cursor.Position).WorkingArea;
+            int chromeW = Width - ClientSize.Width;   // рамки (0 до создания хэндла)
+            int chromeH = Height - ClientSize.Height; // рамка + заголовок
+            if (chromeH <= 0) chromeH = 39;           // типичный оверхед до создания хэндла
+            ClientSize = new Size(
+                Math.Min(DefaultWidth, Math.Max(520, workArea.Width - chromeW)),
+                Math.Min(DefaultHeight, Math.Max(400, workArea.Height - chromeH)));
             MinimumSize = SizeFromClientSize(new Size(520, 400));
             WindowChrome.Enable(this, Theme.HubBlue);
             WindowPlacement.Attach(this);
