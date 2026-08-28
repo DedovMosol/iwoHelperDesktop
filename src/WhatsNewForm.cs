@@ -125,8 +125,11 @@ namespace ExcelMerger
             {
                 BackColor = Theme.HubBlue
             };
-            header.SetBounds(0, 0, DefaultWidth, HeaderH);
-            header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            // Ширина — по фактической клиентской области (Dock.Top), а не по константе:
+            // на узком экране ClientSize клампится ниже DefaultWidth, и жёсткая ширина
+            // высовывала шапку за правый край окна (поймано CheckFits на CI).
+            header.Dock = DockStyle.Top;
+            header.Height = HeaderH;
             Controls.Add(header);
             Label spark = Ui.Label(header, "✦", Pad, 20,
                 Ui.Font(28f, FontStyle.Bold), Color.White);
@@ -138,7 +141,9 @@ namespace ExcelMerger
                 string.Format(Loc.T("whatsnew.header"), _version), 82, 0,
                 Ui.Font(16f, FontStyle.Bold), Color.White);
             title.AutoSize = false;
-            title.SetBounds(82, 20, DefaultWidth - 108, 36);
+            // Ширина — от фактической ширины шапки при показе, а не от константы:
+            // на узком экране шапка уже DefaultWidth, и жёсткая ширина выносила текст за край.
+            title.SetBounds(82, 20, Math.Max(80, ClientSize.Width - 108), 36);
             title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         }
 
