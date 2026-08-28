@@ -34,7 +34,7 @@ namespace ExcelMerger
         private static readonly Color PdfRed = Color.FromArgb(211, 47, 47);      // #D32F2F
         private static readonly Color PdfFold = Color.FromArgb(154, 34, 34);     // #9A2222
         // Единый шрифт заголовка карточек: создание в каждом OnPaint — лишний GDI-чурн.
-        private static readonly Font TitleFont = new Font("Segoe UI", 12.5f, FontStyle.Bold);
+        private static readonly Font TitleFont = Ui.Font(12.5f, FontStyle.Bold);
 
         // Ритм содержимого: значок, отступ, заголовок в одну строку, отступ, описание с переносами.
         private const int GlyphSize = 60, GlyphGap = 12, TitleGap = 6, MinTop = 18;

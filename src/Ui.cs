@@ -19,8 +19,12 @@ namespace ExcelMerger
         // ключей конечное число (фиксированные литералы вызовов). Только UI-поток.
         private static readonly Dictionary<string, Font> _fonts = new Dictionary<string, Font>();
 
-        /// <summary>Общий кэшированный шрифт (по умолчанию — Segoe UI). НЕ освобождать у получателя.</summary>
-        public static Font Font(float size, FontStyle style = FontStyle.Regular, string family = "Segoe UI")
+        /// <summary>Семейство шрифта всего UI. Times New Roman: в Segoe UI кириллическая «л»
+        /// в мелком кегле растеризуется без загиба и читается как латинская «l» (ложная «опечатка»).</summary>
+        internal const string UiFontFamily = "Times New Roman";
+
+        /// <summary>Общий кэшированный шрифт (по умолчанию — <see cref="UiFontFamily"/>). НЕ освобождать у получателя.</summary>
+        public static Font Font(float size, FontStyle style = FontStyle.Regular, string family = UiFontFamily)
         {
             string key = family + "|" + size.ToString(CultureInfo.InvariantCulture) + "|" + (int)style;
             Font f;

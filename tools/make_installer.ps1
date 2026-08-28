@@ -32,7 +32,10 @@ function Find-Iscc {
 
     $unins = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        # winget ставит Inno Setup per-user (ключ в HKCU) — без этой ветки установка
+        # только для текущего пользователя не находится, хотя работает.
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
     )
     foreach ($k in $unins) {
         Get-ItemProperty $k -ErrorAction SilentlyContinue |

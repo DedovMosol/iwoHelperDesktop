@@ -190,7 +190,7 @@ namespace ExcelMerger
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                 using (var b = new SolidBrush(color))
                     g.FillEllipse(b, 0.5f, 0.5f, size - 1f, size - 1f);
-                using (var font = new Font("Segoe UI", size * 0.5f, FontStyle.Bold))
+                using (var font = new Font(Ui.UiFontFamily, size * 0.5f, FontStyle.Bold))
                 using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                     g.DrawString(glyph, font, Brushes.White, new RectangleF(0, -1, size, size), sf);
             }

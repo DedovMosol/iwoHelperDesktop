@@ -108,6 +108,18 @@ namespace ExcelMerger
             return new Rectangle(x, y, w, h);
         }
 
+        /// <summary>Есть ли для окна корректно сохранённое размещение.</summary>
+        internal static bool HasSaved(Form form)
+        {
+            if (form == null)
+                return false;
+            string value;
+            Rectangle bounds;
+            bool maximized;
+            return UserSettings.Load().WindowBounds.TryGetValue(form.GetType().Name, out value) &&
+                TryParse(value, out bounds, out maximized);
+        }
+
         // ---------- работа с формой (UI-поток) ----------
 
         private static Rectangle[] WorkAreas()

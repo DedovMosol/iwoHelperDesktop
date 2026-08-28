@@ -6,30 +6,56 @@ using System.Windows.Forms;
 namespace ExcelMerger
 {
     /// <summary>Version-aware, dismissible release notes with an unobtrusive support section.</summary>
-    internal sealed class WhatsNewForm : Form
+    internal sealed class WhatsNewForm : Form, IMessageFilter
     {
-        private const int WidthPx = 620;
+        private const int WmMouseWheel = 0x020A;
+        // Дефолт — замеренный у пользователя удобный размер (1193×699 клиент): карточки
+        // версии читаются без прокрутки. WindowPlacement привязывается ниже и при наличии
+        // сохранённого размера восстановит его вместо дефолта.
+        private const int DefaultWidth = 1193;
+        private const int DefaultHeight = 699;
+        private const int HeaderH = 76;
+        private const int FooterH = 88;
         private const int Pad = 24;
+        private const int MinTextPercent = 80;
+        private const int MaxTextPercent = 160;
+        private const int TextStepPercent = 10;
+        private const float BaseTextSize = 9.75f;
+
         private readonly string _version;
         private readonly Panel _scroll;
         private readonly List<Panel> _cards = new List<Panel>();
+        private readonly List<RichTextBox> _cardBodies = new List<RichTextBox>();
         private readonly LinkLabel _supportLink;
         private readonly Panel _supportPanel;
+        private RichTextBox _supportNote;
+        private Label _supportAccountLabel, _supportBankLabel;
+        private TextBox _supportAccount, _supportBank;
         private readonly AccentCheckBox _dontShow;
         private readonly RoundedButton _close;
+        private readonly ToolTip _zoomTip = new ToolTip();
+        private bool _filterRegistered;
         private bool _persisted;
         private bool _positioned;
+        private int _textPercent;
 
         internal WhatsNewForm(string version)
         {
             _version = version;
+            _textPercent = NormalizeTextPercent(UserSettings.Load().WhatsNewTextPercent);
             Ui.InitDialog(this, string.Format(Loc.T("whatsnew.title"), version));
-            // CenterParent is ignored by modeless Show(owner) on some WinForms/.NET versions.
-            // Position explicitly in OnShown so the automatic window never opens at (0,0).
+            // Это самостоятельное окно: его размер нужен для длинных заметок, а состояние
+            // должно возвращаться так же, как у рабочих окон приложения.
             StartPosition = FormStartPosition.Manual;
-            ClientSize = new Size(WidthPx, 620);
-            MinimumSize = Size;
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox = true;
+            MinimizeBox = true;
+            ShowInTaskbar = true;
+            ClientSize = new Size(DefaultWidth, DefaultHeight);
+            MinimumSize = SizeFromClientSize(new Size(520, 400));
             WindowChrome.Enable(this, Theme.HubBlue);
+            WindowPlacement.Attach(this);
+
             BuildHeader();
 
             _scroll = new Panel
@@ -37,7 +63,8 @@ namespace ExcelMerger
                 AutoScroll = true,
                 BackColor = Color.FromArgb(248, 249, 251)
             };
-            _scroll.SetBounds(0, 102, WidthPx, 446);
+            _scroll.SetBounds(0, HeaderH, ClientSize.Width,
+                ClientSize.Height - HeaderH - FooterH);
             _scroll.Anchor = AnchorStyles.Top | AnchorStyles.Bottom |
                 AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(_scroll);
@@ -46,7 +73,7 @@ namespace ExcelMerger
             foreach (string item in WhatsNewCatalog.Items(version, Loc.Code(Loc.Current)))
                 _cards.Add(FeatureCard(++number, item));
 
-            _supportLink = Ui.Link(_scroll, Loc.T("whatsnew.support.link"), Pad, 0);
+            _supportLink = Ui.Link(this, Loc.T("whatsnew.support.link"), Pad, 0);
             _supportLink.AccessibleDescription = Loc.T("whatsnew.support.hint");
             _supportLink.LinkClicked += delegate { ToggleSupport(); };
 
@@ -54,31 +81,34 @@ namespace ExcelMerger
             _supportPanel.Visible = false;
             _scroll.Controls.Add(_supportPanel);
 
+            // Ctrl+колесо — масштаб текста. Фильтр снимает зависимость от фокуса:
+            // колесо над любым местом окна работает одинаково (как в браузерах).
+            Application.AddMessageFilter(this);
+            _filterRegistered = true;
+            _zoomTip.SetToolTip(this, Loc.T("whatsnew.zoomTip"));
+            _zoomTip.SetToolTip(_scroll, Loc.T("whatsnew.zoomTip"));
+
             _dontShow = new AccentCheckBox
             {
                 Text = Loc.T("whatsnew.dontShow"),
                 Checked = !UserSettings.Load().ShowWhatsNewOnStart
             };
             Controls.Add(_dontShow);
-            Size optionSize = _dontShow.GetPreferredSize(Size.Empty);
-            _dontShow.SetBounds(Pad, ClientSize.Height - 50,
-                Math.Min(optionSize.Width, WidthPx - 180), optionSize.Height);
-            _dontShow.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
 
             _close = new RoundedButton(true)
             {
                 Text = Loc.T("common.close"),
                 TabIndex = 0
             };
-            _close.SetBounds(WidthPx - Pad - 110, ClientSize.Height - 56, 110, 36);
-            _close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _close.Click += delegate { Close(); };
             Controls.Add(_close);
             AcceptButton = _close;
             CancelButton = _close;
+
             // Adding child controls can make AutoScroll retain a stale offset. The initial
             // publication is always the beginning of the notes; later relayouts preserve it.
             LayoutBody(0);
+            LayoutFooter();
         }
 
         private void BuildHeader()
@@ -87,23 +117,21 @@ namespace ExcelMerger
             {
                 BackColor = Theme.HubBlue
             };
-            header.SetBounds(0, 0, WidthPx, 102);
+            header.SetBounds(0, 0, DefaultWidth, HeaderH);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(header);
-            Label spark = Ui.Label(header, "✦", Pad, 22,
+            Label spark = Ui.Label(header, "✦", Pad, 20,
                 Ui.Font(28f, FontStyle.Bold), Color.White);
+            spark.AutoSize = false;
+            spark.TextAlign = ContentAlignment.MiddleCenter;
+            spark.SetBounds(Pad, 18, 46, 42);
             spark.AccessibleName = Loc.T("whatsnew.accessible");
             Label title = Ui.Label(header,
-                string.Format(Loc.T("whatsnew.header"), _version), 82, 20,
+                string.Format(Loc.T("whatsnew.header"), _version), 82, 0,
                 Ui.Font(16f, FontStyle.Bold), Color.White);
             title.AutoSize = false;
-            title.SetBounds(82, 16, WidthPx - 108, 34);
+            title.SetBounds(82, 20, DefaultWidth - 108, 36);
             title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            Label subtitle = Ui.Label(header, Loc.T("whatsnew.subtitle"), 84, 54,
-                Ui.Font(9.5f), Color.FromArgb(226, 237, 250));
-            subtitle.AutoSize = false;
-            subtitle.SetBounds(84, 52, WidthPx - 110, 38);
-            subtitle.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         }
 
         private Panel FeatureCard(int number, string text)
@@ -111,6 +139,7 @@ namespace ExcelMerger
             var card = new Panel
             {
                 BackColor = Color.White,
+                Font = Font,
                 AccessibleName = string.Format(Loc.T("whatsnew.item.accessible"), number)
             };
             var numberLabel = new Label
@@ -123,17 +152,12 @@ namespace ExcelMerger
             };
             numberLabel.SetBounds(14, 14, 30, 30);
             card.Controls.Add(numberLabel);
-            var body = new Label
-            {
-                Text = text,
-                Font = Font,
-                ForeColor = Theme.TextPrimary,
-                BackColor = Color.White,
-                AutoSize = true,
-                MaximumSize = new Size(WidthPx - 2 * Pad - 76, 0)
-            };
-            body.Location = new Point(58, 14);
-            card.Controls.Add(body);
+            RichTextBox body = JustifiedText.Paragraph(card, text, 58, 14,
+                Math.Max(100, DefaultWidth - 2 * Pad - 76), Theme.TextPrimary);
+            body.Name = "whatsNewItem" + number;
+            body.TabStop = false;
+            body.Font = TextFont();
+            _cardBodies.Add(body);
             card.Height = Math.Max(58, body.Bottom + 14);
             _scroll.Controls.Add(card);
             return card;
@@ -142,19 +166,24 @@ namespace ExcelMerger
         private void ToggleSupport()
         {
             int previousOffset = ScrollOffsetY();
-            int linkScreenY = _supportLink.PointToScreen(Point.Empty).Y;
             bool expanding = !_supportPanel.Visible;
             _supportPanel.Visible = expanding;
             _supportLink.Text = Loc.T(expanding
                 ? "whatsnew.support.hide" : "whatsnew.support.link");
             _close.Focus();
-            LayoutBody(previousOffset);
+            // При сворачивании нельзя оставлять старую позицию прокрутки: после уменьшения
+            // содержимого она могла указывать за пределы списка и создавать пустоту над пунктом 1.
+            int target = expanding ? previousOffset : Math.Min(previousOffset, MaxScrollOffset());
+            LayoutBody(target);
             if (expanding)
             {
                 // Keep the clicked link at the same screen position. The panel grows below it;
                 // WinForms must not auto-scroll a focused child back to the top of the list.
-                int moved = _supportLink.PointToScreen(Point.Empty).Y - linkScreenY;
-                SetScrollOffsetY(previousOffset + moved);
+                SetScrollOffsetY(Math.Min(MaxScrollOffset(), previousOffset));
+            }
+            else
+            {
+                SetScrollOffsetY(Math.Min(target, MaxScrollOffset()));
             }
         }
 
@@ -163,16 +192,21 @@ namespace ExcelMerger
             return Math.Max(0, -_scroll.AutoScrollPosition.Y);
         }
 
+        private int MaxScrollOffset()
+        {
+            return Math.Max(0, _scroll.AutoScrollMinSize.Height - _scroll.ClientSize.Height);
+        }
+
         private void SetScrollOffsetY(int offset)
         {
-            int maximum = Math.Max(0,
-                _scroll.AutoScrollMinSize.Height - _scroll.ClientSize.Height);
             _scroll.AutoScrollPosition = new Point(0,
-                Math.Max(0, Math.Min(maximum, offset)));
+                Math.Max(0, Math.Min(MaxScrollOffset(), offset)));
         }
 
         private void LayoutBody(int preservedOffset)
         {
+            if (_scroll == null || _supportLink == null || _supportPanel == null)
+                return;
             _scroll.SuspendLayout();
             try
             {
@@ -180,13 +214,20 @@ namespace ExcelMerger
                 int width = Math.Max(280, _scroll.ClientSize.Width - 2 * Pad -
                     (_scroll.VerticalScroll.Visible
                         ? SystemInformation.VerticalScrollBarWidth : 0));
-                foreach (Panel card in _cards)
+                for (int i = 0; i < _cards.Count; i++)
                 {
-                    card.SetBounds(Pad, y, width, card.Height);
+                    Panel card = _cards[i];
+                    RichTextBox body = _cardBodies[i];
+                    int bodyWidth = Math.Max(120, width - 72);
+                    body.Font = TextFont();
+                    body.SetBounds(58, 14, bodyWidth,
+                        JustifiedText.Height(body.Text, body.Font, bodyWidth));
+                    if (body.IsHandleCreated)
+                        JustifiedText.Justify(body);
+                    card.SetBounds(Pad, y, width, Math.Max(58, body.Bottom + 14));
                     y = card.Bottom + 10;
                 }
-                _supportLink.Location = new Point(Pad, y + 4);
-                y = _supportLink.Bottom + 10;
+                LayoutSupportPanel(width);
                 _supportPanel.SetBounds(Pad, y, width, _supportPanel.Height);
                 if (_supportPanel.Visible)
                     y = _supportPanel.Bottom + 16;
@@ -197,6 +238,166 @@ namespace ExcelMerger
                 _scroll.ResumeLayout();
             }
             SetScrollOffsetY(preservedOffset);
+        }
+
+        private void LayoutSupportPanel(int width)
+        {
+            int innerWidth = Math.Max(160, width - 28);
+            _supportNote.Font = TextFont();
+            _supportNote.SetBounds(14, 10, innerWidth,
+                JustifiedText.Height(_supportNote.Text, _supportNote.Font, innerWidth));
+            if (_supportNote.IsHandleCreated)
+                JustifiedText.Justify(_supportNote);
+
+            int y = _supportNote.Bottom + 12;
+            _supportAccountLabel.Font = TextFont();
+            _supportAccountLabel.Location = new Point(14, y);
+            _supportAccount.Font = TextFont();
+            _supportAccount.SetBounds(112, y - 1, Math.Max(80, width - 128), 22);
+            y = _supportAccount.Bottom + 10;
+            _supportBankLabel.Font = TextFont();
+            _supportBankLabel.Location = new Point(14, y);
+            _supportBank.Font = TextFont();
+            _supportBank.SetBounds(112, y - 1, Math.Max(80, width - 128), 22);
+            _supportPanel.Height = _supportBank.Bottom + 14;
+        }
+
+        private Panel BuildSupportPanel()
+        {
+            var panel = new Panel
+            {
+                BackColor = Color.FromArgb(239, 246, 253),
+                Width = DefaultWidth - 2 * Pad,
+                Height = 128,
+                Font = Font
+            };
+            _supportNote = JustifiedText.Paragraph(panel, Loc.T("whatsnew.support.body"),
+                14, 10, DefaultWidth - 2 * Pad - 28, Theme.TextPrimary);
+            _supportNote.BackColor = panel.BackColor;
+            _supportNote.TabStop = false;
+            _supportAccountLabel = Ui.Label(panel, Loc.T("about.account"), 14, 56,
+                Font, Theme.TextMuted);
+            _supportAccount = Selectable(AboutForm.DonationAccount);
+            _supportAccount.SetBounds(112, 54, DefaultWidth - 2 * Pad - 128, 22);
+            panel.Controls.Add(_supportAccount);
+            _supportBankLabel = Ui.Label(panel, Loc.T("about.bank"), 14, 88,
+                Font, Theme.TextMuted);
+            _supportBank = Selectable(AboutForm.DonationBank);
+            _supportBank.SetBounds(112, 86, DefaultWidth - 2 * Pad - 128, 22);
+            panel.Controls.Add(_supportBank);
+            return panel;
+        }
+
+        private void LayoutFooter()
+        {
+            if (_close == null)
+                return;
+            // Чекбокс всегда по центру окна по горизонтали, независимо от ширины.
+            Size optionSize = _dontShow.GetPreferredSize(Size.Empty);
+            int bottomY = ClientSize.Height - 48;
+            _close.SetBounds(ClientSize.Width - Pad - 110, ClientSize.Height - 52,
+                110, 36);
+            // Ссылка поддержки — слева, по центру вертикали относительно кнопки «Закрыть».
+            _supportLink.Location = new Point(Pad,
+                _close.Top + (_close.Height - _supportLink.Height) / 2);
+            // При узком окне чекбокс сдвигается правее ссылки, не перекрывая её.
+            int optionX = Math.Max(Pad, (ClientSize.Width - optionSize.Width) / 2);
+            if (optionX < _supportLink.Right + 8)
+                optionX = _supportLink.Right + 8;
+            // И не заходя на кнопку «Закрыть».
+            if (optionX + optionSize.Width > _close.Left - 8)
+                optionX = Math.Max(_supportLink.Right + 8, _close.Left - 8 - optionSize.Width);
+            _dontShow.SetBounds(optionX, bottomY, optionSize.Width, optionSize.Height);
+        }
+
+        private int NormalizeTextPercent(int value)
+        {
+            if (value < MinTextPercent || value > MaxTextPercent)
+                return 100;
+            return value;
+        }
+
+        private Font TextFont()
+        {
+            return Ui.Font(BaseTextSize * _textPercent / 100f);
+        }
+
+        /// <summary>Изменить масштаб текста с клампом в [80..160] и пересчётом layout.</summary>
+        internal void SetTextPercent(int value)
+        {
+            int next = Math.Max(MinTextPercent, Math.Min(MaxTextPercent, value));
+            if (next == _textPercent)
+                return;
+            int offset = ScrollOffsetY();
+            _textPercent = next;
+            LayoutBody(offset);
+            LayoutFooter();
+        }
+
+        /// <summary>Текущий масштаб текста (для тестов и отладки).</summary>
+        internal int TextPercent => _textPercent;
+
+        // ---- IMessageFilter: Ctrl+колесо над любым местом окна — масштаб текста ----
+
+        bool IMessageFilter.PreFilterMessage(ref Message m)
+        {
+            if (m.Msg != WmMouseWheel || !_filterRegistered || IsDisposed || !Visible)
+                return false;
+            if ((ModifierKeys & Keys.Control) == 0)
+                return false; // без Ctrl — обычная прокрутка, не трогаем
+            int delta = (short)((long)m.WParam >> 16);
+            SetTextPercent(_textPercent + (delta > 0 ? TextStepPercent : -TextStepPercent));
+            return true;
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            if (_filterRegistered)
+            {
+                Application.RemoveMessageFilter(this);
+                _filterRegistered = false;
+            }
+            base.OnFormClosed(e);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (_filterRegistered)
+                {
+                    Application.RemoveMessageFilter(this);
+                    _filterRegistered = false;
+                }
+                if (_zoomTip != null)
+                    _zoomTip.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
+        private TextBox Selectable(string text)
+        {
+            return new TextBox
+            {
+                Text = text,
+                ReadOnly = true,
+                BorderStyle = BorderStyle.None,
+                BackColor = Color.FromArgb(239, 246, 253),
+                ForeColor = Theme.TextPrimary,
+                Font = TextFont(),
+                TabStop = true
+            };
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (!_positioned)
+            {
+                _positioned = true;
+                CenterOnOwner();
+                SetScrollOffsetY(0);
+            }
         }
 
         private void CenterOnOwner()
@@ -215,70 +416,15 @@ namespace ExcelMerger
             Location = new Point(x, y);
         }
 
-        protected override void OnShown(EventArgs e)
-        {
-            base.OnShown(e);
-            if (!_positioned)
-            {
-                _positioned = true;
-                CenterOnOwner();
-                SetScrollOffsetY(0);
-            }
-        }
-
-
-        private Panel BuildSupportPanel()
-        {
-            var panel = new Panel
-            {
-                BackColor = Color.FromArgb(239, 246, 253),
-                Width = WidthPx - 2 * Pad,
-                Height = 128
-            };
-            Label note = Ui.Label(panel, Loc.T("whatsnew.support.body"), 14, 10,
-                Ui.Font(9f), Theme.TextPrimary);
-            note.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            note.AutoSize = false;
-            note.SetBounds(14, 9, WidthPx - 2 * Pad - 28, 38);
-            Label account = Ui.Label(panel, Loc.T("about.account"), 14, 56,
-                Font, Theme.TextMuted);
-            TextBox accountValue = Selectable(AboutForm.DonationAccount);
-            accountValue.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            accountValue.SetBounds(112, 54, WidthPx - 2 * Pad - 128, 22);
-            panel.Controls.Add(accountValue);
-            Label bank = Ui.Label(panel, Loc.T("about.bank"), 14, 88,
-                Font, Theme.TextMuted);
-            TextBox bankValue = Selectable(AboutForm.DonationBank);
-            bankValue.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            bankValue.SetBounds(112, 86, WidthPx - 2 * Pad - 128, 22);
-            panel.Controls.Add(bankValue);
-            return panel;
-        }
-
-        private TextBox Selectable(string text)
-        {
-            return new TextBox
-            {
-                Text = text,
-                ReadOnly = true,
-                BorderStyle = BorderStyle.None,
-                BackColor = Color.FromArgb(239, 246, 253),
-                ForeColor = Theme.TextPrimary,
-                Font = Font,
-                TabStop = true
-            };
-        }
-
-        private void LayoutBody()
-        {
-            LayoutBody(ScrollOffsetY());
-        }
-
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            if (_scroll != null)
-                LayoutBody();
+            if (_scroll != null && _supportLink != null)
+            {
+                int offset = ScrollOffsetY();
+                LayoutBody(offset);
+                LayoutFooter();
+            }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -286,7 +432,7 @@ namespace ExcelMerger
             if (!_persisted)
             {
                 _persisted = true;
-                if (!UserSettings.SaveWhatsNew(!_dontShow.Checked, _version))
+                if (!UserSettings.SaveWhatsNew(!_dontShow.Checked, _version, _textPercent))
                     Dialogs.Error(this, Text, Loc.T("settings.err.save.title"),
                         Loc.T("settings.err.save.body"));
             }

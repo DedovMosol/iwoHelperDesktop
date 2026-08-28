@@ -26,7 +26,7 @@ namespace ExcelMerger
         private Label _product, _version;
         private TextBoxBase _description;
         private Panel _manualRow, _privacyRow;
-        private Label _privacyNote;
+        private RichTextBox _privacyNote;
         private Button _projectToggle, _supportToggle;
         private Panel _projectPanel, _supportPanel;
         private Label _license;
@@ -104,13 +104,11 @@ namespace ExcelMerger
             _privacyRow.Controls.Add(notices);
             _scroll.Controls.Add(_privacyRow);
 
-            _privacyNote = new Label();
-            _privacyNote.Text = Loc.T("about.privacyNote");
-            _privacyNote.ForeColor = Theme.TextMuted;
-            _privacyNote.BackColor = Color.White;
-            _privacyNote.AutoSize = true;
-            _privacyNote.MaximumSize = new Size(WidthPx - 2 * Pad, 0);
-            _scroll.Controls.Add(_privacyNote);
+            _privacyNote = JustifiedText.Paragraph(_scroll, Loc.T("about.privacyNote"),
+                Pad, 0, WidthPx - 2 * Pad, Theme.TextMuted);
+            _privacyNote.Name = "aboutPrivacyNote";
+            _privacyNote.TabStop = false;
+            _privacyNote.AccessibleName = Loc.T("about.privacyNote");
         }
 
         private void BuildProjectSection()
@@ -125,7 +123,6 @@ namespace ExcelMerger
             _scroll.Controls.Add(_projectToggle);
 
             _projectPanel = new Panel { Name = ProjectSectionName + "Panel", BackColor = Color.White, Visible = false };
-            _projectPanel.SetBounds(Pad, 0, WidthPx - 2 * Pad, 92);
             Ui.Label(_projectPanel, Loc.T("about.author"), 12, 6, Font, Theme.TextPrimary);
             Label github = Ui.Label(_projectPanel, "GitHub:", 12, 34, Font, Theme.TextPrimary);
             Ui.UrlLink(_projectPanel, "DedovMosol/iwoHelperDesktop", github.Right + 6, 34,
@@ -133,6 +130,8 @@ namespace ExcelMerger
             Label telegram = Ui.Label(_projectPanel, "Telegram:", 12, 62, Font, Theme.TextPrimary);
             Ui.UrlLink(_projectPanel, "t.me/i_wantout", telegram.Right + 6, 62,
                 "https://t.me/i_wantout");
+            // Высота по содержимому (низ последней строки + нижний отступ), без магических чисел.
+            _projectPanel.SetBounds(Pad, 0, WidthPx - 2 * Pad, telegram.Bottom + 8);
             _scroll.Controls.Add(_projectPanel);
         }
 
@@ -148,9 +147,7 @@ namespace ExcelMerger
             _scroll.Controls.Add(_supportToggle);
 
             _supportPanel = new Panel { Name = SupportSectionName + "Panel", BackColor = Color.White, Visible = false };
-            _supportPanel.SetBounds(Pad, 0, WidthPx - 2 * Pad, 104);
-            Label hint = Ui.Label(_supportPanel, Loc.T("about.copyHint"), 12, 4, Font, Theme.TextMuted);
-            Label account = Ui.Label(_supportPanel, Loc.T("about.account"), 12, hint.Bottom + 10, Font, Theme.TextPrimary);
+            Label account = Ui.Label(_supportPanel, Loc.T("about.account"), 12, 10, Font, Theme.TextPrimary);
             TextBox accountValue = SelectableText(DonationAccount);
             accountValue.Name = "aboutAccount";
             accountValue.SetBounds(108, account.Top - 1, WidthPx - 2 * Pad - 120, 22);
@@ -160,6 +157,8 @@ namespace ExcelMerger
             bankValue.Name = "aboutBank";
             bankValue.SetBounds(108, bank.Top - 1, WidthPx - 2 * Pad - 120, 22);
             _supportPanel.Controls.Add(bankValue);
+            // Высота по содержимому (низ последнего поля + нижний отступ), без магических чисел.
+            _supportPanel.SetBounds(Pad, 0, WidthPx - 2 * Pad, bankValue.Bottom + 8);
             _scroll.Controls.Add(_supportPanel);
         }
 
@@ -207,23 +206,23 @@ namespace ExcelMerger
             y += 30;
             _privacyRow.SetBounds(Pad, y, contentW, 24);
             y += 26;
-            _privacyNote.Location = new Point(Pad, y);
+            _privacyNote.SetBounds(Pad, y, contentW,
+                JustifiedText.Height(_privacyNote.Text, _privacyNote.Font, contentW));
             y = _privacyNote.Bottom + 16;
 
             _projectToggle.SetBounds(Pad, y, contentW, 34);
-            _projectPanel.SetBounds(Pad, _projectPanel.Visible ? y + 40 : 0, contentW, 92);
             y = _projectToggle.Bottom + 6;
             if (_projectPanel.Visible)
             {
+                _projectPanel.SetBounds(Pad, y, contentW, _projectPanel.Height);
                 y = _projectPanel.Bottom + 8;
             }
 
             _supportToggle.SetBounds(Pad, y, contentW, 34);
-            _supportPanel.SetBounds(Pad, _supportPanel.Visible ? y + 40 : 0, contentW, 104);
             y = _supportToggle.Bottom + 6;
             if (_supportPanel.Visible)
             {
-                _supportPanel.SetBounds(Pad, y, contentW, 104);
+                _supportPanel.SetBounds(Pad, y, contentW, _supportPanel.Height);
                 y = _supportPanel.Bottom + 8;
             }
 

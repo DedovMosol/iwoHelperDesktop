@@ -724,14 +724,13 @@ namespace ExcelMerger
             // settings.* — окно «Настройки» (общее для всей программы, не для документа)
             A("whatsnew.title", "Что нового в версии {0}", "What's new in version {0}");
             A("whatsnew.header", "Что нового · {0}", "What's new · {0}");
-            A("whatsnew.subtitle", "Коротко о заметных изменениях, без технических подробностей.",
-                "A concise overview of meaningful changes, without technical detail.");
             A("whatsnew.accessible", "Значок нового выпуска", "New release icon");
             A("whatsnew.item.accessible", "Новое, пункт {0}", "What's new, item {0}");
             A("whatsnew.fallback", "В этой версии улучшены надёжность и удобство работы.",
                 "This version improves reliability and ease of use.");
-            A("whatsnew.dontShow", "Больше не показывать автоматически",
-                "Don't show this automatically again");
+            A("whatsnew.dontShow", "Больше не показывать",
+                "Don't show this again");
+            A("whatsnew.zoomTip", "Ctrl+колесо — масштаб текста", "Ctrl+wheel — text size");
             A("whatsnew.support.link", "Поддержать развитие проекта",
                 "Support the project's development");
             A("whatsnew.support.hide", "Скрыть реквизиты", "Hide support details");
@@ -863,20 +862,18 @@ namespace ExcelMerger
             // about.* — окно «О программе» (AboutForm)
             A("about.version", "Версия {0}", "Version {0}");
             A("about.desc",
-                "Офисные инструменты для Excel и PDF: сборка и разделение страниц, сравнение цифровых версий, сжатие, прочие операции и перевод цифрового PDF в Word или PowerPoint. Для текста отсканированных документов требуется OCR — он пока не выполняется.",
-                "Office tools for Excel and PDF: assemble and split pages, compare born-digital versions, compress, run more operations, and turn born-digital PDF into Word or PowerPoint. Text in scanned documents needs OCR, which is not provided yet.");
+                "Для PDF: объединение, разделение, сравнение версий, сжатие и другие операции, а также перевод цифрового PDF в Word или PowerPoint. Для Excel (.xls, .xlsx, .xlsb, .xlsm): объединение листов нескольких книг в один свод. Обработка выполняется локально; отсканированные PDF требуют OCR, которого пока нет.",
+                "For PDF: merge, split, compare versions, compress and more, plus conversion of born-digital PDF to Word or PowerPoint. For Excel (.xls, .xlsx, .xlsb, .xlsm): merge worksheets from multiple workbooks into one digest. Processing stays local; scanned PDFs require OCR, which is not provided yet.");
             A("about.author", "Автор: Dodonov Andrey (DedovMosol)", "Author: Dodonov Andrey (DedovMosol)");
             A("about.manual", "Инструкция по работе с программой:", "User guide:");
             A("about.manual.open", "открыть", "open");
             A("about.license", "© 2026 · GNU General Public License v3.0 only", "© 2026 · GNU General Public License v3.0 only");
-            A("about.privacy", "Политика конфиденциальности", "Privacy Policy");
-            A("about.thirdParty", "Лицензии компонентов", "Third-party licenses");
-            A("about.privacyNote", "(документы обрабатываются локально; проверка обновлений обращается к GitHub)",
-                "(documents are processed locally; update checks contact GitHub)");
+            A("about.privacy", "Политика конфиденциальности", "Privacy policy");
+            A("about.thirdParty", "Лицензии сторонних компонентов", "Third-party component licenses");
+            A("about.privacyNote", "(документы обрабатываются локально, проверка обновлений обращается к GitHub)",
+                "(documents are processed locally, update checks contact GitHub)");
             A("about.project", "Проект и контакты", "Project and contacts");
             A("about.donate", "Поддержать проект", "Support the project");
-            A("about.copyHint", "Реквизиты можно выделить и скопировать.",
-                "The details can be selected and copied.");
             A("about.account", "Счёт:", "Account:");
             A("about.bank", "Банк:", "Bank:");
 

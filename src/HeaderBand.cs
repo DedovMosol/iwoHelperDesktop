@@ -18,7 +18,7 @@ namespace ExcelMerger
         private string _subtitle;
         private readonly Color _top;
         private readonly Color _bottom;
-        private static readonly Font TitleFont = new Font("Segoe UI", 15f, FontStyle.Bold);
+        private static readonly Font TitleFont = Ui.Font(15f, FontStyle.Bold);
         private static readonly Color SubtitleColor = Color.FromArgb(233, 238, 242); // нейтрально-белая: читаема на любом фоне
 
         /// <summary>Центрировать заголовок и подпись по ширине (для стартового экрана без кнопок).</summary>

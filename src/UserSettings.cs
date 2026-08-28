@@ -21,6 +21,7 @@ namespace ExcelMerger
         public bool UpdateCheckOnStart = true;
         public bool ShowWhatsNewOnStart = true;
         public string LastWhatsNewVersion;
+        public int WhatsNewTextPercent = 100;
         public string SkippedVersion;
 
         // Незнакомые строки сохраняются при downgrade: старая версия не должна стирать
@@ -69,6 +70,12 @@ namespace ExcelMerger
                 else if (key == "updateCheckOnStart" && bool.TryParse(value, out flag)) settings.UpdateCheckOnStart = flag;
                 else if (key == "showWhatsNewOnStart" && bool.TryParse(value, out flag)) settings.ShowWhatsNewOnStart = flag;
                 else if (key == "lastWhatsNewVersion") settings.LastWhatsNewVersion = value.Length == 0 ? null : value;
+                else if (key == "whatsNewTextPercent")
+                {
+                    int percent;
+                    if (int.TryParse(value, out percent) && percent >= 80 && percent <= 160)
+                        settings.WhatsNewTextPercent = percent;
+                }
                 else if (key == "skippedVersion") settings.SkippedVersion = value.Length == 0 ? null : value;
                 else if (key.StartsWith("wnd.", StringComparison.Ordinal) && key.Length > 4)
                     settings.WindowBounds[key.Substring(4)] = value;
@@ -132,10 +139,27 @@ namespace ExcelMerger
 
         public static bool SaveWhatsNew(bool showOnStart, string seenVersion)
         {
+            return SaveWhatsNew(showOnStart, seenVersion, null);
+        }
+
+        public static bool SaveWhatsNew(bool showOnStart, string seenVersion, int? textPercent)
+        {
             return Change(delegate(UserSettings settings)
             {
                 settings.ShowWhatsNewOnStart = showOnStart;
                 settings.LastWhatsNewVersion = seenVersion;
+                if (textPercent.HasValue && textPercent.Value >= 80 && textPercent.Value <= 160)
+                    settings.WhatsNewTextPercent = textPercent.Value;
+            });
+        }
+
+        public static bool SaveWhatsNewTextPercent(int textPercent)
+        {
+            if (textPercent < 80 || textPercent > 160)
+                return false;
+            return Change(delegate(UserSettings settings)
+            {
+                settings.WhatsNewTextPercent = textPercent;
             });
         }
 
@@ -175,6 +199,8 @@ namespace ExcelMerger
                 "updateCheckOnStart=" + UpdateCheckOnStart,
                 "showWhatsNewOnStart=" + ShowWhatsNewOnStart,
                 "lastWhatsNewVersion=" + (LastWhatsNewVersion ?? ""),
+                "whatsNewTextPercent=" + (WhatsNewTextPercent >= 80 && WhatsNewTextPercent <= 160
+                    ? WhatsNewTextPercent : 100),
                 "skippedVersion=" + (SkippedVersion ?? ""),
                 "language=" + (Language == "en" ? "en" :
                     Language == "ru" ? "ru" : Loc.Code(Loc.Current))

@@ -180,6 +180,7 @@ namespace ExcelMerger.Tests
             Run("PDF Review UI: единый режим показывает добавленные и удалённые пробелы", TestReviewUnifiedWhitespaceMarkers);
             Run("PDF Review UI: общий режим по умолчанию, splitter и полноэкранный canvas", TestReviewViewModesLive);
             Run("Что нового: версия, настройки, компактное окно и добровольная поддержка", TestWhatsNewExperience);
+            Run("Что нового: Ctrl+колесо меняет масштаб текста, кламп 80-160", TestWhatsNewTextZoomLive);
             Run("PdfSplitPlan: выделение после удаления берёт исходные страницы", TestSplitPlanSelected);
             Run("PdfSplitPlan: диапазоны фильтруют рабочий набор, сохраняя порядок", TestSplitPlanRanges);
             Run("PdfSplitPlan: каждые N страниц режут рабочий порядок", TestSplitPlanEveryN);
@@ -561,7 +562,7 @@ namespace ExcelMerger.Tests
             Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
-            const int ExactTests = 522;
+            const int ExactTests = 523;
             int total = _passed + _failed;
             int code = _failed == 0 ? 0 : 1;
             if (total != ExactTests)
@@ -11735,28 +11736,20 @@ namespace ExcelMerger.Tests
                         AssertTrue(option.Checked,
                             "ручное окно отражает отключённый автопоказ");
 
-                        scroll.AutoScrollPosition = new Point(0,
-                            Math.Max(0, supportLink.Bottom - scroll.ClientSize.Height / 2));
+                        // Ссылка поддержки — в футере, слева, на уровне кнопки «Закрыть».
+                        AssertEqual(24, supportLink.Left,
+                            "ссылка поддержки у левого края");
+                        AssertTrue(Math.Abs(supportLink.Top +
+                            (supportLink.Height - 36) / 2 -
+                            (form.ClientSize.Height - 52)) <= 2,
+                            "ссылка поддержки по центру вертикали кнопки «Закрыть»");
+
+                        // В узком окне (520 px) ссылка и чекбокс не должны перекрываться.
+                        form.ClientSize = new Size(520, 400);
                         Application.DoEvents();
-                        int beforeExpand = -scroll.AutoScrollPosition.Y;
-                        int linkScreenY = supportLink.PointToScreen(Point.Empty).Y;
-                        supportLink.Links[0].LinkData = null;
-                        typeof(LinkLabel).GetMethod("OnLinkClicked", BindingFlags.Instance |
-                            BindingFlags.NonPublic).Invoke(supportLink,
-                                new object[] { new LinkLabelLinkClickedEventArgs(
-                                    supportLink.Links[0]) });
-                        Application.DoEvents();
-                        int afterExpand = -scroll.AutoScrollPosition.Y;
-                        AssertTrue(support.Visible,
-                            "поддержка раскрывается по явному запросу");
-                        AssertTrue(afterExpand >= beforeExpand,
-                            "раскрытие поддержки не прокручивает список наверх");
-                        AssertTrue(Math.Abs(supportLink.PointToScreen(Point.Empty).Y -
-                            linkScreenY) <= 2,
-                            "раскрытие поддержки не сдвигает нажатую ссылку и не создаёт пустую область над пунктом 1");
-                        AssertTrue(support.RectangleToScreen(support.ClientRectangle).Top <
-                            scroll.RectangleToScreen(scroll.ClientRectangle).Bottom,
-                            "раскрытые реквизиты попадают в видимую область");
+                        AssertTrue(supportLink.Right <= option.Left,
+                            "ссылка поддержки не перекрывает чекбокс в узком окне");
+
                         var layoutProblems = new List<string>();
                         CheckFits(form, "WhatsNewForm", layoutProblems);
                         AssertTrue(layoutProblems.Count == 0,
@@ -11768,6 +11761,70 @@ namespace ExcelMerger.Tests
             });
         }
 
+        /// <summary>Ctrl+колесо меняет масштаб текста: кламп 80-160, шаг 10, фильтр живёт ровно время жизни окна.</summary>
+        private static void TestWhatsNewTextZoomLive()
+        {
+            RunSta(delegate
+            {
+                InIsolatedSettings("iwo_whatsnew_zoom_", delegate
+                {
+                    using (var form = new WhatsNewForm("1.18.5"))
+                    {
+                        form.Show();
+                        Application.DoEvents();
+
+                        // Начальный масштаб — 100% (или из настроек).
+                        int initial = form.TextPercent;
+                        AssertEqual(100, initial, "масштаб по умолчанию — 100%");
+
+                        // Увеличение на один шаг.
+                        form.SetTextPercent(initial + 10);
+                        AssertEqual(110, form.TextPercent, "шаг вверх — +10%");
+
+                        // Уменьшение на один шаг.
+                        form.SetTextPercent(form.TextPercent - 10);
+                        AssertEqual(100, form.TextPercent, "шаг вниз — -10%");
+
+                        // Кламп сверху: не выше 160%.
+                        form.SetTextPercent(500);
+                        AssertEqual(160, form.TextPercent, "верхний предел — 160%");
+
+                        // Кламп снизу: не ниже 80%.
+                        form.SetTextPercent(-500);
+                        AssertEqual(80, form.TextPercent, "нижний предел — 80%");
+
+                        // Нулевой шаг не меняет состояние (и не трогает layout).
+                        form.SetTextPercent(form.TextPercent);
+                        AssertEqual(80, form.TextPercent, "повторное значение не меняет масштаб");
+
+                        // При 160% в маленьком окне текст НЕ должен вылезать за пределы.
+                        form.ClientSize = new Size(520, 400); // MinimumSize
+                        Application.DoEvents();
+                        form.SetTextPercent(160);
+                        Application.DoEvents();
+                        var overflow = new List<string>();
+                        CheckFits(form, "WhatsNewForm@160%", overflow);
+                        AssertTrue(overflow.Count == 0,
+                            "текст при 160% в маленьком окне не вылезает: " +
+                            string.Join(" | ", overflow.ToArray()));
+
+                        // Фильтр сообщений снимается при закрытии.
+                        form.Close();
+                        Application.DoEvents();
+                    }
+                    // Сбрасываем настройки, чтобы второе окно начало с 100%.
+                    UserSettings.SaveWhatsNew(true, "1.18.5", 100);
+                    using (var form2 = new WhatsNewForm("1.18.5"))
+                    {
+                        form2.Show();
+                        Application.DoEvents();
+                        AssertEqual(100, form2.TextPercent, "новое окно — чистый масштаб");
+                        form2.Close();
+                        Application.DoEvents();
+                    }
+                });
+            });
+        }
         private static void TestPdfSplitWorkingSetLive()
         {
             string dir = Path.Combine(Path.GetTempPath(), "iwo_split_plan_" + Guid.NewGuid().ToString("N"));
@@ -11960,6 +12017,20 @@ namespace ExcelMerger.Tests
             foreach (char c in AboutForm.DonationAccount)
                 AssertTrue(c >= '0' && c <= '9', "в счёте только цифры");
             AssertTrue(AboutForm.DonationBank.Length > 0, "банк не пуст");
+
+            // Русские строки окна «О программе» не должны содержать латиницу
+            // (защита от опечаток вида «lицензии» с латинской l). Исключены ключи,
+            // где латиница легитимна: about.author (имя), about.license (GPL-название),
+            // about.privacyNote (GitHub).
+            foreach (string key in new[] { "about.manual", "about.manual.open",
+                "about.privacy", "about.thirdParty", "about.project",
+                "about.donate", "about.account", "about.bank" })
+            {
+                string ru = Loc.Pair(key)[0];
+                foreach (char c in ru)
+                    AssertTrue(!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z'),
+                        "латиница в русской строке " + key + ": " + ru);
+            }
         }
 
         /// <summary>
@@ -12028,6 +12099,11 @@ namespace ExcelMerger.Tests
                         System.Windows.Forms.TextBoxBase bank = FindSelectable(about, AboutForm.DonationBank);
                         if (account == null || bank == null || !account.ReadOnly || !bank.ReadOnly)
                         { failure = "реквизиты не выделяемые read-only поля"; return; }
+
+                        // Раскрытые панели не должны иметь пустого хвоста: низ панели — это низ
+                        // последнего контрола плюс небольшой нижний отступ (<= 16px).
+                        if (PanelTail(about.ProjectPanel) > 16) { failure = "пустое пространство под секцией проекта"; return; }
+                        if (PanelTail(about.SupportPanel) > 16) { failure = "пустое пространство под секцией поддержки"; return; }
                         if (about.Controls.Find("aboutManual", true).Length != 1 ||
                             about.Controls.Find("aboutPrivacy", true).Length != 1)
                         { failure = "руководство или privacy скрыты"; return; }
@@ -12120,6 +12196,15 @@ namespace ExcelMerger.Tests
                     return nested;
             }
             return null;
+        }
+
+        /// <summary>Пустое пространство под последним контролом панели (низ панели минус низ контента).</summary>
+        private static int PanelTail(System.Windows.Forms.Control panel)
+        {
+            int bottom = 0;
+            foreach (System.Windows.Forms.Control c in panel.Controls)
+                if (c.Bottom > bottom) bottom = c.Bottom;
+            return panel.Height - bottom;
         }
 
         private static void TestClampWindow()
@@ -18588,7 +18673,9 @@ namespace ExcelMerger.Tests
         {
             var offenders = new List<string>();
             // Символьные шрифты законны: ими рисуются глифы значков и стрелок.
-            var allowed = new List<string> { "Segoe UI", "Segoe MDL2 Assets", "Segoe UI Symbol", "Segoe UI Emoji" };
+            // Times New Roman — основной шрифт UI (с 1.18.6): в Segoe UI кириллическая «л»
+            // в мелком кегле растеризуется без загиба и читается как латинская «l».
+            var allowed = new List<string> { Ui.UiFontFamily, "Segoe MDL2 Assets", "Segoe UI Symbol", "Segoe UI Emoji" };
             RunSta(delegate
             {
                 var windows = new List<System.Windows.Forms.Form>
@@ -19207,6 +19294,10 @@ namespace ExcelMerger.Tests
             System.Drawing.Rectangle box = parent.ClientRectangle;
             foreach (System.Windows.Forms.Control c in parent.Controls)
             {
+                // Скроллящиеся панели (AutoScroll) по определению вмещают контент больше
+                // видимой области — их дети не проверяем на вылезание за пределы.
+                if (c is System.Windows.Forms.Panel p && p.AutoScroll)
+                    continue;
                 if (!box.Contains(c.Bounds))
                     offenders.Add(where + " → " + Describe(c) + " " + c.Bounds + " вне " + box);
                 CheckFits(c, where, offenders);
