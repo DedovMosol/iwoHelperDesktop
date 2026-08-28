@@ -25,10 +25,10 @@ namespace ExcelMerger
         private readonly string _version;
         private readonly Panel _scroll;
         private readonly List<Panel> _cards = new List<Panel>();
-        private readonly List<RichTextBox> _cardBodies = new List<RichTextBox>();
+        private readonly List<NonSelectableText> _cardBodies = new List<NonSelectableText>();
         private readonly LinkLabel _supportLink;
         private readonly Panel _supportPanel;
-        private RichTextBox _supportNote;
+        private NonSelectableText _supportNote;
         private Label _supportAccountLabel, _supportBankLabel;
         private TextBox _supportAccount, _supportBank;
         private readonly AccentCheckBox _dontShow;
@@ -150,15 +150,24 @@ namespace ExcelMerger
                 BackColor = Theme.HubBlue,
                 TextAlign = ContentAlignment.MiddleCenter
             };
-            numberLabel.SetBounds(14, 14, 30, 30);
+            // Номер центрируется по вертикали относительно текста карточки, а не сверху.
+            numberLabel.SetBounds(14, 0, 30, 30); // Y пересчитается после body
             card.Controls.Add(numberLabel);
-            RichTextBox body = JustifiedText.Paragraph(card, text, 58, 14,
-                Math.Max(100, DefaultWidth - 2 * Pad - 76), Theme.TextPrimary);
+            var body = new NonSelectableText
+            {
+                Text = text,
+                Font = TextFont(),
+                ForeColor = Theme.TextPrimary,
+                BackColor = Color.White
+            };
+            body.SetBounds(58, 14,
+                Math.Max(100, DefaultWidth - 2 * Pad - 76),
+                NonSelectableText.MeasureHeight(text, body.Font,
+                    Math.Max(100, DefaultWidth - 2 * Pad - 76)));
             body.Name = "whatsNewItem" + number;
-            body.TabStop = false;
-            body.Font = TextFont();
             _cardBodies.Add(body);
             card.Height = Math.Max(58, body.Bottom + 14);
+            numberLabel.Top = (card.Height - numberLabel.Height) / 2;
             _scroll.Controls.Add(card);
             return card;
         }
@@ -217,14 +226,14 @@ namespace ExcelMerger
                 for (int i = 0; i < _cards.Count; i++)
                 {
                     Panel card = _cards[i];
-                    RichTextBox body = _cardBodies[i];
+                    NonSelectableText body = _cardBodies[i];
                     int bodyWidth = Math.Max(120, width - 72);
                     body.Font = TextFont();
                     body.SetBounds(58, 14, bodyWidth,
-                        JustifiedText.Height(body.Text, body.Font, bodyWidth));
-                    if (body.IsHandleCreated)
-                        JustifiedText.Justify(body);
+                        NonSelectableText.MeasureHeight(body.Text, body.Font, bodyWidth));
                     card.SetBounds(Pad, y, width, Math.Max(58, body.Bottom + 14));
+                    // Номер центрируется по вертикали относительно текста.
+                    card.Controls[0].Top = (card.Height - card.Controls[0].Height) / 2;
                     y = card.Bottom + 10;
                 }
                 LayoutSupportPanel(width);
@@ -245,9 +254,7 @@ namespace ExcelMerger
             int innerWidth = Math.Max(160, width - 28);
             _supportNote.Font = TextFont();
             _supportNote.SetBounds(14, 10, innerWidth,
-                JustifiedText.Height(_supportNote.Text, _supportNote.Font, innerWidth));
-            if (_supportNote.IsHandleCreated)
-                JustifiedText.Justify(_supportNote);
+                NonSelectableText.MeasureHeight(_supportNote.Text, _supportNote.Font, innerWidth));
 
             int y = _supportNote.Bottom + 12;
             _supportAccountLabel.Font = TextFont();
@@ -271,10 +278,17 @@ namespace ExcelMerger
                 Height = 128,
                 Font = Font
             };
-            _supportNote = JustifiedText.Paragraph(panel, Loc.T("whatsnew.support.body"),
-                14, 10, DefaultWidth - 2 * Pad - 28, Theme.TextPrimary);
-            _supportNote.BackColor = panel.BackColor;
-            _supportNote.TabStop = false;
+            _supportNote = new NonSelectableText
+            {
+                Text = Loc.T("whatsnew.support.body"),
+                Font = TextFont(),
+                ForeColor = Theme.TextPrimary,
+                BackColor = panel.BackColor
+            };
+            _supportNote.SetBounds(14, 10, DefaultWidth - 2 * Pad - 28,
+                NonSelectableText.MeasureHeight(_supportNote.Text, _supportNote.Font,
+                    DefaultWidth - 2 * Pad - 28));
+            panel.Controls.Add(_supportNote);
             _supportAccountLabel = Ui.Label(panel, Loc.T("about.account"), 14, 56,
                 Font, Theme.TextMuted);
             _supportAccount = Selectable(AboutForm.DonationAccount);
