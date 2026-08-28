@@ -359,6 +359,15 @@ namespace ExcelMerger
                 return false;
             if ((ModifierKeys & Keys.Control) == 0)
                 return false; // без Ctrl — обычная прокрутка, не трогаем
+            // Фильтр глобален (Application.AddMessageFilter): реагируем, только если сообщение
+            // адресовано ЭТОМУ окну или его дочернему контролу — чужой Ctrl+колесо в другой
+            // форме не должен менять наш текст, а фильтр не должен мешать чужой активации.
+            if (m.HWnd != Handle)
+            {
+                Control target = FromChildHandle(m.HWnd);
+                if (target == null || !Contains(target))
+                    return false;
+            }
             int delta = (short)((long)m.WParam >> 16);
             SetTextPercent(_textPercent + (delta > 0 ? TextStepPercent : -TextStepPercent));
             return true;
