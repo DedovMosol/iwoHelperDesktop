@@ -11730,7 +11730,12 @@ namespace ExcelMerger.Tests
                             form.Top + form.Height / 2);
                         AssertTrue(Math.Abs(formCenter.X - (work.Left + work.Width / 2)) <= 8 &&
                                    Math.Abs(formCenter.Y - (work.Top + work.Height / 2)) <= 8,
-                            "ручное открытие без owner центрируется на рабочем экране");
+                            "ручное открытие без owner центрируется на рабочем экране" +
+                            " [diag] formCenter=" + formCenter.X + "," + formCenter.Y +
+                            " workCenter=" + (work.Left + work.Width / 2) + "," + (work.Top + work.Height / 2) +
+                            " form=" + form.Left + "," + form.Top + "," + form.Width + "x" + form.Height +
+                            " work=" + work.Left + "," + work.Top + "," + work.Width + "x" + work.Height +
+                            " screens=" + Screen.AllScreens.Length);
                         AssertTrue(!support.Visible,
                             "реквизиты не навязываются и изначально свернуты");
                         AssertTrue(option.Checked,
