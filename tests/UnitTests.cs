@@ -19,13 +19,15 @@ namespace ExcelMerger.Tests
     /// в отдельный консольный exe (tests\build_tests.cmd) и не попадают
     /// в производственную сборку. Код выхода 0 — все тесты прошли.
     /// </summary>
-    internal static class UnitTests
+    internal static partial class UnitTests
     {
         private static int _passed;
         private static int _failed;
 
-        private static int Main()
+        private static int Main(string[] args)
         {
+            if (!ConfigureRunner(args))
+                return 2;
             Run("SheetNamer: запрещённые символы заменяются на «_»", TestNamerForbiddenChars);
             Run("SheetNamer: обрезка до 31 символа", TestNamerTruncation);
             Run("SheetNamer: дедупликация суффиксами _2, _3", TestNamerDedupe);
@@ -558,19 +560,40 @@ namespace ExcelMerger.Tests
             Run("RasterBudget: пиксели, ширина и DPI ограничены", TestRasterBudget);
             Run("PageBackgrounds: runs не плодятся на разреженной выборке", TestBackgroundRenderRuns);
 
+            int registered = _passed + _failed;
+            RunDiscoveredTests(); // тесты с атрибутом [Test] — без ручной строки Run(...)
+
             Console.WriteLine();
-            Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed);
+            Console.WriteLine("Пройдено: " + _passed + ", провалено: " + _failed +
+                (_skipped > 0 ? ", пропущено: " + _skipped : ""));
+            int code = _failed == 0 ? 0 : 1;
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
+            // При фильтре счёт не сверяется: выбрана заведомо часть набора.
             const int ExactTests = 523;
-            int total = _passed + _failed;
-            int code = _failed == 0 ? 0 : 1;
-            if (total != ExactTests)
+            if (_filter == null)
             {
-                Console.WriteLine("ОШИБКА: тестов " + total + ", а зарегистрировано должно быть ровно " +
-                    ExactTests + " — проверьте список Run(...).");
+                if (registered != ExactTests)
+                {
+                    Console.WriteLine("ОШИБКА: тестов в списке Run(...) " + registered +
+                        ", а зарегистрировано должно быть ровно " + ExactTests + " — проверьте список.");
+                    code = 1;
+                }
+                string orphans = UnregisteredTestMethods();
+                if (orphans.Length > 0)
+                {
+                    // Написанный, но не подключённый тест — зелёный прогон, который ничего не проверил.
+                    Console.WriteLine("ОШИБКА: тестовые методы не зарегистрированы и не помечены [Test]: " + orphans);
+                    code = 1;
+                }
+            }
+            if (_strictSkips && _skipped > 0)
+            {
+                Console.WriteLine("ОШИБКА: строгий режим (IWO_STRICT=1) — пропуски недопустимы: " + _skipped);
                 code = 1;
             }
+            try { Directory.Delete(_sessionRoot, true); } catch { } // профиль прогона больше не нужен
+            Console.Out.Flush();
             // Выходим ЖЁСТКО, как и само приложение (см. FastExit): живые тесты открывают
             // настоящие окна, а те трогают WinRT, и штатная выгрузка процесса роняет access
             // violation уже ПОСЛЕ того, как все проверки прошли. Прогон при этом выглядит
@@ -1627,7 +1650,7 @@ namespace ExcelMerger.Tests
             }
             finally
             {
-                AppPaths.SetRootForTests(null);
+                AppPaths.SetRootForTests(_sessionRoot);
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -12661,7 +12684,7 @@ namespace ExcelMerger.Tests
             }
             finally
             {
-                AppPaths.SetRootForTests(null);
+                AppPaths.SetRootForTests(_sessionRoot);
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -16805,17 +16828,9 @@ namespace ExcelMerger.Tests
 
         private static void Run(string name, Action test)
         {
-            try
-            {
-                test();
-                _passed++;
-                Console.WriteLine("PASS  " + name);
-            }
-            catch (Exception ex)
-            {
-                _failed++;
-                Console.WriteLine("FAIL  " + name + " — " + ex.Message);
-            }
+            if (test != null)
+                _registeredMethods.Add(test.Method);
+            RunCore(name, test);
         }
 
         // ---------- буфер страниц, поворот, кэш миниатюр (1.17.0) ----------
@@ -17715,7 +17730,7 @@ namespace ExcelMerger.Tests
             }
             finally
             {
-                AppPaths.SetRootForTests(null);
+                AppPaths.SetRootForTests(_sessionRoot);
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -17757,7 +17772,7 @@ namespace ExcelMerger.Tests
             }
             finally
             {
-                AppPaths.SetRootForTests(null);
+                AppPaths.SetRootForTests(_sessionRoot);
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -17788,7 +17803,7 @@ namespace ExcelMerger.Tests
             }
             finally
             {
-                AppPaths.SetRootForTests(null);
+                AppPaths.SetRootForTests(_sessionRoot);
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -17887,7 +17902,7 @@ namespace ExcelMerger.Tests
             th.IsBackground = true;
             th.Start();
             th.Join();
-            AppPaths.SetRootForTests(null);
+            AppPaths.SetRootForTests(_sessionRoot);
             try { Directory.Delete(root, true); } catch { }
             AssertTrue(failure == null, "WindowPlacement.Attach: " + failure);
         }
@@ -18471,7 +18486,7 @@ namespace ExcelMerger.Tests
             }
             finally
             {
-                AppPaths.SetRootForTests(null);
+                AppPaths.SetRootForTests(_sessionRoot);
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -18497,7 +18512,7 @@ namespace ExcelMerger.Tests
             finally
             {
                 Loc.Init(saved);
-                AppPaths.SetRootForTests(null);
+                AppPaths.SetRootForTests(_sessionRoot);
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -19503,7 +19518,7 @@ namespace ExcelMerger.Tests
             }
             finally
             {
-                AppPaths.SetRootForTests(null);
+                AppPaths.SetRootForTests(_sessionRoot);
                 try { Directory.Delete(root, true); } catch { }
             }
             if (error != null)

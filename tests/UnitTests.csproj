@@ -30,7 +30,8 @@
 
   <ItemGroup>
     <Compile Include="..\src\**\*.cs" />
-    <Compile Include="UnitTests.cs" />
+    <!-- Все исходники тестов каталога (раннер, основной набор, тематические файлы). -->
+    <Compile Include="*.cs" />
   </ItemGroup>
 
   <ItemGroup>
