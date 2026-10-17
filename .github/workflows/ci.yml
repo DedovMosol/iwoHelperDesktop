@@ -205,7 +205,11 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
+      # Вся история и все теги: проверка авторства смотрит каждый достижимый коммит,
+      # а при неглубокой копии видела бы один последний.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -213,3 +217,13 @@ jobs:
 
       - name: Ссылки README (адреса, якоря разделов, пути в репозитории)
         run: python tools/check_readme_links.py
+
+      - name: Тесты проверки авторства коммитов и хука commit-msg
+        run: python -m unittest discover -s tools -p "test_*.py" -v
+
+      # В истории — только коммиты автора проекта и без строк соавторства: список участников
+      # GitHub строит из них, и исправить его потом можно только переписав историю. У запроса
+      # на слияние проверять нечего — в main попадает то, что зальёт сам автор.
+      - name: Авторство коммитов и тегов
+        if: github.event_name != 'pull_request'
+        run: python tools/check_commit_metadata.py

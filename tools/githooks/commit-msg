@@ -1,0 +1,17 @@
+#!/bin/sh
+# Хук commit-msg: коммит делает только автор проекта, без строк соавторства в сообщении.
+# Правила — в tools/check_commit_metadata.py (их же проверяет CI). Подключение — один раз
+# в своей копии репозитория: git config core.hooksPath tools/githooks
+#
+# Python ищем по-настоящему, а не по имени: на Windows «python» в PATH бывает заглушкой
+# магазина приложений, которая ничего не запускает. Нет рабочего Python — коммит не
+# проходит: тихо пропустить проверку значило бы обещать то, чего хук не сделал.
+# Скрипт ищем рядом с самим хуком: так он находится при любом способе подключения.
+script="$(cd "$(dirname "$0")" && pwd)/../check_commit_metadata.py"
+for candidate in python3 python py; do
+    if "$candidate" -c "import sys; sys.exit(0 if sys.version_info >= (3, 6) else 1)" >/dev/null 2>&1; then
+        exec "$candidate" "$script" --commit-msg "$1"
+    fi
+done
+echo "commit-msg: не найден Python 3.6+, проверка автора коммита невозможна" >&2
+exit 1

@@ -41,10 +41,25 @@ forms, so a windowless session cannot run them.
 - **UI strings go through `Loc`** in both languages, generated documents (cover note,
   TOC, reports) intentionally stay Russian.
 
+## Commits
+
+The history holds commits by the maintainer only, with no `Co-authored-by` or other
+attribution lines: GitHub builds the contributors list from them, and the only way to
+correct it afterwards is rewriting history. Accepted pull requests are therefore landed by
+the maintainer. `tools/check_commit_metadata.py` holds the rules; CI checks every commit and
+tag with it, and the `commit-msg` hook applies the same rules before a commit exists — it
+drops attribution lines from the message and refuses a foreign author. Enable it once per
+clone:
+
+```
+git config core.hooksPath tools/githooks
+```
+
 ## Pull requests
 
 - Branch from `main`, keep the diff focused, add tests for new logic.
-- CI must be green: build, unit tests, GUI smoke, dependency probes, installer check.
+- CI must be green: build, unit tests, GUI smoke, dependency probes, installer check,
+  README links and commit metadata.
 - Describe the user-visible change in the PR text — it becomes a
   [CHANGELOG](docs/CHANGELOG.md) entry at release time.
 

@@ -4,6 +4,8 @@
 
 # Батники исполняет cmd.exe — ему нужен CRLF в рабочей копии на любой машине.
 *.cmd text eol=crlf
+# Хуки git исполняет sh — с CRLF в рабочей копии Windows он спотыкается о «\r».
+tools/githooks/* text eol=lf
 
 # Явно текстовые исходники и документы.
 *.cs text
