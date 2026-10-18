@@ -1525,7 +1525,9 @@ namespace ExcelMerger
             {
                 Left = result.Left,
                 Right = result.Right,
-                WorkExhausted = result.WorkExhausted
+                WorkExhausted = result.WorkExhausted,
+                // Ручная пара не пересчитывает стадии: их неполнота переходит в копию как есть.
+                IncompleteStages = result.IncompleteStages
             };
             paired.ReplaceOperations(result.Operations);
             paired.ReplaceWhitespaceChanges(result.WhitespaceChanges);
