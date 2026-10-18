@@ -191,16 +191,12 @@ namespace ExcelMerger
         {
             if (Working || _order.Count == 0)
                 return;
-            string outputPath;
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfSaveFilter");
-                dialog.FileName = Loc.T("pdf.defaultName");
-                dialog.InitialDirectory = Path.GetDirectoryName(_order[0].SourcePath);
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                outputPath = dialog.FileName;
-            }
+            // Папка — первой НАСТОЯЩЕЙ страницы: у пустого листа в начале набора это папка
+            // временных обёрток окна, и сохранённое туда пропадало бы вместе с ней.
+            string outputPath = AskSavePath(Loc.T("common.pdfSaveFilter"), Loc.T("pdf.defaultName"),
+                OutputFolderHint());
+            if (outputPath == null)
+                return;
 
             var pages = _order.ToList();
             CompressionLevel level = _compress.Level; // читаем с UI-потока до старта воркера
@@ -212,7 +208,7 @@ namespace ExcelMerger
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
-                bool compressed = false;
+                GsRewriteResult compression = GsRewriteResult.RejectedByPolicy;
                 try
                 {
                     PdfMergeService.Merge(pages, outputPath, onProgress, cancel, padEven);
@@ -237,35 +233,39 @@ namespace ExcelMerger
                         if (willCompress)
                             BeginIndeterminate(Loc.T("common.status.compressing"));
                     });
-                    compressed = PdfCompression.Compress(outputPath, level);
+                    // Полный исход, а не «заменён ли файл»: сбой движка и «уже оптимизирован»
+                    // человеку надо сообщать по-разному (см. CompressedPart).
+                    compression = PdfCompression.CompressDetailed(outputPath, level);
                 }
-                bool didCompress = compressed;
-                OnUi(delegate { OnSaveFinished(error, outputPath, pages.Count, didCompress, level); });
+                GsRewriteResult result = compression;
+                OnUi(delegate { OnSaveFinished(error, outputPath, pages.Count, result, level); });
             });
         }
 
-        private void OnSaveFinished(Exception error, string outputPath, int pageCount, bool compressed, CompressionLevel level)
+        private void OnSaveFinished(Exception error, string outputPath, int pageCount, GsRewriteResult compression,
+            CompressionLevel level)
         {
             if (!FinishOperation(error, Loc.T("pdf.status.saveFailed"), Loc.T("pdf.err.saveFailed")))
                 return; // отмена или ошибка — статус и диалог уже показаны базой
             UsageStats.RecordPdfMerge();
             OperationHistory.Record("hist.op.merge", outputPath);
             _lastResult = outputPath; // теперь есть что отдать в «Прочие операции»
-            if (compressed)
+            if (compression == GsRewriteResult.Applied)
                 UsageStats.RecordPdfCompress();
-            SetStatus(DoneStatus(pageCount, compressed, level), Theme.OkGreen);
+            SetSavedStatus(compression == GsRewriteResult.Failed, DoneStatus(pageCount, compression, level));
             Ui.OpenPath(outputPath); // авто-открытие результата; молча, если нет ассоциации PDF
         }
 
         /// <summary>
-        /// Строка успешного сохранения: число записанных страниц и, если сжатие сработало,
-        /// разрешение, до которого уменьшены изображения. Отдельным методом, чтобы подстановка
-        /// значений проверялась тестом, а не только глазами. Чистая — под тест.
+        /// Строка сохранения: число записанных страниц и, если сжатие сработало, разрешение, до
+        /// которого уменьшены изображения; сбой движка — под «⚠», а не под галочкой. Отдельным
+        /// методом, чтобы подстановка значений проверялась тестом, а не только глазами.
+        /// Чистая — под тест.
         /// </summary>
-        internal static string DoneStatus(int pageCount, bool compressed, CompressionLevel level)
+        internal static string DoneStatus(int pageCount, GsRewriteResult compression, CompressionLevel level)
         {
-            return SuccessStatus(string.Format(Loc.T("pdf.status.pagesSaved"), pageCount),
-                CompressedPart(compressed, level));
+            return SavedStatus(compression == GsRewriteResult.Failed,
+                string.Format(Loc.T("pdf.status.pagesSaved"), pageCount), CompressedPart(compression, level));
         }
 
         /// <summary>

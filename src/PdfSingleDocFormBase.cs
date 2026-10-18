@@ -69,8 +69,33 @@ namespace ExcelMerger
             _grid.DropHint = Loc.T("common.grid.dropOpen");
             _grid.DropExtensions = DropExtensions;
             WireOrderGrid();
-            _grid.FilesDropped += delegate(string[] paths, int insertAt) { AcceptDroppedPaths(paths); };
-            WireFileDrop(AcceptDroppedPaths, DropExtensions);
+            _grid.FilesDropped += delegate(string[] paths, int insertAt) { AcceptDroppedLater(paths); };
+            WireFileDrop(AcceptDroppedLater, DropExtensions);
+        }
+
+        /// <summary>
+        /// Разобрать брошенное ПОСЛЕ выхода из обработчика OLE-дропа. Открытие документа может
+        /// спросить «заменить собранное?», а модальное окно внутри DragDrop держит источник
+        /// перетаскивания: Проводник висит, пока человек не ответит. Окна ещё нет (дроп без
+        /// цикла сообщений не бывает) — разбираем сразу.
+        /// </summary>
+        private void AcceptDroppedLater(string[] paths)
+        {
+            if (paths == null || paths.Length == 0 || IsDisposed)
+                return;
+            string[] snapshot = (string[])paths.Clone(); // массив данных дропа живёт до выхода из обработчика
+            if (!IsHandleCreated)
+            {
+                AcceptDroppedPaths(snapshot);
+                return;
+            }
+            // Общая обвязка: окно, разрушенное между проверкой и постановкой в очередь, —
+            // молчаливый отказ, а не исключение в обработчик дропа Проводника.
+            OnUi(delegate
+            {
+                if (!IsDisposed)
+                    AcceptDroppedPaths(snapshot);
+            });
         }
 
         /// <summary>Что инструмент принимает перетаскиванием. По умолчанию только PDF.</summary>
@@ -87,10 +112,13 @@ namespace ExcelMerger
                 LoadSource(paths[0]); // LoadSource гейтит занятость сам
         }
 
-        /// <summary>Дроп файлов на карточку стартового экрана — тем же путём, что и на окно.</summary>
+        /// <summary>
+        /// Дроп файлов на карточку стартового экрана — тем же путём, что и на окно, и тоже
+        /// отложенно: карточка зовёт это из СВОЕГО обработчика DragDrop.
+        /// </summary>
         public void AcceptFiles(string[] paths)
         {
-            AcceptDroppedPaths(paths);
+            AcceptDroppedLater(paths);
         }
 
         /// <summary>Спросить файл и открыть его.</summary>
@@ -153,7 +181,7 @@ namespace ExcelMerger
                     if (wasCancelled || LoadCancellationRequested)
                     {
                         FinishCanceledLoad();
-                        OnLoadAttemptFinished(false);
+                        OnLoadAttemptFinished(LoadAttempt.Canceled);
                         return;
                     }
                     if (needPassword)
@@ -191,7 +219,7 @@ namespace ExcelMerger
             {
                 RefreshRestingStatus(); // вернуть статус прежнего документа вместо залипшей «Загрузка…»
                 Dialogs.Error(this, ToolTitle, Loc.T("common.err.fileNotOpened"), error); // прежний документ остаётся
-                OnLoadAttemptFinished(false);
+                OnLoadAttemptFinished(LoadAttempt.NotLoaded);
                 return;
             }
             _sourcePath = path;
@@ -203,15 +231,24 @@ namespace ExcelMerger
                 Theme.TextMuted);
             OnSourceLoaded();
             SyncControls();
-            OnLoadAttemptFinished(true);
+            OnLoadAttemptFinished(LoadAttempt.Loaded);
+        }
+
+        /// <summary>Чем кончилась попытка открыть документ.</summary>
+        protected enum LoadAttempt
+        {
+            Loaded,    // документ открыт
+            NotLoaded, // не открылся (ошибка, отказ от пароля) или разбор вовсе не начинался
+            Canceled   // человек сам отменил загрузку
         }
 
         /// <summary>
         /// Попытка открыть документ завершилась — удачно или нет. Нужен тем, у кого на очереди
         /// ждёт своя работа: «Прочие операции» так добавляют картинки, брошенные вместе с PDF
-        /// (сразу их добавить нельзя — окно занято разбором, и они пропали бы молча).
+        /// (сразу их добавить нельзя — окно занято разбором, и они пропали бы молча). Отмену
+        /// отличаем от сбоя: отменённый жест не должен доделываться своей второй половиной.
         /// </summary>
-        protected virtual void OnLoadAttemptFinished(bool loaded) { }
+        protected virtual void OnLoadAttemptFinished(LoadAttempt outcome) { }
 
         /// <summary>Документ открыт — наследник может подстроить свои поля. По умолчанию ничего.</summary>
         protected virtual void OnSourceLoaded() { }

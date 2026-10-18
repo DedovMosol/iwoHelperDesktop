@@ -244,6 +244,11 @@ namespace ExcelMerger
             A("common.status.printingPage", "Печать: страница {0} из {1}…", "Printing: page {0} of {1}…");
             A("common.status.printed", "Отправлено на печать страниц: {0}", "Pages sent to the printer: {0}");
             A("common.err.printFailed", "Не удалось напечатать", "Could not print");
+            // Страницу не удалось отрисовать под печать: пустой лист вместо неё и «✓ отправлено»
+            // в статусе были бы враньём, поэтому задание прерывается с этим объяснением.
+            A("common.err.printPageFailed",
+                "Не удалось подготовить к печати страницу {0} («{1}»): не хватило памяти или страница повреждена. Печать остановлена.",
+                "Could not prepare page {0} (“{1}”) for printing: not enough memory or the page is damaged. Printing was stopped.");
             A("common.btn.print", "Печать", "Print");
             A("common.tip.print",
                 "Напечатать выделенные страницы, а если ничего не выделено — все.",
@@ -558,6 +563,9 @@ namespace ExcelMerger
             A("ops.err.sameFile.body",
                 "Приложение не изменяет исходные файлы. Укажите другое имя — результат появится рядом.",
                 "The app does not modify source files. Choose another name and the result will appear alongside.");
+            // Последний абзац: движку отдаётся расшифрованная копия (пароль в командной строке
+            // видит любой процесс), и защита на открытие в результат не переходит — человек
+            // должен знать это заранее, а не обнаружить у получателя.
             A("ops.help.body",
                 "1. Наберите страницы: откройте PDF («Открыть PDF…» или перетаскиванием) либо добавьте картинки («Добавить картинки…»). Каждая картинка становится листом A4 с полями.\n" +
                 "2. При надобности соберите документ в сетке: страницы переставляются перетаскиванием, поворачиваются кнопками на плитке и убираются клавишей Delete (Ctrl+Z возвращает). Любое действие пойдёт по СОБРАННОМУ документу, а не по файлу.\n" +
@@ -570,7 +578,8 @@ namespace ExcelMerger
                 "• «Текст в .txt…» — текстовый слой документа, таблицы сохраняются ячейками через табуляцию.\n" +
                 "• «Печать…» — выделенные страницы (или все) на принтер, вместе с назначенными им поворотами.\n" +
                 "• «Свойства документа…» — заголовок, автор, тема, ключевые слова. Пустое поле очищает свойство: так убирают имя автора перед отправкой.\n\n" +
-                "Отсканированный документ (без текстового слоя) текста не отдаст — там нечего извлекать.",
+                "Отсканированный документ (без текстового слоя) текста не отдаст — там нечего извлекать.\n\n" +
+                "Файл под паролем: «Сохранить PDF…» с правками или сжатием, «Сжать…» и «В оттенки серого…» дают результат без пароля. Пароль остаётся только у нетронутой копии без сжатия.",
                 "1. Collect the pages: open a PDF (“Open PDF…” or drag it in) or add images (“Add images…”). Every image becomes an A4 sheet with margins.\n" +
                 "2. Assemble the document in the grid if you need to: pages are reordered by dragging, rotated with the buttons on the tile and removed with Delete (Ctrl+Z brings them back). Every action then works on the ASSEMBLED document, not on the file.\n" +
                 "3. Click the action you need in the panel on the right. Every one writes its RESULT INTO A NEW FILE — the source is left as it was.\n\n" +
@@ -582,7 +591,8 @@ namespace ExcelMerger
                 "• “Text to .txt…” — the text layer of the document, tables are kept as tab-separated cells.\n" +
                 "• “Print…” — the selected pages (or all of them) to a printer, with the rotations assigned to them.\n" +
                 "• “Document properties…” — title, author, subject, keywords. An empty field clears the property: that is how the author's name is removed before sending.\n\n" +
-                "A scanned document (without a text layer) will not give up any text — there is nothing to extract there.");
+                "A scanned document (without a text layer) will not give up any text — there is nothing to extract there.\n\n" +
+                "Password-protected file: “Save PDF…” with edits or compression, “Compress…” and “To grayscale…” produce a result without the password. Only an untouched copy without compression keeps it.");
             A("preview.fit", "По окну", "Fit to window");
             A("preview.tip.zoomIn", "Увеличить (Ctrl+колесо)", "Zoom in (Ctrl+wheel)");
             A("preview.tip.zoomOut", "Уменьшить (Ctrl+колесо)", "Zoom out (Ctrl+wheel)");
@@ -609,6 +619,10 @@ namespace ExcelMerger
             // справился). Молчать об этом нельзя — человек его выбрал и ждёт ответа.
             A("common.suffix.notCompressed", "сжатие не уменьшило файл",
                 "compression did not make the file smaller");
+            // Сжатие заказали, но движок НЕ СПРАВИЛСЯ (нет Ghostscript, таймаут, негодный
+            // вывод). Это не «файл не уменьшился»: файл записан как есть, и сказать надо именно это.
+            A("common.suffix.compressFailed", "сжатие не удалось — файл сохранён без сжатия",
+                "compression failed — the file was saved uncompressed");
             A("grid.pageTip", "{0} — стр. {1}", "{0} — p. {1}");
             // Контекстное меню сетки страниц (подписи плиток — просто номера, без строк).
             A("grid.menu.cut", "Вырезать", "Cut");
@@ -963,6 +977,9 @@ namespace ExcelMerger
                 "compressed: {0} files, images to {1} dpi");
             A("split.suffix.compressedKeep", "сжато файлов: {0}, чёткость изображений сохранена",
                 "compressed: {0} files, image resolution kept");
+            // Для части файлов движок сжатия не справился — они записаны как есть.
+            A("split.suffix.compressFailed", "не удалось сжать файлов: {0} — они сохранены без сжатия",
+                "compression failed for {0} files — they were saved uncompressed");
             A("split.status.largeHint", " Файл крупный — включите «Сжатие», чтобы уменьшить размер.",
                 " The file is large — turn on “Compression” to reduce its size.");
             A("split.help.body",

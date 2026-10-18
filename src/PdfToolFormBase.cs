@@ -256,12 +256,18 @@ namespace ExcelMerger
         /// </summary>
         internal static string SuccessStatus(params string[] parts)
         {
+            return MarkedStatus("✓", parts);
+        }
+
+        /// <summary>Знак + непустые части через « · » + точка (общая пунктуация итоговых строк).</summary>
+        private static string MarkedStatus(string mark, string[] parts)
+        {
             var kept = new List<string>();
             if (parts != null)
                 foreach (string part in parts)
                     if (!string.IsNullOrEmpty(part))
                         kept.Add(part);
-            return kept.Count == 0 ? "" : "✓ " + string.Join(" · ", kept.ToArray()) + ".";
+            return kept.Count == 0 ? "" : mark + " " + string.Join(" · ", kept.ToArray()) + ".";
         }
 
         /// <summary>
@@ -284,6 +290,47 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// То же по полному исходу движка. Сбой Ghostscript (нет движка, таймаут, негодный
+        /// вывод) — НЕ «файл не уменьшился»: прежде оба исхода звучали одинаково, и человек
+        /// читал «уже оптимизирован» там, где сжатие просто не состоялось. Чистая — под тест.
+        /// </summary>
+        internal static string CompressedPart(GsRewriteResult result, CompressionLevel level)
+        {
+            // Failed при «без сжатия» не бывает (движок не зовут), но и тогда молчим: не заказывали.
+            if (result == GsRewriteResult.Failed && level != CompressionLevel.None)
+                return Loc.T("common.suffix.compressFailed");
+            return CompressedPart(result == GsRewriteResult.Applied, level);
+        }
+
+        /// <summary>
+        /// Строка итога записи с учётом сжатия: удача — как <see cref="SuccessStatus"/>, а если
+        /// сжатие сорвалось — те же части под «⚠» вместо «✓». Файл записан, но заказанного не
+        /// случилось, и галочка выдавала бы это за успех. Чистая — под тест.
+        /// </summary>
+        internal static string SavedStatus(bool compressionFailed, params string[] parts)
+        {
+            return MarkedStatus(compressionFailed ? "⚠" : "✓", parts);
+        }
+
+        /// <summary>
+        /// Показать итог записи, собранный <see cref="SavedStatus"/>: сбой сжатия — цветом
+        /// предупреждения, а не зелёным успехом. Одно место на все инструменты.
+        /// </summary>
+        protected void SetSavedStatus(bool compressionFailed, string text)
+        {
+            SetStatus(text, compressionFailed ? Theme.WarnOrange : Theme.OkGreen);
+        }
+
+        /// <summary>
+        /// Собрать итог записи из частей и показать его: знак и цвет решает один флаг, а не
+        /// две его копии у вызывающего. Для окон без отдельной чистой строки итога.
+        /// </summary>
+        protected void ShowSavedStatus(bool compressionFailed, params string[] parts)
+        {
+            SetSavedStatus(compressionFailed, SavedStatus(compressionFailed, parts));
+        }
+
+        /// <summary>
         /// Текст «покоя» статуса: при выделении — «Выбрано N из M», иначе — idle. Чистая — под тест.
         /// </summary>
         internal static string RestingStatus(int selected, int total, string idle, string selectedFormat)
@@ -293,6 +340,17 @@ namespace ExcelMerger
 
         /// <summary>Idle-текст статуса конкретного инструмента (без выделения). Переопределяют формы.</summary>
         protected virtual string IdleStatusText() { return ""; }
+
+        /// <summary>
+        /// Путь страницы так, как его знает человек. По умолчанию — сам путь; окна с правкой
+        /// набора подставляют вместо обёртки пустого листа его подпись, «Прочие операции» —
+        /// вместо обёртки картинки саму картинку. По нему страница названа в печати и выбрана
+        /// папка сохранения. Только UI-поток: наследники читают состояние окна.
+        /// </summary>
+        protected virtual string UserPathOf(string sourcePath)
+        {
+            return sourcePath;
+        }
 
         /// <summary>
         /// Имя инструмента для заголовков диалогов (реализуют формы). Объявлено здесь, а не в
@@ -1008,13 +1066,18 @@ namespace ExcelMerger
             }
             if (!ShowPrintPreview(pages, settings))
                 return; // посмотрели и передумали — бумага цела
+            // Имена страниц — как их знает человек, а не имена обёрток; на UI-потоке, до воркера:
+            // UserPathOf читает состояние окна.
+            var names = new System.Collections.Generic.List<string>(pages.Count);
+            foreach (PdfPageRef page in pages)
+                names.Add(UserPathOf(page.SourcePath));
             BeginOperation(Loc.T("common.status.printing"), pages.Count, Loc.T("common.status.printingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
-                try { PdfPrintService.Print(pages, settings, onProgress, cancel); }
+                try { PdfPrintService.Print(pages, settings, onProgress, cancel, names); }
                 catch (Exception ex) { error = ex; }
                 OnUi(delegate
                 {

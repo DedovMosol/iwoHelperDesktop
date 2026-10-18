@@ -227,16 +227,10 @@ namespace ExcelMerger
                 return;
             // Порядок/подмножество страниц из сетки (источник + индекс; страницы могут идти из разных файлов).
             List<PdfPageRef> order = _order.ToList();
-            string outPath;
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = _spec.Text("filter");
-                dialog.FileName = DefaultOutputName(order);
-                dialog.InitialDirectory = Path.GetDirectoryName(order[0].SourcePath);
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                outPath = dialog.FileName;
-            }
+            // Папка — первой настоящей страницы, а не временной обёртки пустого листа (см. базу).
+            string outPath = AskSavePath(_spec.Text("filter"), DefaultOutputName(order), OutputFolderHint());
+            if (outPath == null)
+                return;
 
             BeginOperation(_spec.Text("status.converting"), order.Count, _spec.Text("status.convertingPage"));
             Action<int, int> onProgress = UiProgress();

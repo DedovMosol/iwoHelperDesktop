@@ -42,17 +42,107 @@ namespace ExcelMerger
                                  printable.Y + (printable.Height - h) / 2, w, h);
         }
 
+        /// <summary>Сколько ждать освобождения памяти перед повторным рендером листа.</summary>
+        private const int MemoryWaitMs = 3000;
+
         /// <summary>
         /// Напечатать указанные страницы. settings уже выбраны пользователем в диалоге печати.
-        /// Отмена проверяется между страницами: начатый лист дорисовывается, следующий не идёт.
+        /// Отмена — своя (cancelled, между листами) или самой системы печати — прерывает всё
+        /// задание OperationCanceledException; страница, которую не удалось отрисовать, —
+        /// MergeException. Пустой лист вместо неё и «успех» в итоге были бы враньём.
+        ///
+        /// Передан cancelled — у вызывающего свои прогресс и «Отмена», и штатное окно состояния
+        /// печати не показывается: вторая «Отмена» на ту же операцию только путала бы. Без него
+        /// окно состояния остаётся — другого способа прервать печать у человека нет.
+        /// names — имена страниц для человека (см. <see cref="CreateJob"/>).
         /// </summary>
         public static void Print(IList<PdfPageRef> pages, PrinterSettings settings,
-            Action<int, int> progress = null, Func<bool> cancelled = null)
+            Action<int, int> progress = null, Func<bool> cancelled = null, IList<string> names = null)
         {
-            IDisposable renderer;
-            using (PrintDocument doc = CreateDocument(pages, settings, progress, cancelled, out renderer))
-            using (renderer)
-                doc.Print();
+            using (var owned = new PdfThumbnailRenderer())
+            using (PrintDocument doc = CreateJob(pages, settings, progress, cancelled, RenderWith(owned), true, names))
+            {
+                if (cancelled != null)
+                    doc.PrintController = new StandardPrintController();
+                // Исключение из обработчика листа (страница не отрисовалась, отмена) выходит
+                // отсюда, а контроллер печати при этом прерывает задание (AbortDoc): в очереди
+                // принтера не остаётся ни пустых листов, ни хвоста отменённого задания.
+                RunJob(doc);
+            }
+        }
+
+        /// <summary>
+        /// Выполнить задание контроллером документа и не выдать прерванное за удавшееся:
+        /// задание, закрытое контроллером как отменённое, — OperationCanceledException.
+        /// </summary>
+        internal static void RunJob(PrintDocument doc)
+        {
+            var watch = new CancelWatch(doc.PrintController);
+            doc.PrintController = watch;
+            doc.Print();
+            if (watch.Canceled)
+                throw new OperationCanceledException();
+        }
+
+        /// <summary>
+        /// Обёртка контроллера печати, запоминающая, закрыто ли задание как отменённое.
+        /// PrintDocument.Print об отмене молчит: «Отмена» в штатном окне состояния
+        /// (PrintControllerWithStatusDialog) и отказ в окне «Сохранить как» у печати в файл
+        /// (StartDoc → ERROR_CANCELLED у StandardPrintController) лишь ставят e.Cancel —
+        /// задание стирается (AbortDoc), а Print возвращается как после успеха. Событие
+        /// документа EndPrint для этого не годится: его зовут раньше, чем в e.Cancel попадает
+        /// отмена из цикла листов. Цикл листов ведёт ВНЕШНИЙ контроллер, поэтому обёртка
+        /// зовёт и базовые OnStartPrint/OnEndPrint (по ним размечаются листы) — так же устроен
+        /// и сам PrintControllerWithStatusDialog.
+        /// </summary>
+        private sealed class CancelWatch : PrintController
+        {
+            private readonly PrintController _inner;
+
+            internal CancelWatch(PrintController inner)
+            {
+                _inner = inner;
+            }
+
+            internal bool Canceled { get; private set; }
+
+            public override bool IsPreview { get { return _inner.IsPreview; } }
+
+            public override void OnStartPrint(PrintDocument document, PrintEventArgs e)
+            {
+                base.OnStartPrint(document, e);
+                _inner.OnStartPrint(document, e);
+            }
+
+            public override Graphics OnStartPage(PrintDocument document, PrintPageEventArgs e)
+            {
+                return _inner.OnStartPage(document, e);
+            }
+
+            public override void OnEndPage(PrintDocument document, PrintPageEventArgs e)
+            {
+                _inner.OnEndPage(document, e);
+            }
+
+            public override void OnEndPrint(PrintDocument document, PrintEventArgs e)
+            {
+                // Читаем ДО внутреннего контроллера: по этому же флагу он выбирает AbortDoc или
+                // EndDoc. Окно состояния ставит e.Cancel и после EndDoc («Отмена», когда всё уже
+                // ушло в очередь) — такое задание напечатано, и отменой оно не считается.
+                Canceled = e.Cancel;
+                try { _inner.OnEndPrint(document, e); }
+                finally { base.OnEndPrint(document, e); }
+            }
+        }
+
+        /// <summary>Рендер листа под печать этим рендерером (общий для печати и предпросмотра).</summary>
+        private static Func<PdfPageRef, int, BudgetedBitmap> RenderWith(PdfThumbnailRenderer renderer)
+        {
+            return delegate(PdfPageRef page, int width)
+            {
+                return renderer.RenderOwned(page.SourcePath, page.PageIndex, width, 0,
+                    RasterBudget.DefaultRenderPixels);
+            };
         }
 
         /// <summary>
@@ -63,21 +153,57 @@ namespace ExcelMerger
         /// renderer отдаётся наружу, потому что страницы рисуются лениво, по событию: освободи
         /// его здесь — и предпросмотру нечем будет рисовать. Освобождает вызывающий, вместе с
         /// документом. Окно предпросмотра строит тоже вызывающий: интерфейса в сервисе нет.
+        ///
+        /// Это задание НЕ строгое: неотрисованная страница остаётся пустым листом. Штатный
+        /// контрол предпросмотра рисует его из обработчика отрисовки окна, и исключение оттуда
+        /// уронило бы приложение, а не показало ошибку. Строгая печать — в <see cref="Print"/>.
         /// </summary>
         public static PrintDocument CreateDocument(IList<PdfPageRef> pages, PrinterSettings settings,
             Action<int, int> progress, Func<bool> cancelled, out IDisposable renderer)
         {
+            var owned = new PdfThumbnailRenderer();
+            try
+            {
+                PrintDocument doc = CreateJob(pages, settings, progress, cancelled, RenderWith(owned), false);
+                renderer = owned;
+                return doc;
+            }
+            catch
+            {
+                owned.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Задание печати поверх произвольного рендера листа (render: страница и ширина →
+        /// растр с бюджетом или null). Рендер отдан параметром, чтобы строгость печати
+        /// проверялась тестом без принтера и без WinRT.
+        ///
+        /// strict — настоящая печать: страница, которую не удалось отрисовать и со второй
+        /// попытки, прерывает задание MergeException, а отмена между листами —
+        /// OperationCanceledException. Прежде на месте такой страницы выходил пустой лист, а
+        /// отменённое задание заканчивалось «✓ отправлено на печать».
+        ///
+        /// names — как страницы называет окно (вровень с pages): вместо обёртки вставленного
+        /// листа или картинки — «пустая страница» или сама картинка. По ним названы задание в
+        /// очереди принтера и страница в сообщении об ошибке. null — имена файлов страниц.
+        /// </summary>
+        internal static PrintDocument CreateJob(IList<PdfPageRef> pages, PrinterSettings settings,
+            Action<int, int> progress, Func<bool> cancelled, Func<PdfPageRef, int, BudgetedBitmap> render,
+            bool strict, IList<string> names = null)
+        {
             if (pages == null || pages.Count == 0)
                 throw new MergeException(Loc.T("err.export.noPages"));
+            if (render == null)
+                throw new ArgumentNullException("render");
 
-            var owned = new PdfThumbnailRenderer();
-            renderer = owned;
             var doc = new PrintDocument();
             try
             {
                 if (settings != null)
                     doc.PrinterSettings = settings;
-                doc.DocumentName = System.IO.Path.GetFileName(pages[0].SourcePath);
+                doc.DocumentName = NameOf(pages, names, 0);
                 doc.OriginAtMargins = false; // печатаем по всей доступной области, а не по полям
 
                 int next = 0; // индекс в списке страниц, а не номер страницы документа
@@ -87,8 +213,19 @@ namespace ExcelMerger
                     // Ширину рендера считаем от РЕАЛЬНОГО размера листа принтера, а не страницы
                     // PDF: так одинаково печатаются и A4, и нестандартные вставки.
                     int width = Math.Max(1, e.PageBounds.Width * RenderDpi / 100);
-                    using (BudgetedBitmap rendered = owned.RenderOwned(ref_.SourcePath,
-                        ref_.PageIndex, width, 0, RasterBudget.DefaultRenderPixels))
+                    BudgetedBitmap rendered = render(ref_, width);
+                    if (rendered == null && strict)
+                    {
+                        // Чаще всего не хватило общего бюджета памяти: его держат миниатюры
+                        // открытых окон. Дадим им отпустить растр и попробуем ещё раз — лишь
+                        // потом признаём, что страницу не напечатать.
+                        WaitForMemoryRelease(MemoryWaitMs);
+                        rendered = render(ref_, width);
+                        if (rendered == null) // номер страницы — в её файле: он и назван в сообщении
+                            throw new MergeException(string.Format(Loc.T("common.err.printPageFailed"),
+                                ref_.PageIndex + 1, NameOf(pages, names, next)));
+                    }
+                    using (rendered)
                     {
                         Bitmap page = rendered == null ? null : rendered.Bitmap;
                         if (page != null)
@@ -103,8 +240,12 @@ namespace ExcelMerger
                     next++;
                     if (progress != null)
                         progress(next, pages.Count);
+                    e.HasMorePages = next < pages.Count;
                     // Отмена — только между листами: прерывать наполовину напечатанный лист нечем.
-                    e.HasMorePages = next < pages.Count && (cancelled == null || !cancelled());
+                    // Исключение, а не HasMorePages = false: иначе задание закрывалось штатно и
+                    // отменённая печать отчитывалась как удавшаяся.
+                    if (e.HasMorePages && cancelled != null && cancelled())
+                        throw new OperationCanceledException();
                 };
                 // Предпросмотр листает документ по кругу и начинает заново — счётчик обязан
                 // сбрасываться, иначе второй показ выводит хвост списка вместо начала.
@@ -114,8 +255,31 @@ namespace ExcelMerger
             catch
             {
                 doc.Dispose();
-                owned.Dispose();
                 throw;
+            }
+        }
+
+        /// <summary>Имя страницы index для человека: из names, если окно его дало, иначе имя её файла.</summary>
+        private static string NameOf(IList<PdfPageRef> pages, IList<string> names, int index)
+        {
+            string name = names != null && index < names.Count ? names[index] : null;
+            return System.IO.Path.GetFileName(name ?? pages[index].SourcePath);
+        }
+
+        /// <summary>
+        /// Подождать, пока общий бюджет памяти кто-нибудь пополнит (не дольше timeoutMs).
+        /// Никто ничего не держит — ждать нечего, возвращаемся сразу. Только с фонового потока.
+        /// </summary>
+        private static void WaitForMemoryRelease(int timeoutMs)
+        {
+            if (PdfMemoryBudget.Used <= 0)
+                return;
+            using (var released = new System.Threading.ManualResetEventSlim(false))
+            {
+                Action onReleased = delegate { released.Set(); };
+                PdfMemoryBudget.MemoryReleased += onReleased;
+                try { released.Wait(timeoutMs); }
+                finally { PdfMemoryBudget.MemoryReleased -= onReleased; }
             }
         }
     }

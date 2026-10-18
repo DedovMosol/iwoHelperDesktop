@@ -17570,26 +17570,26 @@ namespace ExcelMerger.Tests
                 foreach (Lang lang in new[] { Lang.Ru, Lang.En })
                 {
                     Loc.Init(lang);
-                    string merged = PdfMergeForm.DoneStatus(12, true, CompressionLevel.Good);
+                    string merged = PdfMergeForm.DoneStatus(12, GsRewriteResult.Applied, CompressionLevel.Good);
                     AssertTrue(merged.StartsWith("✓ "), "строка начинается с галочки (" + lang + ")");
                     AssertTrue(merged.EndsWith("."), "строка кончается точкой (" + lang + ")");
                     AssertTrue(merged.Contains("12"), "названо число страниц (" + lang + ")");
                     AssertTrue(merged.Contains("150"), "названо разрешение сжатия (" + lang + ")");
 
-                    string plain = PdfMergeForm.DoneStatus(3, false, CompressionLevel.None);
+                    string plain = PdfMergeForm.DoneStatus(3, GsRewriteResult.RejectedByPolicy, CompressionLevel.None);
                     AssertTrue(plain.Contains("3"), "число страниц без сжатия (" + lang + ")");
                     AssertTrue(!plain.Contains("dpi"), "без сжатия разрешение не упоминается (" + lang + ")");
 
-                    string parts = PdfSplitForm.DoneStatus(true, 4, 99, 4, CompressionLevel.Small);
+                    string parts = PdfSplitForm.DoneStatus(true, 4, 99, 4, 0, CompressionLevel.Small);
                     AssertTrue(parts.Contains("4"), "названо число файлов (" + lang + ")");
                     AssertTrue(parts.Contains("72"), "названо разрешение /screen (" + lang + ")");
                     AssertTrue(!parts.Contains("99"), "страницы в разбиении на части не показываем (" + lang + ")");
 
-                    string extracted = PdfSplitForm.DoneStatus(false, 1, 7, 1, CompressionLevel.Good);
+                    string extracted = PdfSplitForm.DoneStatus(false, 1, 7, 1, 0, CompressionLevel.Good);
                     AssertTrue(extracted.Contains("7"), "названо число извлечённых страниц (" + lang + ")");
                     AssertTrue(extracted.Contains("150"), "названо разрешение при извлечении (" + lang + ")");
 
-                    string extractedPlain = PdfSplitForm.DoneStatus(false, 1, 7, 0, CompressionLevel.None);
+                    string extractedPlain = PdfSplitForm.DoneStatus(false, 1, 7, 0, 0, CompressionLevel.None);
                     AssertTrue(!extractedPlain.Contains("dpi"), "без сжатия строка чистая (" + lang + ")");
                     AssertTrue(!extractedPlain.Contains(" · "), "единственная часть — без разделителя (" + lang + ")");
                 }
@@ -20206,10 +20206,13 @@ namespace ExcelMerger.Tests
             return null;
         }
 
-        /// <summary>Подождать условия, прокручивая очередь сообщений (разбор PDF идёт в фоне).</summary>
-        private static bool WaitFor(Func<bool> ready)
+        /// <summary>
+        /// Подождать условия (около timeoutMs), прокручивая очередь сообщений (разбор PDF идёт
+        /// в фоне). Долгим операциям (сжатие движком, первый рендер WinRT) — свой таймаут.
+        /// </summary>
+        private static bool WaitFor(Func<bool> ready, int timeoutMs = 5000)
         {
-            for (int i = 0; i < 200; i++)
+            for (int i = 0; i < timeoutMs / 25; i++)
             {
                 if (ready())
                     return true;

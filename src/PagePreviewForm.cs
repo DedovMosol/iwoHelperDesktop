@@ -34,6 +34,7 @@ namespace ExcelMerger
         private ContextMenuStrip _menu; // не дочерний контрол, освобождаем сами
         private Bitmap _image;          // показанный рендер — освобождаем при закрытии
         private BudgetedBitmap _ownedImage;
+        private BudgetedBitmap _inFlight; // рендер отправлен в UI-поток, но ещё не применён (см. Post)
         private int _appliedRotation;   // поворот, УЖЕ впечённый в _image (в градусах по часовой)
         private Thread _worker;
         private volatile bool _closed;  // окно закрыто: поздний рендер не применяем
@@ -180,12 +181,40 @@ namespace ExcelMerger
                     if (page != null) page.Dispose();
                     return;
                 }
-                BeginInvoke((MethodInvoker)delegate { Apply(page); });
+                if (page == null)
+                {
+                    BeginInvoke((MethodInvoker)delegate { Apply(null); });
+                    return;
+                }
+                // Растр «в пути» хранится в поле: если окно закроют раньше, чем UI-поток дойдёт
+                // до Apply, отложенный вызов уже не выполнится (WinForms гасит очередь вызовов
+                // при уничтожении окна), и без поля растр с резервом памяти висел бы до сборки
+                // мусора. Владелец — тот, кто первым заберёт его из поля: Apply или закрытие.
+                Interlocked.Exchange(ref _inFlight, page);
+                if (_closed)
+                {
+                    DisposeInFlight(); // окно закрылось, пока клали: закрытие поле уже не проверит
+                    return;
+                }
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    BudgetedBitmap taken = Interlocked.Exchange(ref _inFlight, null);
+                    if (taken != null)
+                        Apply(taken);
+                });
             }
             catch (InvalidOperationException)
             {
-                if (page != null) page.Dispose();
+                DisposeInFlight();
             }
+        }
+
+        /// <summary>Освободить растр, так и не дошедший до Apply (окно закрыли раньше).</summary>
+        private void DisposeInFlight()
+        {
+            BudgetedBitmap orphan = Interlocked.Exchange(ref _inFlight, null);
+            if (orphan != null)
+                orphan.Dispose();
         }
 
         private void Apply(BudgetedBitmap page)
@@ -229,7 +258,10 @@ namespace ExcelMerger
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
+                // Своей «Отмены» у окна нет — прервать печать можно в штатном окне состояния
+                // печати, и такая отмена — решение человека, а не ошибка: молчим.
                 try { PdfPrintService.Print(pages, settings); }
+                catch (OperationCanceledException) { }
                 catch (Exception ex) { error = ex; }
                 Exception shown = error;
                 if (shown != null)
@@ -491,6 +523,11 @@ namespace ExcelMerger
         {
             if (m.Msg != WmMouseWheel || _closed || _image == null)
                 return false;
+            // Фильтр глобален, а курсор над областью просмотра ещё не значит, что колесо — нам:
+            // поверх может стоять диалог (печать, ошибка), и тогда сообщение адресовано ему.
+            // Берём только колесо, пришедшее окну ЭТОЙ формы (см. IsMessageFor).
+            if (!IsMessageFor(this, m.HWnd))
+                return false;
             Point screen = Cursor.Position;
             if (!_viewport.RectangleToScreen(_viewport.ClientRectangle).Contains(screen))
                 return false; // курсор вне области просмотра — пусть обрабатывают как обычно
@@ -503,6 +540,21 @@ namespace ExcelMerger
             }
             ScrollBy(0, -delta * ScrollPerNotch / WheelNotch);
             return true;
+        }
+
+        /// <summary>
+        /// Адресовано ли сообщение окну hwnd, принадлежащему форме form (ей самой или её
+        /// дочернему контролу, в том числе вложенному полю составного контрола). Чужая форма,
+        /// модальный диалог поверх (управляемый — своя форма, нативный, как диалог печати, —
+        /// окно без управляемого контрола: FromChildHandle идёт по родителям, не к владельцу) —
+        /// нет. Тот же приём, что у WhatsNewForm.
+        /// </summary>
+        internal static bool IsMessageFor(Form form, IntPtr hwnd)
+        {
+            if (form == null || hwnd == IntPtr.Zero)
+                return false;
+            Control target = Control.FromChildHandle(hwnd);
+            return target != null && target.FindForm() == form;
         }
 
         /// <summary>
@@ -595,6 +647,7 @@ namespace ExcelMerger
             if (_ownedImage != null)
                 _ownedImage.Dispose();
             _ownedImage = null;
+            DisposeInFlight(); // рендер, не успевший дойти до окна
         }
 
         protected override void Dispose(bool disposing)

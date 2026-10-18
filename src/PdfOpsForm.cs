@@ -212,7 +212,10 @@ namespace ExcelMerger
         /// </summary>
         protected override void AcceptDroppedPaths(string[] paths)
         {
-            if (paths == null || paths.Length == 0)
+            // Окно занято — брошенное отклоняется целиком, как и везде. Ставить картинки в
+            // очередь здесь нельзя: их подобрал бы конец ЧУЖОЙ, текущей загрузки, и они
+            // появились бы в наборе позже и без всякой связи с тем, что делал человек.
+            if (paths == null || paths.Length == 0 || Working)
                 return;
             var images = new List<string>();
             string pdf = null;
@@ -232,22 +235,24 @@ namespace ExcelMerger
             // ждут конца разбора (см. OnLoadAttemptFinished), а не теряются.
             _pendingImages = images.Count > 0 ? images.ToArray() : null;
             LoadSource(pdf); // гейтит занятость и спрашивает про собранное сам
-            // Разбор не начался (заняты или человек отказался заменять набор) — очередь никто
-            // не разберёт, поэтому добавляем картинки сами: они от судьбы документа не зависят.
+            // Разбор не начался (человек отказался заменять набор) — очередь никто не разберёт,
+            // поэтому добавляем картинки сами: они от судьбы документа не зависят.
             if (!Working && _pendingImages != null)
-                OnLoadAttemptFinished(false);
+                OnLoadAttemptFinished(LoadAttempt.NotLoaded);
         }
 
         /// <summary>
         /// Документ разобран (или не открылся) — добавляем картинки, брошенные вместе с ним.
         /// Не открылся — всё равно добавляем: человек бросил их не за компанию, а по делу, и
-        /// сбой чужого файла не причина молча выбросить его картинки.
+        /// сбой чужого файла не причина молча выбросить его картинки. Отменил загрузку сам —
+        /// другое дело: «Отмена» отменяет весь жест, и картинки, добавившиеся следом, были бы
+        /// правкой, которой он не просил.
         /// </summary>
-        protected override void OnLoadAttemptFinished(bool loaded)
+        protected override void OnLoadAttemptFinished(LoadAttempt outcome)
         {
             string[] pending = _pendingImages;
             _pendingImages = null;
-            if (pending != null)
+            if (pending != null && outcome != LoadAttempt.Canceled)
                 AddImages(pending);
         }
 
@@ -305,8 +310,17 @@ namespace ExcelMerger
         {
             if (paths == null || paths.Length == 0)
                 return;
-            string dir;
-            try { dir = WrapperDir(); }
+            if (Working)
+                return; // уже идёт операция или загрузка
+            string[] toLoad = (string[])paths.Clone(); // воркер работает со снимком
+            // Пути обёрток выдаёт база и запоминает за окном: при закрытии оно уберёт ровно их,
+            // а не всё, что окажется в папке. Выдаём здесь, на UI-потоке, — счётчик не потокобезопасен.
+            var wrappers = new string[toLoad.Length];
+            try
+            {
+                for (int i = 0; i < toLoad.Length; i++)
+                    wrappers[i] = NextWrapperPath("img");
+            }
             catch (Exception ex)
             {
                 // Некуда положить обёртки (нет места, запрет на запись) — это отказ операции,
@@ -316,7 +330,6 @@ namespace ExcelMerger
             }
             if (!BeginLoad(Loc.T("ops.status.addingImages")))
                 return; // уже идёт операция или загрузка
-            string[] toLoad = (string[])paths.Clone(); // воркер работает со снимком
             Ui.RunWorker(delegate()
             {
                 var loaded = new List<LoadedDoc>();
@@ -330,7 +343,7 @@ namespace ExcelMerger
                         cancelled = true;
                         break;
                     }
-                    string wrapper = Path.Combine(dir, "img" + Guid.NewGuid().ToString("N") + ".pdf");
+                    string wrapper = wrappers[i];
                     // Ловим ШИРОКО (как остальные воркеры): битая, чужая или огромная картинка
                     // (в том числе OOM, который сервис НЕ маскирует) не должна ронять поток —
                     // остальные картинки пакета всё равно добавляются.
@@ -387,12 +400,26 @@ namespace ExcelMerger
         /// заново, иначе действие пошло бы не по тому, что показано в сетке. Зовётся ИЗ ВОРКЕРА:
         /// сборка документа пишет на диск. pages = null — посторонний файл, собирать нечего.
         /// </summary>
-        private static void WriteWorkingCopy(string source, IList<PdfPageRef> pages, int pageCount, string outPath)
+        internal static void WriteWorkingCopy(string source, IList<PdfPageRef> pages, int pageCount, string outPath)
         {
-            if (pages == null || IsPristine(pages, source, pageCount))
+            if (pages == null || CopyWillDo(pages, source, pageCount, true))
                 File.Copy(source, outPath, true);
             else
                 PdfMergeService.WriteUnpublished(pages, outPath);
+        }
+
+        /// <summary>
+        /// Хватит ли копии исходника вместо сборки: страницы не трогали, а если файл пойдёт в
+        /// движок (forEngine), то ещё и пароля у него нет. Зашифрованную копию Ghostscript без
+        /// пароля не прочтёт, а передавать пароль в командной строке нельзя (её видит любой
+        /// процесс) — поэтому движку отдаём РАСШИФРОВАННУЮ сборку, как и рендер (PageRasterizer).
+        /// Результат выйдет без пароля — осознанная цена: защита была на открытие, а открыл
+        /// файл сам человек, введя пароль.
+        /// </summary>
+        private static bool CopyWillDo(IList<PdfPageRef> pages, string source, int pageCount, bool forEngine)
+        {
+            return IsPristine(pages, source, pageCount) &&
+                (!forEngine || string.IsNullOrEmpty(PdfPasswords.For(source)));
         }
 
         /// <summary>
@@ -504,7 +531,8 @@ namespace ExcelMerger
             List<PdfPageRef> pages = _order.ToList();
             int pageCount = pages.Count;
             CompressionLevel level = _compress.Level;
-            bool compressed = false;
+            int sourcePages = _pageCount;
+            GsRewriteResult compression = GsRewriteResult.RejectedByPolicy;
             BeginOperation(Loc.T("ops.status.savingPdf"), pages.Count, Loc.T("ops.status.savingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
@@ -518,27 +546,28 @@ namespace ExcelMerger
                     // therefore removes only this transaction's temp file.
                     using (var output = new AtomicOutput(outPath))
                     {
-                        if (IsPristine(pages, source, _pageCount))
-                            File.Copy(source, output.TempPath, true); // ничего не меняли — копия без потерь
+                        // Ничего не меняли — копия без потерь. Но если дальше сжатие, а исходник
+                        // под паролем, копия движку не годится (см. WriteWorkingCopy).
+                        if (CopyWillDo(pages, source, sourcePages, level != CompressionLevel.None))
+                            File.Copy(source, output.TempPath, true);
                         else
                             PdfMergeService.WriteUnpublished(pages, output.TempPath, onProgress, cancel);
                         Cancellation.ThrowIf(cancel);
                         if (level != CompressionLevel.None)
-                            compressed = PdfCompression.CompressDetailedUnpublished(
-                                output.TempPath, level) == GsRewriteResult.Applied;
+                            compression = PdfCompression.CompressDetailedUnpublished(output.TempPath, level);
                         Cancellation.ThrowIf(cancel);
                         output.Commit();
                     }
                 }
                 catch (Exception ex) { error = ex; }
-                bool didCompress = compressed;
+                GsRewriteResult result = compression;
                 OnUi(delegate
                 {
                     if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("ops.err.saveFailed")))
                         return;
-                    SetStatus(SuccessStatus(string.Format(Loc.T("ops.status.savedPdf"), pageCount),
-                        CompressedPart(didCompress, level)), Theme.OkGreen);
-                    if (didCompress)
+                    ShowSavedStatus(result == GsRewriteResult.Failed,
+                        string.Format(Loc.T("ops.status.savedPdf"), pageCount), CompressedPart(result, level));
+                    if (result == GsRewriteResult.Applied)
                         UsageStats.RecordPdfCompress();
                     Ui.OpenPath(outPath);
                 });
@@ -556,12 +585,19 @@ namespace ExcelMerger
                 return _sourcePath;
             if (_order.Count == 0)
                 return null;
-            string first = _order[0].SourcePath;
-            string origin;
-            return _imageOrigins.TryGetValue(first, out origin) ? origin : first;
+            return UserPathOf(_order[0].SourcePath);
         }
 
-
+        /// <summary>
+        /// Настоящее имя страницы: для обёртки картинки — сама картинка, для пустого листа —
+        /// его подпись («пустая страница», путём она не является), иначе — путь как есть.
+        /// По нему же база выбирает папку сохранения: картинка лежит у человека, обёртка — нет.
+        /// </summary>
+        protected override string UserPathOf(string sourcePath)
+        {
+            string origin;
+            return sourcePath != null && _imageOrigins.TryGetValue(sourcePath, out origin) ? origin : sourcePath;
+        }
 
         /// <summary>
         /// Сжать документ в новый файл. Уровень берётся из общего списка «Сжатие» внизу окна —
@@ -589,30 +625,40 @@ namespace ExcelMerger
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
-                bool shrank = false;
+                GsRewriteResult compression = GsRewriteResult.RejectedByPolicy;
                 double imageShare = PdfContentProfile.Unknown;
                 try
                 {
                     using (var output = new AtomicOutput(outPath))
                     {
                         WriteWorkingCopy(source, pages, pageCount, output.TempPath);
-                        shrank = PdfCompression.CompressDetailedUnpublished(
-                            output.TempPath, level) == GsRewriteResult.Applied;
-                        // Состав документа выясняем ТОЛЬКО когда сжатие не помогло: иначе это
-                        // лишнее чтение файла на каждой удачной операции. И здесь же, в фоне, —
-                        // на UI-поток такую работу выносить нельзя.
-                        if (!shrank)
+                        compression = PdfCompression.CompressDetailedUnpublished(output.TempPath, level);
+                        // Состав документа выясняем ТОЛЬКО когда файл просто не уменьшился: иначе
+                        // это лишнее чтение файла на каждой удачной операции (а при сбое движка
+                        // совет про уровень не по делу). И здесь же, в фоне, — на UI-поток такую
+                        // работу выносить нельзя.
+                        if (compression == GsRewriteResult.RejectedByPolicy)
                             imageShare = PdfContentProfile.ImageShare(output.TempPath);
                         output.Commit();
                     }
                 }
                 catch (Exception ex) { error = ex; }
-                bool smaller = shrank;
+                GsRewriteResult result = compression;
                 double share = imageShare;
                 OnUi(delegate
                 {
                     if (!FinishOperation(error, Loc.T("common.status.notDone"), Loc.T("ops.err.compressFailed")))
                         return;
+                    if (result == GsRewriteResult.Failed)
+                    {
+                        // Движок не справился: копия есть, но сжатой её назвать нельзя — ни
+                        // «сжато», ни «уже оптимизирован» здесь не правда.
+                        string part = CompressedPart(result, level); // часть статуса — со строчной
+                        ShowSavedStatus(true, char.ToUpperInvariant(part[0]) + part.Substring(1));
+                        Ui.OpenPath(outPath);
+                        return;
+                    }
+                    bool smaller = result == GsRewriteResult.Applied;
                     // Копия создана в любом случае — она и есть то, о чём просили. Но если файл
                     // меньше не стал, молчать нельзя: человек ждал сжатия.
                     // Разрешение называем только там, где изображения пересчитаны: уровень
@@ -706,16 +752,10 @@ namespace ExcelMerger
         /// </summary>
         private string AskOutputPath(string source, string suffix)
         {
-            string outPath;
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfSaveFilter");
-                dialog.FileName = Path.GetFileNameWithoutExtension(source) + suffix + ".pdf";
-                dialog.InitialDirectory = Path.GetDirectoryName(source);
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return null;
-                outPath = dialog.FileName;
-            }
+            string outPath = AskSavePath(Loc.T("common.pdfSaveFilter"),
+                Path.GetFileNameWithoutExtension(source) + suffix + ".pdf", OutputFolderHint(source));
+            if (outPath == null)
+                return null;
             if (OutputFile.IsSameFile(outPath, source))
             {
                 Dialogs.Error(this, Title, Loc.T("ops.err.sameFile"), Loc.T("ops.err.sameFile.body"));
@@ -797,8 +837,7 @@ namespace ExcelMerger
             List<PdfPageRef> pages = SelectedOrAllPages();
             if (pages.Count == 0)
                 return;
-            string dir = FolderPicker.Show(this, Loc.T("ops.pick.imagesDir"),
-                Path.GetDirectoryName(NameSource()));
+            string dir = FolderPicker.Show(this, Loc.T("ops.pick.imagesDir"), OutputFolderHint(NameSource()));
             if (string.IsNullOrEmpty(dir))
                 return;
             ImageExportFormat format = Dialogs.ConfirmWarning(this, Title, Loc.T("ops.ask.jpeg.title"),
@@ -830,16 +869,10 @@ namespace ExcelMerger
             if (Working || _order.Count == 0)
                 return;
             string nameSource = NameSource();
-            string outPath;
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = Loc.T("ops.txtFilter");
-                dialog.FileName = Path.GetFileNameWithoutExtension(nameSource) + ".txt";
-                dialog.InitialDirectory = Path.GetDirectoryName(nameSource);
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                outPath = dialog.FileName;
-            }
+            string outPath = AskSavePath(Loc.T("ops.txtFilter"),
+                Path.GetFileNameWithoutExtension(nameSource) + ".txt", OutputFolderHint(nameSource));
+            if (outPath == null)
+                return;
             string source = _sourcePath;
             List<PdfPageRef> pages = _order.ToList(); // текст берётся из собранного документа, а не из файла
             int pageCount = _pageCount;
@@ -877,14 +910,50 @@ namespace ExcelMerger
         {
             if (Working || _sourcePath == null)
                 return;
-            PdfMetadata edited = MetadataForm.Edit(this, PdfMetadataService.Read(_sourcePath),
-                Path.GetFileName(_sourcePath));
+            // Чтение свойств — разбор документа: сетевой или большой файл подвешивал бы окно,
+            // поэтому оно идёт в фоне той же загрузкой, что и открытие (с отменой).
+            string source = _sourcePath;
+            if (!BeginLoad(Loc.T("common.status.loading")))
+                return;
+            Ui.RunWorker(delegate()
+            {
+                PdfMetadata current = null;
+                string error = null;
+                try { current = PdfMetadataService.Read(source); }
+                catch (Exception ex) { error = ex.Message; } // Read сам глушит сбои разбора; это — сбой сборки
+                PdfMetadata read = current;
+                string err = error;
+                OnUi(delegate
+                {
+                    if (LoadCancellationRequested)
+                    {
+                        FinishCanceledLoad();
+                        return;
+                    }
+                    EndLoad();
+                    RefreshRestingStatus(); // снять «Загрузка…»
+                    if (err != null)
+                    {
+                        Dialogs.Error(this, Title, Loc.T("common.err.fileNotOpened"), err);
+                        return;
+                    }
+                    EditMetadata(source, read);
+                });
+            });
+        }
+
+        /// <summary>
+        /// Вторая половина правки свойств: диалог, выбор файла и запись. UI-поток. Документ
+        /// за время чтения смениться не мог: загрузка держит окно занятым (Working).
+        /// </summary>
+        private void EditMetadata(string source, PdfMetadata current)
+        {
+            PdfMetadata edited = MetadataForm.Edit(this, current, Path.GetFileName(source));
             if (edited == null)
                 return; // пользователь отказался
-            string outPath = AskOutputPath(_sourcePath, Loc.T("ops.suffix.meta"));
+            string outPath = AskOutputPath(source, Loc.T("ops.suffix.meta"));
             if (outPath == null)
                 return;
-            string source = _sourcePath;
             List<PdfPageRef> pages = _order.ToList(); // свойства пишутся тому документу, что собран
             int pageCount = _pageCount;
             BeginUnmeasuredOperation(Loc.T("ops.status.savingMeta")); // одна запись, шагов нет

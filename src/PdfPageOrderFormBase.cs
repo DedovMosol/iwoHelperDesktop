@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace ExcelMerger
@@ -58,16 +59,27 @@ namespace ExcelMerger
         private string _wrapDir;
         private int _wrapCounter;                                  // имена обёрток не должны совпадать
         private const string WrapperPrefix = "iwo_wrap_";
+        // Имена файлов-обёрток: пустой лист и картинка (префикс + номер, см. NextWrapperPath) и
+        // картинки «Прочих» прежних версий (img + 32 hex из Guid). Уборка трогает ТОЛЬКО их:
+        // папка лежит во временных, но диалог сохранения мог в неё заглянуть, и чужой файл в
+        // ней — это чей-то результат, а не наш мусор. Поэтому имя целиком, а не начало: маска
+        // «img*» забрала бы и «IMG_2024 скан.pdf» человека.
+        private static readonly Regex WrapperFileName = new Regex(
+            @"^(blank|img)[0-9]{4,}\.pdf$|^img[0-9a-f]{32}\.pdf$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        // Обёртки, которые создало ЭТО окно: только их оно и вправе удалить при закрытии.
+        private readonly HashSet<string> _ownWrappers =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Папка обёрток этого окна (создаётся при первой надобности). Заодно уносим мусор
         /// прошлых сеансов: аварийное завершение оставляет папку на диске, сама она не уйдёт.
         /// </summary>
-        protected string WrapperDir()
+        private string WrapperDir()
         {
             if (_wrapDir == null)
             {
-                SweepOldWrapperDirs();
+                SweepOldWrapperDirs(System.IO.Path.GetTempPath(), DateTime.UtcNow);
                 _wrapDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
                     WrapperPrefix + Guid.NewGuid().ToString("N"));
                 System.IO.Directory.CreateDirectory(_wrapDir);
@@ -75,27 +87,140 @@ namespace ExcelMerger
             return _wrapDir;
         }
 
-        /// <summary>Путь следующей обёртки в папке окна (prefix0001.pdf, prefix0002.pdf, …).</summary>
+        /// <summary>
+        /// Путь следующей обёртки в папке окна (prefix0001.pdf, prefix0002.pdf, …). Путь сразу
+        /// записывается за окном — при закрытии уйдёт именно он, а не всё содержимое папки.
+        /// prefix — «blank» или «img»: уборка прошлых сеансов узнаёт обёртки по этим именам.
+        /// Только UI-поток.
+        /// </summary>
         protected string NextWrapperPath(string prefix)
         {
-            return System.IO.Path.Combine(WrapperDir(), prefix + (_wrapCounter++).ToString("D4") + ".pdf");
+            string path = System.IO.Path.Combine(WrapperDir(), prefix + (_wrapCounter++).ToString("D4") + ".pdf");
+            _ownWrappers.Add(path);
+            return path;
         }
 
         /// <summary>
-        /// Убрать папки обёрток, брошенные прошлыми сеансами. Сутки — чтобы не задеть чужой
+        /// Убрать обёртки, брошенные прошлыми сеансами в root. Сутки — чтобы не задеть чужой
         /// работающий экземпляр: приложение и так одно на систему, но полагаться на это здесь
         /// не стоит, а лишние сутки на диске ничего не стоят.
+        ///
+        /// Удаляем только файлы с именами обёрток и затем лишь ПУСТУЮ папку: рекурсивное
+        /// удаление стёрло бы и документ, который человек сохранил туда сам (диалог сохранения
+        /// предлагал папку первой страницы, а у пустого листа это папка обёрток).
         /// </summary>
-        private static void SweepOldWrapperDirs()
+        internal static void SweepOldWrapperDirs(string root, DateTime nowUtc)
         {
             try
             {
-                foreach (string dir in System.IO.Directory.GetDirectories(System.IO.Path.GetTempPath(),
-                             WrapperPrefix + "*"))
-                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < DateTime.UtcNow.AddDays(-1))
-                        try { System.IO.Directory.Delete(dir, true); } catch { } // занята — уйдёт в следующий раз
+                foreach (string dir in System.IO.Directory.GetDirectories(root, WrapperPrefix + "*"))
+                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < nowUtc.AddDays(-1))
+                    {
+                        foreach (string file in System.IO.Directory.GetFiles(dir, "*.pdf"))
+                            if (WrapperFileName.IsMatch(System.IO.Path.GetFileName(file)))
+                                try { System.IO.File.Delete(file); } catch { } // занят — уйдёт в следующий раз
+                        TryDeleteEmptyDir(dir);
+                    }
             }
             catch { } // нет доступа к папке временных файлов — не повод отказывать во вставке
+        }
+
+        /// <summary>Удалить папку, только если она пуста (без рекурсии). Занята или не пуста — оставить.</summary>
+        private static void TryDeleteEmptyDir(string dir)
+        {
+            try { System.IO.Directory.Delete(dir, false); } catch { }
+        }
+
+        /// <summary>
+        /// Лежит ли файл в папке обёрток — этой или любой другой (iwo_wrap_* прямо в root,
+        /// папке временных файлов). Такой путь нельзя ни предлагать местом сохранения, ни
+        /// считать «папкой документа». Чистая — под тест.
+        /// </summary>
+        internal static bool IsWrapperPath(string path, string root)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root))
+                return false;
+            try
+            {
+                string dir = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path));
+                string parent = dir == null ? null : System.IO.Path.GetDirectoryName(dir);
+                return parent != null
+                    && System.IO.Path.GetFileName(dir).StartsWith(WrapperPrefix, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(parent.TrimEnd('\\', '/'),
+                        System.IO.Path.GetFullPath(root).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; } // кривой путь (подпись вместо пути) — точно не наша обёртка
+        }
+
+        /// <summary>
+        /// Папка, которую диалог сохранения предлагает первой: папка первого из paths, который
+        /// — настоящий файл человека (путь с корнем и НЕ в папке обёрток). Пустой лист или
+        /// картинка в начале набора иначе подставляли папку временных файлов окна — а её
+        /// содержимое удаляется при закрытии, вместе с сохранённым туда результатом. Подпись
+        /// вместо пути («пустая страница») пропускается. null — подходящего нет, решает диалог.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static string FirstUserFolder(IEnumerable<string> paths, string root)
+        {
+            if (paths == null)
+                return null;
+            foreach (string path in paths)
+            {
+                if (string.IsNullOrEmpty(path) || IsWrapperPath(path, root))
+                    continue;
+                try
+                {
+                    if (System.IO.Path.IsPathRooted(path))
+                        return System.IO.Path.GetDirectoryName(path);
+                }
+                catch (ArgumentException) { } // подпись с недопустимыми символами — не путь
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Папка для диалога сохранения: папка preferred (файла, от которого берётся имя
+        /// результата), если это настоящий файл, иначе — первой настоящей страницы набора.
+        /// </summary>
+        protected string OutputFolderHint(string preferred = null)
+        {
+            var paths = new List<string>(_order.Count + 1) { preferred };
+            for (int i = 0; i < _order.Count; i++)
+                paths.Add(UserPathOf(_order[i].SourcePath));
+            return FirstUserFolder(paths, System.IO.Path.GetTempPath());
+        }
+
+        /// <summary>
+        /// Обёртка во временной папке окна здесь — вставленный пустой лист (картинки-обёртки
+        /// бывают только в «Прочих операциях», и там свой UserPathOf): по имени файла его никто
+        /// не знает, для человека это «пустая страница».
+        /// </summary>
+        protected override string UserPathOf(string sourcePath)
+        {
+            return IsWrapperPath(sourcePath, System.IO.Path.GetTempPath())
+                ? Loc.T("ops.blankPage.name") : sourcePath;
+        }
+
+        /// <summary>
+        /// Единый диалог «Сохранить как…» PDF-инструментов (DRY: шесть копий различались лишь
+        /// фильтром, именем и папкой). initialDir — из <see cref="OutputFolderHint"/> или папка
+        /// открытого документа; null — папку выбирает сам диалог. null в ответ — человек отказался.
+        /// overwritePrompt = false — для «базового имени», к которому допишутся номера частей.
+        /// </summary>
+        protected string AskSavePath(string filter, string fileName, string initialDir,
+            string title = null, bool overwritePrompt = true)
+        {
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Filter = filter;
+                dialog.FileName = fileName;
+                if (!string.IsNullOrEmpty(initialDir))
+                    dialog.InitialDirectory = initialDir;
+                if (title != null)
+                    dialog.Title = title;
+                dialog.OverwritePrompt = overwritePrompt;
+                return dialog.ShowDialog(this) == DialogResult.OK ? dialog.FileName : null;
+            }
         }
 
         /// <summary>
@@ -202,12 +327,19 @@ namespace ExcelMerger
             catch { return null; }
         }
 
-        /// <summary>Папка обёрток живёт ровно столько, сколько окно: её содержимое больше никому не нужно.</summary>
+        /// <summary>
+        /// Обёртки живут ровно столько, сколько окно. Удаляем только СВОИ файлы и затем папку,
+        /// если она опустела: прежнее рекурсивное удаление стирало и результат, который человек
+        /// сохранил в эту папку (диалог предлагал её, когда первой в наборе стоял пустой лист).
+        /// </summary>
         protected override void Dispose(bool disposing)
         {
             if (disposing && _wrapDir != null)
             {
-                try { System.IO.Directory.Delete(_wrapDir, true); } catch { } // занята — уберёт следующий сеанс
+                foreach (string file in _ownWrappers)
+                    try { System.IO.File.Delete(file); } catch { } // занят — уберёт следующий сеанс
+                _ownWrappers.Clear();
+                TryDeleteEmptyDir(_wrapDir);
                 _wrapDir = null;
             }
             base.Dispose(disposing);
@@ -287,7 +419,9 @@ namespace ExcelMerger
 
         private void OnReorder(int from, int to)
         {
-            if (Working)
+            // Бросили страницу на её же место (или пришёл чужой индекс) — правки нет, и
+            // снимок Ctrl+Z был бы пустым шагом отмены, стирающим ветку Ctrl+Y.
+            if (Working || IsNoOpMove(_order.Count, from, to))
                 return;
             _order.Checkpoint();
             _order.Move(from, to);
@@ -298,14 +432,40 @@ namespace ExcelMerger
         /// <summary>Вставка вырезанных страниц (Ctrl+X → Ctrl+V) — перенос набора внутри порядка.</summary>
         private void OnMoveRange(int[] indices, int insertAt)
         {
-            if (Working)
-                return;
+            if (Working || IsNoOpRangeMove(_order.Count, indices, insertAt))
+                return; // пустой набор или вставка «на себя» — ни правки, ни шага отмены
             _order.Checkpoint();
             int landed = _order.MoveRange(indices, insertAt);
-            if (landed < 0)
-                return;
             RefreshGrid();
-            _grid.SelectRange(landed, indices.Length);
+            _grid.SelectRange(landed, ListReorder.NormalizeIndices(indices, _order.Count).Count);
+        }
+
+        /// <summary>
+        /// Перенос элемента from ПЕРЕД позицией to ничего не меняет: индекс вне набора (элемент
+        /// чужого списка), to == from или to == from + 1 (бросили сразу за собой). Та же
+        /// семантика, что у <see cref="ListReorder.Move{T}"/>. Чистая — под тест.
+        /// </summary>
+        internal static bool IsNoOpMove(int count, int from, int to)
+        {
+            return from < 0 || from >= count || to < 0 || to > count || to == from || to == from + 1;
+        }
+
+        /// <summary>
+        /// Перенос набора (<see cref="ListReorder.MoveRange{T}"/>) ничего не меняет: живых индексов
+        /// нет, или они идут подряд и встают ровно туда, где стоят. Чистая — под тест.
+        /// </summary>
+        internal static bool IsNoOpRangeMove(int count, IList<int> indices, int insertAt)
+        {
+            List<int> sorted = ListReorder.NormalizeIndices(indices, count);
+            if (sorted.Count == 0)
+                return true;
+            if (insertAt < 0) insertAt = 0;
+            if (insertAt > count) insertAt = count;
+            int landed = ListReorder.AdjustedInsertIndex(sorted, insertAt);
+            for (int i = 0; i < sorted.Count; i++)
+                if (sorted[i] != landed + i)
+                    return false;
+            return true;
         }
 
         /// <summary>Вставка скопированных страниц (Ctrl+C → Ctrl+V) — новые экземпляры в позиции.</summary>

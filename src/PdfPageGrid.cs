@@ -127,6 +127,11 @@ namespace ExcelMerger
         private readonly int _renderHi;   // для крупного зума (> ThumbZoom.BaseWidth)
         private volatile int _renderTarget; // читает фоновый воркер в момент рендера
         private volatile bool _shuttingDown; // Dispose: поздние callbacks только освобождают bitmap
+        private bool _selectionPosted;       // SelectionChanged уже отложен до конца серии (UI-поток)
+        // Рендеры, отправленные в UI-поток, но ещё не принятые ApplyPage (под _qLock). При
+        // уничтожении окна WinForms гасит очередь BeginInvoke, не выполняя её, и растр с резервом
+        // бюджета повис бы до сборки мусора; Dispose освобождает то, что здесь осталось.
+        private readonly HashSet<BudgetedBitmap> _inFlight = new HashSet<BudgetedBitmap>();
         // Ключи страниц, показываемых сейчас (обновляется в SetPages, только UI-поток).
         // Поздний результат рендера уже снятой страницы отбрасывается по этому набору.
         private HashSet<string> _currentKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -251,8 +256,7 @@ namespace ExcelMerger
                 // Нативная инвалидация выделения покрывает лишь нативные границы (≤ 256):
                 // при крупном зуме рамка выделения и подпись шире — перерисовать всё видимое.
                 _list.Invalidate();
-                var h = SelectionChanged;
-                if (h != null) h(this, EventArgs.Empty);
+                PostSelectionChanged();
                 ScheduleVisibleUpdate(); // навигация клавишами меняет набор видимых миниатюр
             };
             _list.AllowDrop = true;
@@ -286,6 +290,38 @@ namespace ExcelMerger
 
             StartThumbWorker();
             PdfMemoryBudget.MemoryReleased += OnMemoryReleased;
+        }
+
+        /// <summary>
+        /// Сообщить о смене выделения ОДИН раз на серию. ListView поднимает SelectedIndexChanged
+        /// на каждый элемент: Ctrl+A на тысяче страниц — тысяча событий, и обработчик формы
+        /// (кнопки, «Выбрано N из M») превращал выделение в O(n²). Серия идёт внутри одного
+        /// сообщения окна, поэтому отложенный вызов видит уже итоговое выделение. Окна ещё
+        /// нет — откладывать некуда, сообщаем сразу.
+        /// </summary>
+        private void PostSelectionChanged()
+        {
+            if (_selectionPosted)
+                return;
+            if (!IsHandleCreated)
+            {
+                RaiseSelectionChanged();
+                return;
+            }
+            _selectionPosted = true;
+            if (!Ui.OnUi(this, delegate
+                {
+                    _selectionPosted = false;
+                    if (!_shuttingDown && !IsDisposed)
+                        RaiseSelectionChanged();
+                }))
+                _selectionPosted = false; // окно разрушается — сообщать уже некому
+        }
+
+        private void RaiseSelectionChanged()
+        {
+            var h = SelectionChanged;
+            if (h != null) h(this, EventArgs.Empty);
         }
 
         // ---------- публичный API ----------
@@ -437,17 +473,31 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Вытеснение страницы LRU-кэшем (переполнение бюджета): освободить bitmap,
-        /// снять её плитки — при следующем показе страница перерендерится (заявки в
-        /// _thumbRequested на неё уже нет). Только UI-поток.
+        /// Общий бюджет памяти пополнился после чьего-то отказа (зовётся с любого потока):
+        /// повторить то, что из-за нехватки не получилось, — рендеры и плитки видимых страниц.
         /// </summary>
         private void OnMemoryReleased()
         {
             if (_shuttingDown)
                 return;
-            Ui.OnUi(this, ScheduleVisibleUpdate);
+            Ui.OnUi(this, delegate
+            {
+                if (_shuttingDown || IsDisposed)
+                    return;
+                ScheduleVisibleUpdate();
+                // Перерендер в очереди лечит только страницы БЕЗ рендера. Плитка, которой не
+                // хватило бюджета при отрисовке (GetTile → заглушка), стоит над готовым рендером,
+                // в очередь не попадает и сама не перерисуется — перерисовываем видимое.
+                if (_list.IsHandleCreated)
+                    _list.Invalidate();
+            });
         }
 
+        /// <summary>
+        /// Вытеснение страницы LRU-кэшем (переполнение бюджета): освободить bitmap,
+        /// снять её плитки — при следующем показе страница перерендерится (заявки в
+        /// _thumbRequested на неё уже нет). Только UI-поток.
+        /// </summary>
         private void OnPageEvicted(CachedPage page)
         {
             DisposeCachedPage(page);
@@ -1429,7 +1479,7 @@ namespace ExcelMerger
             // «нельзя» до первого движения, а дроп без движения мыши отвергается вовсе.
             e.Effect = _dragHasFiles
                 ? DragDropEffects.Copy
-                : (AllowReorder && !Locked && e.Data.GetDataPresent(typeof(ListViewItem))
+                : (AllowReorder && !Locked && DraggedOwnItem(e.Data) != null
                     ? DragDropEffects.Move
                     : DragDropEffects.None);
             // Drag-сессия забирает InsertionMark под себя — прежняя каретка вставки
@@ -1442,7 +1492,7 @@ namespace ExcelMerger
 
         private void OnListDragOver(object sender, DragEventArgs e)
         {
-            bool reorder = AllowReorder && !Locked && e.Data.GetDataPresent(typeof(ListViewItem));
+            bool reorder = AllowReorder && !Locked && DraggedOwnItem(e.Data) != null;
             if (!reorder && !_dragHasFiles)
             {
                 e.Effect = DragDropEffects.None;
@@ -1490,7 +1540,7 @@ namespace ExcelMerger
                 return;
             }
 
-            var item = e.Data.GetData(typeof(ListViewItem)) as ListViewItem;
+            ListViewItem item = DraggedOwnItem(e.Data);
             if (!AllowReorder || Locked || item == null || target < 0)
                 return;
             int from = item.Index;
@@ -1498,6 +1548,26 @@ namespace ExcelMerger
             var h = ReorderRequested;
             if (h != null)
                 h(from, to);
+        }
+
+        /// <summary>Перетаскиваемая плитка ЭТОЙ сетки или null (чужая, не плитка, нет данных).</summary>
+        private ListViewItem DraggedOwnItem(IDataObject data)
+        {
+            if (data == null || !data.GetDataPresent(typeof(ListViewItem)))
+                return null;
+            var item = data.GetData(typeof(ListViewItem)) as ListViewItem;
+            return IsOwnItem(item, _list) ? item : null;
+        }
+
+        /// <summary>
+        /// Перестановка — только для плитки из своего списка. Внутри процесса ListViewItem
+        /// передаётся как есть, и плитка соседнего окна (второе «Объединение») иначе сошла бы
+        /// за внутренний перенос: её индекс принадлежит чужому набору, и переехала бы
+        /// совсем другая страница. Чистая — под тест.
+        /// </summary>
+        internal static bool IsOwnItem(ListViewItem item, ListView owner)
+        {
+            return item != null && owner != null && item.ListView == owner;
         }
 
         /// <summary>
@@ -1764,20 +1834,51 @@ namespace ExcelMerger
 
         private void PostPage(string key, BudgetedBitmap page, int width, int generation)
         {
+            // Проверка и регистрация — под одним замком с выгрузкой в Dispose: рендер либо
+            // попадёт в _inFlight до неё (и Dispose его освободит), либо увидит _shuttingDown.
+            lock (_qLock)
+            {
+                if (_shuttingDown || !IsHandleCreated || IsDisposed)
+                {
+                    page.Dispose();
+                    return;
+                }
+                _inFlight.Add(page);
+            }
             try
             {
-                if (!_shuttingDown && IsHandleCreated && !IsDisposed)
-                    BeginInvoke((MethodInvoker)delegate
-                    {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (TakeInFlight(page))
                         ApplyPage(key, page, width, generation);
-                    });
-                else
-                    page.Dispose();
+                });
             }
             catch (InvalidOperationException)
             {
-                page.Dispose();
+                if (TakeInFlight(page))
+                    page.Dispose();
             }
+        }
+
+        /// <summary>Забрать рендер из «в пути»: true — он наш (Dispose его ещё не освободил).</summary>
+        private bool TakeInFlight(BudgetedBitmap page)
+        {
+            lock (_qLock)
+                return _inFlight.Remove(page);
+        }
+
+        /// <summary>Освободить рендеры, так и не дошедшие до ApplyPage (окно закрыли раньше).</summary>
+        private void DisposeInFlight()
+        {
+            BudgetedBitmap[] orphans;
+            lock (_qLock)
+            {
+                orphans = new BudgetedBitmap[_inFlight.Count];
+                _inFlight.CopyTo(orphans);
+                _inFlight.Clear();
+            }
+            foreach (BudgetedBitmap orphan in orphans)
+                orphan.Dispose();
         }
 
         private void ApplyPage(string key, BudgetedBitmap page, int width, int generation)
@@ -1862,9 +1963,9 @@ namespace ExcelMerger
         {
             if (disposing)
             {
-                _shuttingDown = true;
                 lock (_qLock)
                 {
+                    _shuttingDown = true; // под замком: PostPage проверяет флаг под ним же
                     _thumbGeneration++;
                     _thumbQueue.Clear();
                     _thumbRequested.Clear();
@@ -1889,6 +1990,7 @@ namespace ExcelMerger
                 _metrics.Dispose(); // пустой ImageList метрик (не дочерний компонент)
                 _pageCache.Clear();
                 ClearTiles();
+                DisposeInFlight(); // их отложенные ApplyPage после уничтожения окна не выполнятся
                 if (stopped)
                     _thumbSignal.Dispose();
             }

@@ -431,7 +431,7 @@ namespace ExcelMerger
                         Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message);
                         return;
                     }
-                    pages = FlattenParts(PdfSplitPlan.ByRanges(working, ranges));
+                    pages = FlattenParts(PdfSplitPlan.ByRanges(working, ranges, src));
                 }
                 if (pages.Count == 0)
                 {
@@ -440,17 +440,12 @@ namespace ExcelMerger
                     return;
                 }
 
-                string outPath;
-                using (var dialog = new SaveFileDialog())
-                {
-                    dialog.Filter = Loc.T("common.pdfSaveFilter");
-                    dialog.FileName = Path.GetFileNameWithoutExtension(src) +
-                        (mode == ModeExtract ? Loc.T("split.suffix.selected") : Loc.T("split.suffix.combined"));
-                    dialog.InitialDirectory = Path.GetDirectoryName(src);
-                    if (dialog.ShowDialog(this) != DialogResult.OK)
-                        return;
-                    outPath = dialog.FileName;
-                }
+                string outPath = AskSavePath(Loc.T("common.pdfSaveFilter"),
+                    Path.GetFileNameWithoutExtension(src) +
+                        (mode == ModeExtract ? Loc.T("split.suffix.selected") : Loc.T("split.suffix.combined")),
+                    Path.GetDirectoryName(src));
+                if (outPath == null)
+                    return;
                 RunSplit(delegate(Action<int, int> pr)
                 {
                     PdfSplitService.ExtractPlanned(src, pages, outPath, pr, cancel);
@@ -471,7 +466,7 @@ namespace ExcelMerger
                     Dialogs.Error(this, Title, Loc.T("split.err.badRanges"), ex.Message);
                     return;
                 }
-                plannedParts = PdfSplitPlan.ByRanges(working, ranges);
+                plannedParts = PdfSplitPlan.ByRanges(working, ranges, src);
             }
             else if (mode == ModeEveryN)
             {
@@ -480,21 +475,16 @@ namespace ExcelMerger
             }
 
             // Даём выбрать и папку, и базовое имя: к нему добавятся номера/метки.
-            string dir, baseName;
-            using (var dialog = new SaveFileDialog())
-            {
-                dialog.Filter = Loc.T("common.pdfSaveFilter");
-                dialog.Title = Loc.T("split.pickBase");
-                dialog.FileName = Path.GetFileNameWithoutExtension(src) + ".pdf";
-                dialog.InitialDirectory = Path.GetDirectoryName(src);
-                dialog.OverwritePrompt = false; // создаются base_1.pdf и т.п., а не сам base.pdf
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                    return;
-                dir = Path.GetDirectoryName(dialog.FileName);
-                baseName = Path.GetFileNameWithoutExtension(dialog.FileName);
-                if (string.IsNullOrWhiteSpace(baseName))
-                    baseName = Path.GetFileNameWithoutExtension(src);
-            }
+            // overwritePrompt = false: создаются base_1.pdf и т.п., а не сам base.pdf.
+            string basePath = AskSavePath(Loc.T("common.pdfSaveFilter"),
+                Path.GetFileNameWithoutExtension(src) + ".pdf", Path.GetDirectoryName(src),
+                Loc.T("split.pickBase"), false);
+            if (basePath == null)
+                return;
+            string dir = Path.GetDirectoryName(basePath);
+            string baseName = Path.GetFileNameWithoutExtension(basePath);
+            if (string.IsNullOrWhiteSpace(baseName))
+                baseName = Path.GetFileNameWithoutExtension(src);
 
             string template = _txtNameTemplate.Text.Trim(); // снимок UI до старта воркера
             Func<Action<int, int>, List<string>> work;
@@ -562,13 +552,19 @@ namespace ExcelMerger
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
-                int count = 0, compressed = 0;
+                int count = 0, compressed = 0, failed = 0;
                 long largest = 0;
                 try
                 {
                     // Две фазы в одну шкалу 2×частей: разбиение (0..P) и сжатие (P..2P).
                     List<string> files = work(delegate(int done, int total) { onProgress(done, 2 * total); });
                     count = files.Count;
+                    // Убрать за собой по отмене можно только то, что создали сами: части — НОВЫЕ
+                    // файлы (OutputFile.CreateUnique). Извлечение в один файл другое: запись уже
+                    // ЗАМЕНИЛА файл, выбранный человеком (резервная копия удалена), и удалить его
+                    // по отмене значило бы потерять и прежний, и новый. Там запись — точка
+                    // невозврата: «Отмену» снимаем, сжатие дожимаем.
+                    bool canDiscard = openAsFolder;
                     // Сжатие — самая ДОЛГАЯ фаза: сорок частей это сорок запусков Ghostscript,
                     // дольше самой нарезки. Раньше отмену здесь снимали, считая точкой невозврата
                     // момент записи файлов; но раз остановка и так убирает за собой, невозврата
@@ -578,19 +574,32 @@ namespace ExcelMerger
                     // Статус называет фазу: полоса на второй половине шкалы двигается по файлам,
                     // но по одной части она стоит, и без подписи это выглядело бы зависанием.
                     bool willCompress = level != CompressionLevel.None;
-                    if (willCompress)
-                        OnUi(delegate { SetStatus(Loc.T("common.status.compressing"), Theme.TextMuted); });
-                    else
-                        OnUi(delegate { StopOfferingCancel(); });
+                    OnUi(delegate
+                    {
+                        if (!canDiscard || !willCompress)
+                            StopOfferingCancel();
+                        if (!willCompress)
+                            return;
+                        // Один файл — один запуск движка без измеримого хода: бегущая полоса,
+                        // как у «Объединения». Частей много — полоса идёт по файлам.
+                        if (canDiscard)
+                            SetStatus(Loc.T("common.status.compressing"), Theme.TextMuted);
+                        else
+                            BeginIndeterminate(Loc.T("common.status.compressing"));
+                    });
                     for (int i = 0; i < files.Count; i++)
                     {
-                        if (cancel())
+                        if (canDiscard && cancel())
                         {
                             Cancellation.DeleteQuietly(files);
                             throw new OperationCanceledException();
                         }
-                        if (PdfCompression.Compress(files[i], level))
+                        // Полный исход: сбой движка — не «файл не уменьшился» (см. CompressedPart).
+                        GsRewriteResult result = PdfCompression.CompressDetailed(files[i], level);
+                        if (result == GsRewriteResult.Applied)
                             compressed++;
+                        else if (result == GsRewriteResult.Failed)
+                            failed++;
                         onProgress(files.Count + i + 1, 2 * files.Count);
                     }
                     foreach (string f in files) // итоговые размеры (уже после сжатия)
@@ -600,14 +609,14 @@ namespace ExcelMerger
                     }
                 }
                 catch (Exception ex) { error = ex; }
-                int resultCount = count, resultCompressed = compressed;
+                int resultCount = count, resultCompressed = compressed, resultFailed = failed;
                 long resultLargest = largest;
-                OnUi(delegate { OnSplitFinished(error, resultCount, resultCompressed, openTarget, openAsFolder, record, level, sourceSize, resultLargest, workUnits); });
+                OnUi(delegate { OnSplitFinished(error, resultCount, resultCompressed, resultFailed, openTarget, openAsFolder, record, level, sourceSize, resultLargest, workUnits); });
             });
         }
 
-        private void OnSplitFinished(Exception error, int count, int compressed, string openTarget, bool openAsFolder, Action record,
-            CompressionLevel level, long sourceSize, long largestOutput, int pageCount)
+        private void OnSplitFinished(Exception error, int count, int compressed, int compressFailed, string openTarget,
+            bool openAsFolder, Action record, CompressionLevel level, long sourceSize, long largestOutput, int pageCount)
         {
             if (!FinishOperation(error, Loc.T("common.status.notDone"),
                     Loc.T(openAsFolder ? "split.err.splitFailed" : "split.err.extractFailed")))
@@ -623,37 +632,45 @@ namespace ExcelMerger
             // Разбиение на части считаем файлами (страницы по частям расходятся неравномерно,
             // а при разбиении по диапазонам часть страниц может вообще не попасть в результат).
             // Извлечение даёт ОДИН файл, и число его страниц известно точно — показываем его.
-            string status = DoneStatus(openAsFolder, count, pageCount, compressed, level);
+            string status = DoneStatus(openAsFolder, count, pageCount, compressed, compressFailed, level);
             // Если без сжатия результат вышел почти как исходник (общие ресурсы страниц
             // едут вместе с ними) — ненавязчиво подсказать про «Сжатие».
             if (ShouldSuggestCompression(level, sourceSize, largestOutput))
                 status += Loc.T("split.status.largeHint");
-            SetStatus(status, Theme.OkGreen);
+            SetSavedStatus(compressFailed > 0, status);
             Ui.OpenPath(openTarget, openAsFolder); // авто-открытие; молча — файлы всё равно созданы
         }
 
         /// <summary>
-        /// Строка успешного завершения. Разбиение на части считаем ФАЙЛАМИ: страницы по частям
+        /// Строка завершения. Разбиение на части считаем ФАЙЛАМИ: страницы по частям
         /// расходятся неравномерно, а при разбиении по диапазонам часть страниц может вообще не
         /// попасть в результат, поэтому их число там было бы неправдой. Извлечение даёт ОДИН
         /// файл, и число его страниц известно точно (Extract пишет по странице на индекс).
-        /// Отдельным методом, чтобы подстановка значений проверялась тестом, а не только глазами.
-        /// Чистая — под тест.
+        /// Файлы, сжать которые движок НЕ СМОГ (failed), названы отдельно и под «⚠» — это не
+        /// «файл уже оптимизирован», а несостоявшееся сжатие. Отдельным методом, чтобы
+        /// подстановка значений проверялась тестом, а не только глазами. Чистая — под тест.
         /// </summary>
-        internal static string DoneStatus(bool openAsFolder, int count, int pageCount, int compressed, CompressionLevel level)
+        internal static string DoneStatus(bool openAsFolder, int count, int pageCount, int compressed, int failed,
+            CompressionLevel level)
         {
+            bool anyFailed = failed > 0 && level != CompressionLevel.None;
             if (!openAsFolder)
-                return SuccessStatus(string.Format(Loc.T("split.status.pagesExtracted"), pageCount),
-                    CompressedPart(compressed > 0, level));
+                return SavedStatus(anyFailed, string.Format(Loc.T("split.status.pagesExtracted"), pageCount),
+                    CompressedPart(compressed > 0 ? GsRewriteResult.Applied
+                        : anyFailed ? GsRewriteResult.Failed : GsRewriteResult.RejectedByPolicy, level));
             // Как и у одиночного результата, разрешение называем только там, где изображения
             // действительно пересчитаны (иначе вышло бы «до 0 dpi»), а о заказанном, но
-            // безрезультатном сжатии говорим прямо, вместо того чтобы промолчать.
+            // безрезультатном сжатии говорим прямо, вместо того чтобы промолчать. Если сорвались
+            // ВСЕ файлы, «не уменьшило» было бы неправдой — остаётся только часть про сбой.
             string manyFiles = compressed <= 0
-                ? (level == CompressionLevel.None ? null : Loc.T("common.suffix.notCompressed"))
+                ? (level == CompressionLevel.None || (anyFailed && failed >= count) ? null
+                    : Loc.T("common.suffix.notCompressed"))
                 : PdfCompression.Downsamples(level)
                     ? string.Format(Loc.T("split.suffix.compressed"), compressed, PdfCompression.ImageDpi(level))
                     : string.Format(Loc.T("split.suffix.compressedKeep"), compressed);
-            return SuccessStatus(string.Format(Loc.T("split.status.filesCreated"), count), manyFiles);
+            string failedPart = anyFailed ? string.Format(Loc.T("split.suffix.compressFailed"), failed) : null;
+            return SavedStatus(anyFailed, string.Format(Loc.T("split.status.filesCreated"), count), manyFiles,
+                failedPart);
         }
 
         /// <summary>Длина файла в байтах (0, если недоступен). Без исключений.</summary>
