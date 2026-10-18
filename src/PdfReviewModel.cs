@@ -42,8 +42,45 @@ namespace ExcelMerger
         public int MaxDiffCells = AbsoluteMaxDiffCells;
         // Детерминированный потолок семантической работы. В отличие от timeout он даёт
         // одинаковый результат на быстрых и медленных машинах; при исчерпании diff
-        // консервативно оставляет непроверенный остаток Delete/Insert.
+        // консервативно оставляет непроверенный остаток Delete/Insert. Отдельные стадии и
+        // выравнивание страниц внутри Compare получают его как есть, словесные стадии
+        // Compare — масштабированным по длине (DiffWorkFor).
         public long MaxDiffWork = 20000000;
+
+        // MaxDiffWork рассчитан на пару документов до DiffWorkReferenceWords слов вместе.
+        // Словесным стадиям достаётся 7/8 масштаба (1/8 гарантирована пробелам): 56 млн
+        // при 40 тыс. слов на сторону и 112 млн при 80 тыс. Замер точного diff при 5%
+        // случайных замен: ~24 и ~79 млн (бисекция стоит ~D² при равномерных правках).
+        // Одна бисекция берёт не больше половины остатка, а её неудача делит диапазон
+        // якорями, поэтому нехватка бюджета не превращает документ в «изменено 100%».
+        // Потолок ×8 (160 млн) на 2 млн знаков — порядка 10-20 с на x64, а не единицы секунд.
+        internal const long DiffWorkReferenceWords = 25000;
+        internal const long MaxDiffWorkScale = 8;
+
+        /// <summary>
+        /// Бюджет семантической работы Compare для пары документов из words слов. Число
+        /// реальных правок растёт с длиной документа, а Myers тратит O((N+M)·D), поэтому
+        /// фиксированный бюджет кончался бы на длинных документах при обычной плотности
+        /// правок. Масштаб линеен по N+M, но не больше MaxDiffWorkScale: работа ограничивает
+        /// время, а память diff остаётся O(N+M) плюс ограниченный лист матрицы, так что
+        /// потолок одинаково безопасен для x86 и x64. Целочисленная арифметика оставляет
+        /// результат детерминированным на любой разрядности.
+        /// </summary>
+        internal long DiffWorkFor(long words)
+        {
+            long baseWork = Math.Max(0L, MaxDiffWork);
+            if (words <= DiffWorkReferenceWords || baseWork == 0)
+                return baseWork;
+            long scaledWords = Math.Min(words, DiffWorkReferenceWords * MaxDiffWorkScale);
+            // floor(base·s/R) = (base/R)·s + (base%R)·s/R: остаток меньше R, и его
+            // произведение на s ≤ 8R всегда помещается; насыщается только сам результат.
+            long whole = baseWork / DiffWorkReferenceWords;
+            long fraction = baseWork % DiffWorkReferenceWords * scaledWords /
+                DiffWorkReferenceWords;
+            if (whole > (long.MaxValue - fraction) / scaledWords)
+                return long.MaxValue;
+            return whole * scaledWords + fraction;
+        }
 
         public static PdfReviewLimits Default() { return new PdfReviewLimits(); }
     }
@@ -254,6 +291,18 @@ namespace ExcelMerger
         public int ChangedPercent;
     }
 
+    /// <summary>Стадии Compare, которые могут не завершиться из-за бюджета работы.</summary>
+    [Flags]
+    internal enum PdfReviewStage
+    {
+        None = 0,
+        PageAlignment = 1,
+        WordDiff = 2,
+        OrderReconciliation = 4,
+        SplitJoin = 8,
+        Whitespace = 16
+    }
+
     internal sealed class PdfReviewResult
     {
         public PdfReviewDocument Left;
@@ -266,6 +315,12 @@ namespace ExcelMerger
         /// кандидаты выглядели бы настоящими правками, а «пробелов не менялось» — проверкой.
         /// </summary>
         public bool WorkExhausted { get; internal set; }
+
+        /// <summary>
+        /// Какие стадии не завершились (пропущены или прерваны бюджетом). Непустое значение
+        /// всегда сопровождается WorkExhausted; детали нужны окну для точного пояснения.
+        /// </summary>
+        public PdfReviewStage IncompleteStages { get; internal set; }
 
         // Семантические и производные коллекции публикуются готовыми snapshot-ссылками.
         // Это намеренно не readonly-поля: Clear()+AddRange()/повторное заполнение словаря

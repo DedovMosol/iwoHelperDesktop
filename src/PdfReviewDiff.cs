@@ -20,6 +20,18 @@ namespace ExcelMerger
         private const double AlignmentTieEpsilon = 1e-12;
         private const int CancellationPollMask = 255;
         private const int MaxDiffRecursionDepth = 128;
+        // Лист точной LCS-матрицы (~256×256 слов). Матрица оплачивает n·m при любом числе
+        // правок, а Myers — O((N+M)·D); большие диапазоны делит бисекция, а матрица
+        // остаётся там, где её вторичное предпочтение страниц дёшево.
+        private const int MaxMatrixLeafCells = 65536;
+        // Знаменатель доли бюджета Compare (1/8), недоступной словесным стадиям и
+        // гарантированной сравнению пробелов.
+        private const int WhitespaceWorkShare = 8;
+        // Знаменатель доли остатка (1/2) на одну бисекцию Myers. При равномерных правках
+        // верхняя бисекция стоит около половины всей рекурсии (~D² из ~2·D²/2), поэтому
+        // если ей мало половины, точный diff не уложился бы и целиком; её провал не
+        // должен обнулять бюджет — диапазон делится якорями (DiffAnchoredRange).
+        private const int BisectWorkShare = 2;
 
         /// <summary>
         /// Контекст принадлежит одному Compare/DiffWords: никакого глобального состояния,
@@ -30,17 +42,52 @@ namespace ExcelMerger
         private sealed class DiffContext
         {
             private readonly Func<bool> _cancelled;
+            private readonly long _initialWork;
             private long _remainingWork;
             private int _pollCounter;
 
             public DiffContext(PdfReviewLimits limits, Func<bool> cancelled)
+                : this((limits ?? PdfReviewLimits.Default()).MaxDiffWork, cancelled)
+            {
+            }
+
+            public DiffContext(long work, Func<bool> cancelled)
             {
                 _cancelled = cancelled;
-                _remainingWork = Math.Max(0L,
-                    (limits ?? PdfReviewLimits.Default()).MaxDiffWork);
+                _remainingWork = Math.Max(0L, work);
+                _initialWork = _remainingWork;
             }
 
             public bool WorkExhausted { get; private set; }
+
+            /// <summary>
+            /// Часть diff разбита эвристическими якорями, потому что точной бисекции не
+            /// хватило её доли: результат полон, но минимальность не доказана. В отличие
+            /// от WorkExhausted остаток бюджета сохраняется для остальных диапазонов.
+            /// </summary>
+            public bool Approximated { get; private set; }
+
+            public void MarkApproximated()
+            {
+                Approximated = true;
+            }
+
+            /// <summary>
+            /// Дочерний бюджет одной попытки: её провал исчерпывает только выданную долю,
+            /// а не весь остаток. Израсходованное списывает с родителя Settle.
+            /// </summary>
+            public DiffContext Slice(long units)
+            {
+                return new DiffContext(Math.Min(units, _remainingWork), _cancelled);
+            }
+
+            public void Settle(DiffContext slice)
+            {
+                _remainingWork -= slice._initialWork - slice._remainingWork;
+            }
+
+            /// <summary>Неизрасходованный остаток; после исчерпания он равен нулю.</summary>
+            public long RemainingWork { get { return _remainingWork; } }
 
             public void ThrowIfCancellation()
             {
@@ -173,15 +220,20 @@ namespace ExcelMerger
                     if (entry.Page.PageIndex != entry.TargetPageIndex)
                         throw new InvalidOperationException(
                             "PdfReviewPage.PageIndex changed during comparison.");
+                // Документы сервиса лежат в общем LRU и уже имеют верного владельца: слово,
+                // чьё значение не меняется, не переписываем ни здесь, ни при откате, чтобы
+                // параллельный Compare того же кэша не видел чужих записей.
                 foreach (Entry entry in _entries)
-                    entry.Word.PageIndex = entry.TargetPageIndex;
+                    if (entry.OriginalPageIndex != entry.TargetPageIndex)
+                        entry.Word.PageIndex = entry.TargetPageIndex;
             }
 
             public void Restore()
             {
                 // Rollback намеренно не опрашивает отмену: восстановление входа обязательно.
                 foreach (Entry entry in _entries)
-                    entry.Word.PageIndex = entry.OriginalPageIndex;
+                    if (entry.OriginalPageIndex != entry.TargetPageIndex)
+                        entry.Word.PageIndex = entry.OriginalPageIndex;
             }
         }
 
@@ -255,16 +307,26 @@ namespace ExcelMerger
             if (right == null) throw new ArgumentNullException("right");
             if (limits == null) limits = PdfReviewLimits.Default();
 
-            var context = new DiffContext(limits, cancelled);
-            context.ThrowIfCancellation();
+            // Строки viewer — лишь вторичное предпочтение diff, поэтому у выравнивания свой
+            // бюджет: сопоставление сотен страниц не должно съедать доказательство слов.
+            var alignment = new DiffContext(limits, cancelled);
+            alignment.ThrowIfCancellation();
             var result = new PdfReviewResult { Left = left, Right = right };
-            foreach (PdfReviewPagePair pair in Align(left.Pages, right.Pages, limits, context))
+            foreach (PdfReviewPagePair pair in Align(left.Pages, right.Pages, limits, alignment))
                 result.Pairs.Add(pair);
+            PdfReviewStage incomplete = IncompleteStage(alignment,
+                PdfReviewStage.PageAlignment);
 
             var ownership = new PageOwnershipTransaction();
-            List<PdfReviewWord> leftWords = Flatten(left, context, ownership);
-            List<PdfReviewWord> rightWords = Flatten(right, context, ownership);
-            context.ThrowIfCancellation();
+            List<PdfReviewWord> leftWords = Flatten(left, alignment, ownership);
+            List<PdfReviewWord> rightWords = Flatten(right, alignment, ownership);
+            alignment.ThrowIfCancellation();
+
+            // Сравнению пробелов гарантирована доля бюджета: исчерпание word diff на одном
+            // участке не должно молча снимать проверку пробелов между доказанными словами.
+            long work = limits.DiffWorkFor((long)leftWords.Count + rightWords.Count);
+            long whitespaceWork = work / WhitespaceWorkShare;
+            var context = new DiffContext(work - whitespaceWork, cancelled);
 
             bool completed = false;
             try
@@ -272,12 +334,26 @@ namespace ExcelMerger
                 ownership.Apply();
                 result.ReplaceOperations(DiffWords(leftWords, rightWords, limits,
                     PreferredPageMatches(result.Pairs), context));
+                incomplete |= IncompleteStage(context, PdfReviewStage.WordDiff);
+                // Якорное разбиение бюджет не обнуляет, но минимальность участка не доказана.
+                if (context.Approximated)
+                    incomplete |= PdfReviewStage.WordDiff;
+                var pages = new ReviewPageLookup(result);
+                var evidence = new WhitespaceEvidenceCache();
                 if (!context.WorkExhausted)
-                    ReconcileOrderArtifacts(result, context);
+                    ReconcileOrderArtifacts(result, pages, context);
+                incomplete |= IncompleteStage(context, PdfReviewStage.OrderReconciliation);
                 if (!context.WorkExhausted)
-                    ClassifySplitJoin(result, context);
-                if (!context.WorkExhausted)
-                    CompareWhitespace(result, limits, context);
+                    ClassifySplitJoin(result, pages, evidence, context);
+                incomplete |= IncompleteStage(context, PdfReviewStage.SplitJoin);
+                var whitespace = new DiffContext(
+                    whitespaceWork + context.RemainingWork, cancelled);
+                CompareWhitespace(result, limits, evidence, whitespace);
+                incomplete |= IncompleteStage(whitespace, PdfReviewStage.Whitespace);
+                // Флаг и список стадий выставляются до проекции: окно читает их вместе
+                // с готовым snapshot и обязано пояснить, что часть сравнена грубо.
+                result.IncompleteStages = incomplete;
+                result.WorkExhausted = incomplete != PdfReviewStage.None;
                 Project(result, context);
                 context.ThrowIfCancellation();
                 completed = true;
@@ -288,6 +364,12 @@ namespace ExcelMerger
                 if (!completed)
                     ownership.Restore();
             }
+        }
+
+        private static PdfReviewStage IncompleteStage(DiffContext context,
+            PdfReviewStage stage)
+        {
+            return context.WorkExhausted ? stage : PdfReviewStage.None;
         }
 
         /// <summary>
@@ -402,6 +484,72 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Снимок строк viewer и страниц обоих документов на одну стадию или проекцию.
+        /// Явная пара и страница-владелец запрашиваются во внутренних циклах сверки и
+        /// проекции; линейный поиск делал бы их стоимость O(строк × кандидатов). Строки и
+        /// страницы ограничены MaxPages, поэтому снимок строится без опроса отмены, а каждый
+        /// запрос пары по-прежнему оплачивается единицей семантической работы.
+        /// </summary>
+        private sealed class ReviewPageLookup
+        {
+            private readonly Dictionary<long, int> _pairCounts = new Dictionary<long, int>();
+            private readonly Dictionary<int, PdfReviewPage> _leftPages;
+            private readonly Dictionary<int, PdfReviewPage> _rightPages;
+
+            public ReviewPageLookup(PdfReviewResult result)
+            {
+                if (result != null)
+                {
+                    foreach (PdfReviewPagePair pair in result.Pairs)
+                    {
+                        if (pair == null)
+                            continue;
+                        long key = PairKey(pair.LeftPageIndex, pair.RightPageIndex);
+                        int count;
+                        _pairCounts.TryGetValue(key, out count);
+                        _pairCounts[key] = count + 1;
+                    }
+                }
+                _leftPages = PagesByIndex(result == null ? null : result.Left);
+                _rightPages = PagesByIndex(result == null ? null : result.Right);
+            }
+
+            /// <summary>Ровно одна строка viewer сопоставляет эти физические страницы.</summary>
+            public bool IsExplicitPair(int leftPage, int rightPage, DiffContext context)
+            {
+                int count;
+                return context.TryStep() &&
+                    _pairCounts.TryGetValue(PairKey(leftPage, rightPage), out count) &&
+                    count == 1;
+            }
+
+            /// <summary>Страница-владелец как у PageAt: при повторе индекса — первая.</summary>
+            public PdfReviewPage Page(bool left, int pageIndex)
+            {
+                PdfReviewPage page;
+                return (left ? _leftPages : _rightPages).TryGetValue(pageIndex, out page)
+                    ? page : null;
+            }
+
+            private static long PairKey(int leftPage, int rightPage)
+            {
+                return ((long)leftPage << 32) | (uint)rightPage;
+            }
+
+            private static Dictionary<int, PdfReviewPage> PagesByIndex(
+                PdfReviewDocument document)
+            {
+                var pages = new Dictionary<int, PdfReviewPage>();
+                if (document == null)
+                    return pages;
+                foreach (PdfReviewPage page in document.Pages)
+                    if (page != null && !pages.ContainsKey(page.PageIndex))
+                        pages.Add(page.PageIndex, page);
+                return pages;
+            }
+        }
+
+        /// <summary>
         /// Проверяет размеры прямоугольной DP-матрицы до любого сложения в int и до
         /// резервирования/выделения памяти. Пользовательский предел может только уменьшить
         /// безопасный абсолютный потолок; выходы заполняются лишь для допустимой матрицы.
@@ -484,23 +632,11 @@ namespace ExcelMerger
                 rightOrderKeys[j] = PageOrderKey(right[j]);
             }
 
-            // Similarity проверяет пересечение меньшего множества. Резервируем всю
-            // потенциально комбинаторную работу до заполнения DP: частичная матрица не
-            // должна порождать кажущееся page-соответствие.
-            long alignmentWork = cells - 1L;
-            for (int i = 0; i < n; i++)
-            {
-                context.PollCancellation();
-                for (int j = 0; j < m; j++)
-                {
-                    long cellWork = 0;
-                    if (!string.Equals(leftOrderKeys[i], rightOrderKeys[j],
-                        StringComparison.Ordinal))
-                        cellWork = Math.Min(leftSets[i].Count, rightSets[j].Count);
-                    alignmentWork = SaturatingAdd(alignmentWork, cellWork);
-                }
-            }
-            if (!context.TryReserve(alignmentWork))
+            // Вся потенциально комбинаторная работа резервируется до заполнения DP:
+            // частичная матрица не должна порождать кажущееся page-соответствие.
+            double[,] similarity;
+            if (!TryAlignmentSimilarities(left, right, leftSets, rightSets,
+                    leftOrderKeys, rightOrderKeys, context, out similarity))
                 return UnalignedPages(left, right, context);
 
             for (int i = n - 1; i >= 0; i--)
@@ -520,10 +656,7 @@ namespace ExcelMerger
                 for (int j = m - 1; j >= 0; j--)
                 {
                     context.PollCancellation();
-                    bool exactWords = string.Equals(leftOrderKeys[i], rightOrderKeys[j],
-                        StringComparison.Ordinal);
-                    double sim = Similarity(left[i], right[j], leftSets[i], rightSets[j],
-                        exactWords);
+                    double sim = similarity[i, j];
                     double pairCost = sim >= SimilarityThreshold
                         ? cost[i + 1, j + 1] + (1.0 - sim)
                         : double.MaxValue;
@@ -594,6 +727,205 @@ namespace ExcelMerger
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// Сходство всех пар страниц для DP без перебора n·m·(слов на странице). DP берёт
+        /// пару только начиная с SimilarityThreshold, а Similarity при заданных размерах
+        /// множеств монотонна по числу общих слов. Поэтому общие слова считаем
+        /// инвертированным индексом лишь по «редким» ключам (совместных вхождений не больше
+        /// n+m), а каждый «частый» ключ получает номер бита в маске страницы. Пары, которым
+        /// даже оценка сверху common + min(частых_i, частых_j) не даёт порога, отсеиваются
+        /// сразу, остальным общее число частых ключей считается точно: popcount(Fᵢ & Fⱼ)
+        /// за ⌈K/64⌉ машинных слов. Служебные слова есть почти на каждой странице, и
+        /// поштучная проверка стоила бы n·m·|F| (на 500 страницах больше всего бюджета), а
+        /// частых ключей K < Σвхождений/(2√(n+m)), так что маски короткие. Отсечённые пары
+        /// заведомо ниже порога, остальные получают то же значение, так что DP видит те же
+        /// числа, что при полном переборе. Это фильтрация кандидатов set-similarity join:
+        /// Bayardo, Ma, Srikant, «Scaling Up All Pairs Similarity Search», WWW 2007.
+        /// </summary>
+        private static bool TryAlignmentSimilarities(IList<PdfReviewPage> left,
+            IList<PdfReviewPage> right, HashSet<string>[] leftSets,
+            HashSet<string>[] rightSets, string[] leftKeys, string[] rightKeys,
+            DiffContext context, out double[,] similarity)
+        {
+            similarity = null;
+            int n = leftSets.Length;
+            int m = rightSets.Length;
+            Dictionary<string, int> frequentBits = FrequentKeyBits(
+                PageFrequency(leftSets, context), PageFrequency(rightSets, context),
+                (long)n + m, context);
+            int maskWords = (frequentBits.Count + 63) / 64;
+
+            var rightPagesByRareKey =
+                new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+            var rightFrequent = new int[m];
+            var rightMasks = new ulong[m][];
+            for (int j = 0; j < m; j++)
+            {
+                rightMasks[j] = new ulong[maskWords];
+                foreach (string key in rightSets[j])
+                {
+                    context.PollCancellation();
+                    int bit;
+                    if (frequentBits.TryGetValue(key, out bit))
+                    {
+                        rightMasks[j][bit >> 6] |= 1UL << (bit & 63);
+                        rightFrequent[j]++;
+                        continue;
+                    }
+                    List<int> pages;
+                    if (!rightPagesByRareKey.TryGetValue(key, out pages))
+                    {
+                        pages = new List<int>();
+                        rightPagesByRareKey.Add(key, pages);
+                    }
+                    pages.Add(j);
+                }
+            }
+            var leftFrequent = new int[n];
+            var leftMasks = new ulong[n][];
+            long rareWork = 0;
+            for (int i = 0; i < n; i++)
+            {
+                leftMasks[i] = new ulong[maskWords];
+                foreach (string key in leftSets[i])
+                {
+                    context.PollCancellation();
+                    int bit;
+                    List<int> pages;
+                    if (frequentBits.TryGetValue(key, out bit))
+                    {
+                        leftMasks[i][bit >> 6] |= 1UL << (bit & 63);
+                        leftFrequent[i]++;
+                    }
+                    else if (rightPagesByRareKey.TryGetValue(key, out pages))
+                    {
+                        rareWork = SaturatingAdd(rareWork, pages.Count);
+                    }
+                }
+            }
+            // Подсчёт редких совпадений плюс по единице на ячейку: оценка пары и сам DP.
+            if (!context.TryReserve(SaturatingAdd(rareWork, (long)n * m)))
+                return false;
+
+            var common = new int[n, m];
+            for (int i = 0; i < n; i++)
+            {
+                foreach (string key in leftSets[i])
+                {
+                    // Частых ключей в индексе редких нет: класс ключа общий для сторон.
+                    List<int> pages;
+                    if (!rightPagesByRareKey.TryGetValue(key, out pages))
+                        continue;
+                    foreach (int j in pages)
+                    {
+                        context.PollCancellation();
+                        common[i, j]++;
+                    }
+                }
+            }
+
+            var values = new double[n, m];
+            var verify = new List<long>();
+            long verifyWork = 0;
+            for (int i = 0; i < n; i++)
+            {
+                for (int j = 0; j < m; j++)
+                {
+                    context.PollCancellation();
+                    if (left[i] == null || right[j] == null)
+                        continue;
+                    if (string.Equals(leftKeys[i], rightKeys[j], StringComparison.Ordinal))
+                    {
+                        values[i, j] = 1;
+                        continue;
+                    }
+                    int frequent = Math.Min(leftFrequent[i], rightFrequent[j]);
+                    double bound = Similarity(left[i], right[j], leftSets[i].Count,
+                        rightSets[j].Count, common[i, j] + frequent);
+                    if (bound < SimilarityThreshold)
+                        continue;
+                    if (frequent == 0)
+                    {
+                        values[i, j] = bound;
+                        continue;
+                    }
+                    verify.Add((long)i * m + j);
+                    verifyWork = SaturatingAdd(verifyWork, maskWords);
+                }
+            }
+            if (!context.TryReserve(verifyWork))
+                return false;
+            foreach (long cell in verify)
+            {
+                context.PollCancellation();
+                int i = (int)(cell / m);
+                int j = (int)(cell % m);
+                values[i, j] = Similarity(left[i], right[j], leftSets[i].Count,
+                    rightSets[j].Count,
+                    common[i, j] + SharedBitCount(leftMasks[i], rightMasks[j]));
+            }
+            similarity = values;
+            return true;
+        }
+
+        private static Dictionary<string, int> PageFrequency(HashSet<string>[] sets,
+            DiffContext context)
+        {
+            var frequency = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (HashSet<string> set in sets)
+            {
+                foreach (string key in set)
+                {
+                    context.PollCancellation();
+                    int count;
+                    frequency.TryGetValue(key, out count);
+                    frequency[key] = count + 1;
+                }
+            }
+            return frequency;
+        }
+
+        /// <summary>
+        /// Номера бит «частых» ключей: встречаются в большем числе пар страниц, чем n+m.
+        /// Произведение частот симметрично, поэтому класс ключа один на обеих сторонах, а
+        /// частый ключ есть на обеих. Каждый ключ классифицируется один раз.
+        /// </summary>
+        private static Dictionary<string, int> FrequentKeyBits(
+            Dictionary<string, int> leftFrequency, Dictionary<string, int> rightFrequency,
+            long rarePairs, DiffContext context)
+        {
+            var bits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, int> entry in leftFrequency)
+            {
+                context.PollCancellation();
+                int rightCount;
+                if (rightFrequency.TryGetValue(entry.Key, out rightCount) &&
+                    (long)entry.Value * rightCount > rarePairs)
+                    bits.Add(entry.Key, bits.Count);
+            }
+            return bits;
+        }
+
+        /// <summary>
+        /// popcount(left & right) для масок одной длины. BitOperations.PopCount есть только
+        /// в .NET Core 3.0+, поэтому — параллельный (SWAR) подсчёт из «Bit Twiddling Hacks»
+        /// С. Андерсона («Counting bits set, in parallel»), расширенный до 64 бит. Чистая
+        /// целочисленная арифметика даёт одинаковый результат на x86 и x64.
+        /// </summary>
+        private static int SharedBitCount(ulong[] left, ulong[] right)
+        {
+            int count = 0;
+            for (int w = 0; w < left.Length; w++)
+            {
+                ulong v = left[w] & right[w];
+                v -= (v >> 1) & 0x5555555555555555UL;
+                v = (v & 0x3333333333333333UL) + ((v >> 2) & 0x3333333333333333UL);
+                v = (v + (v >> 4)) & 0x0F0F0F0F0F0F0F0FUL;
+                count += (int)(unchecked(v * 0x0101010101010101UL) >> 56);
+            }
+            return count;
         }
 
         private static long SaturatingAdd(long value, long addition)
@@ -742,7 +1074,8 @@ namespace ExcelMerger
         /// <summary>
         /// Ворд-дифф: общий префикс/суффикс — сразу Equal, середина — ЛСД-матрица, если она
         /// помещается в потолок; не помещается — середина делится пополам и дифф продолжается
-        /// рекурсивно. Операции всегда владеют словами своей стороны.
+        /// рекурсивно, а если бисекции не хватает её доли бюджета — делится якорями
+        /// уникальных слов. Операции всегда владеют словами своей стороны.
         /// </summary>
         public static List<PdfReviewWordOp> DiffWords(IList<PdfReviewWord> left,
             IList<PdfReviewWord> right, PdfReviewLimits limits)
@@ -781,6 +1114,8 @@ namespace ExcelMerger
             var canonical = new List<PdfReviewWordOp>();
             DiffRange(a, 0, a.Count, b, 0, b.Count, limits, canonical,
                 canonicalPages, context, 0);
+            if (canonicalPages != null)
+                canonical = ShiftMatchesToPreferredPages(canonical, canonicalPages, context);
             if (canonical.Count == 0)
                 canonical.Add(new PdfReviewWordOp { Kind = PdfReviewDiffKind.Equal });
 
@@ -804,6 +1139,148 @@ namespace ExcelMerger
             int leftCount = left == null ? 0 : left.Count;
             int rightCount = right == null ? 0 : right.Count;
             return leftCount.CompareTo(rightCount);
+        }
+
+        /// <summary>Сырой результат DiffRange по одному слову.</summary>
+        private struct RawDiffEntry
+        {
+            public PdfReviewDiffKind Kind;
+            public PdfReviewWord Left;
+            public PdfReviewWord Right;
+        }
+
+        /// <summary>
+        /// Предпочтение страниц видит только матричный лист; срезание краёв без
+        /// предпочтений и Myers сопоставляют повторное слово жадно, и колонтитул вставленной
+        /// страницы «забирает» совпадение соседней. Длина LCS от этого не меняется, а
+        /// страница-владелец совпадения — меняется. Проход переносит Equal(l, r) без
+        /// предпочтения на r' с тем же ключом из смежного блока одних вставок (или на l'
+        /// из блока одних удалений), если viewer сопоставил страницы l и r'. Обмен ролями
+        /// двух элементов сохраняет порядок обеих сторон и число Equal, а число
+        /// предпочтённых совпадений только растёт. Без единого сдвига операции не
+        /// перестраиваются.
+        /// </summary>
+        private static List<PdfReviewWordOp> ShiftMatchesToPreferredPages(
+            List<PdfReviewWordOp> ops, PreferredPageAlignment preferredPages,
+            DiffContext context)
+        {
+            var entries = new List<RawDiffEntry>();
+            foreach (PdfReviewWordOp op in ops)
+            {
+                context.PollCancellation();
+                if (op.Kind == PdfReviewDiffKind.Equal)
+                    foreach (PdfReviewWordMatch match in op.Matches)
+                        entries.Add(new RawDiffEntry
+                        {
+                            Kind = PdfReviewDiffKind.Equal,
+                            Left = match.Left,
+                            Right = match.Right
+                        });
+                else if (op.Kind == PdfReviewDiffKind.Delete)
+                    foreach (PdfReviewWord word in op.LeftWords)
+                        entries.Add(new RawDiffEntry { Kind = op.Kind, Left = word });
+                else
+                    foreach (PdfReviewWord word in op.RightWords)
+                        entries.Add(new RawDiffEntry { Kind = op.Kind, Right = word });
+            }
+            bool forward = ShiftMatches(entries, preferredPages, 1, context);
+            bool backward = ShiftMatches(entries, preferredPages, -1, context);
+            if (!forward && !backward)
+                return ops;
+
+            // DiffRange порождает только точные совпадения ключей.
+            var result = new List<PdfReviewWordOp>();
+            foreach (RawDiffEntry entry in entries)
+            {
+                context.PollCancellation();
+                if (entry.Kind == PdfReviewDiffKind.Equal)
+                    AppendEqual(result, entry.Left, entry.Right, PdfReviewMatchKind.Exact);
+                else
+                    Append(result, entry.Kind, entry.Kind == PdfReviewDiffKind.Delete
+                        ? entry.Left : entry.Right);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// direction = +1 переносит совпадение вперёд, в однородный блок сразу за ним,
+        /// -1 — назад. Обход идёт против направления: блок за текущим элементом уже
+        /// окончателен, и многословный колонтитул переезжает целиком, слово за словом.
+        /// Кандидат ищется от дальнего края блока, поэтому совпадение примыкает к соседнему
+        /// Equal, а следующий поиск начинается сразу перед ним: каждый элемент блока
+        /// просматривается не больше одного раза, и проход линеен.
+        /// </summary>
+        private static bool ShiftMatches(List<RawDiffEntry> entries,
+            PreferredPageAlignment preferredPages, int direction, DiffContext context)
+        {
+            bool shifted = false;
+            int start = direction > 0 ? entries.Count - 1 : 0;
+            // Блок за элементом i: entries[i + direction .. far] одного вида kind;
+            // far == i означает пустой блок.
+            int far = start;
+            PdfReviewDiffKind kind = PdfReviewDiffKind.Equal;
+            for (int i = start; i >= 0 && i < entries.Count; i -= direction)
+            {
+                context.PollCancellation();
+                RawDiffEntry entry = entries[i];
+                if (entry.Kind == PdfReviewDiffKind.Equal && far != i &&
+                    !preferredPages.IsPreferred(entry.Left, entry.Right))
+                {
+                    int target = PreferredShiftTarget(entries, i, far, kind, direction,
+                        preferredPages, context);
+                    if (target >= 0)
+                    {
+                        RawDiffEntry other = entries[target];
+                        bool inserts = kind == PdfReviewDiffKind.Insert;
+                        entries[target] = new RawDiffEntry
+                        {
+                            Kind = PdfReviewDiffKind.Equal,
+                            Left = inserts ? entry.Left : other.Left,
+                            Right = inserts ? other.Right : entry.Right
+                        };
+                        entries[i] = new RawDiffEntry
+                        {
+                            Kind = kind,
+                            Left = inserts ? null : entry.Left,
+                            Right = inserts ? entry.Right : null
+                        };
+                        shifted = true;
+                        far = target - direction;
+                        continue;
+                    }
+                }
+                if (entry.Kind == PdfReviewDiffKind.Equal)
+                {
+                    far = i - direction;
+                }
+                else if (far == i || entry.Kind != kind)
+                {
+                    far = i;
+                    kind = entry.Kind;
+                }
+            }
+            return shifted;
+        }
+
+        private static int PreferredShiftTarget(List<RawDiffEntry> entries, int index,
+            int far, PdfReviewDiffKind kind, int direction,
+            PreferredPageAlignment preferredPages, DiffContext context)
+        {
+            RawDiffEntry match = entries[index];
+            bool inserts = kind == PdfReviewDiffKind.Insert;
+            string key = WordKey(inserts ? match.Right : match.Left);
+            for (int j = far; j != index; j -= direction)
+            {
+                context.PollCancellation();
+                RawDiffEntry candidate = entries[j];
+                if (inserts
+                    ? WordKey(candidate.Right) == key &&
+                      preferredPages.IsPreferred(match.Left, candidate.Right)
+                    : WordKey(candidate.Left) == key &&
+                      preferredPages.IsPreferred(candidate.Left, match.Right))
+                    return j;
+            }
+            return -1;
         }
 
         private static List<PdfReviewWordOp> MirrorRawOperations(
@@ -908,40 +1385,35 @@ namespace ExcelMerger
             context.PollCancellation();
             if (context.WorkExhausted)
             {
-                AppendRawRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+                AppendUnprovenRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
                 return;
             }
 
-            while (aStart < aEnd && bStart < bEnd)
+            int suffix = TrimEqualEnds(a, ref aStart, ref aEnd, b, ref bStart, ref bEnd,
+                preferredPages, ops, context);
+            // Матрица стоит n·m независимо от числа правок, поэтому только для малых листьев.
+            int leafCells = Math.Min(limits.MaxDiffCells, MaxMatrixLeafCells);
+            int matrixRows;
+            int matrixColumns;
+            long matrixCells;
+            bool fitsMatrix = TryGetMatrixSize(aEnd - aStart, bEnd - bStart, leafCells,
+                out matrixRows, out matrixColumns, out matrixCells);
+            if (!fitsMatrix && preferredPages != null &&
+                aEnd - aStart > 1 && bEnd - bStart > 1)
             {
-                context.PollCancellation();
-                if (WordKey(a[aStart]) != WordKey(b[bStart]) ||
-                    (preferredPages != null &&
-                     !preferredPages.CanTrim(a[aStart], b[bStart])))
-                    break;
-                AppendEqual(ops, a[aStart], b[bStart], PdfReviewMatchKind.Exact);
-                aStart++;
-                bStart++;
-            }
-
-            int suffix = 0;
-            while (aEnd > aStart && bEnd > bStart)
-            {
-                context.PollCancellation();
-                if (WordKey(a[aEnd - 1]) != WordKey(b[bEnd - 1]) ||
-                    (preferredPages != null &&
-                     !preferredPages.CanTrim(a[aEnd - 1], b[bEnd - 1])))
-                    break;
-                suffix++;
-                aEnd--;
-                bEnd--;
+                // Myers предпочтений страниц не видит, а бисекция корректна только без общих
+                // краёв (diff-match-patch срезает их в diff_main до diff_bisect). Оставленный
+                // CanTrim край дал бы вырожденную точку D=0/D=1 в конце диапазона, и весь
+                // хвост ушёл бы в сырые Delete/Insert. Общий край всегда входит в некоторый
+                // LCS, так что срезание без предпочтений длину LCS не меняет.
+                suffix += TrimEqualEnds(a, ref aStart, ref aEnd, b, ref bStart, ref bEnd,
+                    null, ops, context);
+                fitsMatrix = TryGetMatrixSize(aEnd - aStart, bEnd - bStart, leafCells,
+                    out matrixRows, out matrixColumns, out matrixCells);
             }
 
             int n = aEnd - aStart;
             int m = bEnd - bStart;
-            int matrixRows;
-            int matrixColumns;
-            long matrixCells;
             if (n == 0 && m == 0)
             {
                 // Середина пуста.
@@ -966,7 +1438,7 @@ namespace ExcelMerger
             {
                 if (!context.TryReserve(m))
                 {
-                    AppendRawRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+                    AppendUnprovenRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
                 }
                 else
                 {
@@ -1018,7 +1490,7 @@ namespace ExcelMerger
             {
                 if (!context.TryReserve(n))
                 {
-                    AppendRawRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+                    AppendUnprovenRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
                 }
                 else
                 {
@@ -1061,26 +1533,36 @@ namespace ExcelMerger
                     }
                 }
             }
-            else if (TryGetMatrixSize(n, m, limits.MaxDiffCells,
-                out matrixRows, out matrixColumns, out matrixCells))
+            else if (fitsMatrix)
             {
                 if (!LcsCore(a, aStart, aEnd, b, bStart, bEnd, ops,
                         preferredPages, context, matrixRows, matrixColumns, matrixCells))
-                    AppendRawRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+                    AppendUnprovenRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
             }
             else if (recursionDepth >= MaxDiffRecursionDepth)
             {
                 context.ExhaustWork();
-                AppendRawRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+                AppendUnprovenRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+            }
+            else if (context.Approximated)
+            {
+                // Бисекция уже не уложилась в свою долю, значит точный diff целиком не
+                // укладывается в бюджет: следующие большие диапазоны сразу делятся якорями,
+                // а не сжигают по половине остатка, оставляя хвост документа без бюджета.
+                DiffAnchoredRange(a, aStart, aEnd, b, bStart, bEnd, limits, ops,
+                    preferredPages, context, recursionDepth);
             }
             else
             {
+                DiffContext attempt = context.Slice(context.RemainingWork / BisectWorkShare);
                 int aMid, bMid;
                 bool bisected = TryBisect(a, aStart, aEnd, b, bStart, bEnd,
-                    context, out aMid, out bMid);
-                if (context.WorkExhausted)
+                    attempt, out aMid, out bMid);
+                context.Settle(attempt);
+                if (attempt.WorkExhausted)
                 {
-                    AppendRawRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+                    DiffAnchoredRange(a, aStart, aEnd, b, bStart, bEnd, limits, ops,
+                        preferredPages, context, recursionDepth);
                 }
                 else if (bisected &&
                     !(aMid == aStart && bMid == bStart) &&
@@ -1097,11 +1579,73 @@ namespace ExcelMerger
                 }
             }
 
+            AppendEqualSuffix(a, aEnd, b, bEnd, suffix, ops, context);
+        }
+
+        /// <summary>
+        /// Срезает общий префикс и суффикс равных ключей: префикс сразу дописывается как
+        /// Equal, длина суффикса возвращается, чтобы вызывающий дописал его после середины.
+        /// Общий край всегда входит в некоторый LCS, поэтому срезание не укорачивает LCS и,
+        /// будучи линейным точным сравнением, не расходует бюджет. preferredPages лишь не
+        /// даёт срезать пару страниц, которую viewer не сопоставил: её решит матрица.
+        /// </summary>
+        private static int TrimEqualEnds(IList<PdfReviewWord> a, ref int aStart,
+            ref int aEnd, IList<PdfReviewWord> b, ref int bStart, ref int bEnd,
+            PreferredPageAlignment preferredPages, List<PdfReviewWordOp> ops,
+            DiffContext context)
+        {
+            while (aStart < aEnd && bStart < bEnd)
+            {
+                context.PollCancellation();
+                if (WordKey(a[aStart]) != WordKey(b[bStart]) ||
+                    (preferredPages != null &&
+                     !preferredPages.CanTrim(a[aStart], b[bStart])))
+                    break;
+                AppendEqual(ops, a[aStart], b[bStart], PdfReviewMatchKind.Exact);
+                aStart++;
+                bStart++;
+            }
+
+            int suffix = 0;
+            while (aEnd > aStart && bEnd > bStart)
+            {
+                context.PollCancellation();
+                if (WordKey(a[aEnd - 1]) != WordKey(b[bEnd - 1]) ||
+                    (preferredPages != null &&
+                     !preferredPages.CanTrim(a[aEnd - 1], b[bEnd - 1])))
+                    break;
+                suffix++;
+                aEnd--;
+                bEnd--;
+            }
+            return suffix;
+        }
+
+        private static void AppendEqualSuffix(IList<PdfReviewWord> a, int aEnd,
+            IList<PdfReviewWord> b, int bEnd, int suffix, List<PdfReviewWordOp> ops,
+            DiffContext context)
+        {
             for (int s = 0; s < suffix; s++)
             {
                 context.PollCancellation();
                 AppendEqual(ops, a[aEnd + s], b[bEnd + s], PdfReviewMatchKind.Exact);
             }
+        }
+
+        /// <summary>
+        /// Диапазон, на доказательство которого бюджета не хватило. Линейное точное
+        /// срезание общих краёв остаётся и после исчерпания: каждое слово срезается не
+        /// больше одного раза за весь diff. Консервативной парой Delete/Insert становится
+        /// только непроверенная середина, а не весь диапазон.
+        /// </summary>
+        private static void AppendUnprovenRange(IList<PdfReviewWord> a, int aStart,
+            int aEnd, IList<PdfReviewWord> b, int bStart, int bEnd,
+            List<PdfReviewWordOp> ops, DiffContext context)
+        {
+            int suffix = TrimEqualEnds(a, ref aStart, ref aEnd, b, ref bStart, ref bEnd,
+                null, ops, context);
+            AppendRawRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+            AppendEqualSuffix(a, aEnd, b, bEnd, suffix, ops, context);
         }
 
         private static void AppendRawRange(IList<PdfReviewWord> a, int aStart,
@@ -1118,6 +1662,128 @@ namespace ExcelMerger
                 context.PollCancellation();
                 Append(ops, PdfReviewDiffKind.Insert, b[j]);
             }
+        }
+
+        /// <summary>
+        /// Запасное разбиение диапазона, когда точной бисекции не хватило её доли бюджета.
+        /// Якоря — слова, чей ключ встречается в диапазоне ровно один раз с каждой стороны;
+        /// из них берётся наибольшая цепочка, возрастающая на обеих сторонах (patience diff
+        /// Б. Коэна, он же git diff --patience), а промежутки между якорями снова сравнивает
+        /// DiffRange. Уникальное слово почти всегда входит в оптимальное выравнивание, но
+        /// не обязано, поэтому результат помечается Approximated. Без якорей диапазон
+        /// остаётся непроверенным, как при исчерпании.
+        /// </summary>
+        private static void DiffAnchoredRange(IList<PdfReviewWord> a, int aStart, int aEnd,
+            IList<PdfReviewWord> b, int bStart, int bEnd, PdfReviewLimits limits,
+            List<PdfReviewWordOp> ops, PreferredPageAlignment preferredPages,
+            DiffContext context, int recursionDepth)
+        {
+            context.MarkApproximated();
+            List<int> anchorsA;
+            List<int> anchorsB;
+            if (!TryUniqueAnchors(a, aStart, aEnd, b, bStart, bEnd, context,
+                    out anchorsA, out anchorsB) || anchorsA.Count == 0)
+            {
+                AppendUnprovenRange(a, aStart, aEnd, b, bStart, bEnd, ops, context);
+                return;
+            }
+            int ai = aStart;
+            int bi = bStart;
+            for (int k = 0; k < anchorsA.Count; k++)
+            {
+                DiffRange(a, ai, anchorsA[k], b, bi, anchorsB[k], limits, ops,
+                    preferredPages, context, recursionDepth + 1);
+                AppendEqual(ops, a[anchorsA[k]], b[anchorsB[k]], PdfReviewMatchKind.Exact);
+                ai = anchorsA[k] + 1;
+                bi = anchorsB[k] + 1;
+            }
+            DiffRange(a, ai, aEnd, b, bi, bEnd, limits, ops, preferredPages, context,
+                recursionDepth + 1);
+        }
+
+        /// <summary>
+        /// Позиции якорей patience diff в порядке документа. Кандидаты (ключ уникален на
+        /// обеих сторонах) перечисляются по a, и среди их позиций в b ищется наибольшая
+        /// возрастающая подпоследовательность сортировкой «пасьянсом» за O(U log U):
+        /// tails[k] — кандидат с наименьшей позицией в b, которым кончается цепочка длины
+        /// k+1 (Aldous, Diaconis, «Longest increasing subsequences: from patience sorting
+        /// to the Baik-Deift-Johansson theorem», Bull. AMS 36, 1999). Подсчёт ключей стоит
+        /// по единице на слово, LIS — как сортировка кандидатов; false — бюджета не хватило.
+        /// </summary>
+        private static bool TryUniqueAnchors(IList<PdfReviewWord> a, int aStart, int aEnd,
+            IList<PdfReviewWord> b, int bStart, int bEnd, DiffContext context,
+            out List<int> anchorsA, out List<int> anchorsB)
+        {
+            anchorsA = null;
+            anchorsB = null;
+            if (!context.TryReserve((long)(aEnd - aStart) + (bEnd - bStart)))
+                return false;
+            Dictionary<string, int> uniqueA = UniquePositions(a, aStart, aEnd, context);
+            Dictionary<string, int> uniqueB = UniquePositions(b, bStart, bEnd, context);
+            var candidatesA = new List<int>();
+            var candidatesB = new List<int>();
+            for (int i = aStart; i < aEnd; i++)
+            {
+                context.PollCancellation();
+                string key = WordKey(a[i]);
+                int j;
+                if (uniqueA[key] == i && uniqueB.TryGetValue(key, out j) && j >= 0)
+                {
+                    candidatesA.Add(i);
+                    candidatesB.Add(j);
+                }
+            }
+            if (!context.TryReserveSort(candidatesB.Count))
+                return false;
+
+            var tails = new List<int>();
+            var previous = new int[candidatesB.Count];
+            for (int c = 0; c < candidatesB.Count; c++)
+            {
+                context.PollCancellation();
+                int low = 0;
+                int high = tails.Count;
+                while (low < high)
+                {
+                    int middle = (low + high) >> 1;
+                    if (candidatesB[tails[middle]] < candidatesB[c])
+                        low = middle + 1;
+                    else
+                        high = middle;
+                }
+                previous[c] = low > 0 ? tails[low - 1] : -1;
+                if (low == tails.Count)
+                    tails.Add(c);
+                else
+                    tails[low] = c;
+            }
+
+            var chain = new int[tails.Count];
+            for (int k = tails.Count - 1, c = tails.Count == 0 ? -1 : tails[k]; k >= 0;
+                k--, c = previous[c])
+                chain[k] = c;
+            anchorsA = new List<int>(chain.Length);
+            anchorsB = new List<int>(chain.Length);
+            foreach (int c in chain)
+            {
+                anchorsA.Add(candidatesA[c]);
+                anchorsB.Add(candidatesB[c]);
+            }
+            return true;
+        }
+
+        /// <summary>Позиция единственного вхождения ключа в диапазоне; -1 при повторе.</summary>
+        private static Dictionary<string, int> UniquePositions(IList<PdfReviewWord> words,
+            int start, int end, DiffContext context)
+        {
+            var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (int i = start; i < end; i++)
+            {
+                context.PollCancellation();
+                string key = WordKey(words[i]);
+                positions[key] = positions.ContainsKey(key) ? -1 : i;
+            }
+            return positions;
         }
 
         /// <summary>
@@ -1622,11 +2288,12 @@ namespace ExcelMerger
         {
             if (limits == null)
                 limits = PdfReviewLimits.Default();
-            ReconcileOrderArtifacts(result, new DiffContext(limits, cancelled));
+            ReconcileOrderArtifacts(result, new ReviewPageLookup(result),
+                new DiffContext(limits, cancelled));
         }
 
         private static void ReconcileOrderArtifacts(PdfReviewResult result,
-            DiffContext context)
+            ReviewPageLookup pages, DiffContext context)
         {
             context.ThrowIfCancellation();
             if (result == null || result.Left == null || result.Right == null ||
@@ -1637,7 +2304,7 @@ namespace ExcelMerger
                 items.Count == 0)
                 return;
 
-            List<ReconcileRegion> regions = ReconcileSeedRegions(result, items, context);
+            List<ReconcileRegion> regions = ReconcileSeedRegions(pages, items, context);
             if (context.WorkExhausted)
                 return;
 
@@ -1650,7 +2317,7 @@ namespace ExcelMerger
                 if (!context.TryStep())
                     return;
                 Dictionary<PdfReviewWord, PdfReviewWord> component;
-                if (!TryReconcileRegion(result, items, region, context, out component))
+                if (!TryReconcileRegion(pages, items, region, context, out component))
                 {
                     if (context.WorkExhausted)
                         return;
@@ -1663,7 +2330,7 @@ namespace ExcelMerger
                         return;
                     PdfReviewWord existing;
                     if (pair.Key == null || pair.Value == null ||
-                        !ExplicitPagePair(result.Pairs, pair.Key.PageIndex,
+                        !pages.IsExplicitPair(pair.Key.PageIndex,
                             pair.Value.PageIndex, context) ||
                         (rightByLeft.TryGetValue(pair.Key, out existing) &&
                          !ReferenceEquals(existing, pair.Value)) ||
@@ -1686,7 +2353,7 @@ namespace ExcelMerger
                     leftByRight[pair.Value] = pair.Key;
                 }
             }
-            if (!TryAddRepeatedExactRepairs(result, items, rightByLeft, leftByRight,
+            if (!TryAddRepeatedExactRepairs(pages, items, rightByLeft, leftByRight,
                     releasedLeft, releasedRight, context) || context.WorkExhausted ||
                 rightByLeft.Count == 0)
                 return;
@@ -1700,7 +2367,7 @@ namespace ExcelMerger
             result.ReplaceOperations(rebuilt);
         }
 
-        private static List<ReconcileRegion> ReconcileSeedRegions(PdfReviewResult result,
+        private static List<ReconcileRegion> ReconcileSeedRegions(ReviewPageLookup pages,
             IList<ReconcileItem> items, DiffContext context)
         {
             var seeds = new List<ReconcileRegion>();
@@ -1724,7 +2391,7 @@ namespace ExcelMerger
                         insertion.Kind != PdfReviewDiffKind.Insert || insertion.Right == null ||
                         insertion.Right.PageIndex < 0 ||
                         WordKey(deletion.Left) != WordKey(insertion.Right) ||
-                        !ExplicitPagePair(result.Pairs, deletion.Left.PageIndex,
+                        !pages.IsExplicitPair(deletion.Left.PageIndex,
                             insertion.Right.PageIndex, context))
                         continue;
                     int first = Math.Min(i, j);
@@ -1789,14 +2456,14 @@ namespace ExcelMerger
         /// противоречить этой трансляции и соответствию блоков. Неоднозначные предложения
         /// полностью отбрасываются; реально лишняя старая копия остаётся изменением.
         /// </summary>
-        private static bool TryAddRepeatedExactRepairs(PdfReviewResult result,
+        private static bool TryAddRepeatedExactRepairs(ReviewPageLookup pages,
             IList<ReconcileItem> items,
             IDictionary<PdfReviewWord, PdfReviewWord> rightByLeft,
             IDictionary<PdfReviewWord, PdfReviewWord> leftByRight,
             ISet<PdfReviewWord> releasedLeft,
             ISet<PdfReviewWord> releasedRight, DiffContext context)
         {
-            if (result == null || items == null || rightByLeft == null ||
+            if (pages == null || items == null || rightByLeft == null ||
                 leftByRight == null || releasedLeft == null ||
                 releasedRight == null)
                 return false;
@@ -1825,7 +2492,7 @@ namespace ExcelMerger
                         continue;
                     PdfReviewWord changedWord = deletion ? changed.Left : changed.Right;
                     if (WordKey(changedWord) != WordKey(exact.Left) ||
-                        !RepeatedExactRepairCorroborated(result, items, exactIndex,
+                        !RepeatedExactRepairCorroborated(pages, items, exactIndex,
                             changedIndex, deletion, context))
                     {
                         if (context.WorkExhausted)
@@ -1892,11 +2559,11 @@ namespace ExcelMerger
             return !context.WorkExhausted;
         }
 
-        private static bool RepeatedExactRepairCorroborated(PdfReviewResult result,
+        private static bool RepeatedExactRepairCorroborated(ReviewPageLookup pages,
             IList<ReconcileItem> items, int exactIndex, int changedIndex,
             bool deletion, DiffContext context)
         {
-            if (result == null || items == null || exactIndex < 0 ||
+            if (pages == null || items == null || exactIndex < 0 ||
                 exactIndex >= items.Count || changedIndex < 0 ||
                 changedIndex >= items.Count || exactIndex == changedIndex ||
                 Math.Abs((long)exactIndex - changedIndex) > ReconcileMaxItemSpan)
@@ -1924,12 +2591,11 @@ namespace ExcelMerger
                 !ValidReviewBox(left.Box) || !ValidReviewBox(right.Box) ||
                 !ValidReviewBox(exact.Left.Box) ||
                 !ValidReviewBox(exact.Right.Box) ||
-                !ExplicitPagePair(result.Pairs, left.PageIndex, right.PageIndex,
-                    context))
+                !pages.IsExplicitPair(left.PageIndex, right.PageIndex, context))
                 return false;
 
-            PdfReviewPage leftPage = PageAt(result.Left, left.PageIndex);
-            PdfReviewPage rightPage = PageAt(result.Right, right.PageIndex);
+            PdfReviewPage leftPage = pages.Page(true, left.PageIndex);
+            PdfReviewPage rightPage = pages.Page(false, right.PageIndex);
             double scaleX, scaleY, reverseScaleX, reverseScaleY;
             if (leftPage == null || rightPage == null ||
                 !TrySymmetricPageScale(leftPage, rightPage, out scaleX, out scaleY,
@@ -2075,7 +2741,7 @@ namespace ExcelMerger
             return counts.TryGetValue(key, out count) && count == 1;
         }
 
-        private static bool TryReconcileRegion(PdfReviewResult result,
+        private static bool TryReconcileRegion(ReviewPageLookup pages,
             IList<ReconcileItem> items, ReconcileRegion region, DiffContext context,
             out Dictionary<PdfReviewWord, PdfReviewWord> rightByLeft)
         {
@@ -2124,8 +2790,8 @@ namespace ExcelMerger
                 !SameKeyMultiset(left, right, context))
                 return false;
 
-            PdfReviewPage leftOwner = PageAt(result.Left, region.LeftPage);
-            PdfReviewPage rightOwner = PageAt(result.Right, region.RightPage);
+            PdfReviewPage leftOwner = pages.Page(true, region.LeftPage);
+            PdfReviewPage rightOwner = pages.Page(false, region.RightPage);
             if (leftOwner == null || rightOwner == null ||
                 !WindowGeometryBounded(left, leftOwner, context) ||
                 !WindowGeometryBounded(right, rightOwner, context))
@@ -3762,27 +4428,6 @@ namespace ExcelMerger
             return !context.WorkExhausted && pageIndex >= 0;
         }
 
-        private static bool ExplicitPagePair(IList<PdfReviewPagePair> pairs,
-            int leftPage, int rightPage, DiffContext context)
-        {
-            if (pairs == null)
-                return false;
-            int count = 0;
-            foreach (PdfReviewPagePair pair in pairs)
-            {
-                if (!context.TryStep())
-                    return false;
-                if (pair != null && pair.LeftPageIndex == leftPage &&
-                    pair.RightPageIndex == rightPage)
-                {
-                    count++;
-                    if (count > 1)
-                        return false;
-                }
-            }
-            return !context.WorkExhausted && count == 1;
-        }
-
         private static bool WindowGeometryBounded(IList<PdfReviewWord> words,
             PdfReviewPage page, DiffContext context)
         {
@@ -3853,47 +4498,6 @@ namespace ExcelMerger
             dx = (beforeDx + afterDx) / 2.0;
             dy = (beforeDy + afterDy) / 2.0;
             return Finite(dx) && Finite(dy);
-        }
-
-        private static bool UniqueGeometryMatching(IList<PdfReviewWord> left,
-            IList<PdfReviewWord> right, double scaleX, double scaleY,
-            double dx, double dy, out int[] rightByLeft)
-        {
-            rightByLeft = null;
-            int count = left.Count;
-            var edges = new List<int>[count];
-            for (int i = 0; i < count; i++)
-            {
-                edges[i] = new List<int>();
-                for (int j = 0; j < count; j++)
-                    if (WordKey(left[i]) == WordKey(right[j]) &&
-                        GeometryColocated(left[i].Box, right[j].Box,
-                            scaleX, scaleY, dx, dy))
-                        edges[i].Add(j);
-                if (edges[i].Count == 0)
-                    return false;
-            }
-
-            var order = new int[count];
-            for (int i = 0; i < count; i++)
-                order[i] = i;
-            Array.Sort(order, delegate(int a, int b)
-            {
-                int comparison = edges[a].Count.CompareTo(edges[b].Count);
-                return comparison != 0 ? comparison : a.CompareTo(b);
-            });
-            var used = new bool[count];
-            var current = new int[count];
-            for (int i = 0; i < count; i++)
-                current[i] = -1;
-            int solutions = 0;
-            int[] unique = null;
-            CountGeometryMatchings(0, order, edges, used, current, null,
-                ref solutions, ref unique);
-            if (solutions != 1)
-                return false;
-            rightByLeft = unique;
-            return true;
         }
 
         /// <summary>
@@ -4126,10 +4730,12 @@ namespace ExcelMerger
         {
             if (limits == null)
                 limits = PdfReviewLimits.Default();
-            ClassifySplitJoin(result, new DiffContext(limits, cancelled));
+            ClassifySplitJoin(result, new ReviewPageLookup(result),
+                new WhitespaceEvidenceCache(), new DiffContext(limits, cancelled));
         }
 
         private static void ClassifySplitJoin(PdfReviewResult result,
+            ReviewPageLookup pages, WhitespaceEvidenceCache evidence,
             DiffContext context)
         {
             context.ThrowIfCancellation();
@@ -4141,11 +4747,9 @@ namespace ExcelMerger
                 items.Count < 5 || context.WorkExhausted)
                 return;
 
-            WhitespaceEvidenceIndex leftEvidence =
-                BuildWhitespaceEvidenceIndex(result.Left, context);
-            WhitespaceEvidenceIndex rightEvidence =
-                BuildWhitespaceEvidenceIndex(result.Right, context);
-            if (context.WorkExhausted)
+            WhitespaceEvidenceIndex leftEvidence;
+            WhitespaceEvidenceIndex rightEvidence;
+            if (!evidence.TryGet(result, context, out leftEvidence, out rightEvidence))
                 return;
             var accepted = new List<SplitJoinWindow>();
             int anchorIndex = 0;
@@ -4170,7 +4774,7 @@ namespace ExcelMerger
                 if (after > start && after < items.Count && items[after].IsExact)
                 {
                     SplitJoinWindow window;
-                    if (TrySplitJoinWindow(result, items, anchorIndex, after,
+                    if (TrySplitJoinWindow(pages, items, anchorIndex, after,
                         leftEvidence, rightEvidence, context, out window))
                         accepted.Add(window);
                     if (context.WorkExhausted)
@@ -4213,7 +4817,7 @@ namespace ExcelMerger
             result.ReplaceOperations(rebuilt);
         }
 
-        private static bool TrySplitJoinWindow(PdfReviewResult result,
+        private static bool TrySplitJoinWindow(ReviewPageLookup pages,
             IList<ReconcileItem> items, int beforeIndex, int afterIndex,
             WhitespaceEvidenceIndex leftEvidence,
             WhitespaceEvidenceIndex rightEvidence, DiffContext context,
@@ -4221,11 +4825,12 @@ namespace ExcelMerger
         {
             window = null;
             if (!context.TryStep() || beforeIndex < 0 ||
-                afterIndex <= beforeIndex + 1 || afterIndex >= items.Count ||
-                !StableReconcileAnchor(items, beforeIndex, context) ||
-                !StableReconcileAnchor(items, afterIndex, context))
+                afterIndex <= beforeIndex + 1 || afterIndex >= items.Count)
                 return false;
 
+            // Окно собирается до проверки якорей: третье слово на любой стороне уже
+            // исключает 1↔2/2↔1, и широкое окно (вставленная страница) отвергается за
+            // несколько шагов, а не обходом целиком плюс двумя окрестностями якорей.
             var left = new List<PdfReviewWord>();
             var right = new List<PdfReviewWord>();
             for (int i = beforeIndex + 1; i < afterIndex; i++)
@@ -4242,9 +4847,13 @@ namespace ExcelMerger
                     right.Add(item.Right);
                 else
                     return false;
+                if (left.Count > 2 || right.Count > 2)
+                    return false;
             }
             if (!((left.Count == 1 && right.Count == 2) ||
-                  (left.Count == 2 && right.Count == 1)))
+                  (left.Count == 2 && right.Count == 1)) ||
+                !StableReconcileAnchor(items, beforeIndex, context) ||
+                !StableReconcileAnchor(items, afterIndex, context))
                 return false;
 
             ReconcileItem before = items[beforeIndex];
@@ -4254,10 +4863,10 @@ namespace ExcelMerger
                 !SinglePage(right, context, out rightPage) ||
                 before.Left.PageIndex != leftPage || before.Right.PageIndex != rightPage ||
                 after.Left.PageIndex != leftPage || after.Right.PageIndex != rightPage ||
-                !ExplicitPagePair(result.Pairs, leftPage, rightPage, context))
+                !pages.IsExplicitPair(leftPage, rightPage, context))
                 return false;
-            PdfReviewPage leftOwner = PageAt(result.Left, leftPage);
-            PdfReviewPage rightOwner = PageAt(result.Right, rightPage);
+            PdfReviewPage leftOwner = pages.Page(true, leftPage);
+            PdfReviewPage rightOwner = pages.Page(false, rightPage);
             if (leftOwner == null || rightOwner == null)
                 return false;
 
@@ -4679,6 +5288,41 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Индексы пробельных свидетельств зависят только от документов, а не от операций,
+        /// поэтому split/join и сравнение пробелов одного Compare строят и оплачивают их один
+        /// раз. Запоминается только полностью построенная пара: индекс, оборванный
+        /// исчерпанием, следующей стадии не достаётся.
+        /// </summary>
+        private sealed class WhitespaceEvidenceCache
+        {
+            private WhitespaceEvidenceIndex _left;
+            private WhitespaceEvidenceIndex _right;
+
+            public bool TryGet(PdfReviewResult result, DiffContext context,
+                out WhitespaceEvidenceIndex left, out WhitespaceEvidenceIndex right)
+            {
+                if (_left == null)
+                {
+                    WhitespaceEvidenceIndex builtLeft =
+                        BuildWhitespaceEvidenceIndex(result.Left, context);
+                    WhitespaceEvidenceIndex builtRight = context.WorkExhausted ? null :
+                        BuildWhitespaceEvidenceIndex(result.Right, context);
+                    if (context.WorkExhausted)
+                    {
+                        left = null;
+                        right = null;
+                        return false;
+                    }
+                    _left = builtLeft;
+                    _right = builtRight;
+                }
+                left = _left;
+                right = _right;
+                return true;
+            }
+        }
+
+        /// <summary>
         /// Сравнивает только буквально декодированные пробельные границы, привязанные к
         /// однозначным Exact-парам слов. Геометрия может лишь отклонить сомнительный перенос;
         /// отсутствие пробела должно быть так же положительно доказано пустым source-span.
@@ -4693,11 +5337,12 @@ namespace ExcelMerger
         {
             if (limits == null)
                 limits = PdfReviewLimits.Default();
-            CompareWhitespace(result, limits, new DiffContext(limits, cancelled));
+            CompareWhitespace(result, limits, new WhitespaceEvidenceCache(),
+                new DiffContext(limits, cancelled));
         }
 
         private static void CompareWhitespace(PdfReviewResult result,
-            PdfReviewLimits limits, DiffContext context)
+            PdfReviewLimits limits, WhitespaceEvidenceCache evidence, DiffContext context)
         {
             context.ThrowIfCancellation();
             if (result == null || result.Left == null || result.Right == null)
@@ -4708,13 +5353,9 @@ namespace ExcelMerger
             ExactWordMatches exact;
             if (!ExactWordMatches.TryFrom(result.Operations, context, out exact))
                 return;
-            WhitespaceEvidenceIndex leftIndex =
-                BuildWhitespaceEvidenceIndex(result.Left, context);
-            if (context.WorkExhausted)
-                return;
-            WhitespaceEvidenceIndex rightIndex =
-                BuildWhitespaceEvidenceIndex(result.Right, context);
-            if (context.WorkExhausted)
+            WhitespaceEvidenceIndex leftIndex;
+            WhitespaceEvidenceIndex rightIndex;
+            if (!evidence.TryGet(result, context, out leftIndex, out rightIndex))
                 return;
             var changes = new List<PdfReviewWhitespaceChange>();
 
@@ -5457,18 +6098,19 @@ namespace ExcelMerger
                 }
             }
 
+            var pages = new ReviewPageLookup(result);
             foreach (PdfReviewWhitespaceChange change in whitespaceChanges)
             {
                 context.PollCancellation();
                 if (change == null)
                     continue;
-                AddWhitespaceProjection(deletedWhitespaceByPage, left,
+                AddWhitespaceProjection(deletedWhitespaceByPage, pages,
                     change.Left, change.DeletedAtoms, true, context);
-                AddWhitespaceProjection(insertedWhitespaceByPage, right,
+                AddWhitespaceProjection(insertedWhitespaceByPage, pages,
                     change.Right, change.InsertedAtoms, false, context);
             }
 
-            CalculatePairStatuses(pairProjections, left, right,
+            CalculatePairStatuses(pairProjections, pages,
                 deletedWordsByPage, insertedWordsByPage,
                 deletedWhitespaceByPage, insertedWhitespaceByPage, context);
             PdfReviewStats stats = Statistics(left, right, operations,
@@ -5512,8 +6154,7 @@ namespace ExcelMerger
         }
 
         private static void CalculatePairStatuses(
-            IList<PairProjection> pairProjections,
-            PdfReviewDocument left, PdfReviewDocument right,
+            IList<PairProjection> pairProjections, ReviewPageLookup pages,
             Dictionary<int, List<PdfReviewWord>> deletedWordsByPage,
             Dictionary<int, List<PdfReviewWord>> insertedWordsByPage,
             Dictionary<int, List<PdfReviewWhitespaceMarker>> deletedWhitespaceByPage,
@@ -5541,11 +6182,11 @@ namespace ExcelMerger
                         ? PdfReviewPairStatus.Changed : PdfReviewPairStatus.Unchanged;
                 else if (hasLeft)
                     projection.Status = deleted || deletedWhitespace ||
-                        IsEmptyPage(left, projection.LeftPageIndex)
+                        IsEmptyPage(pages.Page(true, projection.LeftPageIndex))
                         ? PdfReviewPairStatus.LeftOnly : PdfReviewPairStatus.Unchanged;
                 else if (hasRight)
                     projection.Status = inserted || insertedWhitespace ||
-                        IsEmptyPage(right, projection.RightPageIndex)
+                        IsEmptyPage(pages.Page(false, projection.RightPageIndex))
                         ? PdfReviewPairStatus.RightOnly : PdfReviewPairStatus.Unchanged;
                 else
                     projection.Status = PdfReviewPairStatus.Unchanged;
@@ -5578,11 +6219,12 @@ namespace ExcelMerger
 
         private static void AddWhitespaceProjection(
             Dictionary<int, List<PdfReviewWhitespaceMarker>> index,
-            PdfReviewDocument document, PdfReviewWhitespaceEvidence evidence,
+            ReviewPageLookup pages, PdfReviewWhitespaceEvidence evidence,
             IList<PdfReviewWhitespaceAtom> atoms, bool deleted, DiffContext context)
         {
+            // Удалённое принадлежит ранней (левой) стороне, добавленное — поздней.
             if (index == null || evidence == null || evidence.PageIndex < 0 ||
-                PageAt(document, evidence.PageIndex) == null || atoms == null ||
+                pages.Page(deleted, evidence.PageIndex) == null || atoms == null ||
                 atoms.Count == 0)
                 return;
             string summary = WhitespaceTokenSummary(atoms, context);
@@ -5785,9 +6427,8 @@ namespace ExcelMerger
             return count;
         }
 
-        private static bool IsEmptyPage(PdfReviewDocument document, int pageIndex)
+        private static bool IsEmptyPage(PdfReviewPage page)
         {
-            PdfReviewPage page = PageAt(document, pageIndex);
             return page != null && page.Words.Count == 0;
         }
 
@@ -5812,7 +6453,17 @@ namespace ExcelMerger
             HashSet<string> larger = aw.Count <= bw.Count ? bw : aw;
             foreach (string word in smaller)
                 if (larger.Contains(word)) common++;
-            int union = aw.Count + bw.Count - common;
+            return Similarity(a, b, aw.Count, bw.Count, common);
+        }
+
+        /// <summary>
+        /// Сходство по числу общих слов. При неизменных размерах множеств монотонно
+        /// неубывает по common — на этом держится отсев пар в TryAlignmentSimilarities.
+        /// </summary>
+        private static double Similarity(PdfReviewPage a, PdfReviewPage b,
+            int aCount, int bCount, int common)
+        {
+            int union = aCount + bCount - common;
             double words = union == 0 ? 0 : (double)common / union;
             double dw = Math.Abs(a.WidthPt - b.WidthPt), dh = Math.Abs(a.HeightPt - b.HeightPt);
             double dims = dw <= Math.Max(4, 0.02 * Math.Max(a.WidthPt, b.WidthPt)) &&
