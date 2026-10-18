@@ -26,7 +26,7 @@ namespace ExcelMerger
 
         /// <summary>
         /// Записать свойства в новый файл outputPath (исходник не меняется). Пустое значение
-        /// очищает свойство — это осознанный способ убрать из файла имя автора перед отправкой.
+        /// удаляет свойство — это осознанный способ убрать из файла имя автора перед отправкой.
         /// </summary>
         public static void Write(string sourcePath, string outputPath, PdfMetadata meta)
         {
@@ -34,9 +34,9 @@ namespace ExcelMerger
                 throw new ArgumentNullException("meta");
             if (OutputFile.IsSameFile(sourcePath, outputPath))
                 throw new MergeException(Loc.T("err.output.sameSource"));
-            string lockError = MergeService.CheckOutputWritable(outputPath);
-            if (lockError != null)
-                throw new MergeException(Loc.T("err.pdf.fileBusy"));
+            string writeError = OutputFile.PdfWriteProblem(outputPath);
+            if (writeError != null)
+                throw new MergeException(writeError);
             EmbeddedAssemblies.Ensure();
             using (var output = new AtomicOutput(outputPath))
             {
@@ -72,10 +72,17 @@ namespace ExcelMerger
             {
                 using (PdfDocument doc = PdfReader.Open(sourcePath, PdfPasswords.For(sourcePath), PdfDocumentOpenMode.Modify))
                 {
-                    doc.Info.Title = meta.Title ?? "";
-                    doc.Info.Author = meta.Author ?? "";
-                    doc.Info.Subject = meta.Subject ?? "";
-                    doc.Info.Keywords = meta.Keywords ?? "";
+                    SetOrRemove(doc.Info, "/Title", meta.Title);
+                    SetOrRemove(doc.Info, "/Author", meta.Author);
+                    SetOrRemove(doc.Info, "/Subject", meta.Subject);
+                    SetOrRemove(doc.Info, "/Keywords", meta.Keywords);
+                    // Свойства документа живут в ДВУХ местах: в словаре Info и в потоке XMP
+                    // (/Metadata каталога, dc:creator/dc:title). Вьюеры предпочитают XMP, поэтому
+                    // правка одного Info была видимостью: «убрать автора перед отправкой» молча не
+                    // срабатывало — Acrobat продолжал показывать его из XMP. Синхронно переписать
+                    // XMP без библиотеки XMP — значит рисковать битым пакетом; удаляем его, и
+                    // единственным источником правды остаётся Info, который мы только что задали.
+                    doc.Internals.Catalog.Elements.Remove("/Metadata");
                     doc.Save(outputPath);
                 }
             }
@@ -83,6 +90,18 @@ namespace ExcelMerger
             {
                 throw new MergeException(string.Format(Loc.T("err.pdf.saveFailed"), DiskSpace.Describe(ex, outputPath)));
             }
+        }
+
+        /// <summary>
+        /// Пустое значение — ключ удаляется, а не пишется пустой строкой «()»: пустое свойство
+        /// всё равно остаётся в файле следом, и часть программ показывает его как «есть, но пусто».
+        /// </summary>
+        private static void SetOrRemove(PdfDocumentInformation info, string key, string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                info.Elements.Remove(key);
+            else
+                info.Elements.SetString(key, value);
         }
     }
 }

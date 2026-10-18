@@ -291,23 +291,59 @@ namespace ExcelMerger
             // 5. PATH
             try
             {
-                string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                foreach (string dir in pathEnv.Split(';'))
-                {
-                    string d = dir.Trim();
-                    if (d.Length == 0)
-                        continue;
-                    try
-                    {
-                        list.Add(Path.Combine(d, "gswin64c.exe"));
-                        list.Add(Path.Combine(d, "gswin32c.exe"));
-                    }
-                    catch { }
-                }
+                list.AddRange(PathCandidates(Environment.GetEnvironmentVariable("PATH")));
             }
             catch { }
 
             return list;
+        }
+
+        /// <summary>
+        /// Кандидаты из значения PATH — только из ПОЛНОСТЬЮ заданных каталогов. Относительная
+        /// запись («.», «bin», «C:tools», «\gs») разрешается от текущего каталога процесса, а его
+        /// меняет любой диалог открытия файла: движок нашёлся бы в папке, которую человек только
+        /// что просматривал, — и запустился бы чужой exe, лежащий рядом с документами.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static List<string> PathCandidates(string pathEnv)
+        {
+            var list = new List<string>();
+            if (string.IsNullOrEmpty(pathEnv))
+                return list;
+            foreach (string dir in pathEnv.Split(';'))
+            {
+                string d = dir.Trim();
+                if (!IsFullyQualified(d))
+                    continue;
+                try
+                {
+                    list.Add(Path.Combine(d, "gswin64c.exe"));
+                    list.Add(Path.Combine(d, "gswin32c.exe"));
+                }
+                catch { } // недопустимые символы в записи PATH — просто не кандидат
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Путь не зависит от текущего каталога: «X:\…» или UNC «\\сервер\…». Path.IsPathRooted
+        /// здесь не годится — он считает корневыми и «C:tools» (относительно текущего каталога
+        /// диска C), и «\tools» (относительно текущего диска).
+        /// </summary>
+        private static bool IsFullyQualified(string path)
+        {
+            if (string.IsNullOrEmpty(path) || path.Length < 3)
+                return false;
+            if (IsSeparator(path[0]) && IsSeparator(path[1]))
+                return true;
+            char drive = path[0];
+            bool letter = (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z');
+            return letter && path[1] == ':' && IsSeparator(path[2]);
+        }
+
+        private static bool IsSeparator(char c)
+        {
+            return c == '\\' || c == '/';
         }
 
         /// <summary>Для каждого подкаталога parent\gs* добавляет bin\gswin64c.exe и gswin32c.exe.</summary>

@@ -142,7 +142,8 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Аргументы командной строки Ghostscript. Все пути в кавычках (пробелы!).
+        /// Аргументы командной строки Ghostscript. Все пути в кавычках (пробелы!), «%» в
+        /// пути вывода экранируется (<see cref="GsArguments"/>).
         /// bundledGsRoot != null (вшитый GS) добавляет -I на его lib/Resource\Init.
         /// Чистая — под тест. -dSAFER безопасен: он не блокирует чтение входа/записи
         /// выхода, переданных в командной строке (GS 10.x).
@@ -166,13 +167,7 @@ namespace ExcelMerger
                 sb.Append(" -dDownsampleMonoImages=false");
             }
             sb.Append(" -dNOPAUSE -dBATCH -dQUIET -dSAFER");
-            if (!string.IsNullOrEmpty(bundledGsRoot))
-            {
-                sb.Append(" -I ").Append(Quote(Path.Combine(bundledGsRoot, "lib")));
-                sb.Append(" -I ").Append(Quote(Path.Combine(bundledGsRoot, "Resource", "Init")));
-            }
-            sb.Append(" -sOutputFile=").Append(Quote(output));
-            sb.Append(' ').Append(Quote(input));
+            GsArguments.AppendTail(sb, bundledGsRoot, GsArguments.LiteralOutput(output), input);
             return sb.ToString();
         }
 
@@ -243,11 +238,6 @@ namespace ExcelMerger
                 }
             }
             catch { return false; }
-        }
-
-        private static string Quote(string s)
-        {
-            return "\"" + s + "\"";
         }
     }
 }

@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text;
 
 namespace ExcelMerger
@@ -55,13 +54,7 @@ namespace ExcelMerger
                 sb.Append(" -sColorConversionStrategy=Gray");
             }
             sb.Append(" -dNOPAUSE -dBATCH -dQUIET -dSAFER");
-            if (!string.IsNullOrEmpty(bundledGsRoot))
-            {
-                sb.Append(" -I ").Append(Quote(Path.Combine(bundledGsRoot, "lib")));
-                sb.Append(" -I ").Append(Quote(Path.Combine(bundledGsRoot, "Resource", "Init")));
-            }
-            sb.Append(" -sOutputFile=").Append(Quote(output));
-            sb.Append(' ').Append(Quote(input));
+            GsArguments.AppendTail(sb, bundledGsRoot, GsArguments.LiteralOutput(output), input);
             return sb.ToString();
         }
 
@@ -117,11 +110,6 @@ namespace ExcelMerger
                 : GsRewrite.RunDetailedUnpublished(path, temp, args, TimeoutMs,
                     ShouldReplace, delegate(string produced) { return Verify(produced, mode); });
             return result == GsRewriteResult.Applied;
-        }
-
-        private static string Quote(string s)
-        {
-            return "\"" + s + "\"";
         }
     }
 }

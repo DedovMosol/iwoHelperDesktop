@@ -162,8 +162,9 @@ namespace ExcelMerger
             IList<PdfSplitPart> parts, string outDir, string baseName,
             Action<int, int> progress, Func<bool> cancelled, string template)
         {
-            return WriteParts(sourcePath, parts, outDir, baseName,
-                progress, cancelled, template);
+            using (var sources = new PdfSourceSet())
+                return WriteParts(sourcePath, parts, outDir, baseName,
+                    progress, cancelled, template, sources);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -171,9 +172,12 @@ namespace ExcelMerger
             string baseName, Action<int, int> progress, IList<int> rotations,
             Func<bool> cancelled, string template)
         {
-            using (PdfDocument source = OpenSource(sourcePath))
+            // Исходник открывается один раз на всю операцию: из этого же набора берут
+            // страницы все части, и оглавление тоже читается один раз.
+            using (var sources = new PdfSourceSet())
             {
-                List<PdfSplitBookmark> marks = ReadTopLevelBookmarks(source);
+                PdfDocument source = OpenSource(sources, sourcePath);
+                List<PdfSplitBookmark> marks = TopLevelBookmarks(sources.Bookmarks(sourcePath));
                 if (marks.Count == 0)
                     throw new MergeException(Loc.T("err.split.noBookmarks"));
                 var pages = new List<PdfPageRef>(source.PageCount);
@@ -186,7 +190,7 @@ namespace ExcelMerger
                     });
                 return WriteParts(sourcePath,
                     BookmarkParts(pages, marks, source.PageCount), outDir, baseName,
-                    progress, cancelled, template);
+                    progress, cancelled, template, sources);
             }
         }
 
@@ -195,20 +199,22 @@ namespace ExcelMerger
             IList<PdfPageRef> working, string outDir, string baseName,
             Action<int, int> progress, Func<bool> cancelled, string template)
         {
-            using (PdfDocument source = OpenSource(sourcePath))
+            using (var sources = new PdfSourceSet())
             {
-                List<PdfSplitBookmark> marks = ReadTopLevelBookmarks(source);
+                PdfDocument source = OpenSource(sources, sourcePath);
+                List<PdfSplitBookmark> marks = TopLevelBookmarks(sources.Bookmarks(sourcePath));
                 if (marks.Count == 0)
                     throw new MergeException(Loc.T("err.split.noBookmarks"));
                 return WriteParts(sourcePath,
                     BookmarkParts(working, marks, source.PageCount), outDir, baseName,
-                    progress, cancelled, template);
+                    progress, cancelled, template, sources);
             }
         }
 
         private static List<string> WriteParts(string sourcePath,
             IList<PdfSplitPart> parts, string outDir, string baseName,
-            Action<int, int> progress, Func<bool> cancelled, string template)
+            Action<int, int> progress, Func<bool> cancelled, string template,
+            PdfSourceSet sources)
         {
             if (parts == null || parts.Count == 0)
                 throw new MergeException(Loc.T("err.split.noPages"));
@@ -223,7 +229,7 @@ namespace ExcelMerger
                     string legacy = LegacyPartName(baseName, part, i + 1);
                     string safeName = Sanitize(PartName(template, legacy,
                         ValuesFor(part, baseName, i + 1, parts.Count, startedAt)));
-                    string path = WritePart(sourcePath, part, outDir, safeName, cancelled);
+                    string path = WritePart(sourcePath, part, outDir, safeName, cancelled, sources);
                     created.Add(path);
                     if (progress != null)
                         progress(created.Count, parts.Count);
@@ -234,13 +240,13 @@ namespace ExcelMerger
         }
 
         private static string WritePart(string sourcePath, PdfSplitPart part,
-            string directory, string safeName, Func<bool> cancelled)
+            string directory, string safeName, Func<bool> cancelled, PdfSourceSet sources)
         {
             if (part == null || part.Pages.Count == 0)
                 throw new MergeException(Loc.T("err.split.noPages"));
             using (var output = OutputFile.CreateUnique(directory, safeName, ".pdf"))
             {
-                PdfMergeService.WriteUnpublished(part.Pages, output.TempPath, null, cancelled);
+                PdfMergeService.WriteUnpublished(part.Pages, output.TempPath, sources, cancelled);
                 EnsurePartBookmark(output.TempPath, sourcePath, part);
                 Cancellation.ThrowIf(cancelled);
                 return output.Commit();
@@ -285,11 +291,9 @@ namespace ExcelMerger
             }
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static List<PdfSplitBookmark> ReadTopLevelBookmarks(PdfDocument source)
+        private static List<PdfSplitBookmark> TopLevelBookmarks(IList<PdfBookmark> all)
         {
             var result = new List<PdfSplitBookmark>();
-            var all = PdfBookmarks.Read(source);
             foreach (PdfBookmark mark in all)
                 if (mark != null && mark.Level == 0)
                     result.Add(new PdfSplitBookmark { PageIndex = mark.PageIndex, Title = mark.Title });
@@ -344,17 +348,13 @@ namespace ExcelMerger
             return s.Length == 0 ? Loc.T("split.unnamed") : s;
         }
 
-        private static PdfDocument OpenSource(string path)
+        /// <summary>
+        /// Исходник разделения — через общий набор, но с подробным сообщением об ошибке
+        /// («повреждён, защищён паролем…»): здесь файл один, и причину стоит назвать полнее.
+        /// </summary>
+        private static PdfDocument OpenSource(PdfSourceSet sources, string path)
         {
-            try
-            {
-                return PdfReader.Open(path, PdfPasswords.For(path), PdfDocumentOpenMode.Import);
-            }
-            catch (Exception ex) when (MergeException.ShouldWrap(ex))
-            {
-                throw new MergeException(string.Format(Loc.T("err.pdf.cantOpen"),
-                    Path.GetFileName(path), ex.Message));
-            }
+            return sources.Get(path, Path.GetFileName(path), "err.pdf.cantOpen");
         }
     }
 }

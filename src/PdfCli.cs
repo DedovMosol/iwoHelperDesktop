@@ -538,7 +538,9 @@ namespace ExcelMerger
         /// </summary>
         private static AtomicOutput CopyToOutput(string source, string output)
         {
-            if (string.Equals(Path.GetFullPath(source), Path.GetFullPath(output), StringComparison.OrdinalIgnoreCase))
+            // Сравнение файлов, а не только текста путей: короткое имя 8.3 или жёсткая ссылка
+            // на исходник иначе прошли бы, и Commit заменил бы исходник результатом.
+            if (OutputFile.IsSameFile(source, output))
                 throw new MergeException("input and output must be different files");
             string dir = Path.GetDirectoryName(Path.GetFullPath(output));
             if (!string.IsNullOrEmpty(dir))

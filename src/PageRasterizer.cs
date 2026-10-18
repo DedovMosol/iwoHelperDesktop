@@ -21,6 +21,11 @@ namespace ExcelMerger
         internal const int MaxRangePages = 512;
         private const int RangeTimeoutMs = 300000; // диапазон страниц — один запуск на весь файл
 
+        /// <summary>Префикс расшифрованных копий в %TEMP% (шаблон уборки: iwo_pg_dec_*.pdf).</summary>
+        internal const string DecryptedPrefix = "iwo_pg_dec_";
+        /// <summary>Префикс одиночных рендеров страницы в %TEMP% (шаблон уборки: iwo_pg_*.png).</summary>
+        internal const string RenderPrefix = "iwo_pg_";
+
         /// <summary>
         /// Отрендерить страницу (1-based) в Bitmap через Ghostscript. null — GS недоступен или
         /// рендер не удался. Возвращённый Bitmap принадлежит вызывающему (обязан Dispose).
@@ -30,7 +35,7 @@ namespace ExcelMerger
         {
             if (!Ghostscript.Available || string.IsNullOrEmpty(pdfPath) || pageNumber < 1)
                 return null;
-            string outPng = Path.Combine(Path.GetTempPath(), "iwo_pg_" +
+            string outPng = Path.Combine(Path.GetTempPath(), RenderPrefix +
                 Guid.NewGuid().ToString("N") + ".png");
             string decryptedPdf = null;
             string renderPath = pdfPath;
@@ -48,8 +53,7 @@ namespace ExcelMerger
                     return null;
                 if (!string.IsNullOrEmpty(PdfPasswords.For(pdfPath)))
                 {
-                    decryptedPdf = Path.Combine(Path.GetTempPath(), "iwo_pg_dec_" +
-                        Guid.NewGuid().ToString("N") + ".pdf");
+                    decryptedPdf = NewDecryptedCopyPath();
                     PdfMergeService.WriteUnpublished(new[]
                     {
                         new PdfPageRef { SourcePath = pdfPath, PageIndex = pageNumber - 1 }
@@ -59,7 +63,8 @@ namespace ExcelMerger
                 }
                 string stderr;
                 int exit = Ghostscript.Run(BuildArgs(renderPath, renderPage, renderPage, dpi,
-                    outPng, false), RenderTimeoutMs, out stderr);
+                    GsArguments.LiteralOutput(outPng), false, Ghostscript.BundledRoot),
+                    RenderTimeoutMs, out stderr);
                 if (!GsRewrite.EngineSucceeded(exit, stderr) || !File.Exists(outPng))
                     return null;
                 using (var stream = File.OpenRead(outPng))
@@ -176,7 +181,9 @@ namespace ExcelMerger
                 int renderFirst = firstPage, renderLast = lastPage;
                 if (!string.IsNullOrEmpty(PdfPasswords.For(pdfPath)))
                 {
-                    decrypted = Path.Combine(outDir, "decrypted.pdf");
+                    // Не в outDir: та папка вызывающего, и по имени «decrypted.pdf» уборка
+                    // после аварии не отличила бы открытую копию от чужого файла.
+                    decrypted = NewDecryptedCopyPath();
                     var pages = new List<PdfPageRef>();
                     for (int page = firstPage; page <= lastPage; page++)
                         pages.Add(new PdfPageRef
@@ -189,10 +196,11 @@ namespace ExcelMerger
                     renderFirst = 1;
                     renderLast = pages.Count;
                 }
-                string pattern = Path.Combine(outDir, "bg-%04d.png");
+                // Шаблон движка — только имя файла; «%» в самой папке экранирует OutputPattern.
+                string pattern = GsArguments.OutputPattern(outDir, "bg-%04d.png");
                 string stderr;
                 int exit = Ghostscript.Run(BuildArgs(renderPath, renderFirst, renderLast, dpi,
-                    pattern, true), RangeTimeoutMs, out stderr, cancelled);
+                    pattern, true, Ghostscript.BundledRoot), RangeTimeoutMs, out stderr, cancelled);
                 Cancellation.ThrowIf(cancelled);
                 if (!GsRewrite.EngineSucceeded(exit, stderr))
                     return result;
@@ -237,7 +245,13 @@ namespace ExcelMerger
             return dpi;
         }
 
-        private static string BuildArgs(string input, int firstPage, int lastPage, int dpi, string output, bool withoutText)
+        /// <summary>
+        /// Аргументы рендера. outputSpec — уже в синтаксисе -sOutputFile
+        /// (<see cref="GsArguments.LiteralOutput"/> или <see cref="GsArguments.OutputPattern"/>):
+        /// один рендер пишет один файл, другой — шаблон «файл на страницу». Чистая — под тест.
+        /// </summary>
+        internal static string BuildArgs(string input, int firstPage, int lastPage, int dpi,
+            string outputSpec, bool withoutText, string bundledGsRoot)
         {
             var sb = new StringBuilder();
             sb.Append("-q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=png16m");
@@ -245,17 +259,20 @@ namespace ExcelMerger
                 sb.Append(" -dFILTERTEXT"); // текст не рисуем: он придёт надписями поверх
             sb.Append(" -r").Append(dpi);
             sb.Append(" -dFirstPage=").Append(firstPage).Append(" -dLastPage=").Append(lastPage);
-            string root = Ghostscript.BundledRoot; // вшитый GS — явные -I на его lib/Resource
-            if (!string.IsNullOrEmpty(root))
-            {
-                sb.Append(" -I ").Append(Quote(Path.Combine(root, "lib")));
-                sb.Append(" -I ").Append(Quote(Path.Combine(root, "Resource", "Init")));
-            }
-            sb.Append(" -sOutputFile=").Append(Quote(output));
-            sb.Append(' ').Append(Quote(input));
+            GsArguments.AppendTail(sb, bundledGsRoot, outputSpec, input);
             return sb.ToString();
         }
 
-        private static string Quote(string s) { return "\"" + s + "\""; }
+        /// <summary>
+        /// Путь расшифрованной копии запароленного исходника — движок пароля не знает, поэтому
+        /// рендерит копию без защиты. Всегда в %TEMP% и с узнаваемым префиксом: это открытая
+        /// копия защищённого документа, и если процесс умрёт до finally, её обязана найти и
+        /// стереть уборка при следующем запуске, а та ищет по шаблону <see cref="DecryptedPrefix"/>*.pdf.
+        /// </summary>
+        private static string NewDecryptedCopyPath()
+        {
+            return Path.Combine(Path.GetTempPath(), DecryptedPrefix +
+                Guid.NewGuid().ToString("N") + ".pdf");
+        }
     }
 }

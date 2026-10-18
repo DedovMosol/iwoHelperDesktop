@@ -69,7 +69,9 @@ namespace ExcelMerger
             string tmp = tempOutput;
             try
             {
-                long origSize = new FileInfo(path).Length;
+                var before = new FileInfo(path);
+                long origSize = before.Length;
+                DateTime origWriteUtc = before.LastWriteTimeUtc;
                 // Страницы исходника считаем ДО запуска движка, а не перед самой подменой.
                 // Дело не в скорости: чтение открывает файл, а следом идёт File.Move этого же
                 // файла — на Windows такое соседство упирается в антивирус, который берётся
@@ -85,6 +87,13 @@ namespace ExcelMerger
                 if (!replace(origSize, new FileInfo(tmp).Length))
                     return GsRewriteResult.RejectedByPolicy;
                 if (verify != null && !verify(tmp))
+                    return GsRewriteResult.Failed;
+                // Последняя проверка перед подменой: файл всё ещё тот, с которого движок читал.
+                // Работа движка длится минутами, и за это время файл может переписать кто-то
+                // другой (повторный запуск, вторая копия программы, человек сохранил из
+                // вьюера). Подменив его, мы стёрли бы более новый результат производным от
+                // старого. Отказ здесь честнее: файл остаётся таким, каким его оставили.
+                if (!Unchanged(path, origSize, origWriteUtc))
                     return GsRewriteResult.Failed;
                 if (recoverableTarget)
                 {
@@ -128,6 +137,17 @@ namespace ExcelMerger
                 File.Delete(path);
                 File.Move(replacement, path);
             }
+        }
+
+        /// <summary>
+        /// Тот же ли файл по размеру и времени записи, что был до запуска движка. Отпечаток
+        /// дешёвый, а не хэш: перечитывать многомегабайтный скан ради редкой гонки незачем,
+        /// а запись, не изменившая ни длины, ни времени, на практике не встречается.
+        /// </summary>
+        private static bool Unchanged(string path, long size, DateTime writeUtc)
+        {
+            var now = new FileInfo(path);
+            return now.Exists && now.Length == size && now.LastWriteTimeUtc == writeUtc;
         }
 
         /// <summary>Путь к временному выходу; уникален для параллельных headless-запусков.</summary>

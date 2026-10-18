@@ -75,13 +75,13 @@ namespace ExcelMerger
             foreach (PdfPageRef page in order)
                 if (page != null && OutputFile.IsSameFile(page.SourcePath, outputPath))
                     throw new MergeException(Loc.T("err.output.sameSource"));
-            string lockError = MergeService.CheckOutputWritable(outputPath);
-            if (lockError != null)
-                throw new MergeException(Loc.T("err.pdf.fileBusy"));
+            string writeError = OutputFile.PdfWriteProblem(outputPath);
+            if (writeError != null)
+                throw new MergeException(writeError);
             EmbeddedAssemblies.Ensure();
             using (var output = new AtomicOutput(outputPath))
             {
-                MergeCore(order, output.TempPath, progress, cancelled, padToEven);
+                MergeCore(order, output.TempPath, progress, cancelled, padToEven, null);
                 output.Commit();
             }
         }
@@ -97,7 +97,21 @@ namespace ExcelMerger
             if (order == null || order.Count == 0)
                 throw new MergeException(Loc.T("err.pdf.noPages"));
             EmbeddedAssemblies.Ensure();
-            MergeCore(order, path, progress, cancelled, padToEven);
+            MergeCore(order, path, progress, cancelled, padToEven, null);
+        }
+
+        /// <summary>
+        /// То же, что <see cref="WriteUnpublished(IList{PdfPageRef}, string, Action{int, int}, Func{bool}, bool)"/>,
+        /// но источники берутся из общего набора, открытого вызывающим на всю серию записей
+        /// (части разделения). Набор вызывающий и закрывает. Только после
+        /// <see cref="EmbeddedAssemblies.Ensure"/> — набор держит типы PdfSharp.
+        /// </summary>
+        internal static void WriteUnpublished(IList<PdfPageRef> order, string path,
+            PdfSourceSet sources, Func<bool> cancelled)
+        {
+            if (order == null || order.Count == 0)
+                throw new MergeException(Loc.T("err.pdf.noPages"));
+            MergeCore(order, path, null, cancelled, false, sources);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -132,9 +146,11 @@ namespace ExcelMerger
             }
         }
 
+        /// <param name="shared">Набор источников вызывающего (серия записей) или null — тогда
+        /// источники открываются здесь и здесь же закрываются.</param>
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void MergeCore(IList<PdfPageRef> order, string outputPath, Action<int, int> progress,
-            Func<bool> cancelled, bool padToEven)
+            Func<bool> cancelled, bool padToEven, PdfSourceSet shared)
         {
             // Позиции добивочных пустых страниц считаем ЗАРАНЕЕ и по исходной нумерации:
             // вставка по ходу сдвигала бы все последующие позиции.
@@ -143,7 +159,7 @@ namespace ExcelMerger
                 foreach (int at in BlankPages.InsertPositions(order))
                     padAfter.Add(at);
             // Каждый источник открывается один раз, сколько бы страниц из него ни брали.
-            var sources = new Dictionary<string, PdfDocument>(StringComparer.OrdinalIgnoreCase);
+            PdfSourceSet sources = shared ?? new PdfSourceSet();
             // Куда переехала каждая взятая страница — отдельно по каждому источнику, плюс
             // порядок первого появления источников: по этому и переносится оглавление.
             // Страница, взятая дважды, ведёт на ПЕРВОЕ вхождение — закладка должна вести
@@ -159,26 +175,18 @@ namespace ExcelMerger
                 {
                     PdfPageRef page = order[index];
                     Cancellation.ThrowIf(cancelled); // между страницами; файл ещё не создан
-                    PdfDocument source;
                     string key = Path.GetFullPath(page.SourcePath);
-                    if (!sources.TryGetValue(key, out source))
+                    PdfDocument source = sources.Get(key, page.FileName);
+                    Dictionary<int, int> moved;
+                    if (!movedBySource.TryGetValue(key, out moved))
                     {
-                        try
-                        {
-                            source = PdfReader.Open(key, PdfPasswords.For(key), PdfDocumentOpenMode.Import);
-                        }
-                        catch (Exception ex) when (MergeException.ShouldWrap(ex))
-                        {
-                            throw new MergeException(string.Format(Loc.T("err.pdf.cantOpenShort"), page.FileName, ex.Message));
-                        }
-                        sources.Add(key, source);
-                        movedBySource.Add(key, new Dictionary<int, int>());
+                        moved = new Dictionary<int, int>();
+                        movedBySource.Add(key, moved);
                         sourceOrder.Add(key);
                     }
                     if (page.PageIndex < 0 || page.PageIndex >= source.PageCount)
                         throw new MergeException(string.Format(Loc.T("err.pdf.pageGone"), page.FileName, page.PageIndex + 1));
                     PdfPage copied = output.AddPage(source.Pages[page.PageIndex]);
-                    Dictionary<int, int> moved = movedBySource[key];
                     if (!moved.ContainsKey(page.PageIndex))          // только первое вхождение
                         moved[page.PageIndex] = output.PageCount - 1;
                     if (page.Rotation != 0) // поворот пользователя поверх собственного /Rotate страницы
@@ -201,7 +209,7 @@ namespace ExcelMerger
                 // первого появления — «содержание первого файла, затем второго».
                 var bookmarks = new List<PdfBookmark>();
                 foreach (string key in sourceOrder)
-                    bookmarks.AddRange(PdfBookmarks.Remap(PdfBookmarks.Read(sources[key]), movedBySource[key]));
+                    bookmarks.AddRange(PdfBookmarks.Remap(sources.Bookmarks(key), movedBySource[key]));
                 PdfBookmarks.Write(output, bookmarks);
 
                 try
@@ -217,9 +225,78 @@ namespace ExcelMerger
             {
                 if (output != null)
                     try { output.Dispose(); } catch { }
-                foreach (PdfDocument doc in sources.Values)
-                    try { doc.Dispose(); } catch { }
+                if (shared == null)
+                    sources.Dispose();
             }
+        }
+    }
+
+    /// <summary>
+    /// Открытые исходники на серию записей. Разделение пишет много частей из ОДНОГО файла, и
+    /// раньше каждая часть заново открывала и целиком разбирала исходник (и заново читала его
+    /// оглавление): на 300-страничном документе, разбитом постранично, — триста полных
+    /// разборов одного и того же файла. Импорт страниц исходник не меняет, поэтому один
+    /// открытый документ безопасно отдаёт страницы в любое число новых.
+    ///
+    /// Держит типы PdfSharp — создаётся только после <see cref="EmbeddedAssemblies.Ensure"/>.
+    /// Не потокобезопасен: одна серия — один поток.
+    /// </summary>
+    internal sealed class PdfSourceSet : IDisposable
+    {
+        private readonly Dictionary<string, PdfDocument> _documents =
+            new Dictionary<string, PdfDocument>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<PdfBookmark>> _bookmarks =
+            new Dictionary<string, List<PdfBookmark>>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Сколько раз этот поток разобрал исходник с диска — только для теста «исходник
+        /// открывается один раз». На поток, а не общий: чужие фоновые операции не сбивают счёт.
+        /// </summary>
+        [ThreadStatic] internal static int OpensForTests;
+
+        /// <summary>
+        /// Документ по пути; с диска — только при первом обращении. errorKey — формат
+        /// сообщения об ошибке открытия ({0} — имя файла, {1} — причина): объединение и
+        /// разделение исторически говорят об этом по-разному.
+        /// </summary>
+        internal PdfDocument Get(string path, string displayName, string errorKey = "err.pdf.cantOpenShort")
+        {
+            string key = Path.GetFullPath(path);
+            PdfDocument document;
+            if (_documents.TryGetValue(key, out document))
+                return document;
+            try
+            {
+                document = PdfReader.Open(key, PdfPasswords.For(key), PdfDocumentOpenMode.Import);
+            }
+            catch (Exception ex) when (MergeException.ShouldWrap(ex))
+            {
+                throw new MergeException(string.Format(Loc.T(errorKey), displayName, ex.Message));
+            }
+            OpensForTests++;
+            _documents.Add(key, document);
+            return document;
+        }
+
+        /// <summary>Оглавление источника; читается один раз на серию (Remap его не меняет).</summary>
+        internal List<PdfBookmark> Bookmarks(string path)
+        {
+            string key = Path.GetFullPath(path);
+            List<PdfBookmark> marks;
+            if (!_bookmarks.TryGetValue(key, out marks))
+            {
+                marks = PdfBookmarks.Read(Get(key, Path.GetFileName(key)));
+                _bookmarks.Add(key, marks);
+            }
+            return marks;
+        }
+
+        public void Dispose()
+        {
+            foreach (PdfDocument document in _documents.Values)
+                try { document.Dispose(); } catch { }
+            _documents.Clear();
+            _bookmarks.Clear();
         }
     }
 }

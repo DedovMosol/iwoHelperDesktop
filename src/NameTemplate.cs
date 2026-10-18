@@ -213,7 +213,40 @@ namespace ExcelMerger
             const int maxLength = 120; // с запасом под путь и «_2» при разведении совпадений
             if (s.Length > maxLength)
                 s = s.Substring(0, maxLength).TrimEnd('.', ' ');
-            return s;
+            return EscapeDeviceName(s);
+        }
+
+        /// <summary>
+        /// Имя устройства Windows (CON, PRN, AUX, NUL, COM1–9, LPT1–9) — не имя файла: «CON.pdf»
+        /// открывает консоль, и разделение по закладке «CON» падало целиком. Устройством
+        /// считается и имя с «расширением» («CON.part»), поэтому сверяется часть до первой
+        /// точки (без хвостовых пробелов — их Windows тоже отбрасывает). Такой основе
+        /// дописывается «_»: «CON» → «CON_», «con.part» → «con_.part». Чистая — под тест.
+        /// </summary>
+        private static string EscapeDeviceName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return name;
+            int dot = name.IndexOf('.');
+            string stem = dot < 0 ? name : name.Substring(0, dot);
+            if (!IsDeviceName(stem.TrimEnd(' ')))
+                return name;
+            return stem + "_" + (dot < 0 ? "" : name.Substring(dot));
+        }
+
+        private static bool IsDeviceName(string stem)
+        {
+            switch (stem.ToUpperInvariant())
+            {
+                case "CON": case "PRN": case "AUX": case "NUL":
+                    return true;
+            }
+            // Цифра порта — 1–9, а также надстрочные ¹²³: Windows резервирует и «COM¹».
+            return stem.Length == 4 &&
+                   (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+                    stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
+                   ((stem[3] >= '1' && stem[3] <= '9') ||
+                    stem[3] == '\u00B9' || stem[3] == '\u00B2' || stem[3] == '\u00B3');
         }
 
         private static bool IsForbidden(char c)
