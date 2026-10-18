@@ -326,8 +326,8 @@ namespace ExcelMerger
                 "Drag the splitter to resize the alignment list.");
             A("review.unified.legend", "Общий документ · поздняя версия с правками",
                 "Unified redline · later version with changes");
-            A("review.unified.hint", "Зелёным показано добавленное; удалённое обозначено красными рамками и перечёркиванием. Точный исходный текст доступен в режиме «Бок о бок».",
-                "Added content is green; removed content is marked with red outlines and strike lines. Exact source text remains available in Side by side.");
+            A("review.unified.hint", "Зелёным показано добавленное; место удалённого текста отмечено красной кареткой и знаком «−» у левого поля. Точный удалённый текст доступен в режиме «Бок о бок».",
+                "Added content is green; the place of removed text is marked with a red caret and a “−” in the left margin. The exact removed text remains available in Side by side.");
             A("review.unified.interactions", "Колесо листает общий документ, Ctrl+колесо масштабирует. Двойной щелчок открывает этот же документ с пометками на весь экран.",
                 "The wheel scrolls the unified document; Ctrl+wheel zooms. Double-click opens the same marked-up document full screen.");
             A("review.unified.caption", "Общий документ · {0} ↔ {1}",
@@ -337,6 +337,9 @@ namespace ExcelMerger
                 "Drop the PDF for this side");
             A("review.source.empty", "Выберите, введите или перетащите PDF",
                 "Browse, type, or drop a PDF");
+            A("review.source.tooLarge",
+                "PDF слишком большой для показа страницы: не хватает памяти, отведённой под просмотр. Сравнение и список изменений доступны.",
+                "The PDF is too large to display this page within the viewer's memory budget. The comparison and the list of changes are still available.");
             A("review.source.ready", "{0} · страница {1} · {2}%",
                 "{0} · page {1} · {2}%");
             A("review.selection.selectAll", "Выделить весь текст страницы",
@@ -396,6 +399,9 @@ namespace ExcelMerger
             A("review.status.comparing", "Сравнение документов…", "Comparing documents…");
             A("review.status.ready", "Строк сопоставления: {0}, с изменениями: {1}.",
                 "Alignment rows: {0}, with changes: {1}.");
+            A("review.warn.workExhausted",
+                "Документы слишком большие для полного сравнения: часть различий показана грубо",
+                "The documents are too large for a full comparison: some differences are shown coarsely");
             A("review.status.failed", "Сравнение не выполнено.", "Comparison failed.");
             A("review.source.missing", "На другой стороне соответствующей страницы нет.",
                 "There is no corresponding page on this side.");

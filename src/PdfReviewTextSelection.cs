@@ -99,6 +99,9 @@ namespace ExcelMerger
         private readonly bool[] _boundaryProven;
         private int _anchor = -1;
         private int _focus = -1;
+        // Явный набор слов (клик по полосе изменений): только изменённые фрагменты строки,
+        // без чужих слов между колонками. null — обычный диапазон anchor..focus.
+        private int[] _explicit;
 
         public PdfReviewTextSelection(PdfReviewPage page)
         {
@@ -132,7 +135,7 @@ namespace ExcelMerger
             get
             {
                 if (!HasSelection) return 0;
-                return Math.Abs(_focus - _anchor) + 1;
+                return _explicit != null ? _explicit.Length : Math.Abs(_focus - _anchor) + 1;
             }
         }
 
@@ -144,6 +147,28 @@ namespace ExcelMerger
         public int SelectionEnd
         {
             get { return HasSelection ? Math.Max(_anchor, _focus) : -1; }
+        }
+
+        /// <summary>Выбранные индексы в порядке документа (диапазон или явный набор).</summary>
+        internal List<int> SelectedIndices()
+        {
+            var result = new List<int>();
+            if (!HasSelection)
+                return result;
+            if (_explicit != null)
+                result.AddRange(_explicit);
+            else
+                for (int i = SelectionStart; i <= SelectionEnd; i++)
+                    result.Add(i);
+            return result;
+        }
+
+        internal bool IsSelected(int selectableIndex)
+        {
+            if (!HasSelection || selectableIndex < SelectionStart ||
+                selectableIndex > SelectionEnd)
+                return false;
+            return _explicit == null || Array.BinarySearch(_explicit, selectableIndex) >= 0;
         }
 
         public int Anchor { get { return _anchor; } }
@@ -220,6 +245,7 @@ namespace ExcelMerger
             if (!HasSelection)
                 return false;
             _anchor = _focus = -1;
+            _explicit = null;
             return true;
         }
 
@@ -227,19 +253,22 @@ namespace ExcelMerger
         {
             if (selectableIndex < 0 || selectableIndex >= _words.Count)
                 return false;
+            bool wasExplicit = _explicit != null;
+            _explicit = null;
             int oldAnchor = _anchor, oldFocus = _focus;
             if (!extend || !HasSelection)
                 _anchor = selectableIndex;
             _focus = selectableIndex;
-            return oldAnchor != _anchor || oldFocus != _focus;
+            return wasExplicit || oldAnchor != _anchor || oldFocus != _focus;
         }
 
         public bool ExtendTo(int selectableIndex)
         {
             if (!HasSelection || selectableIndex < 0 || selectableIndex >= _words.Count)
                 return false;
-            if (_focus == selectableIndex)
+            if (_focus == selectableIndex && _explicit == null)
                 return false;
+            _explicit = null;
             _focus = selectableIndex;
             return true;
         }
@@ -248,20 +277,48 @@ namespace ExcelMerger
         {
             if (_words.Count == 0)
                 return false;
-            bool changed = _anchor != 0 || _focus != _words.Count - 1;
+            bool changed = _explicit != null || _anchor != 0 || _focus != _words.Count - 1;
+            _explicit = null;
             _anchor = 0;
             _focus = _words.Count - 1;
             return changed;
         }
 
-        internal bool SelectRange(int start, int end)
+        /// <summary>
+        /// Выбрать ровно эти слова (порядок и повторы не важны). Нужен полосе изменений:
+        /// две колонки на одной линии дают фрагменты 40 и 400, а диапазон 40..400
+        /// захватил бы полколонки неизменённого текста.
+        /// </summary>
+        internal bool SelectIndices(IEnumerable<int> selectableIndices)
         {
-            if (start < 0 || end < 0 || start >= _words.Count || end >= _words.Count)
+            if (selectableIndices == null)
                 return false;
-            bool changed = _anchor != start || _focus != end;
-            _anchor = start;
-            _focus = end;
-            return changed;
+            var sorted = new List<int>();
+            foreach (int index in selectableIndices)
+            {
+                if (index < 0 || index >= _words.Count)
+                    return false;
+                sorted.Add(index);
+            }
+            if (sorted.Count == 0)
+                return false;
+            sorted.Sort();
+            var unique = new List<int>(sorted.Count);
+            foreach (int index in sorted)
+                if (unique.Count == 0 || unique[unique.Count - 1] != index)
+                    unique.Add(index);
+            List<int> before = SelectedIndices();
+            _anchor = unique[0];
+            _focus = unique[unique.Count - 1];
+            // Сплошной набор — обычный диапазон: Shift-расширение и Ctrl+A ведут себя как прежде.
+            _explicit = unique.Count == _focus - _anchor + 1 ? null : unique.ToArray();
+            List<int> after = SelectedIndices();
+            if (before.Count != after.Count)
+                return true;
+            for (int i = 0; i < before.Count; i++)
+                if (before[i] != after[i])
+                    return true;
+            return false;
         }
 
         public int HitTest(PointF point, Size surfaceSize)
@@ -319,9 +376,7 @@ namespace ExcelMerger
         public List<RectangleF> SelectedRectangles(Size surfaceSize)
         {
             var result = new List<RectangleF>();
-            if (!HasSelection)
-                return result;
-            for (int i = SelectionStart; i <= SelectionEnd; i++)
+            foreach (int i in SelectedIndices())
             {
                 RectangleF rect = WordRectangle(i, surfaceSize);
                 if (!rect.IsEmpty)
@@ -332,17 +387,19 @@ namespace ExcelMerger
 
         public PdfReviewCopyText BuildCopyText()
         {
-            if (!HasSelection)
+            List<int> selected = SelectedIndices();
+            if (selected.Count == 0)
                 return new PdfReviewCopyText("", 0, false);
-            int start = SelectionStart, end = SelectionEnd;
             var text = new StringBuilder();
             bool fallback = false;
-            for (int i = start; i <= end; i++)
+            for (int n = 0; n < selected.Count; n++)
             {
-                PdfReviewSelectableWord current = _words[i];
-                if (i > start)
+                PdfReviewSelectableWord current = _words[selected[n]];
+                if (n > 0)
                 {
-                    PdfReviewSelectableWord previous = _words[i - 1];
+                    // Разрыв явного набора (другая колонка) не имеет доказанного разделителя:
+                    // канонические индексы не соседние, и ниже выбирается fallback-пробел.
+                    PdfReviewSelectableWord previous = _words[selected[n - 1]];
                     int boundary = previous.CanonicalIndex;
                     if (current.CanonicalIndex == boundary + 1 && boundary >= 0 &&
                         boundary < _boundaryProven.Length && _boundaryProven[boundary])
@@ -357,7 +414,7 @@ namespace ExcelMerger
                 }
                 text.Append(current.Word.SourceText);
             }
-            return new PdfReviewCopyText(text.ToString(), end - start + 1, fallback);
+            return new PdfReviewCopyText(text.ToString(), selected.Count, fallback);
         }
     }
 }

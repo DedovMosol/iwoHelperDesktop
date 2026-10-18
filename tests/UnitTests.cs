@@ -11414,10 +11414,25 @@ namespace ExcelMerger.Tests
             long contentRevision, PdfPageRef page, PdfReviewPage reviewPage, Bitmap bitmap,
             string caption, PdfReviewPagePosition position = PdfReviewPagePosition.Default)
         {
-            MethodInfo method = typeof(PdfReviewPageView).GetMethod("ApplyRendered",
+            // Тот же путь публикации, что у фонового рендера: bitmap под учётом бюджета.
+            PdfReviewPageView.RenderOutcome outcome = null;
+            if (bitmap != null)
+            {
+                PdfMemoryLease lease;
+                if (PdfMemoryBudget.TryAcquire(PdfMemoryBudget.EstimateBitmapBytes(
+                    bitmap.Width, bitmap.Height), out lease))
+                    outcome = new PdfReviewPageView.RenderOutcome
+                    {
+                        Bitmap = new BudgetedBitmap(bitmap, lease)
+                    };
+                else
+                    bitmap.Dispose();
+            }
+            MethodInfo method = typeof(PdfReviewPageView).GetMethod("ApplyRender",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            method.Invoke(view, new object[] { generation, contentRevision, page, reviewPage,
-                bitmap, caption, position });
+            method.Invoke(view, new object[] { generation,
+                new PdfReviewViewContent(page, reviewPage, null, null, contentRevision, caption),
+                outcome, position });
         }
 
         private static void ReviewShowSyntheticPage(PdfReviewPageView view, int width, int height,
@@ -11536,8 +11551,7 @@ namespace ExcelMerger.Tests
                 "обычная пара использует позднюю версию как основу");
             AssertEqual(PdfReviewHighlightStyle.Added, content.BaseHighlight.Style,
                 "зелёная семантика принадлежит поздней основе");
-            AssertTrue(content.OverlayPage == null &&
-                content.OverlayHighlight.Style == PdfReviewHighlightStyle.Removed,
+            AssertTrue(content.OverlayHighlight.Style == PdfReviewHighlightStyle.Removed,
                 "удаление передаётся как красная геометрия без старых глифов поверх поздней страницы");
             AssertEqual(42L, content.Revision, "revision переносится в единый canvas");
             AssertTrue(content.IsComposite,
@@ -11621,6 +11635,17 @@ namespace ExcelMerger.Tests
                 new List<PdfReviewWhitespaceMarker> { removed };
             result.InsertedWhitespaceByPage[0] =
                 new List<PdfReviewWhitespaceMarker> { added };
+            // Аудит F2: маркер удаления — проекция реального изменения пробелов; на позднем
+            // холсте он стоит на ПРАВОЙ границе тех же Exact-слов, а не в координатах левой.
+            var laterBoundary = new PdfReviewBox { Left = 50, Bottom = 90, Right = 51, Top = 100 };
+            var change = new PdfReviewWhitespaceChange
+            {
+                Left = new PdfReviewWhitespaceEvidence { PageIndex = 0, MarkerBox = removed.Box },
+                Right = new PdfReviewWhitespaceEvidence { PageIndex = 0, MarkerBox = laterBoundary }
+            };
+            change.DeletedAtoms.Add(new PdfReviewWhitespaceAtom
+                { Kind = PdfReviewWhitespaceAtomKind.Space, RawText = " " });
+            result.ReplaceWhitespaceChanges(new List<PdfReviewWhitespaceChange> { change });
 
             PdfReviewViewContent content = PdfReviewForm.BuildUnifiedContent(result,
                 pair, 73L);
@@ -11628,18 +11653,22 @@ namespace ExcelMerger.Tests
                 "единый content построен на поздней странице");
             AssertEqual(2, content.BaseHighlight.WhitespaceMarkers.Count,
                 "единый холст получает оба направления пробельного diff");
+            PdfReviewWhitespaceMarker movedRemoval = content.BaseHighlight.WhitespaceMarkers[1];
             AssertTrue(object.ReferenceEquals(added,
                            content.BaseHighlight.WhitespaceMarkers[0]) &&
-                       object.ReferenceEquals(removed,
-                           content.BaseHighlight.WhitespaceMarkers[1]),
-                "добавление и удаление сохраняют authoritative marker identity");
+                       movedRemoval.Text == removed.Text &&
+                       movedRemoval.AccessibleDescription == removed.AccessibleDescription,
+                "добавление сохраняет identity, удаление — authoritative текст и описание");
+            AssertTrue(movedRemoval.Box.Left == laterBoundary.Left &&
+                       movedRemoval.Box.Top == laterBoundary.Top,
+                "удаление пробела нарисовано на границе поздней страницы");
             AssertEqual(PdfReviewHighlightStyle.Added,
                 content.BaseHighlight.WhitespaceMarkers[0].Style,
                 "зелёный marker остаётся добавлением");
             AssertEqual(PdfReviewHighlightStyle.Removed,
                 content.BaseHighlight.WhitespaceMarkers[1].Style,
                 "красный marker остаётся удалением");
-            AssertTrue(content.OverlayPage == null && content.OverlayHighlight == null,
+            AssertTrue(content.OverlayHighlight == null,
                 "whitespace-only изменение не создаёт deletion-слой без удалённых слов");
         }
 

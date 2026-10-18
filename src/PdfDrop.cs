@@ -30,12 +30,22 @@ namespace ExcelMerger
         {
             if (e == null || !e.Data.GetDataPresent(DataFormats.FileDrop))
                 return new string[0];
-            var items = e.Data.GetData(DataFormats.FileDrop) as string[];
-            if (items == null)
-                return new string[0];
+            return Filter(e.Data.GetData(DataFormats.FileDrop) as string[], extensions, File.Exists);
+        }
+
+        /// <summary>
+        /// Сначала дешёвое расширение, потом существование: DragOver приходит на каждое
+        /// движение мыши, а File.Exists по недоступному сетевому пути вешает UI-поток.
+        /// Папки и чужие типы не трогают диск вовсе. Чистая при подставном exists — под тест.
+        /// </summary>
+        internal static string[] Filter(IEnumerable<string> items, string[] extensions,
+            Func<string, bool> exists)
+        {
             var picked = new List<string>();
+            if (items == null || exists == null)
+                return picked.ToArray();
             foreach (string item in items)
-                if (File.Exists(item) && Matches(item, extensions))
+                if (Matches(item, extensions) && exists(item))
                     picked.Add(item);
             return picked.ToArray();
         }

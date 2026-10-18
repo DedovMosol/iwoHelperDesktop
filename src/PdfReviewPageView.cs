@@ -2,10 +2,27 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using System.Windows.Forms.Automation;
 
 namespace ExcelMerger
 {
+    /// <summary>
+    /// Нарисованная полоса изменений одной строки (пиксели растра страницы): по ней же
+    /// поверхность выбирает изменённые слова строки при клике.
+    /// </summary>
+    internal sealed class PdfReviewChangeBar
+    {
+        public RectangleF Band;
+        public float X;
+        public float Top;
+        public float Bottom;
+        public RectangleF HitBounds;
+        public readonly List<PdfReviewWord> Words = new List<PdfReviewWord>();
+    }
+
     internal enum PdfReviewPageViewState
     {
         Empty,
@@ -13,7 +30,10 @@ namespace ExcelMerger
         Loading,
         Ready,
         MissingCounterpart,
-        Unavailable
+        Unavailable,
+        // Файл заведомо не помещается в бюджет показа этой разрядности и ширины
+        // (см. PdfReviewRenderSession.MaxShowableFileBytes).
+        TooLargeToShow
     }
 
     internal enum PdfReviewWheelResult
@@ -42,6 +62,8 @@ namespace ExcelMerger
     {
         private const int WheelNotch = 120;
         private const int ScrollPerNotch = 60;
+        internal const int WmMouseWheel = 0x020A;
+        private const long MkControl = 0x0008;
 
         private readonly Panel _viewport;
         private readonly PdfReviewPageSurface _picture;
@@ -63,8 +85,16 @@ namespace ExcelMerger
         private readonly object _renderGate = new object();
         private RenderRequest _pending;
         private bool _renderWorker;
+        // Свой рендерер у одиночного вида; окно сравнения подставляет общий (RenderSession).
+        private PdfReviewRenderSession _session = new PdfReviewRenderSession();
+        private bool _ownsSession = true;
+        // Повторы после MemoryReleased ограничены: страница, которой не хватает памяти даже
+        // после освобождения, не должна перерендериваться на каждом простое рендерера.
+        private const int MaxMemoryRetries = 3;
+        private int _memoryRetries;
 
         private PdfReviewViewContent _currentContent;
+        private PdfReviewPagePosition _currentPosition = PdfReviewPagePosition.Default;
         internal bool AllowFullScreen { get; set; } = true;
         internal int RenderWidthLimit { get; set; } = 1200;
 
@@ -74,6 +104,25 @@ namespace ExcelMerger
             public PdfReviewViewContent Content;
             public PdfReviewPagePosition Position;
             public int RenderWidth;
+            public PdfReviewRenderSession Session;
+        }
+
+        /// <summary>
+        /// Общий рендерер окна; назначается до первого показа. Подставленная сессия не
+        /// принадлежит виду и не закрывается им; собственная закрывается при замене и в Dispose.
+        /// </summary>
+        internal PdfReviewRenderSession RenderSession
+        {
+            get { return _session; }
+            set
+            {
+                if (value == null || ReferenceEquals(value, _session))
+                    return;
+                if (_ownsSession)
+                    _session.Dispose();
+                _session = value;
+                _ownsSession = false;
+            }
         }
 
         public PdfReviewPageView()
@@ -128,9 +177,10 @@ namespace ExcelMerger
             {
                 if (AllowFullScreen && _currentContent != null &&
                     _currentContent.BasePage != null)
-                    PdfReviewFullScreenForm.Show(FindForm(), _currentContent);
+                    PdfReviewFullScreenForm.Show(FindForm(), _currentContent, _session);
             };
             _viewport.Controls.Add(_picture);
+            PdfMemoryBudget.MemoryReleased += OnMemoryReleased;
 
             _message = new Label();
             _message.Dock = DockStyle.Fill;
@@ -138,6 +188,9 @@ namespace ExcelMerger
             _message.ForeColor = Color.Gainsboro;
             _message.BackColor = _viewport.BackColor;
             _message.Padding = new Padding(24);
+            // Живая область: «недоступно» и «слишком большой» диктор объявляет так же, как
+            // их видно на экране, а не только при переходе фокуса на панель.
+            _message.LiveSetting = AutomationLiveSetting.Polite;
             _message.AccessibleDescription = Loc.T("review.source.interactions");
             _viewport.Controls.Add(_message);
             ApplyVisualState();
@@ -156,20 +209,14 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// true, если pane уже показывает, рендерит либо признал недоступной именно эту
-        /// логическую страницу и эту публикацию результата. null означает явное состояние
-        /// «парной страницы нет»; поворот является частью физической идентичности.
+        /// true, если pane уже показывает, рендерит либо признал слишком большой именно эту
+        /// логическую страницу и эту публикацию результата. «Недоступно» (сбой рендера,
+        /// нехватка памяти) показом не считается: повторный выбор строки пробует снова.
+        /// null означает явное состояние «парной страницы нет»; поворот — часть идентичности.
         /// </summary>
         internal bool IsShowing(PdfPageRef page, long contentRevision)
         {
-            if (_targetContentRevision != contentRevision)
-                return false;
-            if (page == null)
-                return _state == PdfReviewPageViewState.MissingCounterpart;
-            return (_state == PdfReviewPageViewState.Loading ||
-                    _state == PdfReviewPageViewState.Ready ||
-                    _state == PdfReviewPageViewState.Unavailable) &&
-                   SamePage(_targetPage, page);
+            return _targetContentRevision == contentRevision && IsShowing(page);
         }
 
         // Сохранён для узких state-тестов и старых внутренних вызовов: production-путь
@@ -180,7 +227,7 @@ namespace ExcelMerger
                 return _state == PdfReviewPageViewState.MissingCounterpart;
             return (_state == PdfReviewPageViewState.Loading ||
                     _state == PdfReviewPageViewState.Ready ||
-                    _state == PdfReviewPageViewState.Unavailable) &&
+                    _state == PdfReviewPageViewState.TooLargeToShow) &&
                    SamePage(_targetPage, page);
         }
 
@@ -221,26 +268,25 @@ namespace ExcelMerger
             string caption, PdfReviewHighlight highlight,
             PdfReviewPagePosition position = PdfReviewPagePosition.Default)
         {
-            ShowContent(new PdfReviewViewContent(page, reviewPage, highlight, null, null,
+            ShowContent(new PdfReviewViewContent(page, reviewPage, highlight, null,
                 contentRevision, caption), position);
-        }
-
-        internal void ShowCompositePage(PdfPageRef basePage, PdfReviewPage baseReviewPage,
-            long contentRevision, string caption, PdfReviewHighlight baseHighlight,
-            PdfPageRef overlayPage, PdfReviewHighlight overlayHighlight,
-            PdfReviewPagePosition position = PdfReviewPagePosition.Default)
-        {
-            ShowContent(new PdfReviewViewContent(basePage, baseReviewPage, baseHighlight,
-                overlayPage, overlayHighlight, contentRevision, caption), position);
         }
 
         internal void ShowContent(PdfReviewViewContent content,
             PdfReviewPagePosition position = PdfReviewPagePosition.Default)
         {
+            _memoryRetries = 0;
+            ShowContentCore(content, position);
+        }
+
+        private void ShowContentCore(PdfReviewViewContent content,
+            PdfReviewPagePosition position)
+        {
             int generation = ++_generation;
             CancelPendingRender();
             DisposeBitmap();
             _currentContent = content;
+            _currentPosition = position;
             PdfPageRef page = content == null ? null : content.BasePage;
             _page = null;
             _reviewPage = null;
@@ -266,7 +312,8 @@ namespace ExcelMerger
                     Content = content,
                     Position = position,
                     RenderWidth = RenderWidthFor(_viewport.ClientSize.Width,
-                        RenderWidthLimit)
+                        RenderWidthLimit),
+                    Session = _session
                 };
                 if (!_renderWorker)
                 {
@@ -378,11 +425,8 @@ namespace ExcelMerger
 
         private void RenderLoop()
         {
-            PdfThumbnailRenderer renderer = null;
             try
             {
-                try { renderer = new PdfThumbnailRenderer(); }
-                catch { }
                 while (true)
                 {
                     RenderRequest request;
@@ -391,39 +435,27 @@ namespace ExcelMerger
                         request = _pending;
                         _pending = null;
                         if (request == null)
-                            return; // _renderWorker меняется только в finally после Dispose renderer
+                            return; // _renderWorker меняется только в finally
                     }
 
-                    BudgetedBitmap rendered = null;
+                    RenderOutcome rendered = null;
                     PdfReviewViewContent content = request.Content;
                     try
                     {
-                        if (renderer != null && content != null)
-                        {
-                            rendered = RenderHighlighted(renderer, content.BasePage,
-                                request.RenderWidth, content.BaseHighlight);
-                            if (rendered != null && content.IsComposite)
-                            {
-                                PdfReviewUnifiedRenderer.DrawDeletedMarkers(
-                                    rendered.Bitmap, content.OverlayHighlight);
-                            }
-                        }
+                        if (content != null && content.BasePage != null)
+                            rendered = RenderContent(request.Session, content,
+                                request.RenderWidth);
                     }
                     catch
                     {
+                        // Сбой композиции не публикует страницу без пометок: «недоступно».
                         if (rendered != null) rendered.Dispose();
                         rendered = null;
                     }
-                    BudgetedBitmap ready = rendered;
+                    RenderOutcome ready = rendered;
                     if (!Ui.OnUi(this, delegate
                     {
-                        ApplyRenderedWithHighlight(request.Generation,
-                            content == null ? 0L : content.Revision,
-                            content == null ? null : content.BasePage,
-                            content == null ? null : content.BaseReviewPage,
-                            content == null ? null : content.BaseHighlight,
-                            ready, content == null ? "" : content.Caption,
-                            request.Position);
+                        ApplyRender(request.Generation, content, ready, request.Position);
                     }))
                     {
                         if (ready != null) ready.Dispose();
@@ -432,8 +464,6 @@ namespace ExcelMerger
             }
             finally
             {
-                if (renderer != null)
-                    renderer.Dispose();
                 bool restart;
                 lock (_renderGate)
                 {
@@ -445,44 +475,113 @@ namespace ExcelMerger
             }
         }
 
-        private static BudgetedBitmap RenderHighlighted(PdfThumbnailRenderer renderer,
-            PdfPageRef page, int width, PdfReviewHighlight highlight)
+        /// <summary>Итог фонового рендера: один владелец растра и полосы, нарисованные на нём.</summary>
+        internal sealed class RenderOutcome : IDisposable
         {
-            if (renderer == null || page == null)
-                return null;
-            BudgetedBitmap rendered = renderer.RenderOwned(page.SourcePath,
-                page.PageIndex, width, RasterBudget.MaxRenderDimension,
-                RasterBudget.PreviewPixels);
-            if (rendered == null)
-                return null;
-            Bitmap bitmap = rendered.Bitmap;
-            if (page.Rotation != 0)
-                bitmap.RotateFlip(PageRotation.FlipFor(page.Rotation));
-            bool hasMarks = highlight != null &&
-                (highlight.Boxes.Count > 0 || highlight.WhitespaceMarkers.Count > 0);
-            if (!hasMarks)
-                return rendered;
-            long extra = PdfMemoryBudget.EstimateBitmapBytes(bitmap.Width, bitmap.Height);
-            if (!rendered.TryGrow(extra))
+            public BudgetedBitmap Bitmap;
+            public List<PdfReviewChangeBar> Bars = new List<PdfReviewChangeBar>();
+            // Файл больше бюджета показа: растра нет, но и повторять бессмысленно.
+            public bool TooLarge;
+
+            public void Dispose()
             {
-                rendered.Dispose();
-                return null;
+                if (Bitmap != null)
+                    Bitmap.Dispose();
+                Bitmap = null;
             }
-            bitmap = DrawHighlight(bitmap, highlight);
-            rendered.ReplaceAfterTransform(bitmap);
-            return rendered;
         }
 
-
-        internal static Bitmap DrawHighlight(Bitmap source, PdfReviewHighlight highlight)
+        /// <summary>
+        /// Рендер через общую сессию: под её замком — только обращение к рендереру, а
+        /// композиция подсветки идёт уже без замка, не задерживая соседнюю панель.
+        /// </summary>
+        private static RenderOutcome RenderContent(PdfReviewRenderSession session,
+            PdfReviewViewContent content, int width)
         {
-            return DrawHighlight(source, highlight, SystemInformation.HighContrast);
+            if (session == null)
+                return null;
+            PdfPageRef page = content.BasePage;
+            if (session.IsTooLargeToShow(page.SourcePath, width))
+                return new RenderOutcome { TooLarge = true };
+            BudgetedBitmap raster = session.Use(page.SourcePath, delegate(PdfThumbnailRenderer renderer)
+            {
+                return renderer.RenderOwned(page.SourcePath, page.PageIndex, width,
+                    RasterBudget.MaxRenderDimension, RasterBudget.PreviewPixels);
+            });
+            RenderOutcome outcome = ComposeHighlighted(raster, page, content.BaseHighlight);
+            if (outcome != null && content.IsComposite)
+            {
+                try
+                {
+                    PdfReviewUnifiedRenderer.DrawDeletedMarkers(outcome.Bitmap.Bitmap,
+                        content.OverlayHighlight);
+                }
+                catch
+                {
+                    outcome.Dispose();
+                    throw;
+                }
+            }
+            return outcome;
+        }
+
+        private static RenderOutcome ComposeHighlighted(BudgetedBitmap rendered,
+            PdfPageRef page, PdfReviewHighlight highlight)
+        {
+            if (rendered == null)
+                return null;
+            try
+            {
+                Bitmap bitmap = rendered.Bitmap;
+                if (page.Rotation != 0)
+                    bitmap.RotateFlip(PageRotation.FlipFor(page.Rotation));
+                var outcome = new RenderOutcome { Bitmap = rendered };
+                bool hasMarks = highlight != null &&
+                    (highlight.Boxes.Count > 0 || highlight.WhitespaceMarkers.Count > 0);
+                if (!hasMarks)
+                    return outcome;
+                long extra = PdfMemoryBudget.EstimateBitmapBytes(bitmap.Width, bitmap.Height);
+                if (!rendered.TryGrow(extra))
+                {
+                    rendered.Dispose();
+                    return null;
+                }
+                Bitmap drawn = DrawHighlight(bitmap, highlight, SystemInformation.HighContrast,
+                    out outcome.Bars);
+                if (drawn == null)
+                {
+                    // Растр без подсветки скрыл бы правки: показываем «недоступно».
+                    rendered.Dispose();
+                    return null;
+                }
+                rendered.ReplaceAfterTransform(drawn);
+                return outcome;
+            }
+            catch
+            {
+                rendered.Dispose();
+                throw;
+            }
         }
 
         /// <summary>Перегрузка с явным high-contrast флагом нужна для детерминированной проверки.</summary>
         internal static Bitmap DrawHighlight(Bitmap source, PdfReviewHighlight highlight,
             bool highContrast)
         {
+            List<PdfReviewChangeBar> bars;
+            return DrawHighlight(source, highlight, highContrast, out bars);
+        }
+
+        /// <summary>
+        /// Композиция подсветки. Успех освобождает source и возвращает новую 32bpp-копию.
+        /// Сбой GDI+/памяти возвращает null и оставляет source вызывающему: страница без
+        /// пометок выглядела бы «правок нет», поэтому вызывающий показывает «недоступно».
+        /// bars — фактически нарисованные полосы изменений (пиксели растра) для клика мыши.
+        /// </summary>
+        internal static Bitmap DrawHighlight(Bitmap source, PdfReviewHighlight highlight,
+            bool highContrast, out List<PdfReviewChangeBar> bars)
+        {
+            bars = new List<PdfReviewChangeBar>();
             if (source == null || highlight == null)
                 return source;
             List<RectangleF> rectangles = HighlightRectangles(highlight,
@@ -491,96 +590,57 @@ namespace ExcelMerger
                 source.Width, source.Height);
             if (rectangles.Count == 0 && whitespace.Count == 0)
                 return source;
-            return highContrast
-                ? DrawHighContrastHighlight(source, highlight, rectangles, whitespace)
-                : DrawNormalHighlight(source, highlight, rectangles, whitespace);
-        }
-
-        private static Bitmap DrawNormalHighlight(Bitmap source,
-            PdfReviewHighlight highlight, IList<RectangleF> rectangles,
-            IList<WhitespaceDrawInfo> whitespace)
-        {
             Bitmap copy = null;
             try
             {
                 copy = PdfReviewHighlightRenderer.Create32BppCopy(source);
-                PdfReviewHighlightRenderer.ApplyWordFills(copy, rectangles, highlight.Color);
+                if (!highContrast)
+                    PdfReviewHighlightRenderer.ApplyWordFills(copy, rectangles, highlight.Color);
+                // Раскладка полос — до Graphics: поиск чистого поля читает пиксели LockBits.
+                List<PdfReviewChangeBar> laidOut = LayoutChangeBars(highlight,
+                    copy.Width, copy.Height, copy);
+                Color color, edgeColor;
+                ResolveHighlightColors(highlight, highContrast, out color, out edgeColor);
                 using (Graphics graphics = Graphics.FromImage(copy))
                 {
                     graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                    if (whitespace.Count > 0)
-                        PrepareWhitespacePlacements(graphics, copy, whitespace);
-                    Color color, edgeColor;
-                    ResolveHighlightColors(highlight, false, out color, out edgeColor);
-                    var railAnchors = new List<RectangleF>(
-                        rectangles.Count + whitespace.Count);
-                    railAnchors.AddRange(rectangles);
-                    foreach (WhitespaceDrawInfo item in whitespace)
-                        railAnchors.Add(item.Anchor);
-                    DrawChangeBars(graphics, copy, MergeLineBands(railAnchors), highlight,
-                        edgeColor, color);
-                    DrawWhitespaceMarkers(graphics, highlight, whitespace, edgeColor);
+                    PrepareWhitespacePlacements(graphics, copy, whitespace);
+                    if (highContrast)
+                        DrawHighContrastOutlines(graphics, rectangles, highlight.Style,
+                            color, edgeColor);
+                    DrawChangeBars(graphics, copy, laidOut, highlight, edgeColor, color);
+                    DrawWhitespaceMarkers(graphics, highlight, whitespace, edgeColor,
+                        highContrast);
                 }
                 source.Dispose();
+                bars = laidOut;
                 return copy;
             }
             catch
             {
                 if (copy != null)
                     copy.Dispose();
-                return source;
+                return null;
             }
         }
 
-        private static Bitmap DrawHighContrastHighlight(Bitmap source,
-            PdfReviewHighlight highlight, IList<RectangleF> rectangles,
-            IList<WhitespaceDrawInfo> whitespace)
+        private static void DrawHighContrastOutlines(Graphics g, IList<RectangleF> rectangles,
+            PdfReviewHighlightStyle style, Color color, Color edgeColor)
         {
-            Bitmap copy = null;
-            try
+            using (var edge = new Pen(Color.FromArgb(255, edgeColor), 3f))
+            using (var primary = new Pen(Color.FromArgb(255, color), 1.5f))
             {
-                copy = PdfReviewHighlightRenderer.Create32BppCopy(source);
-                Color color, edgeColor;
-                ResolveHighlightColors(highlight, true, out color, out edgeColor);
-                using (Graphics g = Graphics.FromImage(copy))
+                ConfigurePattern(edge, style);
+                ConfigurePattern(primary, style);
+                edge.LineJoin = LineJoin.Round;
+                primary.LineJoin = LineJoin.Round;
+                foreach (RectangleF rect in rectangles)
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    PrepareWhitespacePlacements(g, copy, whitespace);
-                    using (var edge = new Pen(Color.FromArgb(255, edgeColor), 3f))
-                    using (var primary = new Pen(Color.FromArgb(255, color), 1.5f))
-                    {
-                        ConfigurePattern(edge, highlight.Style);
-                        ConfigurePattern(primary, highlight.Style);
-                        edge.LineJoin = LineJoin.Round;
-                        primary.LineJoin = LineJoin.Round;
-                        foreach (RectangleF rect in rectangles)
-                        {
-                            RectangleF outline = rect;
-                            outline.Inflate(3f, 3f);
-                            g.DrawRectangle(edge, outline.X, outline.Y,
-                                outline.Width, outline.Height);
-                            g.DrawRectangle(primary, outline.X, outline.Y,
-                                outline.Width, outline.Height);
-                        }
-
-                        var railAnchors = new List<RectangleF>(
-                            rectangles.Count + whitespace.Count);
-                        railAnchors.AddRange(rectangles);
-                        foreach (WhitespaceDrawInfo item in whitespace)
-                            railAnchors.Add(item.Anchor);
-                        DrawChangeBars(g, copy, MergeLineBands(railAnchors), highlight,
-                            edgeColor, color);
-                    }
-                    DrawWhitespaceMarkers(g, highlight, whitespace, edgeColor);
+                    RectangleF outline = rect;
+                    outline.Inflate(3f, 3f);
+                    g.DrawRectangle(edge, outline.X, outline.Y, outline.Width, outline.Height);
+                    g.DrawRectangle(primary, outline.X, outline.Y, outline.Width, outline.Height);
                 }
-                source.Dispose();
-                return copy;
-            }
-            catch
-            {
-                if (copy != null)
-                    copy.Dispose();
-                return source;
             }
         }
 
@@ -642,23 +702,47 @@ namespace ExcelMerger
         internal static List<RectangleF> ChangeLineBands(PdfReviewHighlight highlight,
             int pixelWidth, int pixelHeight)
         {
-            return MergeLineBands(HighlightRectangles(highlight, pixelWidth, pixelHeight));
+            var bands = new List<RectangleF>();
+            foreach (PdfReviewChangeBar bar in LayoutChangeBars(highlight, pixelWidth,
+                pixelHeight, null))
+                bands.Add(bar.Band);
+            return bands;
         }
 
         private static List<RectangleF> HighlightRectangles(PdfReviewHighlight highlight,
             int pixelWidth, int pixelHeight)
         {
             var result = new List<RectangleF>();
+            foreach (BandItem item in WordItems(highlight, pixelWidth, pixelHeight))
+                result.Add(item.Rect);
+            return result;
+        }
+
+        private struct BandItem
+        {
+            public RectangleF Rect;
+            public PdfReviewWord Word;
+        }
+
+        /// <summary>Пиксельные рамки слов подсветки; Words[i] — владелец Boxes[i].</summary>
+        private static List<BandItem> WordItems(PdfReviewHighlight highlight,
+            int pixelWidth, int pixelHeight)
+        {
+            var result = new List<BandItem>();
             if (highlight == null || highlight.Boxes.Count == 0 || pixelWidth <= 0 ||
                 pixelHeight <= 0 || highlight.ViewWidthPt <= 0 ||
                 highlight.ViewHeightPt <= 0)
                 return result;
-            foreach (PdfReviewBox box in highlight.Boxes)
+            for (int i = 0; i < highlight.Boxes.Count; i++)
             {
-                RectangleF rect = PdfReviewGeometry.ToPixelRect(box,
+                RectangleF rect = PdfReviewGeometry.ToPixelRect(highlight.Boxes[i],
                     highlight.ViewWidthPt, highlight.ViewHeightPt, pixelWidth, pixelHeight);
                 if (rect.Width >= 1 && rect.Height >= 1)
-                    result.Add(rect);
+                    result.Add(new BandItem
+                    {
+                        Rect = rect,
+                        Word = i < highlight.Words.Count ? highlight.Words[i] : null
+                    });
             }
             return result;
         }
@@ -703,14 +787,39 @@ namespace ExcelMerger
             if (graphics == null || source == null || whitespace == null)
                 return;
             float preferred = Math.Max(10f, Math.Min(18f, source.Width / 70f));
+            var placed = new List<RectangleF>();
             foreach (WhitespaceDrawInfo item in whitespace)
             {
                 if (item == null || item.Marker == null)
                     continue;
-                item.Bounds = VisibleWhitespaceBounds(graphics, source, item.Marker.Text,
-                    item.Anchor, preferred);
+                item.Bounds = AwayFromPlaced(VisibleWhitespaceBounds(graphics, source,
+                    item.Marker.Text, item.Anchor, preferred), placed, source.Height);
                 item.FontSize = preferred;
+                placed.Add(item.Bounds);
             }
+        }
+
+        /// <summary>
+        /// «−» и «+» замены пробела стоят на одной границе слов: следующий маркер уходит над
+        /// уже нарисованным (у верхнего края — под него), иначе символы ложатся друг на друга.
+        /// Попыток не больше, чем маркеров: плотная колонка не зацикливает раскладку.
+        /// </summary>
+        private static RectangleF AwayFromPlaced(RectangleF bounds, IList<RectangleF> placed,
+            int height)
+        {
+            for (int attempt = 0; attempt <= placed.Count; attempt++)
+            {
+                int hit = -1;
+                for (int i = 0; i < placed.Count && hit < 0; i++)
+                    if (placed[i].IntersectsWith(bounds))
+                        hit = i;
+                if (hit < 0)
+                    break;
+                float above = placed[hit].Top - bounds.Height - 1f;
+                bounds.Y = above >= 2f ? above
+                    : Math.Max(2f, Math.Min(height - bounds.Height - 2f, placed[hit].Bottom + 1f));
+            }
+            return bounds;
         }
 
         private static RectangleF VisibleWhitespaceBounds(Graphics graphics, Bitmap source,
@@ -734,60 +843,185 @@ namespace ExcelMerger
             return new RectangleF(x, y, width, height);
         }
 
-        private static bool IsClearPaperArea(Bitmap bitmap, RectangleF area)
+        /// <summary>
+        /// Единственная раскладка полос изменений: строки из рамок слов и пробельных
+        /// маркеров (одна реализация SameTextLine), рейка у внешнего поля в чистом месте.
+        /// Её рисует композитор, и по ней же поверхность ловит клик, поэтому зона попадания
+        /// совпадает с нарисованной рейкой при любом масштабе. clearance — растр для поиска
+        /// чистого поля (null — поле считается чистым).
+        /// </summary>
+        internal static List<PdfReviewChangeBar> LayoutChangeBars(PdfReviewHighlight highlight,
+            int pixelWidth, int pixelHeight, Bitmap clearance)
         {
-            if (bitmap == null || area.Left < 0 || area.Top < 0 ||
-                area.Right > bitmap.Width || area.Bottom > bitmap.Height)
-                return false;
-            int left = Math.Max(0, (int)Math.Floor(area.Left));
-            int top = Math.Max(0, (int)Math.Floor(area.Top));
-            int right = Math.Min(bitmap.Width - 1, (int)Math.Ceiling(area.Right));
-            int bottom = Math.Min(bitmap.Height - 1, (int)Math.Ceiling(area.Bottom));
-            for (int y = top; y <= bottom; y++)
-                for (int x = left; x <= right; x++)
+            var bars = new List<PdfReviewChangeBar>();
+            if (highlight == null || highlight.ChangeBarSide == PdfReviewChangeBarSide.None)
+                return bars;
+            List<BandItem> items = WordItems(highlight, pixelWidth, pixelHeight);
+            foreach (WhitespaceDrawInfo info in WhitespaceDrawInfos(highlight,
+                pixelWidth, pixelHeight))
+                items.Add(new BandItem { Rect = info.Anchor });
+            if (items.Count == 0)
+                return bars;
+            items.Sort(delegate(BandItem left, BandItem right)
+            {
+                int top = left.Rect.Top.CompareTo(right.Rect.Top);
+                return top != 0 ? top : left.Rect.Left.CompareTo(right.Rect.Left);
+            });
+
+            PdfReviewChangeBar current = null;
+            foreach (BandItem item in items)
+            {
+                if (current != null && PdfReviewGeometry.SameTextLine(current.Band, item.Rect))
+                    current.Band = RectangleF.Union(current.Band, item.Rect);
+                else
                 {
-                    Color pixel = bitmap.GetPixel(x, y);
-                    if (pixel.A >= 24 && (pixel.R < 238 || pixel.G < 238 || pixel.B < 238))
-                        return false;
+                    current = new PdfReviewChangeBar { Band = item.Rect };
+                    bars.Add(current);
                 }
+                if (item.Word != null)
+                    current.Words.Add(item.Word);
+            }
+
+            PaperProbe probe = PaperProbe.ForSide(clearance, highlight.ChangeBarSide);
+            float inset = Math.Max(5f, Math.Min(12f, pixelWidth * 0.008f));
+            float symbolSize = RailSymbolSize(pixelWidth);
+            for (int i = bars.Count - 1; i >= 0; i--)
+                if (!PlaceRail(bars[i], highlight.ChangeBarSide, pixelWidth, pixelHeight,
+                    inset, symbolSize, probe))
+                    bars.RemoveAt(i);
+            return bars;
+        }
+
+        private static float RailSymbolSize(int pixelWidth)
+        {
+            return Math.Max(10f, Math.Min(18f, pixelWidth / 70f));
+        }
+
+        private static bool PlaceRail(PdfReviewChangeBar bar, PdfReviewChangeBarSide side,
+            int width, int height, float inset, float symbolSize, PaperProbe probe)
+        {
+            RectangleF band = bar.Band;
+            float padding = Math.Max(2f, band.Height * 0.18f);
+            float top = Math.Max(5f, band.Top - padding);
+            float bottom = Math.Min(height - 5f, band.Bottom + padding);
+            if (bottom - top < 5f)
+            {
+                float middle = (top + bottom) / 2f;
+                top = Math.Max(5f, middle - 2.5f);
+                bottom = Math.Min(height - 5f, middle + 2.5f);
+            }
+            if (bottom <= top)
+                return false;
+            bar.Top = top;
+            bar.Bottom = bottom;
+            bar.X = FindClearRailX(probe, side, width, inset, top, bottom);
+            // Зона клика — нарисованная рейка (перо 5 px) вместе со знаком −/+ рядом с ней.
+            float glyph = symbolSize * 0.75f + 2f;
+            float middleY = (top + bottom) / 2f;
+            float hitTop = Math.Min(top, middleY - symbolSize * 0.6f);
+            float hitBottom = Math.Max(bottom, middleY + symbolSize * 0.6f);
+            bar.HitBounds = side == PdfReviewChangeBarSide.Left
+                ? RectangleF.FromLTRB(bar.X - 3f, hitTop, bar.X + 5f + glyph, hitBottom)
+                : RectangleF.FromLTRB(bar.X - 5f - glyph, hitTop, bar.X + 3f, hitBottom);
             return true;
         }
 
-        private static List<RectangleF> MergeLineBands(IList<RectangleF> rectangles)
+        private static int OuterRailLimit(int width)
         {
-            var ordered = new List<RectangleF>();
-            if (rectangles != null)
-                foreach (RectangleF rect in rectangles)
-                    ordered.Add(rect);
-            ordered.Sort(delegate(RectangleF left, RectangleF right)
-            {
-                int top = left.Top.CompareTo(right.Top);
-                return top != 0 ? top : left.Left.CompareTo(right.Left);
-            });
-
-            var bands = new List<RectangleF>();
-            foreach (RectangleF rect in ordered)
-            {
-                if (bands.Count > 0 && SameTextLine(bands[bands.Count - 1], rect))
-                    bands[bands.Count - 1] = RectangleF.Union(bands[bands.Count - 1], rect);
-                else
-                    bands.Add(rect);
-            }
-            return bands;
+            return Math.Max(5, Math.Min(80, (int)Math.Round(width * 0.10)));
         }
 
-        private static bool SameTextLine(RectangleF left, RectangleF right)
+        private static float FindClearRailX(PaperProbe probe, PdfReviewChangeBarSide side,
+            int width, float preferredInset, float top, float bottom)
         {
-            float smallerHeight = Math.Min(left.Height, right.Height);
-            if (smallerHeight <= 0)
-                return false;
-            float overlap = Math.Min(left.Bottom, right.Bottom) -
-                Math.Max(left.Top, right.Top);
-            if (overlap >= smallerHeight * 0.35f)
+            int outerLimit = OuterRailLimit(width);
+            int preferred = side == PdfReviewChangeBarSide.Left
+                ? (int)Math.Round(preferredInset)
+                : width - 1 - (int)Math.Round(preferredInset);
+            for (int offset = 0; offset <= outerLimit; offset += 2)
+            {
+                int x = side == PdfReviewChangeBarSide.Left ? 3 + offset :
+                    width - 4 - offset;
+                if (Math.Abs(x - preferred) > outerLimit)
+                    continue;
+                if (probe == null || probe.IsClear(new RectangleF(x - 3f, top, 6f, bottom - top)))
+                    return x;
+            }
+            return Math.Max(3f, Math.Min(width - 4f, preferred));
+        }
+
+        /// <summary>
+        /// Пиксели полосы у внешнего поля, прочитанные одним LockBits. Поиск чистого места
+        /// под рейку раньше звал GetPixel на каждый пиксель каждого кандидата — до ~10⁶
+        /// вызовов на страницу; теперь это чтение из готового буфера.
+        /// </summary>
+        private sealed class PaperProbe
+        {
+            private const int InkAlphaMinimum = 24;
+            private readonly byte[] _pixels;
+            private readonly int _left;
+            private readonly int _span;
+            private readonly int _bitmapWidth;
+            private readonly int _height;
+
+            private PaperProbe(byte[] pixels, int left, int span, int bitmapWidth, int height)
+            {
+                _pixels = pixels;
+                _left = left;
+                _span = span;
+                _bitmapWidth = bitmapWidth;
+                _height = height;
+            }
+
+            internal static PaperProbe ForSide(Bitmap bitmap, PdfReviewChangeBarSide side)
+            {
+                if (bitmap == null || bitmap.Width <= 0 || bitmap.Height <= 0 ||
+                    side == PdfReviewChangeBarSide.None)
+                    return null;
+                // Кандидаты X лежат в OuterRailLimit от края, полоса проверки — ±3 px.
+                int span = Math.Min(bitmap.Width, OuterRailLimit(bitmap.Width) + 8);
+                int left = side == PdfReviewChangeBarSide.Left ? 0 : bitmap.Width - span;
+                int rowBytes = checked(span * 4);
+                var pixels = new byte[checked(rowBytes * bitmap.Height)];
+                BitmapData data = bitmap.LockBits(new Rectangle(left, 0, span, bitmap.Height),
+                    ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                try
+                {
+                    for (int y = 0; y < bitmap.Height; y++)
+                        Marshal.Copy(IntPtr.Add(data.Scan0, checked(y * data.Stride)),
+                            pixels, y * rowBytes, rowBytes);
+                }
+                finally { bitmap.UnlockBits(data); }
+                return new PaperProbe(pixels, left, span, bitmap.Width, bitmap.Height);
+            }
+
+            /// <summary>Нет ли в области чернил (тот же порог, что у прежнего GetPixel-обхода).</summary>
+            internal bool IsClear(RectangleF area)
+            {
+                if (area.Left < 0 || area.Top < 0 || area.Right > _bitmapWidth ||
+                    area.Bottom > _height)
+                    return false;
+                int left = Math.Max(0, (int)Math.Floor(area.Left));
+                int top = Math.Max(0, (int)Math.Floor(area.Top));
+                int right = Math.Min(_bitmapWidth - 1, (int)Math.Ceiling(area.Right));
+                int bottom = Math.Min(_height - 1, (int)Math.Ceiling(area.Bottom));
+                if (left < _left || right >= _left + _span)
+                    return false;
+                for (int y = top; y <= bottom; y++)
+                {
+                    int row = y * _span * 4;
+                    for (int x = left; x <= right; x++)
+                    {
+                        int offset = row + (x - _left) * 4;
+                        if (_pixels[offset + 3] >= InkAlphaMinimum &&
+                            (_pixels[offset + 2] < PdfReviewHighlightRenderer.PaperMinimum ||
+                             _pixels[offset + 1] < PdfReviewHighlightRenderer.PaperMinimum ||
+                             _pixels[offset] < PdfReviewHighlightRenderer.PaperMinimum))
+                            return false;
+                    }
+                }
                 return true;
-            float leftCenter = left.Top + left.Height / 2f;
-            float rightCenter = right.Top + right.Height / 2f;
-            return Math.Abs(leftCenter - rightCenter) <= smallerHeight * 0.45f;
+            }
         }
 
         internal static string HighlightSymbol(PdfReviewHighlightStyle style)
@@ -795,81 +1029,45 @@ namespace ExcelMerger
             return style == PdfReviewHighlightStyle.Added ? "+" : "−";
         }
 
-        private static void DrawChangeBars(Graphics graphics, Bitmap raster,
-            IList<RectangleF> bands, PdfReviewHighlight highlight, Color edgeColor,
+        /// <summary>Рисует ровно разложенные LayoutChangeBars полосы: рейку и знак −/+.</summary>
+        internal static void DrawChangeBars(Graphics graphics, Bitmap raster,
+            IList<PdfReviewChangeBar> bars, PdfReviewHighlight highlight, Color edgeColor,
             Color color)
         {
-            if (graphics == null || raster == null || bands == null || bands.Count == 0 ||
-                highlight.ChangeBarSide == PdfReviewChangeBarSide.None)
+            if (graphics == null || raster == null || bars == null || bars.Count == 0 ||
+                highlight == null || highlight.ChangeBarSide == PdfReviewChangeBarSide.None)
                 return;
-            float inset = Math.Max(5f, Math.Min(12f, raster.Width * 0.008f));
             string symbol = HighlightSymbol(highlight.Style);
-            float symbolSize = Math.Max(10f, Math.Min(18f, raster.Width / 70f));
             using (var edge = new Pen(Color.FromArgb(255, edgeColor), 5f))
             using (var primary = new Pen(Color.FromArgb(255, color), 2.25f))
-            using (var font = new Font(FontFamily.GenericSansSerif, symbolSize,
+            using (var font = new Font(FontFamily.GenericSansSerif, RailSymbolSize(raster.Width),
                 FontStyle.Bold, GraphicsUnit.Pixel))
             {
                 ConfigurePattern(edge, highlight.Style);
                 ConfigurePattern(primary, highlight.Style);
                 edge.StartCap = edge.EndCap = LineCap.Round;
                 primary.StartCap = primary.EndCap = LineCap.Round;
-                foreach (RectangleF band in bands)
+                foreach (PdfReviewChangeBar bar in bars)
                 {
-                    float padding = Math.Max(2f, band.Height * 0.18f);
-                    float top = Math.Max(5f, band.Top - padding);
-                    float bottom = Math.Min(raster.Height - 5f,
-                        band.Bottom + padding);
-                    if (bottom - top < 5f)
-                    {
-                        float middle = (top + bottom) / 2f;
-                        top = Math.Max(5f, middle - 2.5f);
-                        bottom = Math.Min(raster.Height - 5f, middle + 2.5f);
-                    }
-                    if (bottom <= top)
-                        continue;
-                    float x = FindClearRailX(raster, highlight.ChangeBarSide,
-                        inset, top, bottom);
-                    graphics.DrawLine(edge, x, top, x, bottom);
-                    graphics.DrawLine(primary, x, top, x, bottom);
+                    graphics.DrawLine(edge, bar.X, bar.Top, bar.X, bar.Bottom);
+                    graphics.DrawLine(primary, bar.X, bar.Top, bar.X, bar.Bottom);
 
                     SizeF measured = graphics.MeasureString(symbol, font,
                         PointF.Empty, StringFormat.GenericTypographic);
                     float sx = highlight.ChangeBarSide == PdfReviewChangeBarSide.Left
-                        ? x + 5f : x - measured.Width - 5f;
+                        ? bar.X + 5f : bar.X - measured.Width - 5f;
                     sx = Math.Max(1f, Math.Min(raster.Width - measured.Width - 1f, sx));
                     float sy = Math.Max(1f, Math.Min(raster.Height - measured.Height - 1f,
-                        (top + bottom - measured.Height) / 2f));
+                        (bar.Top + bar.Bottom - measured.Height) / 2f));
                     DrawOutlinedText(graphics, symbol, font, new PointF(sx, sy),
                         edgeColor, color);
                 }
             }
         }
 
-        private static float FindClearRailX(Bitmap raster, PdfReviewChangeBarSide side,
-            float preferredInset, float top, float bottom)
-        {
-            int outerLimit = Math.Max(5, Math.Min(80,
-                (int)Math.Round(raster.Width * 0.10)));
-            int preferred = side == PdfReviewChangeBarSide.Left
-                ? (int)Math.Round(preferredInset)
-                : raster.Width - 1 - (int)Math.Round(preferredInset);
-            for (int offset = 0; offset <= outerLimit; offset += 2)
-            {
-                int x = side == PdfReviewChangeBarSide.Left ? 3 + offset :
-                    raster.Width - 4 - offset;
-                if (Math.Abs(x - preferred) > outerLimit)
-                    continue;
-                var strip = new RectangleF(x - 3f, top, 6f, bottom - top);
-                if (IsClearPaperArea(raster, strip))
-                    return x;
-            }
-            return Math.Max(3f, Math.Min(raster.Width - 4f, preferred));
-        }
-
         private static void DrawWhitespaceMarkers(Graphics graphics,
             PdfReviewHighlight highlight, IList<WhitespaceDrawInfo> whitespace,
-            Color edgeColor)
+            Color edgeColor, bool highContrast)
         {
             if (graphics == null || whitespace == null)
                 return;
@@ -882,7 +1080,7 @@ namespace ExcelMerger
                     highlight == null ? PdfReviewHighlightStyle.Added : highlight.Style);
                 Color markerColor = style == PdfReviewHighlightStyle.Removed
                     ? Theme.ReviewDeleteMarker : Theme.ReviewInsertMarker;
-                if (SystemInformation.HighContrast)
+                if (highContrast)
                     markerColor = edgeColor;
                 using (var font = new Font(FontFamily.GenericSansSerif, item.FontSize,
                     FontStyle.Bold, GraphicsUnit.Pixel))
@@ -922,49 +1120,37 @@ namespace ExcelMerger
             }
         }
 
-        private void ApplyRendered(int generation, long contentRevision, PdfPageRef request,
-            PdfReviewPage reviewPage, Bitmap rendered, string caption,
-            PdfReviewPagePosition position)
+        /// <summary>
+        /// Публикация завершённого рендера на UI-потоке: растр, trusted-слой и полосы
+        /// принимаются вместе и только для текущих generation и content revision.
+        /// </summary>
+        private void ApplyRender(int generation, PdfReviewViewContent content,
+            RenderOutcome outcome, PdfReviewPagePosition position)
         {
-            BudgetedBitmap owned = null;
-            if (rendered != null)
-            {
-                PdfMemoryLease lease;
-                long bytes = PdfMemoryBudget.EstimateBitmapBytes(
-                    rendered.Width, rendered.Height);
-                if (PdfMemoryBudget.TryAcquire(bytes, out lease))
-                    owned = new BudgetedBitmap(rendered, lease);
-                else
-                    rendered.Dispose();
-            }
-            ApplyRenderedWithHighlight(generation, contentRevision, request, reviewPage,
-                null, owned, caption, position);
-        }
-
-        private void ApplyRenderedWithHighlight(int generation, long contentRevision,
-            PdfPageRef request, PdfReviewPage reviewPage, PdfReviewHighlight highlight,
-            BudgetedBitmap rendered, string caption, PdfReviewPagePosition position)
-        {
+            long contentRevision = content == null ? 0L : content.Revision;
             if (generation != _generation || contentRevision != _targetContentRevision ||
                 IsDisposed)
             {
-                if (rendered != null) rendered.Dispose();
+                if (outcome != null) outcome.Dispose();
                 return;
             }
             DisposeBitmap();
+            BudgetedBitmap rendered = outcome == null ? null : outcome.Bitmap;
+            PdfPageRef request = content == null ? null : content.BasePage;
             _ownedBitmap = rendered;
             _bitmap = rendered == null ? null : rendered.Bitmap;
             _page = request;
             _reviewPage = null;
             _targetPage = request == null ? null : request.Clone();
-            _caption = caption ?? "";
+            _caption = content == null ? "" : content.Caption;
             if (_bitmap == null)
-                _state = PdfReviewPageViewState.Unavailable;
+                _state = outcome != null && outcome.TooLarge
+                    ? PdfReviewPageViewState.TooLargeToShow : PdfReviewPageViewState.Unavailable;
             else
             {
-                _reviewPage = reviewPage;
+                _reviewPage = content.BaseReviewPage;
                 _picture.Image = _bitmap;
-                _picture.AttachPage(_reviewPage, highlight);
+                _picture.AttachPage(_reviewPage, content.BaseHighlight, outcome.Bars);
                 _state = PdfReviewPageViewState.Ready;
                 // AutoScroll не учитывает невидимый дочерний контрол. Страница уже имеет
                 // готовый bitmap, поэтому включаем её до расчёта позиции Top/Bottom.
@@ -1026,6 +1212,9 @@ namespace ExcelMerger
                     case PdfReviewPageViewState.Unavailable:
                         _message.Text = Loc.T("preview.unavailable");
                         break;
+                    case PdfReviewPageViewState.TooLargeToShow:
+                        _message.Text = Loc.T("review.source.tooLarge");
+                        break;
                     default:
                         _message.Text = Loc.T("review.source.empty");
                         break;
@@ -1049,6 +1238,8 @@ namespace ExcelMerger
                 _status.Text = JoinStatus(_caption, Loc.T("preview.loading"));
             else if (_state == PdfReviewPageViewState.Unavailable)
                 _status.Text = JoinStatus(_caption, Loc.T("preview.unavailable"));
+            else if (_state == PdfReviewPageViewState.TooLargeToShow)
+                _status.Text = JoinStatus(_caption, Loc.T("review.source.tooLarge"));
             else
                 _status.Text = _caption;
         }
@@ -1123,6 +1314,48 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Разобрать WM_MOUSEWHEEL, адресованный окну owner или его дочернему контролу.
+        /// Фильтр Application глобален для UI-потока: без проверки владельца колесо над
+        /// полноэкранным окном, диалогом или другим окном приложения листало бы скрытую
+        /// под ним панель. Точка и Ctrl берутся из самого сообщения (lParam — экранные
+        /// координаты со знаком, MK_CONTROL в wParam), а не из текущего состояния мыши.
+        /// </summary>
+        internal static bool TryReadWheel(Form owner, ref Message m, out Point screenPoint,
+            out int delta, out bool controlDown)
+        {
+            screenPoint = Point.Empty;
+            delta = 0;
+            controlDown = false;
+            if (m.Msg != WmMouseWheel || owner == null || owner.IsDisposed ||
+                !owner.IsHandleCreated)
+                return false;
+            if (m.HWnd != owner.Handle)
+            {
+                Control target = Control.FromChildHandle(m.HWnd);
+                if (target == null || target.FindForm() != owner)
+                    return false;
+            }
+            long wParam = m.WParam.ToInt64();
+            long lParam = m.LParam.ToInt64();
+            delta = (short)(wParam >> 16);
+            controlDown = (wParam & MkControl) != 0;
+            screenPoint = new Point((short)(lParam & 0xFFFF), (short)((lParam >> 16) & 0xFFFF));
+            return true;
+        }
+
+        /// <summary>
+        /// Поглощает ли окно колесо после HandleWheel. Ctrl+колесо над готовой страницей —
+        /// всегда жест масштаба: на пределе 25%/400% ступень не меняется, но отпущенное
+        /// сообщение ушло бы в AutoScroll панели и молча прокрутило бы страницу.
+        /// </summary>
+        internal bool ConsumesWheel(PdfReviewWheelResult outcome, bool controlDown)
+        {
+            return outcome == PdfReviewWheelResult.Zoomed ||
+                outcome == PdfReviewWheelResult.Scrolled ||
+                (controlDown && HasVisiblePage);
+        }
+
+        /// <summary>
         /// Колесо действует только в этой области. Результат отделяет успешный scroll/zoom
         /// от границы страницы, чтобы форму — владельца строк viewer — можно было попросить
         /// продолжить чтение на соседней физической странице активной стороны.
@@ -1187,13 +1420,36 @@ namespace ExcelMerger
             _reviewPage = null;
         }
 
+        /// <summary>
+        /// Бюджет освободился (закрыт документ, вытеснен растр): страница, которой не хватило
+        /// памяти, пробует ещё раз сама — не дожидаясь, пока пользователь кликнет по строке.
+        /// Событие приходит с любого потока; повтор — на UI-потоке и только из «недоступно».
+        /// </summary>
+        private void OnMemoryReleased()
+        {
+            Ui.OnUi(this, RetryUnavailable);
+        }
+
+        private void RetryUnavailable()
+        {
+            if (IsDisposed || _state != PdfReviewPageViewState.Unavailable ||
+                _currentContent == null || _currentContent.BasePage == null ||
+                _memoryRetries >= MaxMemoryRetries)
+                return;
+            _memoryRetries++;
+            ShowContentCore(_currentContent, _currentPosition);
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                PdfMemoryBudget.MemoryReleased -= OnMemoryReleased;
                 _generation++;
                 CancelPendingRender();
                 DisposeBitmap();
+                if (_ownsSession)
+                    _session.Dispose();
             }
             base.Dispose(disposing);
         }

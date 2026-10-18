@@ -30,6 +30,10 @@ namespace ExcelMerger
         private const long MaximumRelationChecks = 1000000;
         private const long MaximumSamplePixelsPerHunk = 8000000;
         private const long MaximumSamplePixelsPerResult = 32000000;
+        // Потолок растеризованных пар страниц на результат. Пиксельные лимиты считают только
+        // выборки внутри hunk, а каждая пара — два полных рендера WinRT: 500 страниц с новой
+        // датой в колонтитуле давали ~1000 рендеров. Остаток честно остаётся Delete/Insert.
+        internal const int MaximumRenderedPairs = 32;
 
         private enum RefinementOutcome
         {
@@ -158,6 +162,14 @@ namespace ExcelMerger
         internal static void Refine(PdfReviewResult result, PdfReviewLimits limits,
             Func<bool> cancelled, Func<string, int, int, int, Bitmap> renderPage)
         {
+            Refine(result, limits, cancelled, renderPage, null);
+        }
+
+        /// <summary>progress — (обработано групп, всего групп) для шкалы окна.</summary>
+        internal static void Refine(PdfReviewResult result, PdfReviewLimits limits,
+            Func<bool> cancelled, Func<string, int, int, int, Bitmap> renderPage,
+            Action<int, int> progress)
+        {
             if (result == null || result.Left == null || result.Right == null)
                 return;
             List<PdfReviewWordOp> sourceOperations = result.Operations;
@@ -190,7 +202,8 @@ namespace ExcelMerger
                                 return new VisualPage(renderPage(path, pageIndex,
                                     width, maxHeight));
                             };
-                        anyRefined = RefineGroups(result, groups, pixelCap, render, work);
+                        anyRefined = RefineGroups(result, groups, pixelCap, render, work,
+                            progress);
                     }
                 }
                 catch (OperationCanceledException) { throw; }
@@ -250,13 +263,23 @@ namespace ExcelMerger
 
         private static bool RefineGroups(PdfReviewResult result,
             IList<HunkGroup> groups, long pixelCap,
-            Func<string, int, int, int, VisualPage> renderPage, VisualWorkBudget work)
+            Func<string, int, int, int, VisualPage> renderPage, VisualWorkBudget work,
+            Action<int, int> progress)
         {
             bool anyRefined = false;
-            foreach (HunkGroup group in groups)
+            int renderedPairs = 0;
+            for (int g = 0; g < groups.Count; g++)
             {
-                if (!work.HasProofCapacity)
+                if (g > 0 && progress != null)
+                    progress(g, groups.Count);
+                if (!work.HasProofCapacity || renderedPairs >= MaximumRenderedPairs)
+                {
+                    // Непроверенные группы остаются семантическими Delete/Insert: окно
+                    // обязано сказать, что часть различий показана грубо.
+                    result.WorkExhausted = true;
                     break;
+                }
+                HunkGroup group = groups[g];
                 work.Poller.Check();
                 PdfReviewPage leftPage = PdfReviewDiff.PageAt(result.Left,
                     group.LeftPageIndex);
@@ -271,6 +294,7 @@ namespace ExcelMerger
                     Math.Min(20000, pixelCap / width));
                 VisualPage leftPageRaster = null;
                 VisualPage rightPageRaster = null;
+                renderedPairs++;
                 try
                 {
                     leftPageRaster = renderPage(result.Left.Path, group.LeftPageIndex,
@@ -279,6 +303,13 @@ namespace ExcelMerger
                         width, maxHeight);
                     Bitmap left = leftPageRaster == null ? null : leftPageRaster.Bitmap;
                     Bitmap right = rightPageRaster == null ? null : rightPageRaster.Bitmap;
+                    if (left == null || right == null)
+                    {
+                        // Растра нет (на x86 — обычно бюджет памяти под документ и растр):
+                        // кандидаты пары остаются грубыми, и окно обязано это сказать.
+                        result.WorkExhausted = true;
+                        continue;
+                    }
                     if (!WithinLimit(left, pixelCap) || !WithinLimit(right, pixelCap))
                         continue;
                     InkRaster leftInk = InkRaster.From(left, work.Poller);
@@ -314,6 +345,10 @@ namespace ExcelMerger
                         leftPageRaster.Dispose();
                 }
             }
+            if (!work.HasProofCapacity)
+                result.WorkExhausted = true; // последние кандидаты могли остаться без проверки
+            if (progress != null)
+                progress(groups.Count, groups.Count);
             return anyRefined;
         }
 

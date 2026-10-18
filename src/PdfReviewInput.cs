@@ -73,9 +73,33 @@ namespace ExcelMerger
 
             if (!string.Equals(Path.GetExtension(full), ".pdf", StringComparison.OrdinalIgnoreCase))
                 return Error(PdfReviewSourceError.NotPdf);
-            if (!File.Exists(full))
+            // Resolve зовётся на UI-потоке (Leave/Enter поля). Существование на локальном
+            // диске проверяем сразу — это мгновенно и даёт ошибку без мигания «проверка…»;
+            // сетевой/съёмный путь может висеть десятки секунд, его проверяет фоновая Probe.
+            if (IsLocalDiskPath(full) && !File.Exists(full))
                 return Error(PdfReviewSourceError.Missing);
             return new PdfReviewSourceResult { Path = full };
+        }
+
+        /// <summary>
+        /// Путь на локальном жёстком/RAM/USB-диске. UNC (\\сервер\…, \\?\…), сетевые буквы,
+        /// CD и неизвестные тома — не локальные: обращение к ним на UI-потоке недопустимо.
+        /// Тип тома берётся по корню (GetDriveType), без чтения файла.
+        /// </summary>
+        internal static bool IsLocalDiskPath(string fullPath)
+        {
+            if (string.IsNullOrEmpty(fullPath) || fullPath.StartsWith(@"\\", StringComparison.Ordinal))
+                return false;
+            try
+            {
+                string root = Path.GetPathRoot(fullPath);
+                if (string.IsNullOrEmpty(root))
+                    return false;
+                DriveType type = new DriveInfo(root).DriveType;
+                return type == DriveType.Fixed || type == DriveType.Ram ||
+                    type == DriveType.Removable;
+            }
+            catch { return false; }
         }
 
         public static PdfReviewSourceResult Probe(PdfReviewSourceResult source)
@@ -84,6 +108,10 @@ namespace ExcelMerger
                 return source ?? Error(PdfReviewSourceError.InvalidPath);
             try
             {
+                // Фоновый поток: здесь существование проверяется для любого пути, включая
+                // сетевой, который Resolve намеренно не трогал.
+                if (!File.Exists(source.Path))
+                    return Error(PdfReviewSourceError.Missing);
                 EmbeddedAssemblies.Ensure();
                 return ProbeCore(source.Path);
             }

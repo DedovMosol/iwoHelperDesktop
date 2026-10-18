@@ -26,17 +26,9 @@ namespace ExcelMerger
     {
         private const int AutoScrollMargin = 28;
         private const int AutoScrollStep = 22;
-        private const int ChangeBarHitWidth = 24;
+        private const float ChangeBarHitTolerance = 2f;
         private const int SelectionHitPadding = 6;
         private const int SelectionLinePadding = 10;
-
-        private sealed class ChangeBarHit
-        {
-            public float Top;
-            public float Bottom;
-            public int Start;
-            public int End;
-        }
 
         private readonly ContextMenuStrip _selectionMenu;
         private readonly ToolStripMenuItem _copyItem;
@@ -51,7 +43,10 @@ namespace ExcelMerger
         private readonly List<RectangleF> _wordRectangles = new List<RectangleF>();
         private readonly Dictionary<PdfReviewWord, int> _wordIndex =
             new Dictionary<PdfReviewWord, int>();
-        private readonly List<ChangeBarHit> _changeBarHits = new List<ChangeBarHit>();
+        // Нарисованные полосы изменений в пикселях растра и размер этого растра: клик
+        // масштабируется к ним, поэтому зона попадания там же, где рейка, при любом zoom.
+        private readonly List<PdfReviewChangeBar> _changeBars = new List<PdfReviewChangeBar>();
+        private Size _changeBarPixels;
         private PdfReviewSurfaceFeedback _feedback;
 
         private enum PdfReviewSurfaceFeedback
@@ -137,12 +132,26 @@ namespace ExcelMerger
 
         internal void AttachPage(PdfReviewPage page, PdfReviewHighlight highlight)
         {
+            AttachPage(page, highlight, null);
+        }
+
+        /// <summary>
+        /// bars — полосы, фактически нарисованные на Image (пиксели растра). Без них
+        /// (растр без композиции) полосы раскладываются той же LayoutChangeBars по размеру Image.
+        /// </summary>
+        internal void AttachPage(PdfReviewPage page, PdfReviewHighlight highlight,
+            IList<PdfReviewChangeBar> bars)
+        {
             EndDrag();
             _selection = page == null ? null : new PdfReviewTextSelection(page);
             _highlight = highlight;
             _feedback = PdfReviewSurfaceFeedback.None;
             InvalidateRectangleCache();
-            RebuildChangeBarHits();
+            _changeBars.Clear();
+            _changeBarPixels = Image != null ? Image.Size : ClientSize;
+            if (_selection != null && highlight != null)
+                _changeBars.AddRange(bars ?? PdfReviewPageView.LayoutChangeBars(highlight,
+                    _changeBarPixels.Width, _changeBarPixels.Height, null));
             TabStop = HasSelectableText;
             Cursor = HasSelectableText ? Cursors.IBeam : Cursors.Default;
             NotifySelectionChanged();
@@ -153,7 +162,7 @@ namespace ExcelMerger
             EndDrag();
             _selection = null;
             _highlight = null;
-            _changeBarHits.Clear();
+            _changeBars.Clear();
             _feedback = PdfReviewSurfaceFeedback.None;
             InvalidateRectangleCache();
             TabStop = false;
@@ -209,7 +218,6 @@ namespace ExcelMerger
         protected override void OnSizeChanged(EventArgs e)
         {
             InvalidateRectangleCache();
-            RebuildChangeBarHits();
             base.OnSizeChanged(e);
         }
 
@@ -224,8 +232,7 @@ namespace ExcelMerger
                 if (bar >= 0)
                 {
                     EndDrag();
-                    if (_selection.SelectRange(_changeBarHits[bar].Start,
-                        _changeBarHits[bar].End))
+                    if (_selection.SelectIndices(ChangeBarSelection(_changeBars[bar])))
                     {
                         _feedback = PdfReviewSurfaceFeedback.None;
                         NotifySelectionChanged();
@@ -320,22 +327,21 @@ namespace ExcelMerger
             if (_selection != null && _selection.HasSelection)
             {
                 EnsureRectangleCache();
-                int start = _selection.SelectionStart;
-                int end = _selection.SelectionEnd;
                 bool highContrast = SystemInformation.HighContrast;
                 Color outline = SystemColors.Highlight;
                 using (var pen = new Pen(outline, highContrast ? 3f : 2f))
                 {
                     pen.DashStyle = highContrast ? DashStyle.Dash : DashStyle.Solid;
+                    List<int> selected = _selection.SelectedIndices();
                     if (!highContrast)
                     {
                         using (var brush = new SolidBrush(Color.FromArgb(62, outline)))
-                            for (int i = start; i <= end && i < _wordRectangles.Count; i++)
-                                if (!_wordRectangles[i].IsEmpty)
+                            foreach (int i in selected)
+                                if (i < _wordRectangles.Count && !_wordRectangles[i].IsEmpty)
                                     pe.Graphics.FillRectangle(brush, _wordRectangles[i]);
                     }
-                    for (int i = start; i <= end && i < _wordRectangles.Count; i++)
-                        if (!_wordRectangles[i].IsEmpty)
+                    foreach (int i in selected)
+                        if (i < _wordRectangles.Count && !_wordRectangles[i].IsEmpty)
                             pe.Graphics.DrawRectangle(pen, Rectangle.Round(_wordRectangles[i]));
                 }
             }
@@ -346,102 +352,81 @@ namespace ExcelMerger
                     SystemColors.HighlightText, SystemColors.Highlight);
         }
 
-        private bool IsChangeBarHitX(int x)
+        /// <summary>
+        /// Индекс полосы изменений под точкой клиента или -1. Зона — нарисованная рейка со
+        /// знаком (HitBounds в пикселях растра, масштабированные к клиенту). Точка над
+        /// самим словом остаётся выбором слова: рейка не крадёт клики по тексту у края.
+        /// </summary>
+        internal int HitTestChangeBar(Point point)
         {
-            if (_highlight == null)
-                return false;
-            bool outer = _highlight.ChangeBarSide == PdfReviewChangeBarSide.Left
-                ? x <= ChangeBarHitWidth
-                : _highlight.ChangeBarSide == PdfReviewChangeBarSide.Right &&
-                    x >= ClientSize.Width - ChangeBarHitWidth;
-            if (!outer)
-                return false;
-            EnsureRectangleCache();
-            for (int i = 0; i < _wordRectangles.Count; i++)
-            {
-                RectangleF rect = _wordRectangles[i];
-                if (!rect.IsEmpty && x >= rect.Left && x <= rect.Right)
-                    return false;
-            }
-            return true;
-        }
-
-        private int HitTestChangeBar(Point point)
-        {
-            if (_highlight == null || _highlight.ChangeBarSide == PdfReviewChangeBarSide.None ||
-                _changeBarHits.Count == 0 || !IsChangeBarHitX(point.X))
+            if (_selection == null || _changeBars.Count == 0 ||
+                _changeBarPixels.Width <= 0 || _changeBarPixels.Height <= 0 ||
+                ClientSize.Width <= 0 || ClientSize.Height <= 0)
                 return -1;
-            for (int i = 0; i < _changeBarHits.Count; i++)
+            EnsureRectangleCache();
+            foreach (RectangleF rect in _wordRectangles)
+                if (!rect.IsEmpty && rect.Contains(point))
+                    return -1;
+            float sx = ClientSize.Width / (float)_changeBarPixels.Width;
+            float sy = ClientSize.Height / (float)_changeBarPixels.Height;
+            for (int i = 0; i < _changeBars.Count; i++)
             {
-                ChangeBarHit hit = _changeBarHits[i];
-                if (point.Y >= hit.Top - 4f && point.Y <= hit.Bottom + 4f)
+                PdfReviewChangeBar bar = _changeBars[i];
+                if (bar.Words.Count == 0)
+                    continue; // пробельная пометка: выбирать нечего
+                var hit = new RectangleF(bar.HitBounds.X * sx, bar.HitBounds.Y * sy,
+                    bar.HitBounds.Width * sx, bar.HitBounds.Height * sy);
+                hit.Inflate(ChangeBarHitTolerance, ChangeBarHitTolerance);
+                if (hit.Contains(point))
                     return i;
             }
             return -1;
         }
 
-        private void RebuildChangeBarHits()
+        /// <summary>
+        /// Слова, которые выбирает клик по полосе: изменённые слова её строки и неизменённые
+        /// слова МЕЖДУ ними, только если те стоят на той же строке. Две колонки на одной
+        /// линии дают отдельные фрагменты, а не диапазон чтения через полколонки.
+        /// </summary>
+        private List<int> ChangeBarSelection(PdfReviewChangeBar bar)
         {
-            _changeBarHits.Clear();
-            if (_selection == null || _highlight == null || _highlight.Words.Count == 0)
-                return;
-            EnsureRectangleCache();
-            var changed = new List<Tuple<int, RectangleF>>();
-            foreach (PdfReviewWord changedWord in _highlight.Words)
+            var changed = new List<int>();
+            foreach (PdfReviewWord word in bar.Words)
             {
-                if (changedWord == null)
-                    continue;
                 int index;
-                if (!_wordIndex.TryGetValue(changedWord, out index))
+                if (word != null && _wordIndex.TryGetValue(word, out index))
+                    changed.Add(index);
+            }
+            changed.Sort();
+            var result = new List<int>();
+            for (int n = 0; n < changed.Count; n++)
+            {
+                if (n > 0 && changed[n] == changed[n - 1])
                     continue;
-                RectangleF rect = index < _wordRectangles.Count
-                    ? _wordRectangles[index] : RectangleF.Empty;
-                if (!rect.IsEmpty)
-                    changed.Add(Tuple.Create(index, rect));
+                if (n > 0 && changed[n] - changed[n - 1] > 1 &&
+                    WordsOnLine(changed[n - 1] + 1, changed[n] - 1, bar.Band))
+                    for (int k = changed[n - 1] + 1; k < changed[n]; k++)
+                        result.Add(k);
+                result.Add(changed[n]);
             }
-            changed.Sort(delegate(Tuple<int, RectangleF> left, Tuple<int, RectangleF> right)
-            {
-                return left.Item1.CompareTo(right.Item1);
-            });
-            for (int i = 0; i < changed.Count; i++)
-            {
-                Tuple<int, RectangleF> item = changed[i];
-                if (_changeBarHits.Count > 0)
-                {
-                    ChangeBarHit previous = _changeBarHits[_changeBarHits.Count - 1];
-                    if (SameTextLine(previous.Top, previous.Bottom, item.Item2))
-                    {
-                        previous.End = item.Item1;
-                        previous.Top = Math.Min(previous.Top, item.Item2.Top);
-                        previous.Bottom = Math.Max(previous.Bottom, item.Item2.Bottom);
-                        continue;
-                    }
-                }
-                _changeBarHits.Add(new ChangeBarHit
-                {
-                    Top = item.Item2.Top,
-                    Bottom = item.Item2.Bottom,
-                    Start = item.Item1,
-                    End = item.Item1
-                });
-            }
+            return result;
         }
 
-        private static bool SameTextLine(float top, float bottom, RectangleF next)
+        private bool WordsOnLine(int from, int to, RectangleF band)
         {
-            float height = Math.Min(Math.Max(0f, bottom - top), next.Height);
-            if (height <= 0f)
-                return false;
-            float overlap = Math.Min(bottom, next.Bottom) - Math.Max(top, next.Top);
-            return overlap >= height * 0.35f ||
-                Math.Abs((top + bottom) / 2f - (next.Top + next.Bottom) / 2f) <=
-                height * 0.45f;
+            for (int k = from; k <= to; k++)
+            {
+                RectangleF rect = _selection.WordRectangle(k, _changeBarPixels);
+                if (rect.IsEmpty || !PdfReviewGeometry.SameTextLine(band, rect))
+                    return false;
+            }
+            return true;
         }
 
-        private int HitTestWord(Point point, bool nearest)
+        internal int HitTestWord(Point point, bool nearest)
         {
             EnsureRectangleCache();
-            if (IsChangeBarHitX(point.X))
+            if (HitTestChangeBar(point) >= 0)
                 return -1;
             int bestExact = -1;
             double bestExactDistance = double.MaxValue;
@@ -592,7 +577,7 @@ namespace ExcelMerger
                 _selectionMenu.Dispose();
                 _selection = null;
                 _highlight = null;
-                _changeBarHits.Clear();
+                _changeBars.Clear();
             }
             base.Dispose(disposing);
         }

@@ -63,5 +63,24 @@ namespace ExcelMerger
                 return RectangleF.Empty;
             return rect;
         }
+
+        /// <summary>
+        /// Одна строка текста: вертикальное перекрытие не меньше 35% меньшей высоты либо
+        /// центры ближе 45% её. Единственная реализация — по ней раскладываются полосы
+        /// изменений и по ней же поверхность выбирает слова строки при клике по полосе.
+        /// </summary>
+        public static bool SameTextLine(RectangleF line, RectangleF next)
+        {
+            float smallerHeight = System.Math.Min(line.Height, next.Height);
+            if (smallerHeight <= 0)
+                return false;
+            float overlap = System.Math.Min(line.Bottom, next.Bottom) -
+                System.Math.Max(line.Top, next.Top);
+            if (overlap >= smallerHeight * 0.35f)
+                return true;
+            float lineCenter = line.Top + line.Height / 2f;
+            float nextCenter = next.Top + next.Height / 2f;
+            return System.Math.Abs(lineCenter - nextCenter) <= smallerHeight * 0.45f;
+        }
     }
 }

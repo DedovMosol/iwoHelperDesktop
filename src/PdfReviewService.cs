@@ -22,9 +22,13 @@ namespace ExcelMerger
         private const double OverlayMinOverlapShare = 0.85;
         private const double OverlayMinSizeRatio = 0.85;
         private const int OverlayMaxCandidatesPerCell = 32;
+        // Извлечённый документ у предела 2 млн знаков весит ~120 МБ: на x86 держим не больше
+        // двух (текущая пара), на x64 — четыре, и в обоих случаях ограничиваем сумму оценок.
+        internal static readonly int CacheCapacity = IntPtr.Size == 8 ? 4 : 2;
+        internal static readonly long CacheMaxBytes = IntPtr.Size == 8 ? 512L << 20 : 160L << 20;
         private static readonly object CacheGate = new object();
-        private static readonly LruCache<PdfReviewDocument> Cache =
-            new LruCache<PdfReviewDocument>(4, null);
+        private static readonly PdfReviewDocumentCache Cache =
+            new PdfReviewDocumentCache(CacheCapacity, CacheMaxBytes);
 
         public static PdfReviewResult Compare(string leftPath, string rightPath,
             Action<int, int> progress = null, Func<bool> cancelled = null,
@@ -39,31 +43,55 @@ namespace ExcelMerger
                 throw new PdfReviewException(PdfReviewFailure.Unreadable, left,
                     Loc.T("review.err.sameFile"));
 
-            Action<int, int> leftProgress = progress == null ? null :
-                (Action<int, int>)delegate(int done, int total)
-                {
-                    progress(total > 0 ? done : 0, Math.Max(1, total) * 2);
-                };
-            PdfReviewDocument leftDoc = Load(left, leftProgress, cancelled, limits);
+            PdfReviewDocument leftDoc = Load(left,
+                StageProgress(progress, 0, ProgressLeftExtracted), cancelled, limits);
             Cancellation.ThrowIf(cancelled);
-            Action<int, int> rightProgress = progress == null ? null :
-                (Action<int, int>)delegate(int done, int total)
-                {
-                    int t = Math.Max(1, total);
-                    progress(t + done, t * 2);
-                };
-            PdfReviewDocument rightDoc = Load(right, rightProgress, cancelled, limits);
+            PdfReviewDocument rightDoc = Load(right,
+                StageProgress(progress, ProgressLeftExtracted, ProgressExtracted),
+                cancelled, limits);
             Cancellation.ThrowIf(cancelled);
             PdfReviewResult result = PdfReviewDiff.Compare(leftDoc, rightDoc, limits,
                 cancelled);
+            if (progress != null)
+                progress(ProgressCompared, ProgressScale);
             // Текстовый слой PDF ненадёжен: одинаковые глифы могут иметь разные Unicode,
             // порядок и границы слов. Подтверждаем только найденные текстом кандидаты растром;
             // если рендер недоступен, fail-safe оставляет исходный diff, а не скрывает правку.
-            PdfReviewVisualDiff.Refine(result, limits, cancelled);
+            PdfReviewVisualDiff.Refine(result, limits, cancelled, null,
+                StageProgress(progress, ProgressCompared, ProgressRefined));
             Cancellation.ThrowIf(cancelled);
             if (progress != null)
-                progress(2, 2);
+                progress(ProgressScale, ProgressScale);
             return result;
+        }
+
+        // Шкала прогресса сравнения (из ProgressScale): извлечение двух документов — 0–80%,
+        // сквозное сравнение — до 85%, растровое уточнение по парам страниц — до 99%,
+        // 100% — только когда результат готов. Раньше шкала стояла на 100% всё сравнение.
+        internal const int ProgressScale = 1000;
+        internal const int ProgressLeftExtracted = 400;
+        internal const int ProgressExtracted = 800;
+        internal const int ProgressCompared = 850;
+        internal const int ProgressRefined = 990;
+
+        /// <summary>Отобразить (done из total) стадии на отрезок [from, to] общей шкалы.</summary>
+        internal static int ProgressPoint(int done, int total, int from, int to)
+        {
+            if (total <= 0 || done <= 0)
+                return from;
+            if (done >= total)
+                return to;
+            return from + (int)((long)(to - from) * done / total);
+        }
+
+        private static Action<int, int> StageProgress(Action<int, int> progress, int from, int to)
+        {
+            if (progress == null)
+                return null;
+            return delegate(int done, int total)
+            {
+                progress(ProgressPoint(done, total, from, to), ProgressScale);
+            };
         }
 
         public static PdfReviewDocument Load(string path, Action<int, int> progress,
@@ -109,8 +137,15 @@ namespace ExcelMerger
                 throw ReadFailure(full, ex);
             }
             int count;
+            bool hasText;
             using (probe)
+            {
                 count = probe.NumberOfPages;
+                // Тот же открытый документ отвечает и на «есть ли текст»: третьего открытия
+                // (AnyPageHasText) больше нет, второе — само извлечение.
+                hasText = count > 0 && count <= limits.MaxPages &&
+                    AnyPageHasLetters(probe, cancelled);
+            }
             if (count <= 0)
                 throw Failure(PdfReviewFailure.Unreadable, full, Loc.T("review.err.unreadable"));
             if (count > limits.MaxPages)
@@ -119,7 +154,7 @@ namespace ExcelMerger
 
             try
             {
-                if (!PdfTextExtract.AnyPageHasText(full))
+                if (!hasText)
                     throw Failure(PdfReviewFailure.NoText, full, Loc.T("review.err.noText"));
                 List<PdfPageText> extracted = PdfTextExtract.Extract(full, progress, null,
                     cancelled, PageLayoutMode.Review, extractImages: false);
@@ -877,6 +912,28 @@ namespace ExcelMerger
             }
         }
 
+        /// <summary>
+        /// Есть ли буквы хоть на одной странице уже открытого документа — та же политика,
+        /// что у PdfTextExtract.AnyPageHasText, но без второго открытия (PdfPig читает файл
+        /// в память целиком). Ошибка разбора — «есть»: причину назовёт полное извлечение.
+        /// </summary>
+        private static bool AnyPageHasLetters(UglyToad.PdfPig.PdfDocument document,
+            Func<bool> cancelled)
+        {
+            try
+            {
+                foreach (UglyToad.PdfPig.Content.Page page in document.GetPages())
+                {
+                    Cancellation.ThrowIf(cancelled);
+                    if (page.Letters != null && page.Letters.Count > 0)
+                        return true;
+                }
+                return false;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { return true; }
+        }
+
         private static string CacheKey(string path, FileStamp stamp)
         {
             return path.ToLowerInvariant() + "|" + stamp.Length + "|" + stamp.WriteTicks + "|" + AlgorithmVersion;
@@ -910,5 +967,69 @@ namespace ExcelMerger
             return Failure(reason, path, message);
         }
 
+    }
+
+    /// <summary>
+    /// LRU извлечённых документов с двумя потолками: числом и суммарной оценкой памяти.
+    /// Число само по себе не защищает: четыре документа у предела 2 млн знаков — ~490 МБ,
+    /// что на x86 означает OutOfMemory. Не потокобезопасен: сервис держит замок.
+    /// </summary>
+    internal sealed class PdfReviewDocumentCache
+    {
+        // Оценка управляемой памяти документа по полям модели (x64). На слово: объект
+        // PdfReviewWord — 96 Б (заголовок 16 + 3 ссылки + 4 int + рамка 4×double + bool),
+        // его Text, Key и SourceText — по ~40 Б (слово ~6 знаков UTF-16), ячейка списка 8 Б;
+        // свидетельство пробела у границы — объект 104 Б (заголовок 16 + 5 ссылок + 2 int +
+        // 2 bool + рамка), RawText и LogicalText по 24 Б, ячейка 8 Б. Итого ≈ 384 Б, с запасом
+        // на рост списков — 400. На знак — Text и NormalizedText страницы (UTF-16). У предела
+        // 2 млн знаков (~300 тыс. слов) ≈ 122 МБ; на x86 объекты меньше — оценка с запасом.
+        internal const long BytesPerWord = 400;
+        internal const long BytesPerCharacter = 4;
+
+        private readonly LruCache<PdfReviewDocument> _lru;
+        private readonly long _maxBytes;
+        private long _bytes;
+
+        internal PdfReviewDocumentCache(int capacity, long maxBytes)
+        {
+            _maxBytes = maxBytes;
+            _lru = new LruCache<PdfReviewDocument>(capacity, delegate(PdfReviewDocument evicted)
+            {
+                _bytes -= EstimateBytes(evicted);
+            });
+        }
+
+        internal int Count { get { return _lru.Count; } }
+        internal long Bytes { get { return _bytes; } }
+
+        internal static long EstimateBytes(PdfReviewDocument document)
+        {
+            if (document == null)
+                return 0;
+            return Math.Max(0, document.WordCount) * BytesPerWord +
+                Math.Max(0, document.CharacterCount) * BytesPerCharacter;
+        }
+
+        internal bool TryGet(string key, out PdfReviewDocument document)
+        {
+            return _lru.TryGet(key, out document);
+        }
+
+        /// <summary>
+        /// Положить документ. Документ, который один больше потолка, не кэшируется вовсе:
+        /// он и так жив, пока на него ссылается показанный результат, а после — должен уйти.
+        /// </summary>
+        internal void Add(string key, PdfReviewDocument document)
+        {
+            PdfReviewDocument existing;
+            if (document == null || _lru.TryPeek(key, out existing))
+                return; // параллельная загрузка того же ключа: первый уже в кэше
+            long size = EstimateBytes(document);
+            if (size > _maxBytes)
+                return;
+            _bytes += size; // до Add: переполнение по числу вычтет вытесненный через onEvict
+            _lru.Add(key, document);
+            while (_bytes > _maxBytes && _lru.TryEvictOldest()) { }
+        }
     }
 }

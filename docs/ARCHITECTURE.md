@@ -226,7 +226,7 @@ on the header while building would put it *first* and land the focus on “Home�
 | `PdfColorProbe.cs` | “Did the colour actually go?” — the check of a grayscale run. Looks at what a person sees rather than at the file structure: a sample of pages is rendered through the same WinRT renderer as the thumbnails and searched for saturated pixels, because colour arrives through ICC profiles, palettes and transparency groups and no list of switches covers all of them in advance. The probe can only **disprove**: a page that will not render is not “still coloured”, or the feature would break on the machines where it used to work. |
 | `PageRasterizer.cs`, `PageBackgrounds.cs` | Bounded Ghostscript raster fallback and PowerPoint's page-without-text layer. Page geometry lowers DPI before rendering; ranges are chunked and sparse selections never expand solely because their run count is high; process count, pixels, dimensions and temp bytes have ceilings; cancellation terminates the active process. Repeated source-page/rotation backgrounds share one encoded payload, exact solid-colour proof keeps thin graphics, password-opened sources are rendered from a cleaned decrypted working copy, and all retained media has memory leases. |
 | `PdfExportService.cs`, `PlainText.cs` | Export out of PDF: pages to PNG/JPEG at an architecture-supported honest dpi through the shared bounded renderer, and the text layer to `.txt`. Each image name is reserved with `CreateNew`, encoded into its own `AtomicOutput`, and published whole; cancellation or an encoder/disk failure cannot leave a partial current page or collide with another exporter. `PlainText` is the pure half — it merges paragraphs **and tables** back into reading order by vertical position, because the analysis moves table words out of the paragraph stream and a naive dump loses them. |
-| `PdfReviewForm.cs`, `PdfReviewPageView.cs`, `PdfReviewViewContent.cs`, `PdfReviewUnifiedRenderer.cs`, `PdfReviewFullScreenForm.cs` | The beta Compare presentation layer. One semantic result feeds two switchable views without recomputation: the default unified redline uses the later/right raster as its base, keeps additions green, composites only per-word deleted fragments from the earlier raster in red with strike/rail ownership, and carries both added and removed literal-whitespace markers on the same canvas; Side by side preserves both original pages and independent physical-page navigation beneath one compact colour legend per pane. A missing overlay raster falls back to red deletion geometry rather than hiding the edit. The alignment list and the two source panes use visible movable splitters; service rows are capped so the PDF remains usable at default and minimum window sizes. Every canvas stores one immutable render request, so double-click opens a maximized form that reruns the exact same base/overlay/highlight content at a larger bounded width; the fullscreen view cannot recursively open another. Page identity, result revision and `BudgetedBitmap` ownership reject stale work and release both base and overlay on every failure/close path. |
+| `PdfReviewForm.cs`, `PdfReviewPageView.cs`, `PdfReviewViewContent.cs`, `PdfReviewUnifiedRenderer.cs`, `PdfReviewFullScreenForm.cs` | The beta Compare presentation layer. One semantic result feeds two switchable views without recomputation: the default unified redline uses the later/right raster as its base, keeps additions green, marks deletions with red carets and `−` rails in the later page's own coordinates, and carries both added and removed literal-whitespace markers on the same canvas; Side by side preserves both original pages and independent physical-page navigation beneath one compact colour legend per pane. A deletion without an anchor on the later page keeps a top-margin `−` rail rather than hiding the edit. The alignment list and the two source panes use visible movable splitters; service rows are capped so the PDF remains usable at default and minimum window sizes. Every canvas stores one immutable render request, so double-click opens a maximized form that reruns the exact same base/overlay/highlight content at a larger bounded width; the fullscreen view cannot recursively open another. Page identity, result revision and `BudgetedBitmap` ownership reject stale work and release both base and overlay on every failure/close path. |
 | `PdfReviewPageSurface.cs` | Read-only selectable page surface over the published raster. It maps only trusted word boxes for selection/copy, but gives each box a small bounded interaction halo and permits a drag to continue across nearby white gaps, so ordinary text selection does not require pixel-perfect glyph hits. It supports forward/reverse drag, Shift extension, Ctrl+A, Ctrl+C, Escape and a local Copy / Select all menu, and keeps capture, bounded edge autoscroll, focus and selection cleanup page-local. Geometry is interaction-only and never creates text or whitespace. |
 | `PdfReviewTextSelection.cs` | Immutable trusted selection/copy model and clipboard boundary. It admits only final published words whose source span and text are trusted, reconstructs exact separators only from decoded `WhitespaceBoundaries`, inserts one explicitly flagged readability space when no boundary is proven, and publishes persistent Unicode text through a bounded injectable clipboard writer. The fallback is not semantic whitespace evidence. |
 | `PdfReviewHighlightRenderer.cs` | Pure Review-only 32-bit compositor. In normal mode it fills only authoritative deletion/insertion word boxes with `#EC0808` / `#1BE91A`, preserves dark glyphs, chromatic ink and alpha, recomposes neutral antialias pixels deterministically, and never joins spaces or geometry gaps. High Contrast deliberately retains the system-colour outline/pattern and `−` / `+` ownership grammar instead of custom fills. |
@@ -281,7 +281,7 @@ flowchart TB
     V -->|"password required"| P["in-memory password prompt<br>then retry"]
     P --> B
     B -->|"size / pages / characters"| C["Decoded text units + PdfPig words/geometry<br>→ canonical words + trusted boundaries"]
-    C --> D["LRU of 4 extracted documents<br>private cache discriminator review-8"]
+    C --> D["Count- and byte-bounded LRU of extracted documents<br>private cache discriminator review-8"]
     D --> R["Physical-page alignment<br>viewer rows only"]
     D --> E["Flatten both documents once<br>→ one bounded document-wide word diff"]
     R -->|"secondary tie preference only"| E
@@ -363,7 +363,9 @@ Comparison has six load-bearing stages:
    can replace them only with `RasterEquivalent` counterparts after bounded local ink equivalence.
    It cannot create a candidate, alter whitespace, or make a raster match a trusted whitespace
    anchor. Limits of 512 candidate words per hunk, 1,000,000 relation checks, 8,000,000 sampled
-   pixels per hunk and 32,000,000 per result bound the work. Renderer unavailability/failure,
+   pixels per hunk, 32,000,000 per result and 32 rendered page pairs bound the work; a global
+   cap that leaves candidates unverified sets `WorkExhausted`, which the window reports; so does a
+   pair whose page could not be rasterised (on x86 usually the memory budget). Renderer unavailability/failure,
    insufficient resolution, ambiguous ownership, no ink, cap exhaustion or cancellation retains
    the text-semantic candidate. The production `PdfThumbnailRenderer` is disposable and owns a
    bounded document LRU; the refinement layer disposes every returned bitmap. A refined snapshot
@@ -378,7 +380,14 @@ dark original glyph pixels, chromatic source ink and alpha, and recomposes neutr
 over the semantic colour. It never broadens a box or bridges spaces, unchanged text, overlapping
 scanline gaps or inferred regions. Whitespace uses separate `␠`, `NBSP`, `⇥` and `↵` markers,
 never word fills. Persistent localized `−`/`+` side rails are clickable: each rail selects the
-corresponding trusted changed fragment, while the legends keep ownership explicit. In Windows
+corresponding trusted changed fragment, while the legends keep ownership explicit. Rails are laid out once (`LayoutChangeBars`) and the
+same geometry is both drawn and hit-tested, so a click lands where the rail is at any zoom and
+selects only the changed words of that line. Unified mode keeps the later page as its only
+raster: a deletion is a caret at the nearest later-page counterpart (any match kind) or, for a
+replacement, at its first inserted word, plus a `−` rail; a deletion with no anchor on that page
+keeps a `−` rail at the top margin, so the edit is never hidden. Removed whitespace moves to the
+later-page boundary of the same exact words, and a removed and an added marker at one boundary are
+stacked rather than overprinted; earlier-page geometry is never painted on the later raster. In Windows
 High Contrast, system colours and solid/dashed outline/pattern treatment replace the custom fills
 while the `−`/`+` grammar remains, so colour is never the only carrier of meaning.
 
@@ -391,19 +400,29 @@ That fallback is never stored as whitespace evidence. OCR, raster pixels, geomet
 wrapping and page boundaries cannot create copied content.
 
 `PdfReviewPageView` hides the white page canvas until a bitmap is ready and exposes explicit
-empty/drop/loading/ready/missing/unavailable states. A single form-owned message filter routes a
-normal wheel to the pane under the pointer: it scrolls locally first, then at the top/bottom edge
+empty/drop/loading/ready/missing/unavailable/too-large states. A single form-owned message filter
+accepts only wheel messages addressed to the Review window (the full-screen canvas has its own)
+and routes a normal wheel to the pane under the pointer: it scrolls locally first, then at the top/bottom edge
 selects the nearest row containing a page on that side, skips gaps and does not wrap. Downward
 continuation opens at the top, upward continuation at the bottom. Ctrl+wheel changes only that
 pane's zoom around the pointer and never changes the selected row. Late renders are checked against
 both render generation and result content revision. Every transition out of ready detaches trusted
 text, releases capture, stops autoscroll, clears selection and disposes the old bitmap before any new
-raster/layer pair can publish. The message filter, renderer, timers and pane-owned bitmaps are
+raster/layer pair can publish. All panes render through one serialized `PdfReviewRenderSession`,
+so each PDF is loaded once; the renderer is released after 20 s idle, before a comparison and on
+close. When a page raster does not fit while the renderer still holds another pane's documents,
+those documents are dropped and the page is retried once, so the second side-by-side pane never
+waits for the idle release. A file that cannot fit one document, the raster at the pane's own
+width and the neighbour pane's page in the bitness-specific budget is reported as too large to
+show; an unavailable page is retried on the next selection and when memory is released. The
+summary line and each pane's message are UIA live regions, and a page-number error keeps the
+coarse-comparison warning. The message filter, renderer, timers and pane-owned bitmaps are
 disposed on close.
 
 Default source guardrails are 200 MB per file, 500 pages, 2 M extracted characters and 25 M render
-pixels, in addition to the semantic and visual budgets above. Four successful extractions are
-cached in memory by canonical path, file stamp and the private **`review-8`** semantic discriminator;
+pixels, in addition to the semantic and visual budgets above. Successful extractions are cached
+in memory (at most four on x64 and two on x86, under an estimated-bytes ceiling) by canonical
+path, file stamp and the private **`review-8`** semantic discriminator;
 that discriminator invalidates old cached meaning and is not a public product version. The public
 release remains **1.18.5**.
 

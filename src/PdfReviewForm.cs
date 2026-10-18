@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using System.Windows.Forms.Automation;
 
 namespace ExcelMerger
 {
@@ -15,7 +16,6 @@ namespace ExcelMerger
     /// </summary>
     public sealed class PdfReviewForm : PdfToolFormBase, IFileAcceptor, IUnsavedStateAware, IMessageFilter
     {
-        private const int WmMouseWheel = 0x020A;
         private static string Title { get { return Loc.T("hub.review.name"); } }
 
         private TextBox _leftPath, _rightPath;
@@ -30,6 +30,8 @@ namespace ExcelMerger
         private PdfReviewViewMode _viewMode = PdfReviewViewMode.Unified;
         private ListBox _pairs;
         private PdfReviewPageView _leftSource, _rightSource, _unifiedSource;
+        // Один рендерер на окно: панели рендерят по очереди и делят загруженные документы.
+        private readonly PdfReviewRenderSession _renderSession = new PdfReviewRenderSession();
         private Label _summary, _position;
         private Button _previous, _next, _manual;
         private PdfReviewResult _result;
@@ -50,6 +52,7 @@ namespace ExcelMerger
         private int _navigationSide; // 0 — обе, 1 — только left, 2 — только right
         private PdfReviewPagePosition _navigationPosition = PdfReviewPagePosition.Default;
         private readonly HashSet<Control> _dropWired = new HashSet<Control>();
+        private string[] _dragPaths; // пути текущего перетаскивания, прочитанные в DragEnter
 
         public PdfReviewForm() : this(null) { }
 
@@ -140,6 +143,9 @@ namespace ExcelMerger
                 summaryLeft, top + 39, Font, Theme.TextMuted),
                 _compare.Left - 10 - summaryLeft,
                 AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
+            // Живая область UIA (.NET Framework 4.8): смену итога, предупреждения и ошибок
+            // диктор объявляет сам, даже когда фокус в списке страниц или на холсте.
+            _summary.LiveSetting = AutomationLiveSetting.Polite;
             _lblStatus = _summary;
 
             _body = new SplitContainer();
@@ -286,8 +292,8 @@ namespace ExcelMerger
                 BackColor = SystemInformation.HighContrast
                     ? SystemColors.ControlDark : Theme.Border
             };
-            _leftSource = new PdfReviewPageView { Dock = DockStyle.Fill };
-            _rightSource = new PdfReviewPageView { Dock = DockStyle.Fill };
+            _leftSource = new PdfReviewPageView { Dock = DockStyle.Fill, RenderSession = _renderSession };
+            _rightSource = new PdfReviewPageView { Dock = DockStyle.Fill, RenderSession = _renderSession };
             _sourceSplit.Panel1.Controls.Add(BuildPageHost(_leftSource, true));
             _sourceSplit.Panel2.Controls.Add(BuildPageHost(_rightSource, false));
             _viewHost.Controls.Add(_sourceSplit);
@@ -319,7 +325,7 @@ namespace ExcelMerger
                 Size = new Size(600, 400)
             };
             _unifiedLegend = BuildUnifiedLegend();
-            _unifiedSource = new PdfReviewPageView { Dock = DockStyle.Fill };
+            _unifiedSource = new PdfReviewPageView { Dock = DockStyle.Fill, RenderSession = _renderSession };
             host.Controls.Add(_unifiedSource);
             return host;
         }
@@ -892,19 +898,36 @@ namespace ExcelMerger
                 WireReviewDropTree(child);
         }
 
+        /// <summary>
+        /// Пути перетаскивания читаются один раз на входе в контрол: DragOver приходит на
+        /// каждое движение мыши, и File.Exists на каждом из них (сетевой путь!) вешал окно.
+        /// </summary>
         private void OnReviewDragEnter(object sender, DragEventArgs e)
         {
-            UpdateReviewDrag(e);
+            _dragPaths = null;
+            UpdateReviewDrag(e, CurrentDragPaths(e));
         }
 
         private void OnReviewDragOver(object sender, DragEventArgs e)
         {
-            UpdateReviewDrag(e);
+            UpdateReviewDrag(e, CurrentDragPaths(e));
         }
 
-        private void UpdateReviewDrag(DragEventArgs e)
+        /// <summary>
+        /// Пока идёт работа, drop запрещён, но ничего не кэшируется: пустой список,
+        /// запомненный на время работы, не давал бы бросить PDF и после её окончания.
+        /// </summary>
+        private string[] CurrentDragPaths(DragEventArgs e)
         {
-            string[] paths = Working ? new string[0] : PdfDrop.ExtractPaths(e, PdfDrop.PdfOnly);
+            if (Working)
+                return new string[0];
+            if (_dragPaths == null)
+                _dragPaths = PdfDrop.ExtractPaths(e, PdfDrop.PdfOnly);
+            return _dragPaths;
+        }
+
+        private void UpdateReviewDrag(DragEventArgs e, string[] paths)
+        {
             e.Effect = paths.Length == 0 ? DragDropEffects.None : DragDropEffects.Copy;
             PdfReviewDropPlan plan = paths.Length == 0 ? null :
                 PdfReviewInput.PlanDrop(paths, ReviewDropTargetAt(new Point(e.X, e.Y)),
@@ -914,6 +937,7 @@ namespace ExcelMerger
 
         private void OnReviewDragLeave(object sender, EventArgs e)
         {
+            _dragPaths = null;
             ClearDropCueOutside(Cursor.Position);
         }
 
@@ -930,6 +954,7 @@ namespace ExcelMerger
 
         private void OnReviewDragDrop(object sender, DragEventArgs e)
         {
+            _dragPaths = null;
             PdfReviewDropTarget target = ReviewDropTargetAt(new Point(e.X, e.Y));
             string[] paths = Working ? new string[0] : PdfDrop.ExtractPaths(e, PdfDrop.PdfOnly);
             PdfReviewDropPlan plan = paths.Length == 0 ? null :
@@ -1011,6 +1036,9 @@ namespace ExcelMerger
                 return;
             }
             string left = _leftFile, right = _rightFile;
+            // Документы прежнего показа держат резерв бюджета (2 × файл): отпускаем их, иначе
+            // растровому уточнению сравнения на x86 не хватило бы памяти и оно молча пропало.
+            _renderSession.Release();
             // Два документа могут содержать сотни страниц: Cancel предлагаем всегда, несмотря
             // на две стороны, потому что единица долгой работы здесь — страница, а не файл.
             BeginOperation(Loc.T("review.status.comparing"), 5);
@@ -1056,6 +1084,11 @@ namespace ExcelMerger
 
         private void ApplyResult(PdfReviewResult result)
         {
+            ShowResult(result, 0);
+        }
+
+        private void ShowResult(PdfReviewResult result, int selectRow)
+        {
             unchecked { _contentRevision++; }
             _result = result;
             _pairIndex = _leftRowIndex = _rightRowIndex = -1;
@@ -1066,12 +1099,10 @@ namespace ExcelMerger
             for (int i = 0; i < result.Pairs.Count; i++)
                 _pairs.Items.Add(PairLabel(result.Pairs[i]));
             _pairs.EndUpdate();
-            string stats = StatsText(result.Stats);
-            _summary.Text = stats;
-            _summary.AccessibleDescription = stats;
-            _tips.SetToolTip(_summary, stats);
+            ShowSummary();
             if (_pairs.Items.Count > 0)
-                _pairs.SelectedIndex = 0;
+                _pairs.SelectedIndex = selectRow >= 0 && selectRow < _pairs.Items.Count
+                    ? selectRow : 0;
             else
             {
                 ClearViews();
@@ -1091,13 +1122,54 @@ namespace ExcelMerger
             return marker + "  " + left + "  ↔  " + right;
         }
 
-        private string StatsText(PdfReviewStats s)
+        private static string StatsText(PdfReviewStats s)
         {
             if (s == null) return "";
             return string.Format(Loc.T("review.stats"), s.ChangedPages,
                 s.LeftOnlyPages, s.RightOnlyPages, s.DeletedWords, s.InsertedWords,
                 s.ChangedPercent, s.WhitespaceChanges, s.DeletedWhitespaceAtoms,
                 s.InsertedWhitespaceAtoms);
+        }
+
+        /// <summary>
+        /// Строка итога. Исчерпанный бюджет работы ставится ПЕРВЫМ: при сужении окна
+        /// многоточие съедает хвост статистики, но не предупреждение о грубых местах.
+        /// </summary>
+        internal static string SummaryText(PdfReviewResult result)
+        {
+            if (result == null)
+                return "";
+            string stats = StatsText(result.Stats);
+            if (!result.WorkExhausted)
+                return stats;
+            string warning = Loc.T("review.warn.workExhausted");
+            return string.IsNullOrEmpty(stats) ? warning : warning + " · " + stats;
+        }
+
+        /// <summary>
+        /// Ошибка перехода к странице не стирает предупреждение о грубом сравнении: оно —
+        /// свойство показанного результата, а не прошлой операции. Ошибка — первой: это
+        /// ответ на только что нажатый Enter.
+        /// </summary>
+        internal static string NavigationErrorText(string error, PdfReviewResult result)
+        {
+            if (result == null || !result.WorkExhausted)
+                return error;
+            return error + " · " + Loc.T("review.warn.workExhausted");
+        }
+
+        private void ShowNavigationError(string error)
+        {
+            SetStatus(NavigationErrorText(error, _result), Theme.ErrRed);
+        }
+
+        private void ShowSummary()
+        {
+            string text = SummaryText(_result);
+            SetStatus(text, _result != null && _result.WorkExhausted
+                ? Theme.WarnOrange : Theme.TextMuted);
+            _summary.AccessibleDescription = text;
+            _tips.SetToolTip(_summary, text);
         }
 
         private void SelectPair(int index)
@@ -1200,28 +1272,22 @@ namespace ExcelMerger
                 return null;
             PdfReviewHighlight baseHighlight = BuildHighlight(result, pair, baseLeft);
 
-            PdfPageRef overlayPage = null;
             PdfReviewHighlight overlayHighlight = null;
             if (!baseLeft && pair.LeftPageIndex >= 0)
             {
-                PdfReviewHighlight deleted = BuildHighlight(result, pair, true);
-                AppendWhitespaceMarkers(baseHighlight, deleted.WhitespaceMarkers);
-                if (deleted.Boxes.Count > 0)
-                {
-                    // Deleted glyphs are intentionally not painted onto the later page. Reflow,
-                    // indentation and table edits make source coordinates incomparable and used to
-                    // stack two lines into an unreadable blob. Unified mode keeps the later page
-                    // clean with green additions and red deletion/whitespace markers; exact earlier
-                    // text remains available one click away in Side by side.
-                    overlayPage = null;
-                    overlayHighlight = deleted;
-                }
+                // На правом растре — только геометрия правой страницы: пробельные удаления
+                // переносятся на правые границы тех же Exact-слов, удалённые слова становятся
+                // каретками у ближайшего правого соседа (см. PdfReviewUnifiedRenderer).
+                AppendWhitespaceMarkers(baseHighlight,
+                    PdfReviewUnifiedRenderer.DeletedWhitespaceOnLaterPage(result, pair));
+                overlayHighlight = PdfReviewUnifiedRenderer.DeletionAnchors(result, pair,
+                    new HashSet<PdfReviewWord>(BuildHighlight(result, pair, true).Words));
             }
             string caption = string.Format(Loc.T("review.unified.caption"),
                 pair.LeftPageIndex < 0 ? "—" : (pair.LeftPageIndex + 1).ToString(),
                 pair.RightPageIndex < 0 ? "—" : (pair.RightPageIndex + 1).ToString());
             return new PdfReviewViewContent(basePage, baseReviewPage, baseHighlight,
-                overlayPage, overlayHighlight, revision, caption);
+                overlayHighlight, revision, caption);
         }
 
         private static void AppendWhitespaceMarkers(PdfReviewHighlight target,
@@ -1340,12 +1406,24 @@ namespace ExcelMerger
             return highlight;
         }
 
+        // Доля высоты страницы снизу, где живёт нижний колонтитул с номером страницы.
+        private const double FooterBandShare = 0.18;
+
+        /// <summary>
+        /// Рамка целиком в нижнем колонтитуле. Ось Y рамок направлена ВВЕРХ (PdfReviewBox),
+        /// поэтому низ страницы — малые значения: верх рамки не выше 18% высоты.
+        /// </summary>
+        private static bool InFooterBand(PdfReviewBox box, double viewHeightPt)
+        {
+            return viewHeightPt > 0 && box.Top <= viewHeightPt * FooterBandShare;
+        }
+
         private static bool IsStableFooterPageNumber(PdfReviewResult result,
             PdfReviewPagePair pair, bool leftSide, PdfReviewPage page,
             PdfReviewWord word)
         {
             if (result == null || pair == null || page == null || word == null ||
-                page.ViewHeightPt <= 0 || word.Box.Bottom < page.ViewHeightPt * 0.82)
+                !InFooterBand(word.Box, page.ViewHeightPt))
                 return false;
             string pageNumber = (page.PageIndex + 1).ToString(
                 System.Globalization.CultureInfo.InvariantCulture);
@@ -1362,16 +1440,19 @@ namespace ExcelMerger
                 Math.Max(page.ViewWidthPt, other.ViewWidthPt) * 0.015);
             double toleranceY = Math.Max(2.0,
                 Math.Max(page.ViewHeightPt, other.ViewHeightPt) * 0.015);
+            // Проверяем всех кандидатов: то же число может стоять в колонтитуле раньше
+            // номера (например, «Редакция 1» слева), а совпасть по месту — следующее.
             foreach (PdfReviewWord candidate in other.Words)
             {
                 if (candidate == null || !string.Equals(candidate.Key, pageNumber,
                     StringComparison.Ordinal) || !string.Equals(candidate.Text, pageNumber,
-                    StringComparison.Ordinal) || candidate.Box.Bottom < other.ViewHeightPt * 0.82)
+                    StringComparison.Ordinal) || !InFooterBand(candidate.Box, other.ViewHeightPt))
                     continue;
-                return Math.Abs(word.Box.Left - candidate.Box.Left) <= toleranceX &&
+                if (Math.Abs(word.Box.Left - candidate.Box.Left) <= toleranceX &&
                     Math.Abs(word.Box.Right - candidate.Box.Right) <= toleranceX &&
                     Math.Abs(word.Box.Bottom - candidate.Box.Bottom) <= toleranceY &&
-                    Math.Abs(word.Box.Top - candidate.Box.Top) <= toleranceY;
+                    Math.Abs(word.Box.Top - candidate.Box.Top) <= toleranceY)
+                    return true;
             }
             return false;
         }
@@ -1414,11 +1495,62 @@ namespace ExcelMerger
                 string.Format(Loc.T("review.manual.right"), _result.Right.Pages.Count),
                 Loc.T("common.ok"), 1, _result.Right.Pages.Count, rightDefault) - 1;
             if (right < 0) return;
-            List<PdfReviewPagePair> remapped = PdfReviewDiff.ApplyManualPair(_result.Pairs,
-                _result.Left, _result.Right, left, right, PdfReviewLimits.Default());
-            _result.Pairs.Clear(); _result.Pairs.AddRange(remapped);
-            PdfReviewDiff.Project(_result);
-            ApplyResult(_result);
+            ApplyManualPair(left, right);
+        }
+
+        /// <summary>Опубликовать ручную пару и выделить созданную строку (left, right).</summary>
+        internal void ApplyManualPair(int leftPageIndex, int rightPageIndex)
+        {
+            if (Working || _result == null)
+                return;
+            PdfReviewResult paired = ProjectManualPair(_result, leftPageIndex, rightPageIndex);
+            ShowResult(paired, FindPairRow(paired.Pairs, leftPageIndex, rightPageIndex));
+        }
+
+        /// <summary>
+        /// Ручная пара проецируется на КОПИЮ результата: строки и их статусы клонируются,
+        /// семантические потоки (Operations/WhitespaceChanges) переиспользуются как неизменные
+        /// снимки. Сбой Project не оставляет показанный результат с новыми строками и
+        /// старой проекцией — подмена происходит только после успешной публикации.
+        /// </summary>
+        internal static PdfReviewResult ProjectManualPair(PdfReviewResult result,
+            int leftPageIndex, int rightPageIndex)
+        {
+            if (result == null)
+                throw new ArgumentNullException("result");
+            List<PdfReviewPagePair> remapped = PdfReviewDiff.ApplyManualPair(result.Pairs,
+                result.Left, result.Right, leftPageIndex, rightPageIndex,
+                PdfReviewLimits.Default());
+            var paired = new PdfReviewResult
+            {
+                Left = result.Left,
+                Right = result.Right,
+                WorkExhausted = result.WorkExhausted
+            };
+            paired.ReplaceOperations(result.Operations);
+            paired.ReplaceWhitespaceChanges(result.WhitespaceChanges);
+            foreach (PdfReviewPagePair pair in remapped)
+                paired.Pairs.Add(pair == null ? null : new PdfReviewPagePair
+                {
+                    LeftPageIndex = pair.LeftPageIndex,
+                    RightPageIndex = pair.RightPageIndex,
+                    Status = pair.Status,
+                    Similarity = pair.Similarity
+                });
+            PdfReviewDiff.Project(paired);
+            return paired;
+        }
+
+        internal static int FindPairRow(IList<PdfReviewPagePair> pairs, int leftPageIndex,
+            int rightPageIndex)
+        {
+            if (pairs == null)
+                return -1;
+            for (int i = 0; i < pairs.Count; i++)
+                if (pairs[i] != null && pairs[i].LeftPageIndex == leftPageIndex &&
+                    pairs[i].RightPageIndex == rightPageIndex)
+                    return i;
+            return -1;
         }
 
         protected override void OnShown(EventArgs e)
@@ -1435,11 +1567,14 @@ namespace ExcelMerger
 
         bool IMessageFilter.PreFilterMessage(ref Message m)
         {
-            if (m.Msg != WmMouseWheel || !_wheelFilterRegistered || IsDisposed || !Visible)
+            Point screenPoint;
+            int delta;
+            bool controlDown;
+            if (!_wheelFilterRegistered || IsDisposed || !Visible ||
+                !PdfReviewPageView.TryReadWheel(this, ref m, out screenPoint, out delta,
+                    out controlDown))
                 return false;
-            int delta = (short)(m.WParam.ToInt64() >> 16);
-            return RouteWheel(Cursor.Position, delta,
-                (Control.ModifierKeys & Keys.Control) != 0);
+            return RouteWheel(screenPoint, delta, controlDown);
         }
 
         internal bool RouteWheel(Point screenPoint, int delta, bool controlDown)
@@ -1451,8 +1586,7 @@ namespace ExcelMerger
                     return false;
                 PdfReviewWheelResult unifiedOutcome = _unifiedSource.HandleWheel(
                     screenPoint, delta, controlDown);
-                if (unifiedOutcome == PdfReviewWheelResult.Zoomed ||
-                    unifiedOutcome == PdfReviewWheelResult.Scrolled)
+                if (_unifiedSource.ConsumesWheel(unifiedOutcome, controlDown))
                     return true;
                 if (unifiedOutcome != PdfReviewWheelResult.AtPreviousBoundary &&
                     unifiedOutcome != PdfReviewWheelResult.AtNextBoundary)
@@ -1490,8 +1624,7 @@ namespace ExcelMerger
             }
 
             PdfReviewWheelResult outcome = view.HandleWheel(screenPoint, delta, controlDown);
-            if (outcome == PdfReviewWheelResult.Zoomed ||
-                outcome == PdfReviewWheelResult.Scrolled)
+            if (view.ConsumesWheel(outcome, controlDown))
                 return true;
             if (outcome != PdfReviewWheelResult.AtPreviousBoundary &&
                 outcome != PdfReviewWheelResult.AtNextBoundary)
@@ -1572,25 +1705,24 @@ namespace ExcelMerger
             int pageNumber;
             if (input == null || !int.TryParse((input.Text ?? "").Trim(), out pageNumber))
             {
-                SetStatus(Loc.T("review.page.err.number"), Theme.ErrRed);
+                ShowNavigationError(Loc.T("review.page.err.number"));
                 return false;
             }
             if (pageNumber < 1 || pageNumber > pageCount)
             {
-                SetStatus(string.Format(Loc.T("review.page.err.range"), pageCount),
-                    Theme.ErrRed);
+                ShowNavigationError(string.Format(Loc.T("review.page.err.range"), pageCount));
                 return false;
             }
             int row = FindViewerRowForPhysicalPage(_result.Pairs, leftSide,
                 pageNumber - 1);
             if (row < 0)
             {
-                SetStatus(Loc.T("review.page.err.unavailable"), Theme.ErrRed);
+                ShowNavigationError(Loc.T("review.page.err.unavailable"));
                 return false;
             }
             if (!SelectViewerRow(row, leftSide, PdfReviewPagePosition.Default))
                 return false;
-            SetStatus(StatsText(_result.Stats), Theme.TextMuted);
+            ShowSummary();
             return true;
         }
 
@@ -1706,6 +1838,8 @@ namespace ExcelMerger
                 RemoveWheelFilter();
             }
             base.Dispose(disposing);
+            if (disposing)
+                _renderSession.Dispose(); // после панелей: их воркеры отпустят рендерер сами
         }
     }
 }
