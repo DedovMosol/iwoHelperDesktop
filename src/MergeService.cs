@@ -25,6 +25,7 @@ namespace ExcelMerger
         public bool Cancelled;
         public string OutputPath;
         public string TocError; // не null, если лист «Содержание» создать не удалось
+        public bool MacrosCarried; // итог в формате с макросами получил VBA-код скопированных листов
 
         /// <summary>Число исходных файлов (в режиме «все листы» листов больше).</summary>
         public int FileCount
@@ -33,9 +34,40 @@ namespace ExcelMerger
             {
                 var files = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
                 foreach (FileResult f in Files)
-                    files.Add(f.FullPath ?? f.FileName);
+                    files.Add(FileKey(f));
                 return files.Count;
             }
+        }
+
+        /// <summary>
+        /// Пропуски по файлам, а не по записям: в режиме «все листы» SkipCount считает листы.
+        /// skippedFiles — файлы, не давшие своду ни одного листа; lostSheets — непереносённые
+        /// листы файлов, вошедших в свод частично. Чистая — под тест.
+        /// </summary>
+        public void CountSkips(out int skippedFiles, out int lostSheets)
+        {
+            var included = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (FileResult f in Files)
+                if (f.Ok)
+                    included.Add(FileKey(f));
+            var skipped = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            lostSheets = 0;
+            foreach (FileResult f in Files)
+            {
+                if (f.Ok)
+                    continue;
+                if (included.Contains(FileKey(f)))
+                    lostSheets++;
+                else
+                    skipped.Add(FileKey(f));
+            }
+            skippedFiles = skipped.Count;
+        }
+
+        // Все записи одного исходного файла (в режиме «все листы» их несколько) — по его пути.
+        private static string FileKey(FileResult f)
+        {
+            return f.FullPath ?? f.FileName ?? "";
         }
     }
 
@@ -234,17 +266,27 @@ namespace ExcelMerger
             if (!File.Exists(outputPath))
                 throw new MergeException(Loc.T("err.merge.noOutput"));
 
-            var retryPaths = new List<string>();
-            foreach (FileResult fr in previous.Files)
-            {
-                if (!fr.Ok && fr.FullPath != null)
-                    retryPaths.Add(fr.FullPath);
-            }
+            List<string> retryPaths = RetryPaths(previous);
             if (retryPaths.Count == 0)
                 throw new MergeException(Loc.T("err.merge.nothingToRetry"));
 
             ValidateOutput(outputPath);
             return Run(outputPath, retryPaths, options, previous);
+        }
+
+        /// <summary>
+        /// Набор повтора — пропущенные записи прошлого прогона. Общий для сервиса и окна:
+        /// окно сбрасывает строки именно этих файлов (и при перезапуске Excel тоже).
+        /// </summary>
+        internal static List<string> RetryPaths(MergeResult previous)
+        {
+            var paths = new List<string>();
+            foreach (FileResult fr in previous.Files)
+            {
+                if (!fr.Ok && fr.FullPath != null)
+                    paths.Add(fr.FullPath);
+            }
+            return paths;
         }
 
         /// <summary>
@@ -271,6 +313,7 @@ namespace ExcelMerger
 
             var combined = new MergeResult();
             combined.OutputPath = previous.OutputPath;
+            combined.MacrosCarried = previous.MacrosCarried; // свод тот же; при сохранении проверится заново
             var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (FileResult old in previous.Files)
             {
@@ -404,10 +447,12 @@ namespace ExcelMerger
 
             dynamic excel = null;
             dynamic target = null;
+            OwnedOfficeProcess excelProcess = null; // страховка от осиротевшего EXCEL.EXE (см. finally)
             ComMessageFilter.Register(); // авто-повтор вызовов, отклонённых занятым Excel
             try
             {
                 excel = Activator.CreateInstance(excelType);
+                excelProcess = OwnExcelProcess((object)excel);
                 excel.Visible = false;
                 excel.DisplayAlerts = false;
                 excel.ScreenUpdating = false;
@@ -419,13 +464,7 @@ namespace ExcelMerger
 
                 if (intoExisting)
                 {
-                    target = excel.Workbooks.Open(
-                        Filename: outputPath,
-                        UpdateLinks: 0,
-                        ReadOnly: false,
-                        IgnoreReadOnlyRecommended: true,
-                        Notify: false,
-                        AddToMru: false);
+                    target = OpenExistingDigest((object)excel, outputPath);
                 }
                 else
                 {
@@ -466,8 +505,7 @@ namespace ExcelMerger
                     if (excluded.Contains(Path.GetFullPath(path)))
                     {
                         // Файл ранее подвесил Excel — не открываем повторно.
-                        FileResult skip = Skipped(Path.GetFileName(path), path,
-                            "пропущен: вызывал зависание Excel");
+                        FileResult skip = Skipped(Path.GetFileName(path), path, WedgedNote);
                         attempt.Files.Add(skip);
                         attempt.SkipCount++;
                         RaiseFileDone(skip);
@@ -521,6 +559,16 @@ namespace ExcelMerger
                 // Итоговый файл сохраняется со стандартным авторасчётом (один пересчёт здесь).
                 try { excel.Calculation = XlCalculationAutomatic; } catch { }
 
+                // Ws.Copy переносит и модуль кода листа. В .xlsx он отбрасывается при сохранении,
+                // а форматы с макросами донесут чужой VBA-код получателю свода — предупреждаем.
+                // HasVBProject не требует доверия к объектной модели VBA (на живом Excel
+                // VBProject отказал «не является доверенным», HasVBProject прочитался); try —
+                // на случай политики, закрывающей и его.
+                if (KeepsMacros(outputPath))
+                {
+                    try { final.MacrosCarried = (bool)target.HasVBProject; } catch { }
+                }
+
                 if (options.AddToc)
                 {
                     try
@@ -566,7 +614,87 @@ namespace ExcelMerger
                 }
                 ComSafe.Collect();
                 ComMessageFilter.Revoke();
+                // Последний рубеж: заклинивший экземпляр не выходит и после Quit/Release —
+                // ждём штатного выхода и завершаем только СВОЙ процесс.
+                if (excelProcess != null && excelProcess.KillIfLingering(ExcelExitWaitMs))
+                    RaiseTrace("Excel не завершился сам — процесс " + excelProcess.Id + " остановлен");
             }
+        }
+
+        private const int ExcelExitWaitMs = 5000;
+
+        /// <summary>
+        /// Страховка от осиротевшего EXCEL.EXE — процесс по окну приложения. null — определить
+        /// не удалось (сбой Hwnd, недействительное окно): свод идёт без страховки, но не молча —
+        /// иначе зависший после прогона Excel в трассе ничем не объяснялся бы.
+        /// </summary>
+        internal OwnedOfficeProcess OwnExcelProcess(object excelObj)
+        {
+            dynamic excel = excelObj;
+            string reason = "окно приложения недействительно";
+            try
+            {
+                OwnedOfficeProcess owned = OwnedOfficeProcess.FromWindow((long)excel.Hwnd);
+                if (owned != null)
+                    return owned;
+            }
+            catch (Exception ex)
+            {
+                reason = ShortMessage(ex);
+            }
+            RaiseTrace("процесс Excel не определён (" + reason + ") — страховки от зависшего EXCEL.EXE нет");
+            return null;
+        }
+
+        /// <summary>Формат итогового файла хранит VBA (.xlsm/.xlsb/.xls); .xlsx код отбрасывает.</summary>
+        internal static bool KeepsMacros(string outputPath)
+        {
+            int format = OutputFormats.FileFormatFor(outputPath);
+            return format != 0 && format != 51; // 51 — xlOpenXMLWorkbook (.xlsx)
+        }
+
+        /// <summary>
+        /// Предупреждение о макросах для отчёта и записки — по-русски, как все генерируемые
+        /// документы. Русская строка каталога (err.merge.macrosCarried) — та же фраза литералом
+        /// (выгрузка подписей читает только литералы); расхождение ловит тест.
+        /// </summary>
+        internal const string MacrosWarningText =
+            "итоговый файл содержит макросы VBA из скопированных листов — для передачи свода безопаснее формат .xlsx";
+
+        /// <summary>
+        /// Открывает существующий свод для дослияния. Заведомо неверные пароли — как у
+        /// источников: свод, который успели защитить паролем (открытия или записи), даёт
+        /// исключение, а не модальный запрос в невидимом Excel, ждущий вечно. Проверено на
+        /// живом Excel: без паролей Open такого свода висел; с ними оба вида защиты дают
+        /// исключение, а свод без пароля открывается для записи как прежде.
+        /// </summary>
+        private static object OpenExistingDigest(object excelObj, string outputPath)
+        {
+            dynamic excel = excelObj;
+            try
+            {
+                return excel.Workbooks.Open(
+                    Filename: outputPath,
+                    UpdateLinks: 0,
+                    ReadOnly: false,
+                    Password: WrongPassword,
+                    WriteResPassword: WrongPassword,
+                    IgnoreReadOnlyRecommended: true,
+                    Notify: false,
+                    AddToMru: false);
+            }
+            catch (Exception ex) when (MergeException.ShouldWrap(ex))
+            {
+                throw new MergeException(DigestOpenError(Unwrap(ex).Message));
+            }
+        }
+
+        /// <summary>Понятное сообщение о неудачном открытии свода для дослияния. Чистая — под тест.</summary>
+        internal static string DigestOpenError(string excelMessage)
+        {
+            if (IsPasswordError(excelMessage))
+                return Loc.T("err.merge.outputPassword");
+            return string.Format(Loc.T("err.merge.outputOpenFailed"), ShortText(excelMessage));
         }
 
         /// <summary>
@@ -615,7 +743,7 @@ namespace ExcelMerger
             // Отсекаем до Excel то, что подвешивает Workbooks.Open, а с ним и все
             // следующие файлы: битый файл (не ZIP и не OLE2) и зашифрованную
             // парольную книгу. Незашифрованный OOXML — всегда ZIP; контейнер OLE2
-            // у .xlsx/.xlsm/.xlsb означает, что книга зашифрована.
+            // у .xlsx/.xlsm/.xlsb — шифрованная книга или чужой OLE2 под этим расширением.
             ExcelContainer container = FileSignature.Detect(path);
             if (container == ExcelContainer.NotExcel)
             {
@@ -625,7 +753,7 @@ namespace ExcelMerger
             if (container == ExcelContainer.Ole2 &&
                 !string.Equals(Path.GetExtension(path), ".xls", StringComparison.OrdinalIgnoreCase))
             {
-                results.Add(Skipped(fileName, path, "файл защищён паролем"));
+                results.Add(Skipped(fileName, path, Ole2MismatchNote(FileSignature.HasEncryptedPackage(path))));
                 return results;
             }
 
@@ -688,8 +816,11 @@ namespace ExcelMerger
 
                         if (options.ValuesOnly && fr.Linkable)
                         {
-                            try { ReplaceFormulasWithValues((object)copied); }
-                            catch (Exception) { AppendNote(fr, "формулы заменены не полностью"); }
+                            bool replaced;
+                            try { replaced = ReplaceFormulasWithValues((object)copied); }
+                            catch (Exception) { replaced = false; }
+                            if (!replaced)
+                                AppendNote(fr, "формулы заменены не полностью");
                         }
 
                         if (fileNotesPending)
@@ -774,10 +905,17 @@ namespace ExcelMerger
         internal static bool IsPermanentOpenError(string message)
         {
             string m = (message ?? "").ToLowerInvariant();
-            return m.Contains("парол") || m.Contains("password")
+            return IsPasswordError(m)
                 || m.Contains("недопустим") || m.Contains("поврежд")
                 || m.Contains("format") || m.Contains("invalid") || m.Contains("not valid")
                 || m.Contains("damag") || m.Contains("corrupt");
+        }
+
+        /// <summary>Сообщение Excel о пароле (русский и английский Office) — для источников и свода.</summary>
+        private static bool IsPasswordError(string message)
+        {
+            string m = (message ?? "").ToLowerInvariant();
+            return m.Contains("парол") || m.Contains("password");
         }
 
         // Примечания к файлам (Note) НАРОЧНО не через Loc: те же строки попадают в отчёт
@@ -794,15 +932,52 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Примечание к OLE2-файлу под расширением OOXML. Поток EncryptedPackage — книга
+        /// зашифрована паролем; без него это другой формат (обычно переименованный .xls),
+        /// и «защищён паролем» было бы неправдой. Чистая — под тест.
+        /// </summary>
+        internal static string Ole2MismatchNote(bool encrypted)
+        {
+            return encrypted
+                ? PasswordNote
+                : "формат файла не соответствует расширению (возможно, это переименованная книга .xls)";
+        }
+
+        private const string PasswordNote = "файл защищён паролем";
+
+        /// <summary>
+        /// Файл ранее подвесил Excel. Без «пропущен:» — статус пропуска добавляют сами строка
+        /// списка и оглавление (иначе там было бы «пропущен: пропущен: …»).
+        /// </summary>
+        internal const string WedgedNote = "вызывал зависание Excel";
+
+        /// <summary>
+        /// Есть ли формулы по значению UsedRange.HasFormula: true — все ячейки, false — ни
+        /// одной, null (DBNull) — часть. В отличие от SpecialCells, читается и на защищённом
+        /// листе (проверено на живом Excel). Чистая — под тест.
+        /// </summary>
+        internal static bool AnyFormula(object hasFormula)
+        {
+            return !(hasFormula is bool) || (bool)hasFormula;
+        }
+
+        /// <summary>
         /// Заменяет формулы листа их вычисленными (кэшированными) значениями.
         /// Обрабатываются только области с формулами (SpecialCells) — массовое
         /// присваивание по областям, а не по ячейкам. Область с объединёнными
         /// ячейками не принимает массив — для неё поячеечный фолбэк через
-        /// верхнюю левую ячейку MergeArea.
+        /// верхнюю левую ячейку MergeArea. false — формулы остались: иначе отчёт обещал
+        /// бы значения, а в своде были бы формулы. Проверено на живом Excel: защищённый
+        /// лист отказывает в SpecialCells, а формулу массива, рассечённую областями
+        /// SpecialCells, не принимают ни область, ни отдельная ячейка — раньше оба случая
+        /// молча сходили за «заменено».
         /// </summary>
-        private static void ReplaceFormulasWithValues(object sheetObj)
+        private static bool ReplaceFormulasWithValues(object sheetObj)
         {
             dynamic sheet = sheetObj;
+            if (!AnyFormula((object)sheet.UsedRange.HasFormula))
+                return true; // формул на листе нет
+
             dynamic formulaCells = null;
             try
             {
@@ -810,7 +985,9 @@ namespace ExcelMerger
             }
             catch
             {
-                return; // формул на листе нет
+                // Формулы есть, а выбрать их нельзя (защищённый лист). Защиту не снимаем:
+                // пароль неизвестен, и это решение автора книги.
+                return false;
             }
             dynamic areas = formulaCells.Areas;
             int count = (int)areas.Count;
@@ -828,6 +1005,10 @@ namespace ExcelMerger
                     ReplaceCellByCell(area);
                 }
             }
+
+            // Контроль: поячеечный фолбэк глотает отказы (часть массива, особая ячейка) —
+            // оставшиеся формулы должны попасть в примечание, а не в «заменено».
+            return !AnyFormula((object)sheet.UsedRange.HasFormula);
         }
 
         private static void ReplaceCellByCell(dynamic area)
@@ -902,9 +1083,8 @@ namespace ExcelMerger
         private static string ClassifyError(Exception ex)
         {
             Exception e = Unwrap(ex);
-            string m = (e.Message ?? "").ToLowerInvariant();
-            if (m.Contains("парол") || m.Contains("password"))
-                return "файл защищён паролем";
+            if (IsPasswordError(e.Message))
+                return PasswordNote;
             return "не удалось открыть или скопировать (" + ShortMessage(e) + ")";
         }
 
@@ -918,7 +1098,12 @@ namespace ExcelMerger
 
         private static string ShortMessage(Exception ex)
         {
-            string m = (Unwrap(ex).Message ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+            return ShortText(Unwrap(ex).Message);
+        }
+
+        private static string ShortText(string message)
+        {
+            string m = (message ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
             while (m.Contains("  "))
                 m = m.Replace("  ", " ");
             if (m.Length > 200)

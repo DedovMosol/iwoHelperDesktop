@@ -31,10 +31,10 @@ namespace ExcelMerger
             for (int i = 0; i < files.Count; i++)
             {
                 FileResult fr = files[i];
-                data[i + 1, 0] = i + 1;
+                data[i + 1, 0] = (double)(i + 1); // double: Int32 в массиве Value2 EscapeValues считает кодом ошибки
                 data[i + 1, 1] = fr.Ok ? fr.SheetName : "—";
                 data[i + 1, 2] = fr.FileName;
-                data[i + 1, 3] = fr.Ok ? (fr.Note ?? "") : ("пропущен: " + fr.Note);
+                data[i + 1, 3] = NoteCell(fr);
             }
             // Экранирование: имя файла, начинающееся с «=», Excel разобрал бы
             // как формулу, а ведущий апостроф имени — съел бы как префикс.
@@ -51,7 +51,12 @@ namespace ExcelMerger
                 int row = i + 2;
                 if (fr.Ok && fr.Linkable)
                 {
-                    toc.Hyperlinks.Add(toc.Cells[row, 2], "", SheetRef(fr.SheetName), Type.Missing, fr.SheetName);
+                    // TextToDisplay не передаём: ячейка уже содержит экранированное имя. Проверено
+                    // на живом Excel: отличающийся от ячейки текст ссылки Excel разбирает как ввод
+                    // («=1+1» становится формулой, «0012» — числом 12), совпадающий пока не трогает;
+                    // без TextToDisplay ячейка не перезаписывается вовсе — гарантия не зависит от
+                    // того, совпал ли текст.
+                    toc.Hyperlinks.Add(toc.Cells[row, 2], "", SheetRef(fr.SheetName), Type.Missing, Type.Missing);
                 }
                 else if (!fr.Ok)
                 {
@@ -73,6 +78,15 @@ namespace ExcelMerger
                 window.FreezePanes = true;
             }
             catch { } // закрепление — украшение, не причина ронять слияние
+        }
+
+        /// <summary>
+        /// Текст колонки «Примечание»: у пропущенного — «пропущен: причина». Сами причины
+        /// (FileResult.Note) статуса не содержат — его добавляет только это место. Чистая — под тест.
+        /// </summary>
+        internal static string NoteCell(FileResult fr)
+        {
+            return fr.Ok ? (fr.Note ?? "") : ("пропущен: " + fr.Note);
         }
 
         /// <summary>Ссылка на ячейку A1 листа для гиперссылки (апострофы в имени удваиваются).</summary>

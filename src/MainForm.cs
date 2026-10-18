@@ -44,10 +44,8 @@ namespace ExcelMerger
         private readonly TaskbarProgress _taskbar = new TaskbarProgress();
         private string _lastOutputPath;
         private string _lastReportPath;
-        private string _lastInputFolder;
-        private MergeOptions _lastOptions;
-        private DateTime _lastStartedAt;
-        private MergeResult _lastResult;
+        private MergeRun _currentRun; // идущий (или только что завершившийся) запуск — для его отчёта
+        private MergeRun _lastRun;    // последний запуск с итогом — для повтора и записки
 
         // Список файлов до слияния: порядок и включение.
         private readonly SourceFileList _files = new SourceFileList();
@@ -89,7 +87,7 @@ namespace ExcelMerger
         /// <summary>Набранный список или готовый результат нельзя терять при смене языка.</summary>
         public bool HasUncommittedState
         {
-            get { return _files.Count > 0 || _lastResult != null; }
+            get { return _files.Count > 0 || _lastRun != null; }
         }
         private bool _closeRequested; // пользователь закрыл окно во время объединения
         private bool _isFreshRun;     // прогон — новый свод (не дослияние), для счётчика статистики
@@ -943,15 +941,17 @@ namespace ExcelMerger
 
         private void StartMerge(List<string> files, string folder, string outputPath, MergeOptions options)
         {
-            PrepareRun(folder, outputPath, options, true); // свежий прогон — очистить результаты всех строк
+            // свежий прогон — очистить результаты всех строк
+            PrepareRun(new MergeRun(folder, options, DateTime.Now, files), outputPath, true);
             StartWorker(delegate { return _service.Merge(files, outputPath, options); });
         }
 
         private void OnRetryClick(object sender, EventArgs e)
         {
-            MergeResult previous = _lastResult;
-            if (_running || previous == null || previous.SkipCount == 0)
+            MergeRun last = _lastRun;
+            if (_running || last == null || last.Result.SkipCount == 0)
                 return;
+            MergeResult previous = last.Result;
             string outputPath = previous.OutputPath;
             string lockError = MergeService.CheckOutputWritable(outputPath);
             if (lockError != null)
@@ -959,16 +959,22 @@ namespace ExcelMerger
                 Dialogs.Error(this, AppTitle, Loc.T("excel.err.outputLocked"), lockError);
                 return;
             }
-            MergeOptions options = _lastOptions;
-            PrepareRun(_lastInputFolder, outputPath, options, false); // повтор — не трогаем успешные строки
-            // сбросить результат только у повторяемых (ранее пропущенных) файлов
-            foreach (FileResult fr in previous.Files)
+            // Параметры и папка — запуска, создавшего свод, а не последнего нажатия «Объединить».
+            MergeRun run = last.ForRetry(DateTime.Now);
+            PrepareRun(run, outputPath, false); // повтор — не трогаем успешные строки
+            ResetRows(run.Paths); // сбросить результат только у повторяемых (ранее пропущенных) файлов
+            StartWorker(delegate { return _service.RetrySkipped(outputPath, run.Options, previous); });
+        }
+
+        /// <summary>Сбросить результаты строк заданных файлов (файлы вне списка пропускаются).</summary>
+        private void ResetRows(IEnumerable<string> paths)
+        {
+            foreach (string path in paths)
             {
                 ListViewItem row;
-                if (!fr.Ok && fr.FullPath != null && _rowByPath.TryGetValue(Path.GetFullPath(fr.FullPath), out row))
+                if (path != null && _rowByPath.TryGetValue(Path.GetFullPath(path), out row))
                     ResetRow(row);
             }
-            StartWorker(delegate { return _service.RetrySkipped(outputPath, options, previous); });
         }
 
         private void ResetRow(ListViewItem row)
@@ -980,7 +986,7 @@ namespace ExcelMerger
         }
 
         /// <summary>Общий сброс интерфейса перед обычным и повторным слиянием.</summary>
-        private void PrepareRun(string folder, string outputPath, MergeOptions options, bool clearAllRows)
+        private void PrepareRun(MergeRun run, string outputPath, bool clearAllRows)
         {
             _running = true;
             lock (_progressGate)
@@ -1002,29 +1008,24 @@ namespace ExcelMerger
             _progress.Visible = true;
             SetStatus(Loc.T("excel.status.startingExcel"), Theme.TextMuted);
             _lastOutputPath = outputPath;
-            _lastInputFolder = folder;
-            _lastOptions = options;
-            _lastStartedAt = DateTime.Now;
+            _currentRun = run; // _lastRun не трогаем: он сменится, только если этот запуск даст итог
             _taskbar.SetState(Handle, TaskbarProgressState.Indeterminate);
 
             _service = new MergeService();
             _service.Progress += OnServiceProgress;
             _service.FileDone += OnServiceFileDone;
-            _service.Restarting += OnServiceRestarting;
+            _service.Restarting += delegate { OnServiceRestarting(run); };
         }
 
         /// <summary>
         /// Excel перезапускается из-за зависшего файла: прошлый проход отменён и
         /// будет переотправлен, поэтому очищаем накопленные в строках результаты,
-        /// чтобы они не задвоились.
+        /// чтобы они не задвоились. Только строки файлов этого запуска: при повторе
+        /// пропущенных успешные строки прошлого свода переотправлены не будут.
         /// </summary>
-        private void OnServiceRestarting()
+        private void OnServiceRestarting(MergeRun run)
         {
-            OnUi(delegate
-            {
-                foreach (ListViewItem row in _list.Items)
-                    ResetRow(row);
-            });
+            OnUi(delegate { ResetRows(run.Paths); });
         }
 
         /// <summary>Запуск фонового STA-потока: исключения доставляются в UI, поток не падает.</summary>
@@ -1156,9 +1157,9 @@ namespace ExcelMerger
             if (Form.ActiveForm == null)
                 WindowFlasher.FlashUntilForeground(this);
 
-            // Отменённый прогон не менял свод — прежний результат остаётся актуальным.
-            if (result != null && !result.Cancelled)
-                _lastResult = result;
+            // Упавший или отменённый прогон свод не менял — прежний запуск остаётся актуальным
+            // целиком, вместе с его папкой, параметрами и временем.
+            _lastRun = MergeRun.Settle(_lastRun, _currentRun, result);
             UpdateRetryButton();
 
             SaveReport(result);
@@ -1184,29 +1185,39 @@ namespace ExcelMerger
             OperationHistory.Record("hist.op.excel", result.OutputPath);
 
             _progress.Value = _progress.Maximum;
-            string text;
-            if (result.SkipCount > 0)
-                text = string.Format(Loc.T("excel.status.doneWithSkips"), result.OkCount, result.SkipCount);
-            else
-                text = string.Format(Loc.T("excel.status.doneClean"), result.OkCount);
-            if (result.TocError != null)
-                text += string.Format(Loc.T("excel.status.tocWarn"), result.TocError);
-            bool clean = result.SkipCount == 0 && result.TocError == null;
+            bool clean;
+            string text = DoneStatus(result, out clean);
             SetStatus(text, clean ? Theme.OkGreen : Theme.WarnOrange);
             _lnkOpenFile.Visible = true;
             _lnkOpenFolder.Visible = true;
             _lnkNote.Visible = true;
         }
 
+        /// <summary>
+        /// Строка статуса завершённого свода; clean — без пропусков и предупреждений (зелёный).
+        /// Предупреждения уровня запуска (оглавление, перенесённые макросы) — те же, что в отчёте
+        /// и записке, но на языке интерфейса. Чистая — под тест.
+        /// </summary>
+        internal static string DoneStatus(MergeResult result, out bool clean)
+        {
+            string text = result.SkipCount > 0
+                ? string.Format(Loc.T("excel.status.doneWithSkips"), result.OkCount, result.SkipCount)
+                : string.Format(Loc.T("excel.status.doneClean"), result.OkCount);
+            if (result.TocError != null)
+                text += string.Format(Loc.T("excel.status.warn"), result.TocError);
+            if (result.MacrosCarried)
+                text += string.Format(Loc.T("excel.status.warn"), Loc.T("err.merge.macrosCarried"));
+            clean = result.SkipCount == 0 && result.TocError == null && !result.MacrosCarried;
+            return text;
+        }
+
         /// <summary>Сопроводительная записка .docx рядом со сводом — в фоновом STA-потоке.</summary>
         private void OnNoteClick()
         {
-            if (_running || _noteBusy || _lastResult == null)
+            MergeRun run = _lastRun;
+            if (_running || _noteBusy || run == null)
                 return;
-            MergeResult result = _lastResult;
-            string folder = _lastInputFolder;
-            MergeOptions options = _lastOptions;
-            DateTime startedAt = _lastStartedAt;
+            MergeResult result = run.Result;
             string notePath = Path.Combine(
                 Path.GetDirectoryName(result.OutputPath),
                 Path.GetFileNameWithoutExtension(result.OutputPath) + Loc.T("excel.noteFileSuffix"));
@@ -1220,7 +1231,7 @@ namespace ExcelMerger
                 Exception error = null;
                 try
                 {
-                    WordNoteWriter.Write(NoteText.Build(result, folder, options, startedAt), notePath);
+                    WordNoteWriter.Write(NoteText.Build(result, run.InputFolder, run.Options, run.StartedAt), notePath);
                 }
                 catch (Exception ex)
                 {
@@ -1249,8 +1260,8 @@ namespace ExcelMerger
         /// <summary>«Повторить пропущенные» видима, когда есть что и куда дослить.</summary>
         private void UpdateRetryButton()
         {
-            _btnRetry.Visible = !_running && _lastResult != null &&
-                _lastResult.SkipCount > 0 && File.Exists(_lastResult.OutputPath);
+            _btnRetry.Visible = !_running && _lastRun != null &&
+                _lastRun.Result.SkipCount > 0 && File.Exists(_lastRun.Result.OutputPath);
         }
 
         /// <summary>Отчёт о завершённом слиянии — в историю (три последних, %APPDATA%).</summary>
@@ -1260,7 +1271,9 @@ namespace ExcelMerger
                 return; // ошибка до начала обработки — отчитываться не о чем
             try
             {
-                string content = ReportWriter.BuildReport(result, _lastInputFolder, _lastOptions, _lastStartedAt);
+                // Отчёт — об этом запуске, даже упавшем или отменённом.
+                string content = ReportWriter.BuildReport(result, _currentRun.InputFolder, _currentRun.Options,
+                    _currentRun.StartedAt);
                 _lastReportPath = ReportWriter.SaveWithRotation(AppPaths.ReportsDir, content, DateTime.Now, 3);
                 _lnkOpenReport.Visible = true;
             }

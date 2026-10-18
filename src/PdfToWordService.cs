@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace ExcelMerger
 {
@@ -35,6 +36,9 @@ namespace ExcelMerger
                 foreach (PdfPageRef page in order)
                     if (page != null && OutputFile.IsSameFile(page.SourcePath, outputPath))
                         throw new MergeException(Loc.T("err.output.sameSource"));
+            // Занятый выход — сразу, а не после разбора и наполнения Word: запись идёт во временный
+            // файл рядом (AtomicOutput), и проверка внутри WordCom видит только его.
+            WordCom.EnsureWritable(outputPath, Loc.T("word.label.docx"));
             Action<int, int> extractCb = progress == null ? null : (Action<int, int>)delegate(int d, int t)
             {
                 progress(d, 2 * t); // разбор — первая половина шкалы
@@ -51,7 +55,17 @@ namespace ExcelMerger
             using (var output = new AtomicOutput(outputPath))
             {
                 WordDocxWriter.Write(pages, output.TempPath, writeCb, cancelled, onCommitting);
-                output.Commit();
+                try
+                {
+                    output.Commit();
+                }
+                catch (Exception ex) when (MergeException.ShouldWrap(ex))
+                {
+                    // Файл заняли, пока шла работа: понятная ошибка вместо сырой IOException
+                    // (как в PdfToPptxService). Оборачиваем только коммит — ошибки Word уже понятные.
+                    throw new MergeException(string.Format(Loc.T("err.word.saveFailed"),
+                        Path.GetFileName(outputPath), DiskSpace.Describe(ex, outputPath)));
+                }
             }
             return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
         }

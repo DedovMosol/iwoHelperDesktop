@@ -38,9 +38,16 @@ namespace ExcelMerger
             note.Body.Add(startedAt.ToString("d MMMM yyyy 'г.'", Ru) + " в " +
                 startedAt.ToString("HH:mm", Ru) +
                 " выполнено объединение файлов отчётности из папки «" + inputFolder + "».");
-            note.Body.Add("Обработано файлов: " + result.FileCount +
+            // SkipCount считает записи (в режиме «все листы» — листы), а фраза говорит о файлах:
+            // файл, вошедший в свод частично, пропущенным не называем — его потери отдельно.
+            int skippedFiles, lostSheets;
+            result.CountSkips(out skippedFiles, out lostSheets);
+            string counts = "Обработано файлов: " + result.FileCount +
                 ". Включено листов в сводный файл: " + result.OkCount +
-                ". Пропущено файлов: " + result.SkipCount + ".");
+                ". Пропущено файлов: " + skippedFiles + ".";
+            if (lostSheets > 0)
+                counts += " Не перенесено листов из частично включённых файлов: " + lostSheets + ".";
+            note.Body.Add(counts);
 
             if (result.SkipCount > 0)
             {
@@ -66,6 +73,8 @@ namespace ExcelMerger
                 YesNo(options.ValuesOnly) + ".");
             if (result.TocError != null)
                 note.Tail.Add("Внимание: " + result.TocError + ".");
+            if (result.MacrosCarried)
+                note.Tail.Add("Внимание: " + MergeService.MacrosWarningText + ".");
 
             note.Signature = "Исполнитель: ________________________";
             return note;

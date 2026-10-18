@@ -56,6 +56,9 @@
     </Reference>
     <!-- ZipArchive (сборка .pptx в src\OoxmlPackage.cs) — см. пояснение в iwoHelperDesktop.csproj -->
     <Reference Include="System.IO.Compression" />
+    <!-- ТОЛЬКО ДЛЯ ТЕСТОВ (сборка .NET Framework): командная строка процесса Office (WMI) —
+         сторож живых тестов отличает свой экземпляр автоматизации от открытого человеком. -->
+    <Reference Include="System.Management" />
     <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.19041.1" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <!-- ТОЛЬКО ДЛЯ ТЕСТОВ: официальный валидатор Open XML. Проверяет собранный .pptx по схеме

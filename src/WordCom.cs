@@ -30,9 +30,7 @@ namespace ExcelMerger
             if (wordType == null)
                 throw new MergeException(Loc.T("err.word.notInstalled"));
 
-            string lockError = MergeService.CheckOutputWritable(path);
-            if (lockError != null)
-                throw new MergeException(string.Format(Loc.T("err.word.fileBusy"), lockLabel));
+            EnsureWritable(path, lockLabel);
 
             dynamic word = null;
             dynamic doc = null;
@@ -73,6 +71,16 @@ namespace ExcelMerger
                 ComSafe.Collect();
                 ComMessageFilter.Revoke();
             }
+        }
+
+        /// <summary>
+        /// Занятый или недоступный для записи файл — понятная ошибка сразу, до запуска Word и
+        /// всей работы. lockLabel — как называть файл в сообщении.
+        /// </summary>
+        public static void EnsureWritable(string path, string lockLabel)
+        {
+            if (MergeService.CheckOutputWritable(path) != null)
+                throw new MergeException(string.Format(Loc.T("err.word.fileBusy"), lockLabel));
         }
 
         /// <summary>

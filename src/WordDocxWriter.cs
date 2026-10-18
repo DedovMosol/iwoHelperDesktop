@@ -96,7 +96,7 @@ namespace ExcelMerger
                             progress(p + 1, pages.Count);
                     }
                     ClearInheritedList(sel, listState); // хвостовой пустой абзац не должен унаследовать маркер
-                    FitSpacingToPages(doc, pages.Count); // интервалы не должны выталкивать лишнюю страницу
+                    FitSpacingToPages(doc, pages.Count, cancelled); // интервалы не должны выталкивать лишнюю страницу
                     // Наполнение завершено, последний Cancellation.ThrowIf позади: дальше WordCom
                     // сохраняет .docx (Ghostscript-подобная точка невозврата) — снять кнопку отмены.
                     if (onCommitting != null)
@@ -174,28 +174,35 @@ namespace ExcelMerger
         /// источника, все положительные SpaceBefore ужимаются вдвое (до двух раз), затем
         /// обнуляются. Без интервалов вывод равен прежнему (до фичи) — хуже не становится;
         /// документ, не влезавший и раньше, просто теряет интервалы. Сбой статистики/прохода
-        /// не срывает сохранение.
+        /// не срывает сохранение. Кнопка «Отмена» ещё доступна (onCommitting — после демпфера),
+        /// а пересчёт страниц и обход абзацев большого документа долгие — отмена проверяется
+        /// перед каждым пересчётом и на каждом абзаце.
         /// </summary>
-        private static void FitSpacingToPages(dynamic doc, int sourcePages)
+        private static void FitSpacingToPages(dynamic doc, int sourcePages, Func<bool> cancelled)
         {
             const int WdStatisticPages = 2;
             try
             {
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
+                    Cancellation.ThrowIf(cancelled);
                     int got = (int)doc.ComputeStatistics(WdStatisticPages);
                     if (got <= sourcePages)
                         return;
                     double factor = attempt < 2 ? 0.5 : 0;
                     foreach (dynamic p in doc.Paragraphs)
                     {
+                        Cancellation.ThrowIf(cancelled);
                         double sb = (double)p.Format.SpaceBefore;
                         if (sb > 0)
                             p.Format.SpaceBefore = sb * factor;
                     }
                 }
             }
-            catch { } // интервалы — косметика; при сбое остаются как есть
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                // интервалы — косметика; при сбое остаются как есть (отмену не глотаем)
+            }
         }
 
         /// <summary>Шаблоны нумерованного и маркированного списка Word (одни на документ). Available=false — списки не применяем.</summary>
@@ -450,14 +457,19 @@ namespace ExcelMerger
                     text = text.Substring(skip);
                     skip = 0;
                 }
-                sel.Font.Name = FontResolver.Resolve(run.FontName, text);
-                sel.Font.Size = FontResolver.ClampSizePt(run.FontSizePt);
-                sel.Font.Bold = run.Bold ? 1 : 0;
-                sel.Font.Italic = run.Italic ? 1 : 0;
-                sel.Font.Superscript = run.Super ? 1 : 0;
-                sel.Font.Subscript = run.Sub ? 1 : 0;
-                sel.Font.Underline = run.Underline ? 1 : 0; // wdUnderlineSingle / None
-                sel.Font.Color = ToBgr(run.ColorArgb);
+                // Font выделения — один межпроцессный вызов на ран вместо восьми. Берётся заново
+                // у каждого рана, в текущей точке вставки: после TypeText и гиперссылки выделение
+                // уже другое, и формат следующего рана не должен зависеть от того, следует ли
+                // старый объект Font за курсором.
+                dynamic font = sel.Font;
+                font.Name = FontResolver.Resolve(run.FontName, text);
+                font.Size = FontResolver.ClampSizePt(run.FontSizePt);
+                font.Bold = run.Bold ? 1 : 0;
+                font.Italic = run.Italic ? 1 : 0;
+                font.Superscript = run.Super ? 1 : 0;
+                font.Subscript = run.Sub ? 1 : 0;
+                font.Underline = run.Underline ? 1 : 0; // wdUnderlineSingle / None
+                font.Color = ToBgr(run.ColorArgb);
                 if (string.IsNullOrEmpty(run.Uri))
                 {
                     sel.TypeText(text);

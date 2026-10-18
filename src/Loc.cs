@@ -848,6 +848,10 @@ namespace ExcelMerger
             A("err.merge.noFiles", "Не выбрано ни одного файла Excel для объединения.", "No Excel files selected to merge.");
             A("err.merge.noOutput", "Итоговый файл не найден — сначала выполните обычное объединение.",
                 "The output file was not found — run a normal merge first.");
+            A("err.merge.outputPassword", "Итоговый файл защищён паролем — дослить в него пропущенные файлы нельзя. Снимите пароль или выполните обычное объединение.",
+                "The output file is password-protected — skipped files cannot be added to it. Remove the password or run a normal merge.");
+            A("err.merge.outputOpenFailed", "Не удалось открыть итоговый файл для дослияния ({0}).",
+                "Could not open the output file to add the skipped files ({0}).");
             A("err.merge.nothingToRetry", "Пропущенных файлов нет — повторять нечего.", "No skipped files — nothing to retry.");
             A("err.merge.badExtension", "Неподдерживаемое расширение итогового файла. Допустимы: {0}",
                 "Unsupported output file extension. Allowed: {0}");
@@ -859,6 +863,8 @@ namespace ExcelMerger
                 "Microsoft Excel is not installed: the Excel.Application COM component was not found.");
             A("err.merge.tocFailed", "лист «Содержание» создать не удалось ({0})",
                 "the “Contents” sheet could not be created ({0})");
+            A("err.merge.macrosCarried", "итоговый файл содержит макросы VBA из скопированных листов — для передачи свода безопаснее формат .xlsx", // = MergeService.MacrosWarningText (тест)
+                "the output contains VBA macros from the copied sheets — .xlsx is the safer format for sharing the digest");
             A("err.merge.noSheets", "Не удалось перенести ни один лист — итоговый файл не создан. Причины указаны в списке файлов.",
                 "No sheet could be transferred — the output file was not created. See the file list for reasons.");
             A("err.merge.saveFailed", "Не удалось сохранить итоговый файл. Возможно, он открыт в Excel или нет прав на запись в папку.\n({0})",
@@ -1313,7 +1319,7 @@ namespace ExcelMerger
             A("excel.status.doneWithSkips", "Готово: перенесено {0}, пропущено {1} — причины в списке.",
                 "Done: {0} transferred, {1} skipped — reasons are in the list.");
             A("excel.status.doneClean", "✓ Готово: перенесено листов — {0}.", "✓ Done: sheets transferred — {0}.");
-            A("excel.status.tocWarn", " Внимание: {0}.", " Note: {0}.");
+            A("excel.status.warn", " Внимание: {0}.", " Note: {0}.");
             A("excel.status.cancelling", "Отмена после текущего файла…", "Cancelling after the current file…");
             A("excel.status.finishing", "Завершение…", "Finishing…");
             A("excel.status.noteBusy", "Готовится записка Word…", "Preparing the Word note…");

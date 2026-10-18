@@ -38,6 +38,8 @@ namespace ExcelMerger
                 sb.AppendLine("Результат:      перенесено " + result.OkCount + ", пропущено " + result.SkipCount);
             if (result.TocError != null)
                 sb.AppendLine("Внимание:       " + result.TocError);
+            if (result.MacrosCarried)
+                sb.AppendLine("Внимание:       " + MergeService.MacrosWarningText);
             sb.AppendLine();
             foreach (FileResult fr in result.Files)
                 sb.AppendLine(FormatFileLine(fr));

@@ -498,23 +498,21 @@ namespace ExcelMerger
         /// Отчёт пишется рядом с итоговым файлом (&lt;имя&gt;.report.txt) и, если возможно, в консоль.
         /// Коды выхода: 0 — все файлы перенесены, 2 — есть пропущенные, 1 — ошибка.
         /// </summary>
-        private static int RunCli(string inputFolder, string outputPath, MergeOptions options)
+        internal static int RunCli(string inputFolder, string outputPath, MergeOptions options)
         {
             AttachConsole(-1);
-            var lines = new List<string>();
-            string fullOutput = Path.GetFullPath(outputPath);
+            var report = new CliReportLines();
+            List<string> lines = report.Lines;
+            string fullOutput = null; // недопустимый путь («out|.xlsx») — код 1, а не падение процесса
             string summary;
             int exitCode;
             try
             {
+                fullOutput = Path.GetFullPath(outputPath);
                 var service = new MergeService();
-                service.Trace += delegate(string msg) { lines.Add("  trace: " + msg); };
-                service.FileDone += delegate(FileResult fr)
-                {
-                    string line = ReportWriter.FormatFileLine(fr);
-                    lines.Add(line);
-                    WriteConsole(line);
-                };
+                service.Trace += report.Trace;
+                service.FileDone += delegate(FileResult fr) { WriteConsole(report.FileDone(fr)); };
+                service.Restarting += report.Restarting;
                 // CLI берёт все файлы папки в естественном порядке.
                 List<string> files = MergeService.FindSourceFiles(Path.GetFullPath(inputFolder), fullOutput);
                 MergeResult result = service.Merge(files, fullOutput, options);
@@ -522,6 +520,11 @@ namespace ExcelMerger
                 {
                     lines.Add("WARN: " + result.TocError);
                     WriteConsole("WARN: " + result.TocError);
+                }
+                if (result.MacrosCarried)
+                {
+                    lines.Add("WARN: " + MergeService.MacrosWarningText);
+                    WriteConsole("WARN: " + MergeService.MacrosWarningText);
                 }
                 summary = "RESULT: ok=" + result.OkCount + " skipped=" + result.SkipCount +
                     " output=" + result.OutputPath;
@@ -537,8 +540,43 @@ namespace ExcelMerger
             }
             lines.Add("EXITCODE: " + exitCode);
             WriteConsole(summary);
-            try { File.WriteAllLines(fullOutput + ".report.txt", lines, Encoding.UTF8); } catch { }
+            if (fullOutput != null) // без пути итога отчёт класть некуда — остаётся консоль
+                try { File.WriteAllLines(fullOutput + ".report.txt", lines, Encoding.UTF8); } catch { }
             return exitCode;
+        }
+
+        /// <summary>
+        /// Строки отчёта --cli. Перезапуск Excel отменяет проход целиком, и сервис переотправляет
+        /// все файлы заново: строки файлов отменённого прохода убираются, иначе отчёт показал бы
+        /// их дважды. Трассировка остаётся — она объясняет, почему был перезапуск. Чистая — под тест.
+        /// </summary>
+        internal sealed class CliReportLines
+        {
+            public readonly List<string> Lines = new List<string>();
+            private readonly List<string> _pass = new List<string>(); // строки файлов текущего прохода
+
+            public void Trace(string message)
+            {
+                Lines.Add("  trace: " + message);
+            }
+
+            /// <summary>Добавляет строку файла и возвращает её (для консоли).</summary>
+            public string FileDone(FileResult fr)
+            {
+                string line = ReportWriter.FormatFileLine(fr);
+                Lines.Add(line);
+                _pass.Add(line);
+                return line;
+            }
+
+            public void Restarting()
+            {
+                // Строки файлов прежних проходов уже убраны тем же путём, поэтому всё, что
+                // совпадает по значению, — этого прохода: удаление по значению не заденет чужое.
+                foreach (string line in _pass)
+                    Lines.Remove(line);
+                _pass.Clear();
+            }
         }
 
         private static void WriteConsole(string line)
