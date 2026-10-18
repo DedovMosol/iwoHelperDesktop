@@ -169,7 +169,11 @@ namespace ExcelMerger
         {
             if (OutputFile.IsSameFile(sourcePath, outPath))
                 throw new MergeException(Loc.T("err.output.sameSource"));
-            List<PdfPageText> pages = PdfTextExtract.Extract(sourcePath, progress, null, cancelled);
+            // Режим Review: тексту не нужны экспортные подмены потокового вывода — штамп,
+            // заменённый картинкой, пропал бы из .txt, а одиночные линии стали бы «____».
+            // Картинки не декодируются: в текст их не положить.
+            List<PdfPageText> pages = PdfTextExtract.Extract(sourcePath, progress, null, cancelled,
+                PageLayoutMode.Review, extractImages: false);
             Cancellation.ThrowIf(cancelled);
             string text = PlainText.Document(pages).Replace("\n", Environment.NewLine);
             try

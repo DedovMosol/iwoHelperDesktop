@@ -15,6 +15,15 @@ namespace ExcelMerger
         /// <summary>Символы-буллеты в начале абзаца (маркированный список).</summary>
         private const string Bullets = "•◦▪‣·●○*–—-";
 
+        /// <summary>
+        /// Буллет-тире («–», «—», «-»). Отдельно от прочих: тире — ещё и знак препинания, и
+        /// строка, начатая им, бывает переносом фразы, а не пунктом (см. OcrLayout).
+        /// </summary>
+        internal static bool IsDash(char c)
+        {
+            return c == '–' || c == '—' || c == '-';
+        }
+
         internal struct Result
         {
             public ListKind Kind;

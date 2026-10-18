@@ -47,14 +47,21 @@ namespace ExcelMerger
 
             var consumed = new HashSet<PdfWord>();
             var lone = new List<PdfLine>();
-            foreach (List<PdfLine> comp in ConnectedComponents(lines))
+            var grids = new List<Grid>();
+            foreach (List<PdfLine> comp in ConnectedComponents(lines, pageWidth, pageHeight))
             {
-                OcrTable table = TryBuildTable(comp, allWords, consumed);
-                if (table != null)
-                    result.Tables.Add(table);
+                Grid grid = TryBuildGrid(comp);
+                if (grid != null)
+                    grids.Add(grid);
                 else if (comp.Count == 1 || IsCollinearHorizontal(comp))
                     lone.AddRange(comp); // прочерк, нарисованный кусками (дырки под «№»/«от»), — куски по отдельности
             }
+            // Слова раздаются от МЕНЬШЕЙ таблицы к большей: вложенная рамочная таблица лежит
+            // внутри ячейки внешней, и её слова иначе попали бы в обе (текст задваивался).
+            // Каждое слово достаётся ровно одной таблице — самой тесной, что его накрывает.
+            grids.Sort(delegate(Grid a, Grid b) { return a.Area.CompareTo(b.Area); });
+            foreach (Grid grid in grids)
+                result.Tables.Add(grid.ToTable(allWords, consumed));
             // Линия ВНУТРИ рамки таблицы (поле подписи в ячейке) — не самостоятельный прочерк:
             // словом-заполнителем она легла бы ПОВЕРХ таблицы отдельным абзацем-мусором.
             foreach (PdfLine l in lone)
@@ -98,12 +105,24 @@ namespace ExcelMerger
         // Клетка пространственной сетки для поиска связей: полный перебор пар был O(n²) и
         // заметно тормозил на PDF с пунктирной линовкой (тысячи коротких штрихов).
         private const double GridCellPt = 32;
+        // Больше этого страниц PDF не бывает (200 дюймов при UserUnit = 1) — запасная граница
+        // окрестности листа, когда его размер неизвестен.
+        private const double MaxPagePt = 14400;
 
-        private static List<List<PdfLine>> ConnectedComponents(IList<PdfLine> lines)
+        private static List<List<PdfLine>> ConnectedComponents(IList<PdfLine> lines, double pageWidth, double pageHeight)
         {
             int n = lines.Count;
             var parent = new int[n];
             for (int i = 0; i < n; i++) parent[i] = i;
+
+            // Клетки — только в окрестности листа (лист плюс его размер с каждой стороны):
+            // враждебный поток «0 0 m 1000000000 0 l S» иначе раскладывался бы на десятки
+            // миллионов клеток — зависание и нехватка памяти. Связи за этой окрестностью
+            // невидимы и таблиц не дают; сама геометрия линий для Touch не обрезается.
+            double spanW = pageWidth > 0 && pageWidth <= MaxPagePt ? pageWidth : MaxPagePt;
+            double spanH = pageHeight > 0 && pageHeight <= MaxPagePt ? pageHeight : MaxPagePt;
+            int minCx = (int)Math.Floor(-spanW / GridCellPt), maxCx = (int)Math.Floor(2 * spanW / GridCellPt);
+            int minCy = (int)Math.Floor(-spanH / GridCellPt), maxCy = (int)Math.Floor(2 * spanH / GridCellPt);
 
             // Кандидаты на связь — только линии одной клетки; рамка каждой расширена на
             // TouchTol, поэтому связи «через границу клетки» не теряются. Уже связанные
@@ -112,8 +131,8 @@ namespace ExcelMerger
             for (int i = 0; i < n; i++)
             {
                 PdfLine l = lines[i];
-                int x0 = (int)Math.Floor((l.MinX - TouchTol) / GridCellPt), x1 = (int)Math.Floor((l.MaxX + TouchTol) / GridCellPt);
-                int y0 = (int)Math.Floor((l.MinY - TouchTol) / GridCellPt), y1 = (int)Math.Floor((l.MaxY + TouchTol) / GridCellPt);
+                int x0 = CellIndex(l.MinX - TouchTol, minCx, maxCx), x1 = CellIndex(l.MaxX + TouchTol, minCx, maxCx);
+                int y0 = CellIndex(l.MinY - TouchTol, minCy, maxCy), y1 = CellIndex(l.MaxY + TouchTol, minCy, maxCy);
                 for (int cx = x0; cx <= x1; cx++)
                     for (int cy = y0; cy <= y1; cy++)
                     {
@@ -142,6 +161,15 @@ namespace ExcelMerger
                 g.Add(lines[i]);
             }
             return new List<List<PdfLine>>(groups.Values);
+        }
+
+        /// <summary>Номер клетки координаты, прижатый к [lo..hi]; NaN — нижняя граница.</summary>
+        private static int CellIndex(double v, int lo, int hi)
+        {
+            double cell = Math.Floor(v / GridCellPt);
+            if (!(cell >= lo))
+                return lo;
+            return cell > hi ? hi : (int)cell;
         }
 
         private static int Find(int[] parent, int i)
@@ -180,7 +208,40 @@ namespace ExcelMerger
 
         // ---------- построение таблицы из компонента ----------
 
-        private static OcrTable TryBuildTable(List<PdfLine> comp, List<PdfWord> allWords, HashSet<PdfWord> consumed)
+        /// <summary>
+        /// Найденная сетка таблицы ДО раздачи слов: раздача идёт после того, как найдены все
+        /// таблицы страницы, — от меньшей к большей (см. <see cref="Detect"/>).
+        /// </summary>
+        private sealed class Grid
+        {
+            public List<double> Xs;   // границы колонок (по возрастанию X)
+            public List<double> Ys;   // границы строк сверху вниз
+            public OcrTableCell[,] Origin;
+
+            public int Cols { get { return Xs.Count - 1; } }
+            public int Rows { get { return Ys.Count - 1; } }
+            public double Area { get { return (Xs[Cols] - Xs[0]) * (Ys[0] - Ys[Rows]); } }
+
+            /// <summary>Раздать свободные слова по ячейкам и собрать таблицу.</summary>
+            public OcrTable ToTable(List<PdfWord> allWords, HashSet<PdfWord> consumed)
+            {
+                int cols = Cols, rows = Rows;
+                AssignWords(Origin, Xs, Ys, cols, rows, allWords, consumed);
+                var table = new OcrTable { TopPt = Ys[0], LeftPt = Xs[0], RightPt = Xs[cols], BottomPt = Ys[rows] };
+                for (int c = 0; c < cols; c++)
+                    table.ColumnWidthsPt.Add(Xs[c + 1] - Xs[c]);
+                for (int r = 0; r < rows; r++)
+                {
+                    var row = new OcrTableRow();
+                    for (int c = 0; c < cols; c++)
+                        row.Cells.Add(Origin[r, c] ?? new OcrTableCell { Covered = true });
+                    table.Rows.Add(row);
+                }
+                return table;
+            }
+        }
+
+        private static Grid TryBuildGrid(List<PdfLine> comp)
         {
             var vlines = new List<PdfLine>();
             var hlines = new List<PdfLine>();
@@ -205,20 +266,7 @@ namespace ExcelMerger
                 || !HasVBorder(vlines, left, bottom, top) || !HasVBorder(vlines, right, bottom, top))
                 return null;
 
-            OcrTableCell[,] origin = BuildCells(xs, ys, vlines, hlines, cols, rows);
-            AssignWords(origin, xs, ys, cols, rows, allWords, consumed);
-
-            var table = new OcrTable { TopPt = top, LeftPt = left, RightPt = right, BottomPt = bottom };
-            for (int c = 0; c < cols; c++)
-                table.ColumnWidthsPt.Add(xs[c + 1] - xs[c]);
-            for (int r = 0; r < rows; r++)
-            {
-                var row = new OcrTableRow();
-                for (int c = 0; c < cols; c++)
-                    row.Cells.Add(origin[r, c] ?? new OcrTableCell { Covered = true });
-                table.Rows.Add(row);
-            }
-            return table;
+            return new Grid { Xs = xs, Ys = ys, Origin = BuildCells(xs, ys, vlines, hlines, cols, rows) };
         }
 
         /// <summary>Сетка ячеек: хозяева с ColSpan/RowSpan по отсутствующим внутренним границам; накрытые — null.</summary>
@@ -233,11 +281,17 @@ namespace ExcelMerger
                     if (covered[r, c])
                         continue;
                     double cellTop = ys[r], cellBottom = ys[r + 1];
+                    // Объединение растёт только по СВОБОДНЫМ позициям: позицию, уже накрытую
+                    // пролётом строки выше, второй владелец забрать не может — два пролёта
+                    // поверх одной ячейки — это невалидная разметка (Word/PowerPoint
+                    // объявляют файл повреждённым).
                     int cs = 1;
-                    while (c + cs < cols && !HasVBorder(vlines, xs[c + cs], cellBottom, cellTop))
+                    while (c + cs < cols && !covered[r, c + cs]
+                        && !HasVBorder(vlines, xs[c + cs], cellBottom, cellTop))
                         cs++;
                     int rs = 1;
-                    while (r + rs < rows && !HasHBorder(hlines, ys[r + rs], xs[c], xs[c + cs]))
+                    while (r + rs < rows && RowFree(covered, r + rs, c, cs)
+                        && !HasHBorder(hlines, ys[r + rs], xs[c], xs[c + cs]))
                         rs++;
                     cells[r, c] = new OcrTableCell { ColSpan = cs, RowSpan = rs };
                     for (int dr = 0; dr < rs; dr++)
@@ -247,6 +301,15 @@ namespace ExcelMerger
                 }
             }
             return cells;
+        }
+
+        /// <summary>Свободны ли позиции [c, c+cs) строки r (ни одна не накрыта чужим пролётом).</summary>
+        private static bool RowFree(bool[,] covered, int r, int c, int cs)
+        {
+            for (int dc = 0; dc < cs; dc++)
+                if (covered[r, c + dc])
+                    return false;
+            return true;
         }
 
         /// <summary>Разложить слова по ячейкам-хозяевам; текст ячейки — через OcrLayout (DRY).</summary>
@@ -271,6 +334,8 @@ namespace ExcelMerger
             var byOwner = new Dictionary<int, List<PdfWord>>();
             foreach (PdfWord w in allWords)
             {
+                if (consumed.Contains(w))
+                    continue; // слово уже в ячейке вложенной (меньшей) таблицы — второй раз не берём
                 double cx = (w.Left + w.Right) / 2, cy = (w.Top + w.Bottom) / 2;
                 if (cx < xs[0] - EdgeTol || cx > xs[cols] + EdgeTol || cy < ys[rows] - EdgeTol || cy > ys[0] + EdgeTol)
                     continue;

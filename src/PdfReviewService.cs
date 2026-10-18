@@ -122,7 +122,7 @@ namespace ExcelMerger
                 if (!PdfTextExtract.AnyPageHasText(full))
                     throw Failure(PdfReviewFailure.NoText, full, Loc.T("review.err.noText"));
                 List<PdfPageText> extracted = PdfTextExtract.Extract(full, progress, null,
-                    cancelled, PageLayoutMode.Review);
+                    cancelled, PageLayoutMode.Review, extractImages: false);
                 var doc = new PdfReviewDocument { Path = full };
                 foreach (PdfPageText page in extracted)
                 {

@@ -55,6 +55,11 @@ namespace ExcelMerger
         // наложить рамки слов на отрендеренную страницу: системный рендерер показывает страницу
         // повёрнутой, как в читалке.
         internal int NativeRotation;
+        // Для какого вывода разобрана страница. Писателю слайдов это нужно, чтобы отличить
+        // прочерк, СИНТЕЗИРОВАННЫЙ из линии (только Document, см. AddRuleWords), от набранных
+        // в источнике подчёркиваний: первые на слайде — шум, вторые — текст бланка.
+        // По умолчанию Document — самое осторожное предположение для страниц, собранных в коде.
+        internal PageLayoutMode LayoutMode;
 
         /// <summary>Весь текст страницы: абзацы через пустую строку.</summary>
         public string Text
@@ -79,16 +84,43 @@ namespace ExcelMerger
     public static class PdfTextExtract
     {
         /// <summary>
-        /// Текст всех страниц. rotations — пользовательские повороты по индексу исходной
+        /// Текст страниц файла. rotations — пользовательские повороты по индексу исходной
         /// страницы (0/90/180/270 по часовой, null — без поворотов): страница выправляется
-        /// ДО анализа макета, боковой текст становится горизонтальным. Битый/зашифрованный
-        /// файл или запрет извлечения — <see cref="MergeException"/> с понятным сообщением.
+        /// ДО анализа макета, боковой текст становится горизонтальным. pageIndexes — какие
+        /// страницы (с нуля) разбирать, null — все: две страницы из пятисот не должны стоить
+        /// разбора, декодирования картинок и Ghostscript для остальных; результат — только
+        /// запрошенные страницы в порядке файла, их PageIndex — исходный. extractImages=false —
+        /// картинки не декодируются вовсе (Сравнению и текстовому экспорту они не нужны), а их
+        /// рамки по-прежнему работают фильтрами невидимого текста. Битый/зашифрованный файл
+        /// или запрет извлечения — <see cref="MergeException"/> с понятным сообщением.
         /// </summary>
         public static List<PdfPageText> Extract(string path, Action<int, int> progress = null, IList<int> rotations = null,
-            Func<bool> cancelled = null, PageLayoutMode mode = PageLayoutMode.Document)
+            Func<bool> cancelled = null, PageLayoutMode mode = PageLayoutMode.Document,
+            ICollection<int> pageIndexes = null, bool extractImages = true)
         {
             EmbeddedAssemblies.Ensure();
-            return ExtractCore(path, progress, rotations, cancelled, mode);
+            return ExtractCore(path, progress, rotations, cancelled, mode, pageIndexes, extractImages);
+        }
+
+        /// <summary>
+        /// Номера страниц (с единицы, по возрастанию) к разбору: все при pageIndexes == null,
+        /// иначе только существующие из запрошенных, без повторов. Чистая — под тест.
+        /// </summary>
+        internal static List<int> PageNumbersToExtract(int pageCount, ICollection<int> pageIndexes)
+        {
+            var result = new List<int>();
+            if (pageIndexes == null)
+            {
+                for (int n = 1; n <= pageCount; n++)
+                    result.Add(n);
+                return result;
+            }
+            var wanted = new SortedSet<int>();
+            foreach (int index in pageIndexes)
+                if (index >= 0 && index < pageCount)
+                    wanted.Add(index + 1);
+            result.AddRange(wanted);
+            return result;
         }
 
         /// <summary>
@@ -121,17 +153,21 @@ namespace ExcelMerger
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<PdfPageText> ExtractCore(string path, Action<int, int> progress, IList<int> rotations,
-            Func<bool> cancelled, PageLayoutMode mode)
+            Func<bool> cancelled, PageLayoutMode mode, ICollection<int> pageIndexes, bool extractImages)
         {
             try
             {
                 using (UglyToad.PdfPig.PdfDocument doc = PdfPageProbe.OpenPig(path))
                 {
                     var pages = new List<PdfPageText>();
-                    int pageCount = doc.NumberOfPages;
-                    foreach (UglyToad.PdfPig.Content.Page page in doc.GetPages())
+                    // GetPage(n) разбирает ТОЛЬКО свою страницу: перечисление GetPages() разобрало
+                    // бы и все пропускаемые.
+                    List<int> numbers = PageNumbersToExtract(doc.NumberOfPages, pageIndexes);
+                    int pageCount = numbers.Count;
+                    foreach (int number in numbers)
                     {
                         Cancellation.ThrowIf(cancelled); // отмена между страницами извлечения
+                        UglyToad.PdfPig.Content.Page page = doc.GetPage(number);
                         int rotation = PageRotation.At(rotations, page.Number - 1);
                         // Картинки страницы перечисляются ОДИН раз (декода здесь нет): рамки
                         // нужны фильтрам невидимого текста и наложенных картинок, а сами объекты — переносу
@@ -142,12 +178,13 @@ namespace ExcelMerger
                         var imageRects = new List<RectPt>(pageImages.Count);
                         foreach (UglyToad.PdfPig.Content.IPdfImage img in pageImages)
                         {
-                            UglyToad.PdfPig.Core.PdfRectangle b = img.Bounds;
-                            if (b.Width > 0 && b.Height > 0)
-                                imageRects.Add(RectOf(b));
+                            RectPt b = RectOf(img.Bounds);
+                            if (b.Right > b.Left && b.Top > b.Bottom)
+                                imageRects.Add(b);
                         }
                         List<RectPt> darkFills;
                         List<PdfLine> lines = ExtractGraphics(page, out darkFills);
+                        ClipLinesToPage(lines, page.Width, page.Height);
                         // Какая ориентация текста станет горизонтальной после поворота страницы
                         // пользователем: только её и пускаем в поток (при 0° — прежний фильтр).
                         UglyToad.PdfPig.Content.TextOrientation keepOrientation = KeepOrientationFor(rotation);
@@ -162,7 +199,7 @@ namespace ExcelMerger
                         var words = new List<PdfWord>();
                         foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
                         {
-                            UglyToad.PdfPig.Core.PdfRectangle bb = w.BoundingBox;
+                            RectPt bb = RectOf(w.BoundingBox);
                             double size = 0;
                             bool bold = false, italic = false;
                             int color = 0;
@@ -188,8 +225,8 @@ namespace ExcelMerger
                                 // наполовину (OCR-слой скана, белая шапка на цветной плашке);
                                 // касание кромки картинки — не подложка.
                                 if (IsInvisibleInk(first)
-                                    && !CoveredByAnyRect(RectOf(bb), imageRects)
-                                    && !CoveredByAnyRect(RectOf(bb), darkFills))
+                                    && !CoveredByAnyRect(bb, imageRects)
+                                    && !CoveredByAnyRect(bb, darkFills))
                                     continue;
                                 bool pseudoBold;
                                 text = DedupDoubledGlyphs(w.Letters, text, out pseudoBold);
@@ -209,7 +246,7 @@ namespace ExcelMerger
                             // Слово, накрытое НИЗКОЙ наложенной картинкой (впечатанные дата и номер
                             // поверх пустой формы «____№____»), текстом не выводим: его вид уже
                             // несёт картинка, а текст рядом с ней давал бы кашу из двух слоёв.
-                            if (CoveredByLowImage(RectOf(bb), imageRects))
+                            if (CoveredByLowImage(bb, imageRects))
                                 continue;
                             sourceTrusted = TrySourceSpan(w.Letters, sourceOrdinals,
                                 sourceUnits, out sourceStart, out sourceEnd, out sourceText) &&
@@ -245,7 +282,9 @@ namespace ExcelMerger
                         // Изображения извлекаются ДО поворота: их PNG и фолбэк-кропы Ghostscript
                         // живут в исходном пространстве страницы. Поворот ниже развернёт и рамки,
                         // и сами пиксели.
-                        List<OcrImage> images = ExtractImages(pageImages, page, path);
+                        List<OcrImage> images = extractImages
+                            ? ExtractImages(pageImages, page, path)
+                            : new List<OcrImage>();
                         double pageW = page.Width, pageH = page.Height;
                         PageRotation.RotatePage(words, lines, images, rotation, ref pageW, ref pageH);
                         ApplyUnderscoreHeights(words);
@@ -281,7 +320,8 @@ namespace ExcelMerger
                             Tables = det.Tables,
                             Words = words,
                             SourceUnits = sourceUnits,
-                            NativeRotation = (int)page.Rotation.Value
+                            NativeRotation = (int)page.Rotation.Value,
+                            LayoutMode = mode
                         };
                         pt.Images = images;
                         if (stampImage != null)
@@ -614,21 +654,58 @@ namespace ExcelMerger
             catch { return; }
             if (links == null || links.Count == 0)
                 return;
+            // Рамки и адреса — один раз на страницу, а не на каждое слово. Опасный или
+            // относительный адрес выбрасывается здесь же: слово остаётся обычным текстом.
+            var rects = new List<RectPt>(links.Count);
+            var uris = new List<string>(links.Count);
+            foreach (UglyToad.PdfPig.Content.Hyperlink h in links)
+            {
+                try
+                {
+                    string uri = SafeLinkUri(h.Uri);
+                    if (uri == null)
+                        continue;
+                    rects.Add(RectOf(h.Bounds));
+                    uris.Add(uri);
+                }
+                catch { } // битая аннотация — без ссылки, остальные целы
+            }
+            if (uris.Count == 0)
+                return;
             foreach (PdfWord w in words)
             {
                 double mx = (w.Left + w.Right) / 2, my = (w.Top + w.Bottom) / 2;
-                foreach (UglyToad.PdfPig.Content.Hyperlink h in links)
+                for (int i = 0; i < rects.Count; i++)
                 {
-                    if (string.IsNullOrEmpty(h.Uri))
-                        continue;
-                    UglyToad.PdfPig.Core.PdfRectangle b = h.Bounds;
+                    RectPt b = rects[i];
                     if (mx >= b.Left && mx <= b.Right && my >= b.Bottom && my <= b.Top)
                     {
-                        w.Uri = h.Uri;
+                        w.Uri = uris[i];
                         break;
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Адрес ссылки PDF, годный для внешней связи .docx/.pptx, или null. Адрес из файла —
+        /// чужие данные: javascript:, file:, UNC-путь «\\host\share» или обработчик «ms-…:»
+        /// стали бы в документе кликабельной внешней связью — запуском кода, утечкой
+        /// NTLM-хэша на чужой сервер, открытием локального файла. Пропускаем только
+        /// абсолютные http/https/mailto и отдаём их в каноничной экранированной форме
+        /// (AbsoluteUri): писатели кладут адрес в связь как есть. Чистая — под тест.
+        /// </summary>
+        internal static string SafeLinkUri(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+            Uri uri;
+            if (!Uri.TryCreate(raw.Trim(), UriKind.Absolute, out uri))
+                return null;
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps &&
+                uri.Scheme != Uri.UriSchemeMailto)
+                return null;
+            return uri.AbsoluteUri;
         }
 
         /// <summary>
@@ -649,16 +726,23 @@ namespace ExcelMerger
                 {
                     try
                     {
-                        UglyToad.PdfPig.Core.PdfRectangle b = img.Bounds;
-                        if (b.Width <= 0 || b.Height <= 0)
+                        UglyToad.PdfPig.Core.PdfRectangle bounds = img.Bounds;
+                        RectPt b = RectOf(bounds);
+                        double width = b.Right - b.Left, height = b.Top - b.Bottom;
+                        if (width <= 0 || height <= 0)
                             continue;
+                        // Прямой декод отдаёт пиксели в СОБСТВЕННОЙ ориентации картинки, а на
+                        // странице (/Rotate 90, повёрнутая матрица) она стоит повёрнутой — разворачиваем
+                        // так, как её видит читатель. Кроп Ghostscript уже повёрнут рендером.
+                        int turn = ImageQuarterTurn(bounds.BottomLeft.X, bounds.BottomLeft.Y,
+                            bounds.BottomRight.X, bounds.BottomRight.Y, bounds.TopLeft.X, bounds.TopLeft.Y);
 
                         // Картинка с мягкой маской (SMask/Mask) — прозрачность: PdfPig её игнорирует
                         // и заливает прозрачные области ЧЁРНЫМ (в Word получается чёрный фон у логотипа/
                         // печати). Такую переносим рендер-кропом страницы Ghostscript-ом — он композитит
                         // маску на белое, как она выглядит на странице. Прямой декод для неё пропускаем.
                         bool masked = HasSoftMask(img);
-                        byte[] png = masked ? null : EncodePng(img);
+                        byte[] png = masked ? null : PageRotation.RotatePng(EncodePng(img), turn);
                         // Декодер не справился (null) или выдал одноцветный мусор (напр. штрих-код
                         // чёрным ящиком) — фолбэк: рендерим страницу Ghostscript-ом и вырезаем картинку
                         // по её рамке. Так переносится любая картинка, как она выглядит.
@@ -673,11 +757,11 @@ namespace ExcelMerger
                                 rasterTried = true;
                             }
                             byte[] cropped = PageRasterizer.CropRegion(pageRaster, page.Width, page.Height,
-                                b.Left, b.Top, b.Width, b.Height);
+                                b.Left, b.Top, width, height);
                             if (cropped != null && !RasterUtil.IsSolidColor(cropped))
                                 png = cropped;
                             else if (masked && (png == null || png.Length == 0))
-                                png = EncodePng(img); // нет Ghostscript — маскированную берём как есть (может быть чёрный фон), лучше чем терять
+                                png = PageRotation.RotatePng(EncodePng(img), turn); // нет Ghostscript — маскированную берём как есть (может быть чёрный фон), лучше чем терять
                             if (png == null || png.Length == 0 || RasterUtil.IsSolidColor(png))
                                 continue; // и фолбэк не помог (нет GS / область пустая) — пропускаем
                         }
@@ -687,8 +771,8 @@ namespace ExcelMerger
                             Png = png,
                             LeftPt = b.Left,
                             TopPt = b.Top,
-                            WidthPt = b.Width,
-                            HeightPt = b.Height
+                            WidthPt = width,
+                            HeightPt = height
                         });
                     }
                     catch (OutOfMemoryException) { throw; }
@@ -840,9 +924,55 @@ namespace ExcelMerger
             public double Top;
         }
 
+        /// <summary>
+        /// Рамка PdfPig → нормализованный прямоугольник по min/max ЧЕТЫРЁХ углов. PdfPig 0.1.9
+        /// на странице с /Rotate 90/270 (и у объектов под повёрнутой матрицей) отдаёт рамки
+        /// картинок, ссылок и боковых слов перевёрнутыми: Left больше Right или Bottom больше
+        /// Top, а Width/Height — в собственной ориентации объекта. С такой рамкой перекрытия
+        /// выходили отрицательными, центр слова в ссылку не попадал, картинка вставала не туда.
+        /// </summary>
         private static RectPt RectOf(UglyToad.PdfPig.Core.PdfRectangle b)
         {
-            return new RectPt { Left = b.Left, Bottom = b.Bottom, Right = b.Right, Top = b.Top };
+            return NormalizedRect(b.BottomLeft.X, b.BottomLeft.Y, b.BottomRight.X, b.BottomRight.Y,
+                b.TopLeft.X, b.TopLeft.Y, b.TopRight.X, b.TopRight.Y);
+        }
+
+        /// <summary>Прямоугольник, накрывающий четыре точки (min/max по осям). Чистая — под тест.</summary>
+        internal static RectPt NormalizedRect(double x1, double y1, double x2, double y2,
+            double x3, double y3, double x4, double y4)
+        {
+            return new RectPt
+            {
+                Left = Math.Min(Math.Min(x1, x2), Math.Min(x3, x4)),
+                Right = Math.Max(Math.Max(x1, x2), Math.Max(x3, x4)),
+                Bottom = Math.Min(Math.Min(y1, y2), Math.Min(y3, y4)),
+                Top = Math.Max(Math.Max(y1, y2), Math.Max(y3, y4))
+            };
+        }
+
+        /// <summary>
+        /// На сколько градусов по часовой повернуть декодированные пиксели картинки, чтобы она
+        /// легла так, как стоит на странице. Рамка картинки у PdfPig — образ единичного квадрата:
+        /// нижний-левый угол — точка (0,0) картинки, нижний-правый — (1,0); направление между
+        /// ними — ось X картинки на странице. Ось смотрит вправо — 0, вниз — 90, влево — 180,
+        /// вверх — 270. Зеркальная картинка (верхний-левый угол по другую сторону оси X, частый
+        /// «переворот по вертикали» генераторов) — 0, как и прежде: поворот отражение не
+        /// исправит, а лишь заменит одну неправду другой. Чистая — под тест.
+        /// </summary>
+        internal static int ImageQuarterTurn(double bottomLeftX, double bottomLeftY,
+            double bottomRightX, double bottomRightY, double topLeftX, double topLeftY)
+        {
+            double dx = bottomRightX - bottomLeftX, dy = bottomRightY - bottomLeftY;
+            if (double.IsNaN(dx) || double.IsNaN(dy))
+                return 0;
+            // Ориентация пары осей картинки (X — к нижнему-правому, Y — к верхнему-левому):
+            // отрицательная — отражение.
+            double cross = dx * (topLeftY - bottomLeftY) - dy * (topLeftX - bottomLeftX);
+            if (!(cross > 0))
+                return 0;
+            if (Math.Abs(dx) >= Math.Abs(dy))
+                return dx >= 0 ? 0 : 180;
+            return dy < 0 ? 90 : 270;
         }
 
         /// <summary>Картинки страницы одним списком (без декодирования). Сбой перечисления — пусто.</summary>
@@ -1038,6 +1168,44 @@ namespace ExcelMerger
                 AddSegment(result, midX, rect.Bottom, midX, rect.Top, Math.Min(w, h));
         }
 
+        /// <summary>
+        /// Обрезать линовку по окрестности листа (лист плюс ещё по его размеру с каждой
+        /// стороны — запас на смещённый MediaBox). Отрезок далеко за листом невидим, но
+        /// стоит дорого: поток в сотню байт «0 0 m 1000000000 0 l S» давал линию на миллиард
+        /// пунктов, и детекторы раскладывали её на десятки миллионов клеток — зависание и
+        /// нехватка памяти. Линия целиком вне окрестности или NaN — выбрасывается, торчащая —
+        /// укорачивается. Чистая — под тест.
+        /// </summary>
+        internal static void ClipLinesToPage(List<PdfLine> lines, double pageW, double pageH)
+        {
+            if (lines == null || !(pageW > 0) || !(pageH > 0))
+                return;
+            double minX = -pageW, maxX = 2 * pageW, minY = -pageH, maxY = 2 * pageH;
+            lines.RemoveAll(delegate(PdfLine l)
+            {
+                bool horizontal = l.Orientation == LineOrientation.Horizontal;
+                double pos = l.Position;
+                if (horizontal ? !(pos >= minY && pos <= maxY) : !(pos >= minX && pos <= maxX))
+                    return true;
+                if (horizontal)
+                {
+                    l.X1 = ClampTo(l.X1, minX, maxX);
+                    l.X2 = ClampTo(l.X2, minX, maxX);
+                }
+                else
+                {
+                    l.Y1 = ClampTo(l.Y1, minY, maxY);
+                    l.Y2 = ClampTo(l.Y2, minY, maxY);
+                }
+                return !(l.Length >= MinLineLen); // NaN-координаты тоже уходят здесь
+            });
+        }
+
+        private static double ClampTo(double v, double lo, double hi)
+        {
+            return v < lo ? lo : (v > hi ? hi : v);
+        }
+
         /// <summary>Классифицировать отрезок и добавить, если это строго H/V-линовка достаточной длины.</summary>
         private static void AddSegment(List<PdfLine> result, double x1, double y1, double x2, double y2, double thickness)
         {
@@ -1088,14 +1256,24 @@ namespace ExcelMerger
             pt.BottomMarginPt = Math.Min(minB, BottomMarginMaxPt);
         }
 
-        /// <summary>Цвет буквы PdfPig → 0xRRGGBB; null/чёрный → 0.</summary>
+        /// <summary>
+        /// Цвет буквы PdfPig → 0xRRGGBB; null/чёрный → 0. Текст, залитый узором или градиентом
+        /// (PatternColor), одного цвета не имеет, и PdfPig 0.1.9 на ToRGBValues для него бросает
+        /// InvalidOperationException — раньше это роняло извлечение ВСЕГО файла. Такой текст
+        /// и любой неразобранный цвет пишем чёрным: потерять оттенок лучше, чем документ.
+        /// </summary>
         private static int ColorArgb(UglyToad.PdfPig.Graphics.Colors.IColor color)
         {
-            if (color == null)
+            if (color == null || color is UglyToad.PdfPig.Graphics.Colors.PatternColor)
                 return 0;
-            var rgb = color.ToRGBValues();
-            int r = Clamp255(rgb.r), g = Clamp255(rgb.g), b = Clamp255(rgb.b);
-            return (r << 16) | (g << 8) | b;
+            try
+            {
+                var rgb = color.ToRGBValues();
+                int r = Clamp255(rgb.r), g = Clamp255(rgb.g), b = Clamp255(rgb.b);
+                return (r << 16) | (g << 8) | b;
+            }
+            catch (OutOfMemoryException) { throw; }
+            catch { return 0; }
         }
 
         private static int Clamp255(double v)

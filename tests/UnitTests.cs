@@ -22053,14 +22053,25 @@ namespace ExcelMerger.Tests
                 "абзацы и таблица идут сверху вниз, ячейки через табуляцию");
         }
 
-        /// <summary>Ось Y направлена вверх: больший TopPt — выше на странице, значит раньше.</summary>
+        /// <summary>
+        /// Ось Y направлена вверх: больший TopPt — выше на странице, значит раньше. У абзацев
+        /// настоящие рамки: порядок чтения (XY-разрез) опирается на них, а рамка нулевого
+        /// размера тянулась бы от верха абзаца до низа листа.
+        /// </summary>
         private static void TestPlainTextReadingOrder()
         {
+            Func<string, double, double, OcrParagraph> sized = delegate(string text, double top, double left)
+            {
+                OcrParagraph p = Par(text, top, left);
+                p.BottomPt = top - 20;
+                p.RightPt = left + 200;
+                return p;
+            };
             var page = new PdfPageText();
-            page.Paragraphs.Add(Par("низ", 100, 50));
-            page.Paragraphs.Add(Par("верх", 700, 50));
-            page.Paragraphs.Add(Par("середина справа", 400, 300));
-            page.Paragraphs.Add(Par("середина слева", 400, 50));
+            page.Paragraphs.Add(sized("низ", 100, 50));
+            page.Paragraphs.Add(sized("верх", 700, 50));
+            page.Paragraphs.Add(sized("середина справа", 400, 300));
+            page.Paragraphs.Add(sized("середина слева", 400, 50));
             AssertEqual("верх\n\nсередина слева\n\nсередина справа\n\nниз", PlainText.Page(page),
                 "сверху вниз, при равной высоте — слева направо");
             AssertEqual("", PlainText.Page(null), "страницы нет — пустой текст");

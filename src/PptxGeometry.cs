@@ -62,6 +62,29 @@ namespace ExcelMerger
             return (int)v;
         }
 
+        // Пределы разметки абзаца: ST_TextIndent — ±51 206 400 EMU, spcPts (ST_TextSpacingPoint) —
+        // 0…158 400 сотых пункта. Значение вне пределов PowerPoint не «обрезает», а объявляет
+        // файл повреждённым.
+        public const long MaxTextIndentEmu = 51206400;
+        public const int MaxSpacingHundredths = 158400;
+
+        /// <summary>Отступ (pt) → EMU в пределах ST_TextIndent. Чистая — под тест.</summary>
+        public static long TextIndentEmu(double pt)
+        {
+            long emu = Emu(pt);
+            if (emu > MaxTextIndentEmu) return MaxTextIndentEmu;
+            return emu < -MaxTextIndentEmu ? -MaxTextIndentEmu : emu;
+        }
+
+        /// <summary>Шаг строк (pt) → сотые пункта в пределах spcPts; мусор — 0. Чистая — под тест.</summary>
+        public static int SpacingHundredths(double pt)
+        {
+            if (double.IsNaN(pt) || pt <= 0)
+                return 0;
+            double v = Math.Round(pt * 100, MidpointRounding.AwayFromZero);
+            return v > MaxSpacingHundredths ? MaxSpacingHundredths : (int)v;
+        }
+
         /// <summary>Размер в допустимых пределах слайда.</summary>
         public static double ClampSlidePt(double pt)
         {
@@ -182,7 +205,23 @@ namespace ExcelMerger
         /// </summary>
         public int FontHundredths(double pt)
         {
-            return PptxGeometry.Hundredths(FontResolver.ClampSizePt(pt) * _scale);
+            return PptxGeometry.Hundredths(FontResolver.ClampSizePt(pt, FontResolver.MaxSlideFontSize) * _scale);
+        }
+
+        /// <summary>
+        /// Отступ строки (pt) → EMU слайда: масштаб вписывания, как у рамок и кегля, — иначе на
+        /// уменьшенной странице строки уезжали бы вправо за рамку. Кламп — по пределам
+        /// разметки (ST_TextIndent). Чистая — под тест.
+        /// </summary>
+        public long IndentEmu(double pt)
+        {
+            return PptxGeometry.TextIndentEmu(pt * _scale);
+        }
+
+        /// <summary>Точный шаг строк (pt) → сотые пункта с масштабом вписывания. Чистая — под тест.</summary>
+        public int SpacingHundredths(double pt)
+        {
+            return PptxGeometry.SpacingHundredths(pt * _scale);
         }
     }
 }

@@ -420,7 +420,8 @@ namespace ExcelMerger
                     bool centeredBreak = centered[i] || centered[i - 1]; // центрированная строка — своим абзацем
                     bool indentBreak = lines[i].Left - bodyLeft > indentTol;
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
-                    bool listBreak = StartsWithListMarker(lines[i]);
+                    bool listBreak = StartsWithListMarker(lines[i])
+                        && !DashContinuation(lines[i - 1], lines[i], bodyRight, em);
                     bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft,
                         Math.Max(availRight, bodyRight), em);
                     // Автор уже сказал, где кончается абзац: две строки ОДНОГО блока разметки
@@ -1041,13 +1042,54 @@ namespace ExcelMerger
         /// Принадлежит ли слово строке: рамки перекрываются по вертикали не меньше чем на
         /// половину меньшей высоты. Устойчиво к тонкой пунктуации (её маленькая рамка целиком
         /// лежит внутри рамки текста, поэтому перекрытие большое относительно её высоты).
+        /// Сравнение — с ЯДРОМ строки (<see cref="CoreBand"/>), а не с объединением рамок:
+        /// одна высокая буквица или большая скобка растягивала объединение на несколько строк,
+        /// и все они сливались в одну с перемешанными словами.
         /// </summary>
         private static bool SameLine(Line line, PdfWord w)
         {
-            double overlap = Math.Min(line.Top, w.Top) - Math.Max(line.Bottom, w.Bottom);
-            double minH = Math.Min(line.Height, w.Height);
+            double top, bottom;
+            CoreBand(line, out top, out bottom);
+            double overlap = Math.Min(top, w.Top) - Math.Max(bottom, w.Bottom);
+            double minH = Math.Min(top - bottom, w.Height);
             if (minH <= 0) minH = 1;
             return overlap >= SameLineFactor * minH;
+        }
+
+        // Слово выше этой доли типичной высоты слов строки — уже не строка, а элемент поверх
+        // нескольких строк (буквица, скобка). Вдвое: слово с выносными элементами вверх и
+        // вниз («Тру») почти вдвое выше слова из одних строчных («ее»), а буквица на две
+        // строки — уже выше двух.
+        private const double CoreHeightFactor = 2.0;
+
+        /// <summary>
+        /// Вертикальная полоса строки по словам не выше <see cref="CoreHeightFactor"/>
+        /// НИЖНЕЙ медианы высот её слов. Нижней — чтобы строка из одной буквицы и одного
+        /// слова опиралась на слово, а не на буквицу.
+        /// </summary>
+        private static void CoreBand(Line line, out double top, out double bottom)
+        {
+            List<PdfWord> words = line.Words;
+            var heights = new List<double>(words.Count);
+            for (int i = 0; i < words.Count; i++)
+                heights.Add(words[i].Height);
+            heights.Sort();
+            double limit = CoreHeightFactor * heights[(heights.Count - 1) / 2];
+            top = double.MinValue;
+            bottom = double.MaxValue;
+            for (int i = 0; i < words.Count; i++)
+            {
+                PdfWord w = words[i];
+                if (w.Height > limit && limit > 0)
+                    continue;
+                if (w.Top > top) top = w.Top;
+                if (w.Bottom < bottom) bottom = w.Bottom;
+            }
+            if (top < bottom) // все слова выше предела (нулевая медиана) — объединение, как раньше
+            {
+                top = line.Top;
+                bottom = line.Bottom;
+            }
         }
 
         internal static List<Line> ToLines(IList<PdfWord> words)
@@ -1208,6 +1250,28 @@ namespace ExcelMerger
                 if (!char.IsDigit(s[i]))
                     return false;
             return true;
+        }
+
+        /// <summary>
+        /// Строка, начатая тире, — продолжение фразы, а не пункт списка: в русском тексте тире
+        /// ещё и знак препинания, и перенос нередко ставит его в начало строки («…сказал он\n
+        /// — и вышел»). Признак переноса: предыдущая строка дошла до правого поля (её
+        /// оборвала ширина колонки, а не автор) и не кончилась «:», «;» или «.», которыми
+        /// заканчиваются вводная фраза и пункты списка. Только для тире — «•» и «1.»
+        /// знаками препинания не бывают. Чистая — под тест.
+        /// </summary>
+        private static bool DashContinuation(Line prev, Line cur, double bodyRight, double em)
+        {
+            string first = cur.Words[0].Text;
+            if (string.IsNullOrEmpty(first) || !ListMarker.IsDash(first[0]))
+                return false;
+            if (prev.Right < bodyRight - 0.5 * em)
+                return false; // короткая строка — её оборвал автор: дальше настоящий пункт
+            string last = (prev.Words[prev.Words.Count - 1].Text ?? "").TrimEnd();
+            if (last.Length == 0)
+                return false;
+            char end = last[last.Length - 1];
+            return end != ':' && end != ';' && end != '.';
         }
 
         /// <summary>Начинается ли строка с маркера списка («1.», «•»). По первым словам (маркеру

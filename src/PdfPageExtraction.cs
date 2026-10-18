@@ -61,9 +61,11 @@ namespace ExcelMerger
             // экземпляра в порядке (устройство кэша ниже, второй дубль наследует).
             Dictionary<string, int[]> rotationsBySource = BuildRotations(order);
 
-            // Извлечь текст каждого источника (весь файл); кэш по пути. Прогресс — по долям
-            // источников (внутри источника — по его страницам).
-            var bySource = new Dictionary<string, List<PdfPageText>>(StringComparer.OrdinalIgnoreCase);
+            // Извлечь текст каждого источника — только ВЫБРАННЫЕ страницы (две из пятисот не
+            // должны стоить разбора и декодирования картинок остальных); кэш по пути и индексу.
+            // Прогресс — по долям источников (внутри источника — по его страницам).
+            Dictionary<string, HashSet<int>> neededBySource = NeededPages(order);
+            var bySource = new Dictionary<string, Dictionary<int, PdfPageText>>(StringComparer.OrdinalIgnoreCase);
             for (int si = 0; si < totalSources; si++)
             {
                 string src = sources[si];
@@ -77,16 +79,23 @@ namespace ExcelMerger
                 int[] rotations = null;
                 if (rotationsBySource != null)
                     rotationsBySource.TryGetValue(src, out rotations);
-                bySource[src] = PdfTextExtract.Extract(src, extractCb, rotations, cancelled, mode);
+                HashSet<int> needed;
+                neededBySource.TryGetValue(src, out needed);
+                var byIndex = new Dictionary<int, PdfPageText>();
+                foreach (PdfPageText page in PdfTextExtract.Extract(src, extractCb, rotations, cancelled, mode,
+                    needed ?? new HashSet<int>()))
+                    byIndex[page.PageIndex] = page;
+                bySource[src] = byIndex;
             }
 
             var pages = new List<PdfPageText>(order.Count);
             foreach (PdfPageRef reference in order)
             {
-                List<PdfPageText> sourcePages;
+                Dictionary<int, PdfPageText> sourcePages;
+                PdfPageText found = null;
                 if (reference == null || string.IsNullOrEmpty(reference.SourcePath) ||
                     !bySource.TryGetValue(reference.SourcePath, out sourcePages) ||
-                    reference.PageIndex < 0 || reference.PageIndex >= sourcePages.Count)
+                    !sourcePages.TryGetValue(reference.PageIndex, out found))
                 {
                     string name = reference == null ? "?" :
                         Path.GetFileName(reference.SourcePath ?? "?");
@@ -94,7 +103,7 @@ namespace ExcelMerger
                     throw new MergeException(string.Format(Loc.T("err.pdf.pageGone"),
                         name, number));
                 }
-                pages.Add(sourcePages[reference.PageIndex]);
+                pages.Add(found);
             }
 
             pagesWithText = 0;
@@ -149,6 +158,42 @@ namespace ExcelMerger
                     result[r.SourcePath] = map = grown;
                 }
                 map[r.PageIndex] = r.Rotation;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Поворот, с которым страница ссылки r РЕАЛЬНО извлекается по карте
+        /// <see cref="BuildRotations"/> (дубль наследует поворот первого экземпляра). Подложки
+        /// слайдов обязаны рендериться с тем же углом: иначе дубль, повёрнутый только в копии,
+        /// получал текст неповёрнутой страницы поверх повёрнутой подложки. Чистая — под тест.
+        /// </summary>
+        internal static int EffectiveRotation(Dictionary<string, int[]> rotations, PdfPageRef r)
+        {
+            int[] map;
+            if (rotations == null || r == null || r.SourcePath == null ||
+                !rotations.TryGetValue(r.SourcePath, out map))
+                return 0;
+            return PageRotation.At(map, r.PageIndex);
+        }
+
+        /// <summary>
+        /// Какие страницы (индексы с нуля) нужны из каждого источника: SourcePath → набор.
+        /// Регистр пути не важен, как и везде в этом слое. Чистая — под тест.
+        /// </summary>
+        internal static Dictionary<string, HashSet<int>> NeededPages(IList<PdfPageRef> order)
+        {
+            var result = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+            if (order == null)
+                return result;
+            foreach (PdfPageRef r in order)
+            {
+                if (r == null || string.IsNullOrEmpty(r.SourcePath) || r.PageIndex < 0)
+                    continue;
+                HashSet<int> set;
+                if (!result.TryGetValue(r.SourcePath, out set))
+                    result[r.SourcePath] = set = new HashSet<int>();
+                set.Add(r.PageIndex);
             }
             return result;
         }

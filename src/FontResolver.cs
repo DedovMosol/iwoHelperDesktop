@@ -15,7 +15,11 @@ namespace ExcelMerger
         public const string DefaultFontName = "Times New Roman";
         public const double DefaultFontSize = 12;
         public const double MinFontSize = 5;   // защита от мусорного кегля из PDF
-        public const double MaxFontSize = 72;
+        public const double MaxFontSize = 72;  // потоковый документ (Word): выше — почти всегда мусор
+        // Слайд: заголовки в 80–200 pt там обычное дело. Предел — сам формат PowerPoint
+        // (4000 pt, см. PptxGeometry.Hundredths); Word такого кегля не примет (максимум 1638),
+        // поэтому этот предел только для слайдов.
+        public const double MaxSlideFontSize = 4000;
 
         /// <summary>
         /// Имя шрифта для рана: если шрифт источника установлен в системе — оставляем его, иначе
@@ -78,10 +82,25 @@ namespace ExcelMerger
             return set;
         }
 
-        /// <summary>Кегль рана в допустимых пределах; иначе — по умолчанию. Чистая — под тест.</summary>
+        /// <summary>Кегль рана для документа: <see cref="ClampSizePt(double, double)"/> с пределом Word.</summary>
         internal static double ClampSizePt(double sizePt)
         {
-            return sizePt >= MinFontSize && sizePt <= MaxFontSize ? sizePt : DefaultFontSize;
+            return ClampSizePt(sizePt, MaxFontSize);
+        }
+
+        /// <summary>
+        /// Кегль рана, ПРИЖАТЫЙ к пределам [MinFontSize, maxPt]. Раньше всё вне пределов
+        /// становилось кеглем по умолчанию — заголовок в 80 pt и подпись в 4,5 pt выходили
+        /// одинаковыми 12 pt, хуже любого округления к границе. Умолчание — только когда
+        /// кегля нет вовсе (NaN, ноль, отрицательный). Чистая — под тест.
+        /// </summary>
+        internal static double ClampSizePt(double sizePt, double maxPt)
+        {
+            if (double.IsNaN(sizePt) || sizePt <= 0)
+                return DefaultFontSize;
+            if (sizePt < MinFontSize)
+                return MinFontSize;
+            return sizePt > maxPt ? maxPt : sizePt;
         }
     }
 }

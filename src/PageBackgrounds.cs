@@ -62,6 +62,7 @@ namespace ExcelMerger
             }
 
             int requestedDpi = Dpi(order.Count);
+            int[] rotations = SlotRotations(order);
             long spent = 0;
             string root = Path.Combine(Path.GetTempPath(),
                 "iwo_bg_" + Guid.NewGuid().ToString("N"));
@@ -136,7 +137,7 @@ namespace ExcelMerger
                             if (pageNumber < run.Item1 || pageNumber > run.Item2)
                                 continue;
                             pendingSlots.Remove(slot);
-                            ProcessSlot(order, slot, sizes, fileByPage, encoded, result,
+                            ProcessSlot(order, slot, rotations[slot], sizes, fileByPage, encoded, result,
                                 ref spent, report, ref done, progress, cancelled);
                         }
                         try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
@@ -164,7 +165,24 @@ namespace ExcelMerger
             return new BackgroundRenderResult(result, report);
         }
 
-        private static void ProcessSlot(IList<PdfPageRef> order, int slot,
+        /// <summary>
+        /// Поворот подложки каждого слота — по ТОМУ ЖЕ правилу, по которому повёрнут текст
+        /// слайда (<see cref="PdfPageExtraction.EffectiveRotation"/>: дубль страницы делит одно
+        /// извлечение с первым экземпляром). Свой угол у копии давал повёрнутую подложку под
+        /// неповёрнутым текстом и чужими размерами слайда. Чистая — под тест.
+        /// </summary>
+        internal static int[] SlotRotations(IList<PdfPageRef> order)
+        {
+            var result = new int[order == null ? 0 : order.Count];
+            if (result.Length == 0)
+                return result;
+            Dictionary<string, int[]> map = PdfPageExtraction.BuildRotations(order);
+            for (int i = 0; i < result.Length; i++)
+                result[i] = PdfPageExtraction.EffectiveRotation(map, order[i]);
+            return result;
+        }
+
+        private static void ProcessSlot(IList<PdfPageRef> order, int slot, int rotation,
             IList<PdfPageInfo> sizes, IDictionary<int, string> files,
             IDictionary<string, Background> encoded, Background[] result,
             ref long spent, BackgroundRenderReport report, ref int done,
@@ -179,7 +197,7 @@ namespace ExcelMerger
                 report.Failed++;
                 return;
             }
-            string cacheKey = page.PageIndex + "|" + page.Rotation;
+            string cacheKey = page.PageIndex + "|" + rotation;
             Background cached;
             if (encoded.TryGetValue(cacheKey, out cached))
             {
@@ -202,7 +220,7 @@ namespace ExcelMerger
                 return;
             }
             bool failed, memoryDenied;
-            Background background = Encode(raster, page.Rotation,
+            Background background = Encode(raster, rotation,
                 out failed, out memoryDenied);
             if (memoryDenied)
                 report.BudgetExhausted = true;

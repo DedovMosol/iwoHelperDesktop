@@ -151,6 +151,8 @@ namespace ExcelMerger
         {
             private readonly OoxmlPackage _package;
             private readonly Dictionary<string, string> _byHash = new Dictionary<string, string>(StringComparer.Ordinal);
+            // Отпечаток ИСХОДНОГО PNG → часть, в которую он уже лёг (после выбора кодировки).
+            private readonly Dictionary<string, string> _bySourceHash = new Dictionary<string, string>(StringComparer.Ordinal);
             // Один считатель отпечатков на весь пакет: картинок бывают сотни, и заводить
             // криптопровайдер на каждую — лишняя работа и лишние дескрипторы.
             private readonly System.Security.Cryptography.SHA1 _sha = System.Security.Cryptography.SHA1.Create();
@@ -170,10 +172,7 @@ namespace ExcelMerger
             {
                 if (data == null || data.Length == 0)
                     return null;
-                // Отпечаток здесь не про безопасность, а про равенство байтов: нужен признак
-                // «эту картинку уже клали». Длина в ключе — дешёвая страховка от совпадения.
-                string hash = data.Length.ToString(CultureInfo.InvariantCulture) + ":"
-                    + Convert.ToBase64String(_sha.ComputeHash(data));
+                string hash = Hash(data);
                 string part;
                 if (_byHash.TryGetValue(hash, out part))
                     return part;
@@ -182,6 +181,34 @@ namespace ExcelMerger
                 _package.AddBinary(part, data, jpeg ? PptxParts.CtJpeg : PptxParts.CtPng);
                 _byHash[hash] = part;
                 return part;
+            }
+
+            /// <summary>
+            /// Часть для PNG из разбора — в более лёгкой из кодировок (<see cref="RasterUtil.PreferSmaller"/>).
+            /// Выбор запоминается по отпечатку ИСХОДНЫХ байтов: логотип на сотне слайдов иначе
+            /// сотню раз декодировался и пережимался в JPEG только затем, чтобы дедупликация
+            /// по результату выбросила 99 копий.
+            /// </summary>
+            public string AddPreferSmaller(byte[] png)
+            {
+                if (png == null || png.Length == 0)
+                    return null;
+                string source = Hash(png);
+                string part;
+                if (_bySourceHash.TryGetValue(source, out part))
+                    return part;
+                bool jpeg;
+                part = Add(RasterUtil.PreferSmaller(png, out jpeg), jpeg);
+                _bySourceHash[source] = part;
+                return part;
+            }
+
+            // Отпечаток здесь не про безопасность, а про равенство байтов: нужен признак
+            // «эту картинку уже клали». Длина в ключе — дешёвая страховка от совпадения.
+            private string Hash(byte[] data)
+            {
+                return data.Length.ToString(CultureInfo.InvariantCulture) + ":"
+                    + Convert.ToBase64String(_sha.ComputeHash(data));
             }
 
             public void Dispose()
@@ -203,7 +230,9 @@ namespace ExcelMerger
             private readonly Background _background;
             private bool _backgroundPlaced; // подложка действительно попала на слайд
             private readonly List<string> _rels = new List<string>();
-            private readonly Dictionary<string, string> _relIdByTarget = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // Ключи сравниваются ТОЧНО: путь и запрос адреса чувствительны к регистру
+            // («/Doc?id=A» и «/doc?id=a» — разные ссылки), а имена частей пакета мы задаём сами.
+            private readonly Dictionary<string, string> _relIdByTarget = new Dictionary<string, string>(StringComparer.Ordinal);
             private readonly StringBuilder _shapes = new StringBuilder(4096);
             private int _shapeId = FirstShapeId;
             private int _relId = 2; // rId1 занят макетом слайда
@@ -396,7 +425,7 @@ namespace ExcelMerger
             /// нет (строки разделены явными переводами), и строки обязаны встать ровно с тем
             /// шагом, с каким стояли, иначе низ абзаца уедет от того, что под ним нарисовано.
             /// </summary>
-            private static string ParagraphProps(OcrParagraph paragraph, OcrAlignment alignment,
+            private string ParagraphProps(OcrParagraph paragraph, OcrAlignment alignment,
                 double firstIndentPt, double lineSpacingPt)
             {
                 string align;
@@ -408,13 +437,17 @@ namespace ExcelMerger
                 }
                 var sb = new StringBuilder(128);
                 sb.Append("<a:pPr");
+                // Отступ и шаг — в координатах СЛАЙДА: рамки и кегль вписанной страницы уже
+                // уменьшены масштабом, и неуменьшенный отступ уводил бы строки за рамку, а шаг
+                // раздвигал бы их ниже края. Порог шума — в пунктах источника.
                 if (firstIndentPt > MinIndentPt)
-                    sb.Append(" marL=\"0\" indent=\"").Append(PptxParts.Num(PptxGeometry.Emu(firstIndentPt))).Append('"');
+                    sb.Append(" marL=\"0\" indent=\"").Append(PptxParts.Num(_fit.IndentEmu(firstIndentPt))).Append('"');
                 sb.Append(" algn=\"").Append(align).Append("\">");
                 // Порядок детей задан схемой: межстрочный интервал раньше маркера.
-                if (lineSpacingPt > 0)
+                int spacing = _fit.SpacingHundredths(lineSpacingPt);
+                if (spacing > 0)
                     sb.Append("<a:lnSpc><a:spcPts val=\"")
-                      .Append(PptxParts.Num((int)Math.Round(lineSpacingPt * 100))).Append("\"/></a:lnSpc>");
+                      .Append(PptxParts.Num(spacing)).Append("\"/></a:lnSpc>");
                 if (paragraph.ListKind != ListKind.None)
                     sb.Append("<a:buNone/>");
                 sb.Append("</a:pPr>");
@@ -478,7 +511,7 @@ namespace ExcelMerger
                         sb.Length = 0;
                         anyVisible = false;
                     }
-                    if (IsFillerRule(run.Text))
+                    if (SkipFiller(run))
                         continue;
                     string text = XmlText.Sanitize(run.Text);
                     if (text.Length == 0)
@@ -498,6 +531,17 @@ namespace ExcelMerger
                 return any ? result : new List<string>();
             }
 
+            /// <summary>
+            /// Пропустить ран-прочерк? Только если страница разобрана для ПОТОКОВОГО вывода:
+            /// лишь там одиночная линия превращается в слово из «_» (AddRuleWords). Разбор для
+            /// слайда прочерков не синтезирует, и «______» на нём — набранный текст бланка,
+            /// который подложка не несёт (она без текста): выбросить его — потерять поле.
+            /// </summary>
+            private bool SkipFiller(OcrRun run)
+            {
+                return _page.LayoutMode == PageLayoutMode.Document && IsFillerRule(run.Text);
+            }
+
             private string Runs(OcrParagraph paragraph)
             {
                 if (paragraph.Runs == null || paragraph.Runs.Count == 0)
@@ -506,7 +550,7 @@ namespace ExcelMerger
                 bool anyVisible = false;
                 foreach (OcrRun run in paragraph.Runs)
                 {
-                    if (IsFillerRule(run.Text))
+                    if (SkipFiller(run))
                         continue;
                     string text = XmlText.Sanitize(run.Text);
                     if (text.Length == 0)
@@ -537,7 +581,9 @@ namespace ExcelMerger
                     sb.Append(" b=\"1\"");
                 if (run.Italic)
                     sb.Append(" i=\"1\"");
-                if (run.Underline)
+                // Подчёркивание — это линия линовки PDF, а подложка рисует всю графику страницы,
+                // включая её. Поверх подложки атрибут дал бы вторую черту чуть в стороне.
+                if (run.Underline && !_backgroundPlaced)
                     sb.Append(" u=\"sng\"");
                 // Надстрочный и подстрочный задаются смещением базовой линии в тысячных долях
                 // процента — теми же числами, что показывает сам PowerPoint (30% и −25%).
@@ -566,7 +612,7 @@ namespace ExcelMerger
                 if (paragraph.Runs != null)
                     foreach (OcrRun run in paragraph.Runs)
                         if (run.FontSizePt > 0)
-                            return FontResolver.ClampSizePt(run.FontSizePt);
+                            return FontResolver.ClampSizePt(run.FontSizePt, FontResolver.MaxSlideFontSize);
                 return FontResolver.DefaultFontSize;
             }
 
@@ -703,8 +749,7 @@ namespace ExcelMerger
             {
                 // Картинки приходят из разбора в PNG. Для фотографии это втрое тяжелее JPEG,
                 // а колода из полусотни слайдов на фотографиях распухала на десятки мегабайт.
-                bool jpeg;
-                string part = _media.Add(RasterUtil.PreferSmaller(image.Png, out jpeg), jpeg);
+                string part = _media.AddPreferSmaller(image.Png);
                 if (part == null)
                     return;
                 string relId = ImageRel(part);
@@ -750,13 +795,16 @@ namespace ExcelMerger
                 return Rel(mediaPart, PptxParts.RelImage, "../media/" + file, false);
             }
 
-            /// <summary>Связь на внешний адрес; null — ссылки нет или она пустая.</summary>
+            /// <summary>
+            /// Связь на внешний адрес; null — ссылки нет, она пустая или небезопасная. Адрес
+            /// проверяется и здесь, у самой внешней связи, тем же правилом, что при извлечении
+            /// (<see cref="PdfTextExtract.SafeLinkUri"/>): писатель не обязан верить, что страницы
+            /// пришли только оттуда.
+            /// </summary>
             private string HyperlinkRel(string uri)
             {
-                if (string.IsNullOrEmpty(uri))
-                    return null;
-                string trimmed = uri.Trim();
-                return trimmed.Length == 0 ? null : Rel("uri:" + trimmed, PptxParts.RelHyperlink, trimmed, true);
+                string safe = PdfTextExtract.SafeLinkUri(uri);
+                return safe == null ? null : Rel("uri:" + safe, PptxParts.RelHyperlink, safe, true);
             }
 
             /// <summary>Связь по ключу: повторный вызов с тем же ключом отдаёт прежний идентификатор.</summary>

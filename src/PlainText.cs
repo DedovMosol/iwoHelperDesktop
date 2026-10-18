@@ -8,7 +8,7 @@ namespace ExcelMerger
     ///
     /// Наивное «склеить абзацы» теряет таблицы: разбор УБИРАЕТ слова таблиц из потока
     /// абзацев и складывает их в ячейки (см. PdfTextExtract), поэтому абзацы и таблицы
-    /// приходится сводить обратно — по вертикали страницы, как их видит читатель.
+    /// приходится сводить обратно — в порядке чтения страницы, как их видит читатель.
     ///
     /// Ячейки строки разделяются табуляцией: так строка вставляется в Excel или Calc
     /// готовой таблицей, а не одной склеенной ячейкой. Страницы разделяются символом
@@ -22,46 +22,44 @@ namespace ExcelMerger
         /// <summary>Разделитель страниц — перевод страницы, как у pdftotext.</summary>
         public const string PageSeparator = "\f";
 
-        /// <summary>Блок страницы в порядке чтения: либо абзац, либо таблица.</summary>
-        private struct Block
-        {
-            public double Top;
-            public double Left;
-            public OcrParagraph Paragraph;
-            public OcrTable Table;
-        }
-
         /// <summary>
-        /// Текст одной страницы: абзацы и таблицы в порядке чтения (сверху вниз, при равном
-        /// верхе — слева направо). Пустые блоки отбрасываются. Чистая — под тест.
+        /// Текст одной страницы: абзацы и таблицы в порядке чтения страницы
+        /// (<see cref="PageBlocks.OrderedItems"/>: XY-разрез, левая колонка целиком раньше
+        /// правой). Простая сортировка по верху чередовала строки двух колонок
+        /// («Л1, П1, Л2, П2») — так же, как порядок чтения, текст обязан идти и в .txt, и в
+        /// Сравнении. Пустые блоки и картинки отбрасываются. Чистая — под тест.
         /// </summary>
         public static string Page(PdfPageText page)
         {
             if (page == null)
                 return "";
-            var blocks = new List<Block>();
-            if (page.Paragraphs != null)
-                foreach (OcrParagraph p in page.Paragraphs)
-                    blocks.Add(new Block { Top = p.TopPt, Left = p.LeftPt, Paragraph = p });
-            if (page.Tables != null)
-                foreach (OcrTable t in page.Tables)
-                    blocks.Add(new Block { Top = t.TopPt, Left = t.LeftPt, Table = t });
-
-            // Ось Y в PDF направлена ВВЕРХ: больший Top — выше на странице, значит раньше.
-            blocks.Sort(delegate(Block a, Block b)
+            var parts = new List<string>();
+            foreach (PageBlocks.PageItem item in PageBlocks.OrderedItems(page))
             {
-                int byTop = b.Top.CompareTo(a.Top);
-                return byTop != 0 ? byTop : a.Left.CompareTo(b.Left);
-            });
-
-            var parts = new List<string>(blocks.Count);
-            foreach (Block b in blocks)
-            {
-                string text = b.Table != null ? Table(b.Table) : (b.Paragraph.Text ?? "");
-                if (text.Trim().Length > 0)
-                    parts.Add(text);
+                if (!item.IsBand)
+                {
+                    AddBlock(parts, item.Single);
+                    continue;
+                }
+                // Полоса «бок о бок» — колонки по очереди, как их читает человек.
+                foreach (List<PageBlocks.Block> column in item.Columns)
+                    foreach (PageBlocks.Block block in column)
+                        AddBlock(parts, block);
             }
             return string.Join("\n\n", parts.ToArray());
+        }
+
+        private static void AddBlock(List<string> parts, PageBlocks.Block block)
+        {
+            string text;
+            if (block.Table != null)
+                text = Table(block.Table);
+            else if (block.Paragraph != null)
+                text = block.Paragraph.Text ?? "";
+            else
+                return; // картинка — в тексте её нет
+            if (text.Trim().Length > 0)
+                parts.Add(text);
         }
 
         /// <summary>
