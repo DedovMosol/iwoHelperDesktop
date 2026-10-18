@@ -120,17 +120,20 @@ try {
     # Release: create if missing; otherwise update the artifacts and notes.
     & gh release view $tag 1>$null 2>$null
     $releaseExists = ($LASTEXITCODE -eq 0)
+    # Every gh call is checked on its own: $LASTEXITCODE holds only the LAST command, so a
+    # failed upload followed by a successful edit used to be reported as a published release.
     if (-not $releaseExists) {
         & gh release create $tag @assets --title $tag --notes-file $notes
+        if ($LASTEXITCODE -ne 0) { throw "gh release create $tag failed (exit $LASTEXITCODE): release not published" }
     } else {
         & gh release upload $tag @assets --clobber
+        if ($LASTEXITCODE -ne 0) { throw "gh release upload $tag failed (exit $LASTEXITCODE): assets were NOT replaced" }
         & gh release edit $tag --notes-file $notes
+        if ($LASTEXITCODE -ne 0) { throw "gh release edit $tag failed (exit $LASTEXITCODE): assets uploaded, notes NOT updated" }
     }
-    $rc = $LASTEXITCODE
 }
 finally {
     $ErrorActionPreference = $eap
 }
-if ($rc -ne 0) { throw 'gh release failed' }
 Write-Host "OK: release $tag published (portable + installer, x64 + x86)."
 exit 0

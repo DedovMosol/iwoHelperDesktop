@@ -94,6 +94,7 @@ namespace ExcelMerger
             Ui.RunWorker(delegate
             {
                 StartupSweep.Sweep(StartupSweep.DirectoriesToSweep(startup), DateTime.UtcNow);
+                StartupSweep.SweepTempCopies(Path.GetTempPath(), DateTime.UtcNow);
             });
             // Проверка обновлений идёт ФОНОМ и показа окна не задерживает: запрос уходит
             // с таймаутом 10 с, а ответ доставляется в UI-поток уже работающего хаба.

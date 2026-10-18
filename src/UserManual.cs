@@ -54,48 +54,12 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Распаковать при необходимости и открыть в программе, назначенной для .docx.
-        /// Ошибку показываем диалогом: это явное действие пользователя, молчать в ответ на
-        /// нажатие нельзя.
+        /// Распаковать при необходимости и открыть в программе, назначенной для .docx
+        /// (правила распаковки и ошибок — в <see cref="EmbeddedFile"/>).
         /// </summary>
         public static void Open(IWin32Window owner, string title)
         {
-            string path = FilePath;
-            try
-            {
-                Extract(path);
-            }
-            catch (Exception ex)
-            {
-                // Не распаковалось (нет прав, нет места, копия открыта в Word). Если прошлая
-                // копия на месте — она ничем не хуже, открываем её и молчим.
-                if (!File.Exists(path))
-                {
-                    Dialogs.Error(owner, title, Loc.T("common.err.openFailed"), ex.Message);
-                    return;
-                }
-            }
-            Ui.OpenPathOrWarn(owner, title, path);
-        }
-
-        /// <summary>
-        /// Положить документ на диск. Перезаписываем, только если файла нет или он другого
-        /// размера (обновилась версия программы): лишняя запись упала бы на ровном месте,
-        /// если копия сейчас открыта в Word.
-        /// </summary>
-        private static void Extract(string path)
-        {
-            using (Stream source = Assembly.GetExecutingAssembly().GetManifestResourceStream(ResourceName))
-            {
-                if (source == null)
-                    throw new FileNotFoundException(ResourceName);
-                var existing = new FileInfo(path);
-                if (existing.Exists && existing.Length == source.Length)
-                    return;
-                Directory.CreateDirectory(AppPaths.Root);
-                using (var target = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
-                    source.CopyTo(target);
-            }
+            EmbeddedFile.Open(owner, title, ResourceName, FilePath);
         }
     }
 }

@@ -22,6 +22,18 @@ namespace ExcelMerger
             @"^(?<target>.+)\.iwo-gs-(?<id>[0-9a-fA-F]{32})\.bak$",
             RegexOptions.Compiled);
 
+        // Копии PDF во %TEMP%, которые могут быть РАСШИФРОВАННЫМИ: страница защищённого файла
+        // для Ghostscript (PageRasterizer.RenderPage), собранный документ PdfOpsForm и папка
+        // подложек PageBackgrounds (внутри — decrypted.pdf из RenderPagesWithoutText). Свои
+        // finally их удаляют, но аварийный выход оставлял бы открытый текст защищённого
+        // документа в общей папке навсегда. Имена — ровно те, что создаёт код, чужое не трогаем.
+        private static readonly Regex TempCopyFile = new Regex(
+            @"^iwo_(?:pg_dec|ops)_[0-9a-fA-F]{32}\.pdf$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex TempCopyDir = new Regex(
+            @"^iwo_bg_[0-9a-fA-F]{32}$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         /// <summary>
         /// Восстановить прерванные транзакции и удалить старые временные файлы. Возвращает
         /// число удалённых файлов (восстановленный backup удалением не считается).
@@ -88,17 +100,27 @@ namespace ExcelMerger
                     }
                     resolved = true;
                 }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
+                // Живой журнал (sharing violation), нет прав, странное имя — любой сбой
+                // касается только этой транзакции; остальные разбираем дальше.
+                catch { }
                 finally
                 {
                     if (held != null)
                         try { held.Dispose(); } catch { }
                 }
+                // Сбой удаления ОДНОГО журнала (занят антивирусом, нет прав) раньше вылетал из
+                // цикла и обрывал уборку всей папки: остальные журналы не восстанавливались.
+                // Журнал уже разобран, его повторный разбор при следующем запуске безопасен.
                 if (resolved)
-                    removed += DeleteOne(marker);
+                    removed += TryDeleteOne(marker);
             }
             return removed;
+        }
+
+        private static int TryDeleteOne(string path)
+        {
+            try { return DeleteOne(path); }
+            catch { return 0; }
         }
 
         private static int RecoverLooseBackups(IEnumerable<string> files, DateTime nowUtc)
@@ -152,6 +174,65 @@ namespace ExcelMerger
                 catch { }
             }
             return removed;
+        }
+
+        /// <summary>
+        /// Удалить старые (не моложе <see cref="MinAge"/>) временные копии PDF из tempRoot —
+        /// см. <see cref="TempCopyFile"/>. Корень параметром, чтобы тест не трогал настоящий
+        /// %TEMP%. Возвращает число удалённых файлов и папок; сбои молчат, как и вся уборка.
+        /// </summary>
+        internal static int SweepTempCopies(string tempRoot, DateTime nowUtc)
+        {
+            int removed = 0;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(tempRoot) || !Directory.Exists(tempRoot))
+                    return 0;
+                foreach (string file in Directory.EnumerateFiles(tempRoot, "iwo_*.pdf"))
+                {
+                    if (!TempCopyFile.IsMatch(Path.GetFileName(file)))
+                        continue;
+                    try
+                    {
+                        if (IsOld(file, nowUtc))
+                            removed += DeleteOne(file);
+                    }
+                    catch { }
+                }
+                foreach (string dir in Directory.EnumerateDirectories(tempRoot, "iwo_bg_*"))
+                {
+                    if (!TempCopyDir.IsMatch(Path.GetFileName(dir)))
+                        continue;
+                    try
+                    {
+                        // Возраст папки — по САМОМУ свежему, что в ней есть: время самой папки
+                        // не меняется, пока долгий рендер пишет во вложенные src*\run*.
+                        if (nowUtc - NewestWriteUtc(dir) < MinAge)
+                            continue;
+                        Directory.Delete(dir, true);
+                        removed++;
+                    }
+                    catch { }
+                }
+            }
+            catch
+            {
+                // Недоступный %TEMP% не должен задержать или сорвать запуск.
+            }
+            return removed;
+        }
+
+        private static DateTime NewestWriteUtc(string dir)
+        {
+            DateTime newest = Directory.GetLastWriteTimeUtc(dir);
+            foreach (string entry in Directory.EnumerateFileSystemEntries(dir, "*",
+                SearchOption.AllDirectories))
+            {
+                DateTime written = File.GetLastWriteTimeUtc(entry);
+                if (written > newest)
+                    newest = written;
+            }
+            return newest;
         }
 
         private static bool IsOld(string file, DateTime nowUtc)

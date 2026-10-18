@@ -101,8 +101,12 @@ namespace ExcelMerger
             if (h > area.Height) h = area.Height;
             int x = desired.X;
             int y = desired.Y;
-            if (x + w > area.Right) x = area.Right - w;
-            if (y + h > area.Bottom) y = area.Bottom - h;
+            // Сравниваем с «Right − w», а не «x + w» с Right: x приходит из файла настроек, и
+            // на испорченной строке (x = 2147483000) сумма переполнялась в минус, проверка
+            // молчала, и окно навсегда открывалось за экраном. Разность здесь безопасна:
+            // w уже не больше ширины рабочей области.
+            if (x > area.Right - w) x = area.Right - w;
+            if (y > area.Bottom - h) y = area.Bottom - h;
             if (x < area.Left) x = area.Left;
             if (y < area.Top) y = area.Top;
             return new Rectangle(x, y, w, h);

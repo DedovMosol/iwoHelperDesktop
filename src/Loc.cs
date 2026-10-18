@@ -645,6 +645,11 @@ namespace ExcelMerger
                 "Text and vectors are preserved. A signed PDF’s signature becomes invalid.");
             A("err.output.sameSource", "Результат нельзя записать поверх исходного файла.",
                 "The output cannot be written over a source file.");
+            // Рядом с результатом создаются временные файлы с длинным суффиксом, и Windows не
+            // даёт им путь длиннее 259 символов — называем причину и предел, а не «нет пути».
+            A("err.output.pathTooLong",
+                "Путь результата слишком длинный: {0} симв., а допустимо не больше {1}. Сократите имя файла или выберите папку ближе к корню диска.",
+                "The output path is too long: {0} characters, at most {1} are allowed. Shorten the file name or choose a folder closer to the drive root.");
             // err.pdf.* — сообщения PDF-сервисов (объединение/разделение/загрузка), показываются в диалогах
             A("err.pdf.noPages", "Нет страниц для объединения.", "No pages to merge.");
             A("err.pdf.fileBusy", "Файл PDF недоступен для записи — возможно, открыт в другой программе.",

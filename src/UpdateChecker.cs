@@ -96,13 +96,48 @@ namespace ExcelMerger
         /// </summary>
         public static string FetchWhatsNew(string version, string lang)
         {
-            try { return ExtractNotes(Download(WhatsNewUrl, "application/json"), version, lang); }
+            try { return DialogNotes(Download(WhatsNewUrl, "application/json"), version, lang); }
             catch { return ""; }
+        }
+
+        /// <summary>
+        /// Сводка для ОКНА ОБНОВЛЕНИЯ: разбор плюс обрезка до <see cref="MaxNoteLines"/>.
+        /// Обрезка живёт здесь, а не в <see cref="ExtractNotes"/>: тот же разбор кормит
+        /// локальное окно «Что нового», которое прокручивается и обязано показать все пункты.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static string DialogNotes(string json, string version, string lang)
+        {
+            return LimitNotes(ExtractNotes(json, version, lang));
+        }
+
+        /// <summary>
+        /// Можно ли идти в сеть при запуске. Только по ДОСТОВЕРНОМУ снимку настроек: файл
+        /// есть, но не прочитан (занят антивирусом, нет прав) — значит, отказа пользователя
+        /// мы просто не видим, и defaults с их «проверять» подменили бы его выбор. Молча
+        /// пропустить одну проверку дешевле, чем сходить в сеть вопреки отказу. Чистая — под тест.
+        /// </summary>
+        internal static bool AllowsStartupCheck(bool trustedSnapshot, UserSettings settings)
+        {
+            return trustedSnapshot && settings != null && settings.UpdateCheckOnStart;
+        }
+
+        /// <summary>
+        /// Протоколы для запроса. На net48 значение по умолчанию — SystemDefault (0): ОС сама
+        /// выбирает TLS 1.2/1.3, и «|= Tls12» превратил бы его в ЯВНЫЙ список из одного 1.2,
+        /// отключив 1.3 всему процессу. Tls12 добавляем только к уже явному списку — там его
+        /// может не быть (старые настройки реестра/конфигурации). Чистая — под тест.
+        /// </summary>
+        internal static SecurityProtocolType WithTls12(SecurityProtocolType current)
+        {
+            return current == SecurityProtocolType.SystemDefault
+                ? current
+                : current | SecurityProtocolType.Tls12;
         }
 
         private static string Download(string url, string accept)
         {
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            ServicePointManager.SecurityProtocol = WithTls12(ServicePointManager.SecurityProtocol);
             var request = (HttpWebRequest)WebRequest.Create(url);
             request.UserAgent = "iwoHelperDesktop"; // GitHub требует User-Agent
             request.Accept = accept;
@@ -177,7 +212,7 @@ namespace ExcelMerger
             Match m = Regex.Match(json.Substring(start, end - start),
                 "\"" + Regex.Escape(lang) + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"",
                 RegexOptions.IgnoreCase);
-            return m.Success ? LimitNotes(UnescapeJson(m.Groups[1].Value).Trim()) : "";
+            return m.Success ? UnescapeJson(m.Groups[1].Value).Trim() : "";
         }
 
         /// <summary>
@@ -210,8 +245,9 @@ namespace ExcelMerger
         /// <summary>
         /// Обрезка сводки до <see cref="MaxNoteLines"/> строк. Окно сообщения — фиксированной
         /// ширины и растёт вниз без ограничения, поэтому длинная сводка уехала бы кнопками за
-        /// нижний край экрана. Ограничиваем ЗДЕСЬ, а не в окне: текст приходит из сети, и
-        /// править его после выпуска версии нельзя, а окно — общее для всех сообщений.
+        /// нижний край экрана. Ограничиваем в пути диалога (<see cref="DialogNotes"/>), а не в
+        /// окне: текст приходит из сети, и править его после выпуска версии нельзя, а окно —
+        /// общее для всех сообщений.
         /// Отброшенные строки заменяются на «…»: молча потерянный текст выглядел бы как
         /// оборванная на середине новость. Чистая — под тест.
         /// </summary>
@@ -330,7 +366,8 @@ namespace ExcelMerger
         /// </summary>
         public static void CheckOnStart(Form owner)
         {
-            if (!UserSettings.Load().UpdateCheckOnStart)
+            UserSettings settings;
+            if (!StartupCheckEnabled(out settings))
                 return;
             Ui.RunWorker(delegate()
             {
@@ -347,11 +384,25 @@ namespace ExcelMerger
                     Version latest = UpdateChecker.ParseTag(tag);
                     Version current = Assembly.GetExecutingAssembly().GetName().Version;
                     // Настройки перечитываем здесь, а не при запуске воркера: за десять
-                    // секунд ожидания сети пользователь мог отказаться от напоминаний.
-                    if (UpdateChecker.ShouldNotify(latest, current, UserSettings.Load().SkippedVersion))
+                    // секунд ожидания сети пользователь мог отказаться от напоминаний. Тем же
+                    // достоверным чтением: непрочитанный файл не должен вернуть показ,
+                    // от которого человек отказался.
+                    UserSettings fresh;
+                    if (StartupCheckEnabled(out fresh) &&
+                        UpdateChecker.ShouldNotify(latest, current, fresh.SkippedVersion))
                         ShowOnce(delegate { OfferUpdate(owner, latest, current, notes, true); });
                 });
             });
+        }
+
+        /// <summary>
+        /// Разрешена ли проверка при запуске по свежему ДОСТОВЕРНОМУ чтению настроек
+        /// (см. <see cref="UpdateChecker.AllowsStartupCheck"/>). settings — прочитанный снимок.
+        /// </summary>
+        internal static bool StartupCheckEnabled(out UserSettings settings)
+        {
+            bool trusted = UserSettings.TryLoad(out settings);
+            return UpdateChecker.AllowsStartupCheck(trusted, settings);
         }
 
         /// <summary>

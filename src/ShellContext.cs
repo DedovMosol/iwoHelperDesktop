@@ -35,11 +35,40 @@ namespace ExcelMerger
         public ShellContext()
         {
             // Слушателя создаём ДО первого окна: повторный запуск, случившийся сразу за нашим,
-            // должен застать его на месте. ShowHub годится обработчиком как есть — он идемпотентен
-            // и поднимает уже открытый хаб вместо создания второго.
-            _activation = SingleInstance.Listen(ShowHub);
+            // должен застать его на месте.
+            _activation = SingleInstance.Listen(OnActivationRequest);
             Loc.Changed += OnLanguageChanged;
             ShowHub();
+        }
+
+        /// <summary>
+        /// Повторный запуск ярлыка. ShowHub идемпотентен и поднимает уже открытый хаб, но
+        /// пока идёт модальный цикл, НОВЫЙ хаб создавать нельзя: он не заблокирован этим
+        /// циклом, и смена языка из него закрыла бы владельца модального окна прямо из-под
+        /// диалога. Поэтому поднимаем сам диалог — человек вернётся к тому, что не закончил.
+        /// </summary>
+        private void OnActivationRequest()
+        {
+            Form modal = TopModal(Application.OpenForms);
+            if (modal != null)
+                BringToFront(modal);
+            else
+                ShowHub();
+        }
+
+        /// <summary>
+        /// Последнее открытое видимое модальное окно (верхнее во вложенных диалогах) или null.
+        /// OpenForms идёт в порядке открытия, поэтому последнее найденное — самое свежее.
+        /// </summary>
+        internal static Form TopModal(FormCollection forms)
+        {
+            Form top = null;
+            if (forms == null)
+                return null;
+            foreach (Form form in forms)
+                if (form != null && !form.IsDisposed && form.Visible && form.Modal)
+                    top = form;
+            return top;
         }
 
         /// <summary>
@@ -340,11 +369,17 @@ namespace ExcelMerger
 
         protected override void Dispose(bool disposing)
         {
-            // Скрытое окно-слушатель не дочернее ничему, поэтому убираем его сами.
-            if (disposing && _activation != null)
+            if (disposing)
             {
-                _activation.Dispose();
-                _activation = null;
+                // Событие статическое: без отписки оно держало бы уничтоженную оболочку
+                // живой, и следующая смена языка пересобирала бы её окна.
+                Loc.Changed -= OnLanguageChanged;
+                // Скрытое окно-слушатель не дочернее ничему, поэтому убираем его сами.
+                if (_activation != null)
+                {
+                    _activation.Dispose();
+                    _activation = null;
+                }
             }
             base.Dispose(disposing);
         }

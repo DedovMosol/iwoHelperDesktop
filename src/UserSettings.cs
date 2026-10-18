@@ -39,8 +39,10 @@ namespace ExcelMerger
         /// <summary>
         /// true означает достоверный снимок: файл прочитан либо действительно отсутствует.
         /// Существующий, но временно непрочитанный файл НЕЛЬЗЯ подменять defaults при мутации.
+        /// Открыт не только мутациям: решения «можно ли» (например, сеть при запуске) тоже
+        /// обязаны отличать отказ пользователя от непрочитанного файла.
         /// </summary>
-        private static bool TryLoad(out UserSettings settings)
+        internal static bool TryLoad(out UserSettings settings)
         {
             settings = new UserSettings();
             string[] lines;

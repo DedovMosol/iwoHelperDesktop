@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
@@ -41,6 +42,13 @@ namespace ExcelMerger
 
         [DllImport("user32.dll")]
         private static extern bool AllowSetForegroundWindow(int dwProcessId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter,
+            string lpszClass, string lpszWindow);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         private const int AsfwAny = -1; // ASFW_ANY — разрешить любому процессу
 
@@ -98,10 +106,39 @@ namespace ExcelMerger
                 // пользователь), а поднять окно должен работающий экземпляр. Без явной передачи
                 // права Windows запретит ему смену переднего плана и лишь помигает кнопкой в
                 // панели задач: окно развернётся, но останется позади чужих.
-                AllowSetForegroundWindow(AsfwAny);
+                // Передаём право только процессам со слушателем: ASFW_ANY раздал бы его всем
+                // процессам сеанса. Слушателя не нашли (экземпляр ещё стартует) — прежний путь.
+                List<int> listeners = ListenerProcessIds();
+                if (listeners.Count == 0)
+                    AllowSetForegroundWindow(AsfwAny);
+                foreach (int processId in listeners)
+                    AllowSetForegroundWindow(processId);
                 PostMessage(Broadcast, message, IntPtr.Zero, IntPtr.Zero);
             }
             catch { } // разбудить не вышло — просто выходим, второго процесса всё равно не будет
+        }
+
+        /// <summary>
+        /// Процессы, у которых есть окно-слушатель (верхнего уровня, заголовок
+        /// <see cref="MessageName"/>; скрытые окна FindWindowEx тоже находит). Обычно процесс
+        /// один, но окна с тем же заголовком могут быть и у других экземпляров сеанса.
+        /// Предел перебора — от зацикливания, если окна создаются и рушатся на ходу.
+        /// </summary>
+        internal static List<int> ListenerProcessIds()
+        {
+            var ids = new List<int>();
+            IntPtr window = IntPtr.Zero;
+            for (int guard = 0; guard < 64; guard++)
+            {
+                window = FindWindowEx(IntPtr.Zero, window, null, MessageName);
+                if (window == IntPtr.Zero)
+                    break;
+                uint processId;
+                if (GetWindowThreadProcessId(window, out processId) != 0 && processId != 0 &&
+                    !ids.Contains((int)processId))
+                    ids.Add((int)processId);
+            }
+            return ids;
         }
 
         /// <summary>Начать слушать сигнал повторного запуска. Вызывать с UI-потока, освобождать при выходе.</summary>

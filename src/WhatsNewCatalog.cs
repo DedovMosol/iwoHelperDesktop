@@ -40,6 +40,16 @@ namespace ExcelMerger
                     json = reader.ReadToEnd();
             }
             catch { }
+            return ParseItems(json, version, language);
+        }
+
+        /// <summary>
+        /// Пункты локального окна из whatsnew.json — ВСЕ, без шестистрочного предела диалога
+        /// обновления: окно «Что нового» прокручивается, и обрезанный список молча прятал бы
+        /// изменения с седьмого. Чистая — под тест.
+        /// </summary>
+        internal static List<string> ParseItems(string json, string version, string language)
+        {
             string notes = UpdateChecker.ExtractNotes(json, version, language);
             var result = new List<string>();
             foreach (string line in (notes ?? "").Replace("\r\n", "\n").Split('\n'))

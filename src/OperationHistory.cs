@@ -162,6 +162,62 @@ namespace ExcelMerger
             return kept;
         }
 
+        /// <summary>
+        /// Строка семейства записей («e=…»), даже неразобранная: испорченная или из более
+        /// новой версии, она всё равно может нести путь. Чистая — под тест.
+        /// </summary>
+        internal static bool IsEntryLine(string line)
+        {
+            return line != null && line.StartsWith(EntryKey + "=", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Пережить ли неразобранной строке автоочистку. Чужие ключи не трогаем (downgrade не
+        /// должен стирать настройки новой версии), а запись чужого формата живёт по тем же
+        /// срокам, что и наши, — если её метку времени (первое поле) удаётся прочесть.
+        /// Недатируемую запись при включённой автоочистке убираем: доказать, что она свежая,
+        /// нельзя, а путь в ней обещано не хранить дольше срока. Чистая — под тест.
+        /// </summary>
+        internal static bool KeepUnknownLine(string line, DateTime nowUtc, int days)
+        {
+            if (!IsEntryLine(line) || days <= 0)
+                return true;
+            string head = line.Substring(EntryKey.Length + 1);
+            int sep = head.IndexOf(Sep);
+            if (sep >= 0)
+                head = head.Substring(0, sep);
+            long ticks;
+            if (!long.TryParse(head, NumberStyles.Integer, CultureInfo.InvariantCulture, out ticks) ||
+                ticks < DateTime.MinValue.Ticks || ticks > DateTime.MaxValue.Ticks)
+                return false;
+            return (nowUtc - new DateTime(ticks, DateTimeKind.Utc)).TotalDays < days;
+        }
+
+        /// <summary>Применить срок хранения к записям и к неразобранным строкам записей.</summary>
+        private static void ApplyAutoClear(Data data, DateTime nowUtc)
+        {
+            List<HistoryEntry> fresh = KeepRecent(data.Entries, nowUtc, data.AutoClearDays);
+            if (fresh.Count != data.Entries.Count)
+            {
+                data.Entries.Clear();
+                data.Entries.AddRange(fresh);
+            }
+            data.UnknownLines.RemoveAll(delegate(string line)
+            {
+                return !KeepUnknownLine(line, nowUtc, data.AutoClearDays);
+            });
+        }
+
+        /// <summary>
+        /// Стереть накопленное: и разобранные записи, и строки записей, которые эта версия
+        /// не поняла, — «очистить историю» обещает убрать пути, а не только понятные нам.
+        /// </summary>
+        private static void ClearEntries(Data data)
+        {
+            data.Entries.Clear();
+            data.UnknownLines.RemoveAll(IsEntryLine);
+        }
+
         // ---------- состояние ----------
 
         /// <summary>Прочитанная история: настройки и сами записи.</summary>
@@ -215,13 +271,7 @@ namespace ExcelMerger
                 else
                     data.UnknownLines.Add(line);
             }
-            List<HistoryEntry> fresh = KeepRecent(data.Entries, DateTime.UtcNow,
-                data.AutoClearDays);
-            if (fresh.Count != data.Entries.Count)
-            {
-                data.Entries.Clear();
-                data.Entries.AddRange(fresh);
-            }
+            ApplyAutoClear(data, DateTime.UtcNow);
             return true;
         }
 
@@ -312,7 +362,7 @@ namespace ExcelMerger
             {
                 data.Enabled = enabled;
                 if (!enabled)
-                    data.Entries.Clear();
+                    ClearEntries(data);
                 return true;
             });
         }
@@ -323,9 +373,7 @@ namespace ExcelMerger
             return MutateAndNotify(delegate(Data data)
             {
                 data.AutoClearDays = period;
-                List<HistoryEntry> fresh = KeepRecent(data.Entries, DateTime.UtcNow, period);
-                data.Entries.Clear();
-                data.Entries.AddRange(fresh);
+                ApplyAutoClear(data, DateTime.UtcNow);
                 return true;
             });
         }
@@ -334,7 +382,7 @@ namespace ExcelMerger
         {
             return MutateAndNotify(delegate(Data data)
             {
-                data.Entries.Clear();
+                ClearEntries(data);
                 return true;
             });
         }

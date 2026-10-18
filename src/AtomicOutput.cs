@@ -43,6 +43,8 @@ namespace ExcelMerger
             // однозначно восстановит result.pdf из result.pdf.iwo-<guid>.bak.
             _backupPath = Path.Combine(dir, Path.GetFileName(TargetPath) + suffix + ".bak");
             _markerPath = Path.Combine(dir, Path.GetFileName(TargetPath) + suffix + ".txn");
+            ThrowIfDerivedTooLong(TargetPath, Math.Max(TempPath.Length,
+                Math.Max(_backupPath.Length, _markerPath.Length)));
 
             // Пустой marker одновременно задаёт схему путей своим именем и отличает живую
             // транзакцию открытым handle. Полные пути из имени выводит этот же класс.
@@ -132,6 +134,28 @@ namespace ExcelMerger
             _marker = null;
             if (!unresolved)
                 DeleteQuietly(_markerPath);
+        }
+
+        /// <summary>
+        /// MAX_PATH вместе с завершающим нулём: без longPathAware в манифесте Win32 не создаёт
+        /// файл с путём длиннее 259 символов.
+        /// </summary>
+        internal const int MaxPath = 260;
+
+        /// <summary>
+        /// Служебные файлы длиннее цели на суффикс «.iwo-&lt;guid&gt;.txn» (41 символ), поэтому
+        /// цель в 219–259 символов допустима сама, а журнал рядом с ней — нет. Без этой проверки
+        /// человек получал «не найдена часть пути» про файл, которого никогда не видел. Отказ —
+        /// ДО создания чего-либо на диске и с длиной, которую можно сократить. Путь «\\?\» под
+        /// лимит не попадает — его не проверяем.
+        /// </summary>
+        private static void ThrowIfDerivedTooLong(string targetPath, int longestDerived)
+        {
+            if (longestDerived < MaxPath || targetPath.StartsWith(@"\\?\", StringComparison.Ordinal))
+                return;
+            int allowed = MaxPath - 1 - (longestDerived - targetPath.Length);
+            throw new MergeException(string.Format(Loc.T("err.output.pathTooLong"),
+                targetPath.Length, allowed));
         }
 
         internal static bool TryGetRecoveryPaths(string markerPath, out string target,
