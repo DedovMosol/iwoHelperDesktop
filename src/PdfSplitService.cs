@@ -286,7 +286,7 @@ namespace ExcelMerger
             if (target < 0) target = 0;
             using (PdfDocument doc = PdfReader.Open(path, PdfDocumentOpenMode.Modify))
             {
-                doc.Outlines.Add(part.BookmarkTitle, doc.Pages[target], true);
+                PdfBookmarks.AppendTopLevel(doc, part.BookmarkTitle, target);
                 doc.Save(path);
             }
         }

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
@@ -28,7 +29,10 @@ namespace ExcelMerger
         /// Записать свойства в новый файл outputPath (исходник не меняется). Пустое значение
         /// удаляет свойство — это осознанный способ убрать из файла имя автора перед отправкой.
         /// </summary>
-        public static void Write(string sourcePath, string outputPath, PdfMetadata meta)
+        /// <param name="cancelled">Отмена: проверяется до записи и перед публикацией. Сама запись
+        /// PDFsharp неделима; отменённая не оставляет ничего (временный файл AtomicOutput).</param>
+        public static void Write(string sourcePath, string outputPath, PdfMetadata meta,
+            Func<bool> cancelled = null)
         {
             if (meta == null)
                 throw new ArgumentNullException("meta");
@@ -38,9 +42,11 @@ namespace ExcelMerger
             if (writeError != null)
                 throw new MergeException(writeError);
             EmbeddedAssemblies.Ensure();
+            Cancellation.ThrowIf(cancelled);
             using (var output = new AtomicOutput(outputPath))
             {
                 WriteCore(sourcePath, output.TempPath, meta);
+                Cancellation.ThrowIf(cancelled);
                 output.Commit();
             }
         }
@@ -48,10 +54,11 @@ namespace ExcelMerger
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static PdfMetadata ReadCore(string path)
         {
+            PdfMetadata result;
             try
             {
                 using (PdfDocument doc = PdfReader.Open(path, PdfPasswords.For(path), PdfDocumentOpenMode.InformationOnly))
-                    return new PdfMetadata
+                    result = new PdfMetadata
                     {
                         Title = doc.Info.Title ?? "",
                         Author = doc.Info.Author ?? "",
@@ -63,6 +70,50 @@ namespace ExcelMerger
             {
                 return new PdfMetadata(); // свойства не прочитались — предложим заполнить с нуля
             }
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    result.DeclaresPdfA = DeclaresPdfA(stream);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return result;
+        }
+
+        private static readonly byte[] PdfAIdNamespace = Encoding.ASCII.GetBytes("http://www.aiim.org/pdfa/ns/id/");
+
+        /// <summary>
+        /// Объявляет ли файл соответствие PDF/A: пространство имён pdfaid (ISO 19005, §6.7.11) в
+        /// потоке XMP. Запись свойств XMP удаляет (см. <see cref="WriteCore"/>), а PDFsharp при
+        /// сохранении ещё и переписывает /Producer, расходящийся тогда с XMP, — архивным файл после
+        /// записи не останется в любом случае, и человек должен узнать об этом ДО записи.
+        ///
+        /// Ищем по байтам файла, а не через разбор: XMP-поток PDF/A по стандарту не сжимается
+        /// (ключа /Filter у него быть не может), и разбирать ради одного признака весь документ
+        /// незачем. Ложная тревога (та же строка в чужом несжатом потоке) стоит одного лишнего
+        /// вопроса. Чистая — под тест.
+        /// </summary>
+        internal static bool DeclaresPdfA(Stream stream)
+        {
+            byte[] needle = PdfAIdNamespace;
+            var buffer = new byte[64 * 1024];
+            int kept = 0; // хвост прошлого блока: признак может лечь на границу чтения
+            int read;
+            while ((read = stream.Read(buffer, kept, buffer.Length - kept)) > 0)
+            {
+                int length = kept + read;
+                for (int i = 0; i + needle.Length <= length; i++)
+                {
+                    int j = 0;
+                    while (j < needle.Length && buffer[i + j] == needle[j])
+                        j++;
+                    if (j == needle.Length)
+                        return true;
+                }
+                kept = Math.Min(needle.Length - 1, length);
+                Buffer.BlockCopy(buffer, length - kept, buffer, 0, kept);
+            }
+            return false;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

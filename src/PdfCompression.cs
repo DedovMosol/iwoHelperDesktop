@@ -158,14 +158,21 @@ namespace ExcelMerger
             sb.Append(" -dPDFSETTINGS=").Append(Preset(level));
             if (Preset(level) != null && !Downsamples(level))
             {
-                // Обещание уровня — «чёткость цела», и держать его должен наш код, а не
-                // чужие умолчания: пресет /default сегодня не пересчитывает изображения, но
-                // портативная сборка работает с ТЕМ Ghostscript, который стоит у человека,
-                // и ручаться за умолчания всех его версий мы не можем. Три ключа стоят
-                // дёшево и делают обещание независимым от версии движка.
+                // Обещание уровня — «изображения не тронуты», и держать его должен наш код, а
+                // не чужие умолчания: портативная сборка работает с ТЕМ Ghostscript, который
+                // стоит у человека, и ручаться за умолчания всех его версий мы не можем.
+                // Разрешение: без даунсэмплинга.
                 sb.Append(" -dDownsampleColorImages=false -dDownsampleGrayImages=false");
                 sb.Append(" -dDownsampleMonoImages=false");
+                // Кодирование: без потерь. По умолчанию pdfwrite сам выбирает фильтр
+                // (AutoFilter*Images=true) и отдаёт снимки экрана, диаграммы и PNG в JPEG —
+                // разрешение то же, а по краям текста и линий появляются артефакты. JPEG
+                // источника при этом не пережимается вовсе: PassThroughJPEGImages (по умолчанию
+                // true) переносит его байты как есть, пока картинку не меняют.
+                sb.Append(" -dAutoFilterColorImages=false -dAutoFilterGrayImages=false");
+                sb.Append(" -dColorImageFilter=/FlateEncode -dGrayImageFilter=/FlateEncode");
             }
+            sb.Append(GsArguments.KeepPageOrientation);
             sb.Append(" -dNOPAUSE -dBATCH -dQUIET -dSAFER");
             GsArguments.AppendTail(sb, bundledGsRoot, GsArguments.LiteralOutput(output), input);
             return sb.ToString();
@@ -198,14 +205,15 @@ namespace ExcelMerger
             return CompressDetailed(path, level, true);
         }
 
+        /// <summary>Сжатие неопубликованного файла; cancelled — см. <see cref="GsRewrite.RunDetailedUnpublished"/>.</summary>
         internal static GsRewriteResult CompressDetailedUnpublished(string path,
-            CompressionLevel level)
+            CompressionLevel level, Func<bool> cancelled = null)
         {
-            return CompressDetailed(path, level, false);
+            return CompressDetailed(path, level, false, cancelled);
         }
 
         private static GsRewriteResult CompressDetailed(string path, CompressionLevel level,
-            bool recoverableTarget)
+            bool recoverableTarget, Func<bool> cancelled = null)
         {
             if (level == CompressionLevel.None)
                 return GsRewriteResult.RejectedByPolicy;
@@ -216,7 +224,7 @@ namespace ExcelMerger
             return recoverableTarget
                 ? GsRewrite.RunDetailed(path, temp, args, TimeoutMs, ShouldReplace)
                 : GsRewrite.RunDetailedUnpublished(path, temp, args, TimeoutMs,
-                    ShouldReplace);
+                    ShouldReplace, null, cancelled);
         }
         /// <summary>
         /// Первые байты — заголовок «%PDF-». Дешёвая проба для самопроверки сборки

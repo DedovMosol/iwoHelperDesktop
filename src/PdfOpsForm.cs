@@ -400,12 +400,13 @@ namespace ExcelMerger
         /// заново, иначе действие пошло бы не по тому, что показано в сетке. Зовётся ИЗ ВОРКЕРА:
         /// сборка документа пишет на диск. pages = null — посторонний файл, собирать нечего.
         /// </summary>
-        internal static void WriteWorkingCopy(string source, IList<PdfPageRef> pages, int pageCount, string outPath)
+        internal static void WriteWorkingCopy(string source, IList<PdfPageRef> pages, int pageCount, string outPath,
+            Func<bool> cancelled = null)
         {
             if (pages == null || CopyWillDo(pages, source, pageCount, true))
                 File.Copy(source, outPath, true);
             else
-                PdfMergeService.WriteUnpublished(pages, outPath);
+                PdfMergeService.WriteUnpublished(pages, outPath, null, cancelled);
         }
 
         /// <summary>
@@ -467,10 +468,15 @@ namespace ExcelMerger
             /// страниц — содержимое файла должно совпадать с собранным, иначе в текст попали бы
             /// и убранные страницы.
             /// </summary>
+            /// <param name="forRewrite">Файл будет переписан (запись свойств). Защищённый паролем
+            /// исходник тогда тоже собирается: PDFsharp правит зашифрованный файл только с паролем
+            /// ВЛАДЕЛЬЦА, а человек вводит пароль на открытие — запись падала с ошибкой «не удалось
+            /// сохранить». Цена та же, что у движка (<see cref="CopyWillDo"/>): результат без пароля.</param>
             public static AssembledDoc Whole(string source, IList<PdfPageRef> pages, int pageCount,
-                Func<bool> cancelled)
+                Func<bool> cancelled, bool forRewrite = false)
             {
-                if (IsPristine(pages, source, pageCount))
+                if (IsPristine(pages, source, pageCount) &&
+                    (!forRewrite || string.IsNullOrEmpty(PdfPasswords.For(source))))
                     return new AssembledDoc(source, null, null);
                 string temp = Materialize(pages, cancelled);
                 return new AssembledDoc(temp, null, temp);
@@ -554,7 +560,7 @@ namespace ExcelMerger
                             PdfMergeService.WriteUnpublished(pages, output.TempPath, onProgress, cancel);
                         Cancellation.ThrowIf(cancel);
                         if (level != CompressionLevel.None)
-                            compression = PdfCompression.CompressDetailedUnpublished(output.TempPath, level);
+                            compression = PdfCompression.CompressDetailedUnpublished(output.TempPath, level, cancel);
                         Cancellation.ThrowIf(cancel);
                         output.Commit();
                     }
@@ -621,7 +627,9 @@ namespace ExcelMerger
             string source = _sourcePath;
             List<PdfPageRef> pages = _order.ToList(); // снимок сетки: во время операции она заблокирована
             int pageCount = _pageCount;
-            BeginUnmeasuredOperation(Loc.T("ops.status.compressing")); // ход сжатия движок не сообщает
+            // Ход сжатия движок не сообщает, но отменить его можно: процесс завершается.
+            BeginUnmeasuredOperation(Loc.T("ops.status.compressing"), pages.Count);
+            Func<bool> cancel = CancelToken();
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
@@ -631,14 +639,15 @@ namespace ExcelMerger
                 {
                     using (var output = new AtomicOutput(outPath))
                     {
-                        WriteWorkingCopy(source, pages, pageCount, output.TempPath);
-                        compression = PdfCompression.CompressDetailedUnpublished(output.TempPath, level);
+                        WriteWorkingCopy(source, pages, pageCount, output.TempPath, cancel);
+                        compression = PdfCompression.CompressDetailedUnpublished(output.TempPath, level, cancel);
                         // Состав документа выясняем ТОЛЬКО когда файл просто не уменьшился: иначе
                         // это лишнее чтение файла на каждой удачной операции (а при сбое движка
                         // совет про уровень не по делу). И здесь же, в фоне, — на UI-поток такую
                         // работу выносить нельзя.
                         if (compression == GsRewriteResult.RejectedByPolicy)
                             imageShare = PdfContentProfile.ImageShare(output.TempPath);
+                        Cancellation.ThrowIf(cancel);
                         output.Commit();
                     }
                 }
@@ -695,7 +704,10 @@ namespace ExcelMerger
                 return;
             List<PdfPageRef> pages = fromGrid ? _order.ToList() : null;
             int pageCount = _pageCount;
-            BeginUnmeasuredOperation(Loc.T("ops.status.converting")); // движок о ходе не сообщает
+            // Движок о ходе не сообщает. Размер чинимого файла неизвестен (он не открывается,
+            // за тем и чиним), поэтому отмену ему предлагаем всегда.
+            BeginUnmeasuredOperation(Loc.T("ops.status.converting"), fromGrid ? pages.Count : UnknownSize);
+            Func<bool> cancel = CancelToken();
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
@@ -704,8 +716,9 @@ namespace ExcelMerger
                 {
                     using (var output = new AtomicOutput(outPath))
                     {
-                        WriteWorkingCopy(source, pages, pageCount, output.TempPath);
-                        ok = PdfConvert.ApplyUnpublished(output.TempPath, mode);
+                        WriteWorkingCopy(source, pages, pageCount, output.TempPath, cancel);
+                        ok = PdfConvert.ApplyUnpublished(output.TempPath, mode, cancel);
+                        Cancellation.ThrowIf(cancel);
                         if (ok)
                             output.Commit();
                     }
@@ -844,6 +857,8 @@ namespace ExcelMerger
                 Loc.T("ops.ask.jpeg.body")) ? ImageExportFormat.Jpeg : ImageExportFormat.Png;
 
             string source = _sourcePath;
+            // Имя картинок — от документа человека: читаться может временная сборка (см. PageWise).
+            string baseName = Path.GetFileNameWithoutExtension(NameSource());
             BeginOperation(Loc.T("ops.status.exporting"), pages.Count, Loc.T("ops.status.exportingPage"));
             Action<int, int> onProgress = UiProgress();
             Func<bool> cancel = CancelToken();
@@ -855,7 +870,7 @@ namespace ExcelMerger
                 {
                     using (AssembledDoc doc = AssembledDoc.PageWise(source, pages, cancel))
                         files = PdfExportService.ToImages(doc.FilePath, doc.Pages, dir, NameTemplate.Default,
-                            format, dpi, onProgress, cancel);
+                            format, dpi, onProgress, cancel, baseName);
                 }
                 catch (Exception ex) { error = ex; }
                 int count = files == null ? 0 : files.Count;
@@ -951,19 +966,26 @@ namespace ExcelMerger
             PdfMetadata edited = MetadataForm.Edit(this, current, Path.GetFileName(source));
             if (edited == null)
                 return; // пользователь отказался
+            // Архивный файл после записи архивным не останется (см. PdfMetadataService.DeclaresPdfA):
+            // для того, кто сдаёт документы в архив, это не мелочь, и узнать он должен до записи.
+            if (current != null && current.DeclaresPdfA &&
+                !Dialogs.ConfirmWarning(this, Title, Loc.T("ops.ask.pdfaLoss.title"), Loc.T("ops.ask.pdfaLoss.body")))
+                return;
             string outPath = AskOutputPath(source, Loc.T("ops.suffix.meta"));
             if (outPath == null)
                 return;
             List<PdfPageRef> pages = _order.ToList(); // свойства пишутся тому документу, что собран
             int pageCount = _pageCount;
-            BeginUnmeasuredOperation(Loc.T("ops.status.savingMeta")); // одна запись, шагов нет
+            // Запись одна и шагов не имеет, но перед ней бывает сборка документа — её и отменяют.
+            BeginUnmeasuredOperation(Loc.T("ops.status.savingMeta"), pages.Count);
+            Func<bool> cancel = CancelToken();
             Ui.RunWorker(delegate()
             {
                 Exception error = null;
                 try
                 {
-                    using (AssembledDoc doc = AssembledDoc.Whole(source, pages, pageCount, null))
-                        PdfMetadataService.Write(doc.FilePath, outPath, edited);
+                    using (AssembledDoc doc = AssembledDoc.Whole(source, pages, pageCount, cancel, true))
+                        PdfMetadataService.Write(doc.FilePath, outPath, edited, cancel);
                 }
                 catch (Exception ex) { error = ex; }
                 OnUi(delegate

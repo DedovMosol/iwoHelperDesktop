@@ -46,6 +46,9 @@ namespace ExcelMerger
         private string _lastReportPath;
         private MergeRun _currentRun; // идущий (или только что завершившийся) запуск — для его отчёта
         private MergeRun _lastRun;    // последний запуск с итогом — для повтора и записки
+        // Во время повтора — записи прошлого итога, которые повтор не заменяет (MergeService.RetryKept):
+        // сброс строки начинает её с них. null — обычный свод, строки сбрасываются в пустоту.
+        private List<FileResult> _retryKept;
 
         // Список файлов до слияния: порядок и включение.
         private readonly SourceFileList _files = new SourceFileList();
@@ -942,6 +945,7 @@ namespace ExcelMerger
         private void StartMerge(List<string> files, string folder, string outputPath, MergeOptions options)
         {
             // свежий прогон — очистить результаты всех строк
+            _retryKept = null;
             PrepareRun(new MergeRun(folder, options, DateTime.Now, files), outputPath, true);
             StartWorker(delegate { return _service.Merge(files, outputPath, options); });
         }
@@ -962,6 +966,10 @@ namespace ExcelMerger
             // Параметры и папка — запуска, создавшего свод, а не последнего нажатия «Объединить».
             MergeRun run = last.ForRetry(DateTime.Now);
             PrepareRun(run, outputPath, false); // повтор — не трогаем успешные строки
+            // Повтор переносит только упавшие листы: строка файла начинается с того, что повтор
+            // не заменяет (перенесённые листы), а не с пустоты — иначе «Янв» в своде, а строка
+            // после повтора «Фев» говорила бы «пропущен».
+            _retryKept = MergeService.RetryKept(previous);
             ResetRows(run.Paths); // сбросить результат только у повторяемых (ранее пропущенных) файлов
             StartWorker(delegate { return _service.RetrySkipped(outputPath, run.Options, previous); });
         }
@@ -973,16 +981,31 @@ namespace ExcelMerger
             {
                 ListViewItem row;
                 if (path != null && _rowByPath.TryGetValue(Path.GetFullPath(path), out row))
-                    ResetRow(row);
+                    ResetRow(row, Path.GetFullPath(path));
             }
         }
 
-        private void ResetRow(ListViewItem row)
+        /// <param name="fullPath">Полный путь файла строки: при повторе строка начинается с его
+        /// записей, которые повтор не заменяет (<see cref="_retryKept"/>).</param>
+        private void ResetRow(ListViewItem row, string fullPath = null)
         {
-            ((List<FileResult>)row.Tag).Clear();
+            var results = (List<FileResult>)row.Tag;
+            results.Clear();
             row.SubItems[1].Text = "";
             row.SubItems[2].Text = "";
             row.ForeColor = _list.ForeColor;
+            if (_retryKept == null || fullPath == null)
+                return;
+            foreach (FileResult kept in _retryKept)
+            {
+                string keptPath;
+                try { keptPath = kept.FullPath == null ? null : Path.GetFullPath(kept.FullPath); }
+                catch { keptPath = kept.FullPath; }
+                if (string.Equals(keptPath, fullPath, StringComparison.OrdinalIgnoreCase))
+                    results.Add(kept);
+            }
+            if (results.Count > 0)
+                UpdateRowDisplay(row, results);
         }
 
         /// <summary>Общий сброс интерфейса перед обычным и повторным слиянием.</summary>

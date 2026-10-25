@@ -67,6 +67,7 @@ namespace ExcelMerger
             if (_committed) return;
             if (!File.Exists(TempPath))
                 throw new FileNotFoundException(TempPath);
+            FlushToDisk(TempPath);
             if (!File.Exists(TargetPath))
             {
                 File.Move(TempPath, TargetPath);
@@ -101,6 +102,31 @@ namespace ExcelMerger
                     File.Move(_backupPath, TargetPath);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Данные результата — на диск ДО переименования. NTFS журналирует метаданные, но не
+        /// содержимое: переименование может пережить сбой питания, а записанные байты остаться
+        /// в кэше, и тогда на месте прежнего файла оказывался бы файл из нулей, а прежнюю версию
+        /// сразу удаляет следующая строка. Это классическая последовательность «записать,
+        /// FlushFileBuffers, переименовать»; флаг REPLACEFILE_WRITE_THROUGH у ReplaceFile
+        /// документирован как неподдерживаемый, поэтому сброс делаем сами.
+        ///
+        /// Сброс — улучшение надёжности, а не условие записи: нет права записи (файл помечен
+        /// «только чтение»), его держит другой процесс без общего доступа на запись, носитель не
+        /// поддерживает операцию — публикуем, как прежде, а не теряем готовый результат.
+        /// </summary>
+        private static void FlushToDisk(string path)
+        {
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Write,
+                    FileShare.ReadWrite | FileShare.Delete))
+                    stream.Flush(true); // FlushFileBuffers: сбрасывает кэш ФАЙЛА, кто бы его ни писал
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (NotSupportedException) { }
         }
 
         public void Dispose()

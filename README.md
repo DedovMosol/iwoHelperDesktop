@@ -111,13 +111,13 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 
 | Windows | Download |
 |----|----------|
-| **64‑bit** — Windows 8.1 / 10 / 11 *(most PCs)* | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.5/iwoHelperDesktop-setup-1.18.5.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.5/iwoHelperDesktop-1.18.5.exe) |
-| **32‑bit** — 32‑bit editions of Windows 8.1 / 10 | [![Installer](https://img.shields.io/badge/Installer-x86-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.5/iwoHelperDesktop-setup-1.18.5-x86.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x86-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.5/iwoHelperDesktop-1.18.5-x86.exe) |
+| **64‑bit** — Windows 8.1 / 10 / 11 *(most PCs)* | [![Installer](https://img.shields.io/badge/Installer-x64-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-setup-1.18.4.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x64-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-1.18.4.exe) |
+| **32‑bit** — 32‑bit editions of Windows 8.1 / 10 | [![Installer](https://img.shields.io/badge/Installer-x86-0F6CBD?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-setup-1.18.4-x86.exe) &nbsp; [![Portable](https://img.shields.io/badge/Portable-x86-107C41?logo=windows&logoColor=white)](https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-1.18.4-x86.exe) |
 
-*The buttons download the current release (**v1.18.5**) directly, each file name carries its version. The newest build and the full file list are always on the [releases page](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest).*
+*The buttons download the current release (**v1.18.4**) directly, each file name carries its version. The newest build and the full file list are always on the [releases page](https://github.com/DedovMosol/iwoHelperDesktop/releases/latest). This page describes the code on `main`: PDF Compare and the other changes listed under 1.18.5 in the [changelog](docs/CHANGELOG.md) arrive with the next release.*
 
 - **Installer** *(recommended)* — bundles Ghostscript of the matching bitness, so PDF compression works out of the box. Installs **per‑user without admin** by default (choose “for all users” for a machine‑wide install).
-- **Portable** — a single `iwoHelperDesktop-1.18.5.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
+- **Portable** — a single `iwoHelperDesktop-1.18.4.exe` (`…-x86.exe` for 32‑bit) — just run it. PDF compression works if Ghostscript is installed on the machine.
 - The x64 and x86 packages are functionally identical — take **x64** unless your Windows is 32‑bit.
 
 > Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **PDF Merge, Split, Compare, More operations and PDF → PowerPoint** need no Office at all.
@@ -159,7 +159,7 @@ Edge cases handled: broken or password‑protected files are detected by signatu
 
 Both PDF tools have a **Compression** dropdown applied to the produced PDF:
 - **Excellent** — no compression (default): byte‑for‑byte the merge/extract output, with fidelity and signatures preserved.
-- **Very good** — the document is rebuilt without touching the images: pages are re‑packed, identical pictures stored once, leftovers dropped. **Image resolution is kept**, so this is the level for a document you still have to look at — measured at 25–48 % smaller on ordinary documents.
+- **Very good** — the document is rebuilt without touching the images: pages are re‑packed, identical pictures stored once, leftovers dropped. **Image resolution is kept**, so this is the level for a document you still have to look at — measured at 25–48 % smaller on ordinary documents. Pictures are not re-encoded as JPEG either, so a PDF whose pictures are stored losslessly (scans saved as PNG, for example) may come back unchanged at this level; **Good** is the one that shrinks it.
 - **Good** — Ghostscript `/ebook` (~150 DPI).
 - **Normal** — Ghostscript `/screen` (~72 DPI).
 

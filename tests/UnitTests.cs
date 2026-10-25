@@ -162,7 +162,7 @@ namespace ExcelMerger.Tests
             Run("PDF Review: поздняя отмена не публикует ранний visual-refinement", TestReviewVisualRefineCancellationAtomic);
             Run("PDF Review (живой): визуально одинаковые Unicode-глифы не считаются правкой", TestReviewEquivalentUnicodeGlyphsLive);
             Run("PDF Review (живой): разная PdfPig-сегментация не даёт ложной правки", TestReviewFragmentedPdfLive);
-            Run("PDF Review: геометрия подсветки учитывает поворот и пиксели", TestReviewGeometryMapping);
+            Run("PDF Review: геометрия подсветки переводит рамку в пиксели растра", TestReviewGeometryMapping);
             Run("PDF Review: ручное сопоставление держит one-to-one", TestReviewManualPair);
             Run("PDF Review (живой): сложный сгенерированный корпус сравнивается точно", TestReviewGeneratedComplexCorpusLive);
             Run("PDF Review (живой): смысловые правки и перестановки проходят production-путь", TestReviewGeneratedSemanticMatrixLive);
@@ -189,7 +189,7 @@ namespace ExcelMerger.Tests
             Run("PdfSplitPlan: закладки фильтруют рабочий набор и пустые главы", TestSplitPlanBookmarks);
             Run("PdfSplit (живой): рабочий порядок после удаления и перестановки", TestPdfSplitWorkingSetLive);
             Run("PdfSplit (живой): извлечение, диапазоны, каждые N, закладки", TestPdfSplitLive);
-            Run("PdfPageGrid.ClampWindow: окно видимых с буфером", TestClampWindow);
+            Run("PdfPageGrid.PrefetchWindow: окно видимых с буфером", TestClampWindow);
             Run("Theme.ToBgr: упаковка цвета 0x00BBGGRR", TestThemeToBgr);
             Run("TocBuilder.SheetRef: ссылка на A1, апострофы удвоены", TestSheetRef);
             Run("WindowChrome: COLORREF упакован как 0x00BBGGRR", TestWindowChromeColorRef);
@@ -3405,8 +3405,7 @@ namespace ExcelMerger.Tests
             {
                 PageIndex = index,
                 WidthPt = 200,
-                HeightPt = 200,
-                NativeRotation = 0
+                HeightPt = 200
             };
             foreach (PdfWord word in words)
                 extracted.Words.Add(word);
@@ -3688,8 +3687,7 @@ namespace ExcelMerger.Tests
             {
                 PageIndex = index,
                 WidthPt = 200,
-                HeightPt = 200,
-                NativeRotation = 0
+                HeightPt = 200
             };
             ReviewSourceUnits(extracted.SourceUnits, leading, true);
             PdfWord left = ReviewSourceWord(extracted.SourceUnits, "alpha",
@@ -3803,8 +3801,7 @@ namespace ExcelMerger.Tests
             {
                 PageIndex = 0,
                 WidthPt = 200,
-                HeightPt = 200,
-                NativeRotation = 0
+                HeightPt = 200
             };
             PdfWord overlayOne = ReviewSourceWord(overlaidRaw.SourceUnits, "echo",
                 0, 100, 20, 10, 2);
@@ -3835,8 +3832,7 @@ namespace ExcelMerger.Tests
             {
                 PageIndex = 0,
                 WidthPt = 200,
-                HeightPt = 200,
-                NativeRotation = 0
+                HeightPt = 200
             };
             joinedRaw.Words.Add(ReviewSourceWord(joinedRaw.SourceUnits, "inter-",
                 10, 100, 30, 10, 6));
@@ -4735,8 +4731,7 @@ namespace ExcelMerger.Tests
             {
                 PageIndex = 0,
                 WidthPt = 240,
-                HeightPt = 200,
-                NativeRotation = 0
+                HeightPt = 200
             };
             PdfWord before = ReviewSourceWord(extracted.SourceUnits, beforeText,
                 5, 100, 20, 10, 1);
@@ -7568,6 +7563,31 @@ namespace ExcelMerger.Tests
             return bitmap;
         }
 
+        /// <summary>
+        /// Растр физической страницы модели: каждое слово закрашено по своей рамке. Одинаковая
+        /// геометрия слов слева и справа даёт одинаковые чернила — положительное доказательство
+        /// для растрового уточнения. Пустой растр доказательством не считается («Аудит RS-2»),
+        /// поэтому тесты бюджетов и отмены рисуют чернила явно, а не полагаются на пустоту.
+        /// </summary>
+        private static Bitmap ReviewVisualInkBitmap(PdfReviewResult result, string path,
+            int pageIndex, int width, int height)
+        {
+            PdfReviewDocument doc = string.Equals(path, result.Left.Path, StringComparison.Ordinal)
+                ? result.Left : result.Right;
+            PdfReviewPage page = null;
+            foreach (PdfReviewPage candidate in doc.Pages)
+                if (candidate.PageIndex == pageIndex)
+                    page = candidate;
+            return ReviewVisualBitmap(width, height, delegate(System.Drawing.Graphics g)
+            {
+                if (page == null)
+                    return;
+                foreach (PdfReviewWord word in page.Words)
+                    g.FillRectangle(System.Drawing.Brushes.Black, PdfReviewGeometry.ToPixelRect(
+                        word.Box, page.ViewWidthPt, page.ViewHeightPt, width, height));
+            });
+        }
+
         private static List<PdfReviewWordOp> ReviewVisualOperations(PdfReviewPage leftPage,
             PdfReviewPage rightPage)
         {
@@ -7952,7 +7972,7 @@ namespace ExcelMerger.Tests
                 delegate(string path, int pageIndex, int targetWidth, int maxHeight)
                 {
                     renderCalls++;
-                    Bitmap bitmap = ReviewVisualBitmap(1200, 600, null);
+                    Bitmap bitmap = ReviewVisualInkBitmap(result, path, pageIndex, 1200, 600);
                     rendered.Add(bitmap);
                     return bitmap;
                 });
@@ -8013,7 +8033,7 @@ namespace ExcelMerger.Tests
             PdfReviewVisualDiff.Refine(control, PdfReviewLimits.Default(), null,
                 delegate(string path, int pageIndex, int targetWidth, int maxHeight)
                 {
-                    Bitmap bitmap = ReviewVisualBitmap(200, 100, null);
+                    Bitmap bitmap = ReviewVisualInkBitmap(control, path, pageIndex, 200, 100);
                     controlBitmaps.Add(bitmap);
                     return bitmap;
                 });
@@ -8039,7 +8059,7 @@ namespace ExcelMerger.Tests
             PdfReviewVisualDiff.Refine(capped, PdfReviewLimits.Default(), null,
                 delegate(string path, int pageIndex, int targetWidth, int maxHeight)
                 {
-                    Bitmap bitmap = ReviewVisualBitmap(200, 100, null);
+                    Bitmap bitmap = ReviewVisualInkBitmap(capped, path, pageIndex, 200, 100);
                     cappedBitmaps.Add(bitmap);
                     return bitmap;
                 });
@@ -8122,7 +8142,7 @@ namespace ExcelMerger.Tests
                     },
                     delegate(string path, int pageIndex, int targetWidth, int maxHeight)
                     {
-                        Bitmap bitmap = ReviewVisualBitmap(200, 100, null);
+                        Bitmap bitmap = ReviewVisualInkBitmap(result, path, pageIndex, 200, 100);
                         rendered.Add(bitmap);
                         if (pageIndex == 1 && string.Equals(path, right.Path,
                             StringComparison.Ordinal))
@@ -8171,7 +8191,7 @@ namespace ExcelMerger.Tests
             PdfReviewVisualDiff.Refine(result, PdfReviewLimits.Default(), null,
                 delegate(string path, int pageIndex, int targetWidth, int maxHeight)
                 {
-                    Bitmap bitmap = ReviewVisualBitmap(200, 100, null);
+                    Bitmap bitmap = ReviewVisualInkBitmap(result, path, pageIndex, 200, 100);
                     retryBitmaps.Add(bitmap);
                     return bitmap;
                 });
@@ -8697,20 +8717,15 @@ namespace ExcelMerger.Tests
             }
         }
 
-        /// <summary>Геометрия подсветки: повороты и перевод в пиксели растра (Y вниз).</summary>
+        /// <summary>
+        /// Геометрия подсветки: перевод рамки из пространства отображения в пиксели растра (Y вниз).
+        /// Поворот страницы здесь не участвует — его уже применило извлечение (см. живой тест
+        /// «Аудит RS-1» на /Rotate 0/90/180/270 и CropBox).
+        /// </summary>
         private static void TestReviewGeometryMapping()
         {
-            PdfReviewBox r0 = PdfReviewGeometry.RawToView(100, 200, 160, 216, 0, 595, 842);
-            AssertEqual("100;200;160;216", BoxSig(r0), "0° — рамка без изменений");
-            PdfReviewBox r180 = PdfReviewGeometry.RawToView(100, 200, 160, 216, 180, 595, 842);
-            AssertEqual("435;626;495;642", BoxSig(r180), "180° — зеркальная рамка");
-            PdfReviewBox r90 = PdfReviewGeometry.RawToView(100, 200, 160, 216, 90, 595, 842);
-            AssertEqual("200;435;216;495", BoxSig(r90), "90° — ось поменялась");
-            double vw, vh;
-            PdfReviewGeometry.ViewSize(595, 842, 90, out vw, out vh);
-            AssertEqual("842;595", Math.Round(vw) + ";" + Math.Round(vh), "90° — размеры меняются местами");
-            // Растра 595×842 против страницы 595×842 в пространстве отображения: масштаб 1,
-            // верх рамки (216 от верха при Y вниз для 0°) становится пиксельной ординатой.
+            // Растр 595×842 против страницы 595×842 в пространстве отображения: масштаб 1,
+            // верх рамки (50 пт от низа при Y вверх) становится ординатой 842 − 50 при Y вниз.
             var flat = new PdfReviewBox { Left = 10, Bottom = 30, Right = 60, Top = 50 };
             System.Drawing.RectangleF px = PdfReviewGeometry.ToPixelRect(flat, 595, 842, 595, 842);
             AssertEqual(10, (int)px.Left, "X слева");
@@ -12261,14 +12276,16 @@ namespace ExcelMerger.Tests
 
         private static void TestClampWindow()
         {
+            // Кэш с запасом: окно — буфер с каждой стороны в пределах списка (ограничение
+            // ёмкостью проверяет «Аудит GR-1»).
             int lo, hi;
-            PdfPageGrid.ClampWindow(0, 10, 100, 16, out lo, out hi);
+            PdfPageGrid.PrefetchWindow(0, 10, 100, 16, 512, out lo, out hi);
             AssertEqual("0,26", lo + "," + hi, "у начала — не ниже 0");
-            PdfPageGrid.ClampWindow(50, 60, 100, 16, out lo, out hi);
+            PdfPageGrid.PrefetchWindow(50, 60, 100, 16, 512, out lo, out hi);
             AssertEqual("34,76", lo + "," + hi, "в середине — буфер с обеих сторон");
-            PdfPageGrid.ClampWindow(90, 99, 100, 16, out lo, out hi);
+            PdfPageGrid.PrefetchWindow(90, 99, 100, 16, 512, out lo, out hi);
             AssertEqual("74,99", lo + "," + hi, "у конца — не выше count-1");
-            PdfPageGrid.ClampWindow(0, 5, 6, 16, out lo, out hi);
+            PdfPageGrid.PrefetchWindow(0, 5, 6, 16, 512, out lo, out hi);
             AssertEqual("0,5", lo + "," + hi, "мало элементов — весь список");
         }
 

@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 
 namespace ExcelMerger
@@ -53,6 +54,7 @@ namespace ExcelMerger
                 // все они дают чистое серое, и внутри файла остаётся только DeviceGray.
                 sb.Append(" -sColorConversionStrategy=Gray");
             }
+            sb.Append(GsArguments.KeepPageOrientation);
             sb.Append(" -dNOPAUSE -dBATCH -dQUIET -dSAFER");
             GsArguments.AppendTail(sb, bundledGsRoot, GsArguments.LiteralOutput(output), input);
             return sb.ToString();
@@ -92,13 +94,14 @@ namespace ExcelMerger
             return ApplyCore(path, mode, true);
         }
 
-        internal static bool ApplyUnpublished(string path, PdfConvertMode mode)
+        /// <summary>Преобразование неопубликованного файла; cancelled — см. <see cref="GsRewrite.RunDetailedUnpublished"/>.</summary>
+        internal static bool ApplyUnpublished(string path, PdfConvertMode mode, Func<bool> cancelled = null)
         {
-            return ApplyCore(path, mode, false);
+            return ApplyCore(path, mode, false, cancelled);
         }
 
         private static bool ApplyCore(string path, PdfConvertMode mode,
-            bool recoverableTarget)
+            bool recoverableTarget, Func<bool> cancelled = null)
         {
             if (!Ghostscript.Available)
                 return false;
@@ -108,7 +111,7 @@ namespace ExcelMerger
                 ? GsRewrite.RunDetailed(path, temp, args, TimeoutMs, ShouldReplace,
                     delegate(string produced) { return Verify(produced, mode); })
                 : GsRewrite.RunDetailedUnpublished(path, temp, args, TimeoutMs,
-                    ShouldReplace, delegate(string produced) { return Verify(produced, mode); });
+                    ShouldReplace, delegate(string produced) { return Verify(produced, mode); }, cancelled);
             return result == GsRewriteResult.Applied;
         }
     }

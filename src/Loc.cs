@@ -306,6 +306,13 @@ namespace ExcelMerger
             A("split.tip.ops",
                 "Сжатие, картинки, текст, оттенки серого, восстановление, изменение свойств документа. Откроется отдельное окно, и открытый здесь документ уедет туда сам.",
                 "Compression, images, text, grayscale, repair, editing the document properties. A separate window opens, and the document you have open here goes there with it.");
+            // Туда уходит ФАЙЛ, а не сетка: правки сетки при переходе не сохраняются, и молчать
+            // об этом нельзя — иначе «сжал» выглядит как «сжал собранное», а сжат исходник.
+            A("split.ask.opsDropsEdits.title", "Открыть в «Прочих операциях» исходный файл?",
+                "Open the original file in More operations?");
+            A("split.ask.opsDropsEdits.body",
+                "Правки в сетке — порядок, повороты, удалённые и вставленные страницы — туда не переходят: откроется файл в том виде, в каком он сохранён на диске.\n\nЧтобы продолжить с правками, сначала сохраните их новым PDF: режим «{0}», выделите все страницы (Ctrl+A) и нажмите «{1}».\n\n«Да» — открыть исходный файл, «Нет» — остаться здесь.",
+                "Your edits in the grid — order, rotation, removed and inserted pages — do not go there: the file opens as it is saved on disk.\n\nTo keep working with the edits, save them as a new PDF first: choose “{0}”, select all pages (Ctrl+A) and click “{1}”.\n\n“Yes” opens the original file, “No” stays here.");
 
             A("review.header.subtitle", "Сквозное сравнение двух цифровых PDF без изменения файлов.",
                 "Whole-document comparison of two born-digital PDFs without changing either file.");
@@ -518,6 +525,13 @@ namespace ExcelMerger
             A("ops.ask.jpeg.body",
                 "JPEG заметно компактнее, но сжимает с потерями. PNG крупнее и сохраняет страницу точно.\n\n«Да» — JPEG, «Нет» — PNG.",
                 "JPEG is much smaller but compresses with losses. PNG is larger and keeps the page exactly.\n\n“Yes” — JPEG, “No” — PNG.");
+            // Документ PDF/A после записи свойств архивным не остаётся (XMP с отметкой удаляется,
+            // /Producer переписывается) — молчать об этом нельзя: архив такой файл не примет.
+            A("ops.ask.pdfaLoss.title", "Документ перестанет быть PDF/A",
+                "The document will no longer be PDF/A");
+            A("ops.ask.pdfaLoss.body",
+                "Этот файл помечен как архивный (PDF/A). После изменения свойств пометка снимается, и архив или система электронного документооборота может такой файл не принять. Исходный файл не изменится.\n\n«Да» — сохранить свойства в новый файл, «Нет» — отказаться.",
+                "This file is marked as archival (PDF/A). Changing its properties removes the mark, and an archive or document management system may reject the file. The original file stays unchanged.\n\n“Yes” saves the properties to a new file, “No” cancels.");
             A("ops.status.exporting", "Сохранение картинок…", "Saving images…");
             A("ops.status.exportingPage", "Сохранение: страница {0} из {1}…", "Saving: page {0} of {1}…");
             A("ops.status.extractingText", "Извлечение текста…", "Extracting text…");
@@ -585,7 +599,7 @@ namespace ExcelMerger
                 "• «Печать…» — выделенные страницы (или все) на принтер, вместе с назначенными им поворотами.\n" +
                 "• «Свойства документа…» — заголовок, автор, тема, ключевые слова. Пустое поле очищает свойство: так убирают имя автора перед отправкой.\n\n" +
                 "Отсканированный документ (без текстового слоя) текста не отдаст — там нечего извлекать.\n\n" +
-                "Файл под паролем: «Сохранить PDF…» с правками или сжатием, «Сжать…» и «В оттенки серого…» дают результат без пароля. Пароль остаётся только у нетронутой копии без сжатия.",
+                "Файл под паролем: «Сохранить PDF…» с правками или сжатием, «Сжать…», «В оттенки серого…» и «Свойства документа…» дают результат без пароля (у свойств — ещё и без полей формы и вложений: документ собирается из страниц заново). Пароль остаётся только у нетронутой копии без сжатия.",
                 "1. Collect the pages: open a PDF (“Open PDF…” or drag it in) or add images (“Add images…”). Every image becomes an A4 sheet with margins.\n" +
                 "2. Assemble the document in the grid if you need to: pages are reordered by dragging, rotated with the buttons on the tile and removed with Delete (Ctrl+Z brings them back). Every action then works on the ASSEMBLED document, not on the file.\n" +
                 "3. Click the action you need in the panel on the right. Every one writes its RESULT INTO A NEW FILE — the source is left as it was.\n\n" +
@@ -598,7 +612,7 @@ namespace ExcelMerger
                 "• “Print…” — the selected pages (or all of them) to a printer, with the rotations assigned to them.\n" +
                 "• “Document properties…” — title, author, subject, keywords. An empty field clears the property: that is how the author's name is removed before sending.\n\n" +
                 "A scanned document (without a text layer) will not give up any text — there is nothing to extract there.\n\n" +
-                "Password-protected file: “Save PDF…” with edits or compression, “Compress…” and “To grayscale…” produce a result without the password. Only an untouched copy without compression keeps it.");
+                "Password-protected file: “Save PDF…” with edits or compression, “Compress…”, “To grayscale…” and “Document properties…” produce a result without the password (properties also without form fields and attachments: the document is rebuilt from its pages). Only an untouched copy without compression keeps it.");
             A("preview.fit", "По окну", "Fit to window");
             A("preview.tip.zoomIn", "Увеличить (Ctrl+колесо)", "Zoom in (Ctrl+wheel)");
             A("preview.tip.zoomOut", "Уменьшить (Ctrl+колесо)", "Zoom out (Ctrl+wheel)");
@@ -1290,8 +1304,10 @@ namespace ExcelMerger
             A("excel.lbl.name", "Имя:", "Name:");
             A("excel.lbl.folder", "Папка:", "Folder:");
             A("excel.lbl.sheets", "Листы:", "Sheets:");
-            A("excel.tip.format", "Формат итогового файла; .xls — старый формат Excel 97–2003",
-                "Output file format; .xls is the old Excel 97–2003 format");
+            // Пределы .xls называем прямо в подсказке: Excel при сохранении в этот формат молча
+            // отбрасывает то, что за ними, а свод отметит такие листы в примечании.
+            A("excel.tip.format", "Формат итогового файла; .xls — старый формат Excel 97–2003: в нём не больше 65 536 строк и 256 столбцов на лист, остальное не сохранится",
+                "Output file format; .xls is the old Excel 97–2003 format: at most 65,536 rows and 256 columns per sheet, anything beyond is not saved");
             A("excel.scope.first", "Только первый лист", "First sheet only");
             A("excel.scope.all", "Все листы", "All sheets");
             A("excel.tip.scope", "Из каждого файла брать только первый видимый лист или все видимые",

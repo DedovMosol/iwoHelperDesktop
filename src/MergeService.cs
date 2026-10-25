@@ -15,6 +15,9 @@ namespace ExcelMerger
         public bool Ok;
         public string Note;      // причина пропуска или предупреждение
         public bool Linkable;    // на лист можно сослаться гиперссылкой (есть ячейка A1)
+        // Имя листа В ИСТОЧНИКЕ; null — пропущен файл целиком (не открылся, нет листов).
+        // По нему повтор переносит только упавшие листы, а не весь файл заново.
+        public string SourceSheet;
     }
 
     public class MergeResult
@@ -271,22 +274,93 @@ namespace ExcelMerger
                 throw new MergeException(Loc.T("err.merge.nothingToRetry"));
 
             ValidateOutput(outputPath);
-            return Run(outputPath, retryPaths, options, previous);
+            return Run(outputPath, retryPaths, options, previous, RetrySheets(previous));
         }
 
         /// <summary>
-        /// Набор повтора — пропущенные записи прошлого прогона. Общий для сервиса и окна:
-        /// окно сбрасывает строки именно этих файлов (и при перезапуске Excel тоже).
+        /// Набор повтора — файлы с пропущенными записями прошлого прогона, каждый ОДИН раз и в
+        /// исходном порядке. Общий для сервиса и окна: окно сбрасывает строки именно этих файлов
+        /// (и при перезапуске Excel тоже). Раньше файл с двумя упавшими листами попадал сюда
+        /// дважды и переносился дважды.
         /// </summary>
         internal static List<string> RetryPaths(MergeResult previous)
         {
             var paths = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (FileResult fr in previous.Files)
             {
-                if (!fr.Ok && fr.FullPath != null)
+                if (!fr.Ok && fr.FullPath != null && seen.Add(RetryKey(fr.FullPath)))
                     paths.Add(fr.FullPath);
             }
             return paths;
+        }
+
+        /// <summary>
+        /// Какие листы каждого файла повторять: имена упавших листов, или null — файл целиком
+        /// (он не открылся вовсе, или ни один его лист не перенёсся). Без этого повтор в режиме
+        /// «все листы» копировал заново и уже перенесённые листы: в своде появлялись «Янв_2»,
+        /// «Фев_2», а оглавление и счётчики их дублировали. Ключ — полный путь. Чистая — под тест.
+        /// </summary>
+        internal static Dictionary<string, HashSet<string>> RetrySheets(MergeResult previous)
+        {
+            var failed = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            var anyOk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (FileResult fr in previous.Files)
+            {
+                if (fr.FullPath == null)
+                    continue;
+                string key = RetryKey(fr.FullPath);
+                if (fr.Ok)
+                {
+                    anyOk.Add(key);
+                    continue;
+                }
+                HashSet<string> sheets;
+                if (!failed.TryGetValue(key, out sheets))
+                    failed[key] = sheets = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // имена листов Excel не различают регистр
+                // Без имени листа (файл не открылся, имя не прочиталось) прицельный повтор
+                // невозможен: такой файл повторяется целиком, только если в нём ничего не
+                // перенеслось, — иначе весь файл заново дал бы дубли перенесённых листов.
+                if (fr.SourceSheet != null)
+                    sheets.Add(fr.SourceSheet);
+            }
+            var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, HashSet<string>> item in failed)
+                result[item.Key] = anyOk.Contains(item.Key) ? item.Value : null;
+            return result;
+        }
+
+        /// <summary>Заменяет ли повтор эту запись прошлого прогона (по плану <see cref="RetrySheets"/>).</summary>
+        private static bool IsRetried(FileResult fr, Dictionary<string, HashSet<string>> plan)
+        {
+            if (fr.Ok || fr.FullPath == null)
+                return false;
+            HashSet<string> sheets;
+            if (!plan.TryGetValue(RetryKey(fr.FullPath), out sheets))
+                return false;
+            return sheets == null || (fr.SourceSheet != null && sheets.Contains(fr.SourceSheet));
+        }
+
+        /// <summary>
+        /// Записи прошлого прогона, которые повтор не заменяет: успешные листы и пропуски, которые
+        /// не повторяются. С них окно начинает строки повторяемых файлов — иначе строка файла с
+        /// перенесённым «Янв» и упавшим «Фев» после повтора показывала бы один «Фев».
+        /// Чистая — под тест.
+        /// </summary>
+        internal static List<FileResult> RetryKept(MergeResult previous)
+        {
+            Dictionary<string, HashSet<string>> plan = RetrySheets(previous);
+            var kept = new List<FileResult>();
+            foreach (FileResult fr in previous.Files)
+                if (!IsRetried(fr, plan))
+                    kept.Add(fr);
+            return kept;
+        }
+
+        private static string RetryKey(string path)
+        {
+            try { return Path.GetFullPath(path); }
+            catch { return path; } // недопустимый путь — сравниваем как есть
         }
 
         /// <summary>
@@ -315,6 +389,7 @@ namespace ExcelMerger
             combined.OutputPath = previous.OutputPath;
             combined.MacrosCarried = previous.MacrosCarried; // свод тот же; при сохранении проверится заново
             var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, HashSet<string>> plan = RetrySheets(previous);
             foreach (FileResult old in previous.Files)
             {
                 if (old.Ok)
@@ -324,14 +399,14 @@ namespace ExcelMerger
                 }
                 string key = old.FullPath ?? old.FileName;
                 List<FileResult> fresh;
-                if (key != null && freshByPath.TryGetValue(key, out fresh))
+                if (key != null && IsRetried(old, plan) && freshByPath.TryGetValue(key, out fresh))
                 {
-                    if (expanded.Add(key)) // разворачиваем файл один раз
+                    if (expanded.Add(key)) // разворачиваем файл один раз — на месте первой заменённой записи
                         combined.Files.AddRange(fresh);
                 }
                 else
                 {
-                    combined.Files.Add(old); // файл не повторялся
+                    combined.Files.Add(old); // запись не повторялась
                 }
             }
             foreach (FileResult f in combined.Files)
@@ -402,7 +477,8 @@ namespace ExcelMerger
         /// файл исключается — без перезагрузки машины и без потери остальных.
         /// previous == null — новый свод; иначе дослияние в существующий файл.
         /// </summary>
-        private MergeResult Run(string outputPath, List<string> files, MergeOptions options, MergeResult previous)
+        private MergeResult Run(string outputPath, List<string> files, MergeOptions options, MergeResult previous,
+            Dictionary<string, HashSet<string>> onlySheets = null)
         {
             string spaceError = CheckWorkingSpace(outputPath);
             if (spaceError != null)
@@ -413,7 +489,7 @@ namespace ExcelMerger
             {
                 try
                 {
-                    return RunOnce(outputPath, files, options, previous, excluded);
+                    return RunOnce(outputPath, files, options, previous, excluded, onlySheets);
                 }
                 catch (ExcelWedgedException wedge)
                 {
@@ -435,9 +511,17 @@ namespace ExcelMerger
         /// пропускаются без открытия (ранее подвесили Excel). Бросает
         /// ExcelWedgedException, если очередной файл подвесил Workbooks.
         /// </summary>
-        private MergeResult RunOnce(string outputPath, List<string> files, MergeOptions options, MergeResult previous, HashSet<string> excluded)
+        private MergeResult RunOnce(string outputPath, List<string> files, MergeOptions options, MergeResult previous,
+            HashSet<string> excluded, Dictionary<string, HashSet<string>> onlySheets)
         {
             bool intoExisting = previous != null;
+            bool legacy = OutputFormats.FileFormatFor(outputPath) == XlExcel8;
+            var copyTarget = new CopyTarget
+            {
+                Legacy = legacy,
+                SmallGrid = intoExisting && legacy, // существующий .xls открывается в режиме совместимости — сетка старая
+                OnlySheets = onlySheets
+            };
             var attempt = new MergeResult();
             attempt.OutputPath = outputPath;
 
@@ -448,6 +532,7 @@ namespace ExcelMerger
             dynamic excel = null;
             dynamic target = null;
             OwnedOfficeProcess excelProcess = null; // страховка от осиротевшего EXCEL.EXE (см. finally)
+            bool askToUpdateLinks = true; // настройка экземпляра до свода — вернуть, если он достанется человеку
             ComMessageFilter.Register(); // авто-повтор вызовов, отклонённых занятым Excel
             try
             {
@@ -457,7 +542,12 @@ namespace ExcelMerger
                 excel.DisplayAlerts = false;
                 excel.ScreenUpdating = false;
                 excel.EnableEvents = false;
-                try { excel.AskToUpdateLinks = false; } catch { }
+                try
+                {
+                    askToUpdateLinks = (bool)excel.AskToUpdateLinks;
+                    excel.AskToUpdateLinks = false;
+                }
+                catch { }
                 try { excel.AutomationSecurity = 3; } catch { } // msoAutomationSecurityForceDisable: макросы источников не выполняются
 
                 WaitExcelReady((object)excel); // под нагрузкой Excel готов к Workbooks не сразу
@@ -515,7 +605,7 @@ namespace ExcelMerger
                     List<FileResult> frs;
                     try
                     {
-                        frs = CopySheets((object)excel, (object)target, path, namer, options);
+                        frs = CopySheets((object)excel, (object)target, path, namer, options, copyTarget);
                     }
                     catch (Exception ex)
                     {
@@ -607,21 +697,57 @@ namespace ExcelMerger
                     ComSafe.Release(targetObj);
                 }
                 object excelObj = excel;
+                int foreignBooks = 0;
                 if (excelObj != null)
                 {
-                    try { excel.Quit(); } catch { }
+                    foreignBooks = QuitOrHandOver(excelObj, askToUpdateLinks);
                     ComSafe.Release(excelObj);
                 }
                 ComSafe.Collect();
                 ComMessageFilter.Revoke();
+                if (foreignBooks > 0)
+                    RaiseTrace("в экземпляре Excel открыты книги пользователя (" + foreignBooks +
+                        ") — Excel оставлен открытым и показан");
                 // Последний рубеж: заклинивший экземпляр не выходит и после Quit/Release —
-                // ждём штатного выхода и завершаем только СВОЙ процесс.
-                if (excelProcess != null && excelProcess.KillIfLingering(ExcelExitWaitMs))
+                // ждём штатного выхода и завершаем только СВОЙ процесс. Отданный человеку —
+                // уже не свой: его не трогаем.
+                else if (excelProcess != null && excelProcess.KillIfLingering(ExcelExitWaitMs))
                     RaiseTrace("Excel не завершился сам — процесс " + excelProcess.Id + " остановлен");
             }
         }
 
         private const int ExcelExitWaitMs = 5000;
+
+        /// <summary>
+        /// Закрыть свой экземпляр Excel — или, если в нём остались ЧУЖИЕ книги, отдать его
+        /// человеку. Вызывается, когда свод и источники уже закрыты: всё, что ещё открыто, —
+        /// книги, которые Windows передала в наш скрытый экземпляр (двойной щелчок по файлу во
+        /// время свода). Quit при DisplayAlerts = false закрыл бы их без сохранения, а
+        /// страховка KillIfLingering затем завершила бы процесс. Вместо этого экземпляр
+        /// становится обычным окном Excel с прежними настройками (askToUpdateLinks — значение
+        /// до свода). Возвращает число чужих книг (0 — экземпляр закрыт). После Quit
+        /// динамических вызовов нет (правила ComSafe).
+        /// </summary>
+        internal static int QuitOrHandOver(object excelObj, bool askToUpdateLinks = true)
+        {
+            dynamic excel = excelObj;
+            int open = 0;
+            try { open = (int)excel.Workbooks.Count; }
+            catch { open = 0; } // экземпляр не отвечает — закрываем, как раньше
+            if (!OfficeInstance.KeepForUser(open))
+            {
+                try { excel.Quit(); } catch { }
+                return 0;
+            }
+            try { excel.Calculation = XlCalculationAutomatic; } catch { }
+            try { excel.ScreenUpdating = true; } catch { }
+            try { excel.EnableEvents = true; } catch { }
+            try { excel.DisplayAlerts = true; } catch { }
+            try { excel.AskToUpdateLinks = askToUpdateLinks; } catch { }
+            try { excel.Visible = true; } catch { }
+            try { excel.UserControl = true; } catch { } // без этого освобождение ссылок закрыло бы Excel
+            return open;
+        }
 
         /// <summary>
         /// Страховка от осиротевшего EXCEL.EXE — процесс по окну приложения. null — определить
@@ -732,7 +858,54 @@ namespace ExcelMerger
             }
         }
 
-        private List<FileResult> CopySheets(object excelObj, object targetObj, string path, SheetNamer namer, MergeOptions options)
+        private const int XlExcel8 = 56; // формат .xls: 65 536 строк × 256 столбцов
+        internal const long LegacyRows = 65536;
+        internal const long LegacyColumns = 256;
+
+        /// <summary>Куда переносятся листы: от этого зависит, что проверять у источника.</summary>
+        private sealed class CopyTarget
+        {
+            public bool Legacy;     // свод сохраняется в .xls
+            public bool SmallGrid;  // сама книга свода уже в старой сетке (дослияние в .xls)
+            public Dictionary<string, HashSet<string>> OnlySheets; // повтор: только эти листы файла
+        }
+
+        /// <summary>
+        /// Примечание о данных за пределами сетки .xls; null — лист в неё помещается. Без него
+        /// Excel при сохранении в .xls молча отбрасывал всё, что дальше 65 536-й строки и
+        /// столбца IV (DisplayAlerts выключен, вопроса проверки совместимости нет). Чистая — под тест.
+        /// </summary>
+        internal static string LegacyGridNote(long lastRow, long lastColumn)
+        {
+            return lastRow > LegacyRows || lastColumn > LegacyColumns
+                ? "данные за пределами 65 536 строк × 256 столбцов не попадут в свод .xls"
+                : null;
+        }
+
+        internal const string BigGridIntoLegacyNote =
+            "лист книги нового формата нельзя добавить в свод .xls — соберите свод в .xlsx";
+
+        /// <summary>
+        /// Последняя заполненная строка и столбец листа (1-based). UsedRange дёшев, но завышает
+        /// из-за одного только оформления, поэтому, если он выходит за сетку .xls, границу
+        /// уточняет поиск последнего значения или формулы.
+        /// </summary>
+        private static void LastUsedCell(dynamic ws, out long lastRow, out long lastColumn)
+        {
+            dynamic used = ws.UsedRange;
+            lastRow = (long)(int)used.Row + (long)(int)used.Rows.Count - 1;
+            lastColumn = (long)(int)used.Column + (long)(int)used.Columns.Count - 1;
+            if (LegacyGridNote(lastRow, lastColumn) == null)
+                return;
+            const int xlFormulas = -4123, xlPart = 2, xlByRows = 1, xlByColumns = 2, xlPrevious = 2;
+            dynamic byRow = ws.Cells.Find("*", Type.Missing, xlFormulas, xlPart, xlByRows, xlPrevious);
+            dynamic byColumn = ws.Cells.Find("*", Type.Missing, xlFormulas, xlPart, xlByColumns, xlPrevious);
+            lastRow = byRow == null ? 0 : (long)(int)byRow.Row;
+            lastColumn = byColumn == null ? 0 : (long)(int)byColumn.Column;
+        }
+
+        private List<FileResult> CopySheets(object excelObj, object targetObj, string path, SheetNamer namer,
+            MergeOptions options, CopyTarget into)
         {
             dynamic excel = excelObj;
             dynamic target = targetObj;
@@ -779,6 +952,27 @@ namespace ExcelMerger
                     return results;
                 }
 
+                HashSet<string> wanted = null;
+                if (options.AllSheets && into.OnlySheets != null)
+                    into.OnlySheets.TryGetValue(RetryKey(path), out wanted); // null — файл целиком
+                if (wanted != null)
+                {
+                    var pending = new HashSet<string>(wanted, StringComparer.OrdinalIgnoreCase);
+                    sheets = sheets.FindAll(delegate(object s)
+                    {
+                        string name;
+                        try { name = (string)((dynamic)s).Name; }
+                        catch { return false; }
+                        return pending.Remove(name);
+                    });
+                    foreach (string missing in pending)
+                    {
+                        FileResult gone = Skipped(fileName, path, "лист «" + missing + "» больше не найден в файле");
+                        gone.SourceSheet = missing;
+                        results.Add(gone);
+                    }
+                }
+
                 bool fileNotesPending = true;
                 foreach (object wsObj in sheets)
                 {
@@ -786,9 +980,35 @@ namespace ExcelMerger
                     var fr = new FileResult();
                     fr.FileName = fileName;
                     fr.FullPath = path;
+                    try { fr.SourceSheet = (string)ws.Name; }
+                    catch { } // имя не прочиталось — повтор возьмёт файл целиком
                     try
                     {
-                        string baseName = SheetBaseName(fileBase, (string)ws.Name, options.AllSheets);
+                        string baseName = SheetBaseName(fileBase, fr.SourceSheet ?? (string)ws.Name, options.AllSheets);
+                        string gridNote = null;
+                        if (into.Legacy)
+                        {
+                            bool bigGrid = false;
+                            try { bigGrid = (long)(int)ws.Rows.Count > LegacyRows; }
+                            catch { } // лист-диаграмма: ячеек нет, сетке нечего превышать
+                            if (bigGrid && into.SmallGrid)
+                            {
+                                // Excel отказал бы в Copy (1004) своим длинным текстом; причина известна заранее.
+                                fr.Note = BigGridIntoLegacyNote;
+                                results.Add(fr);
+                                continue;
+                            }
+                            if (bigGrid)
+                            {
+                                long lastRow, lastColumn;
+                                try
+                                {
+                                    LastUsedCell(ws, out lastRow, out lastColumn);
+                                    gridNote = LegacyGridNote(lastRow, lastColumn);
+                                }
+                                catch { } // размер не выяснился — сохраняем как раньше, без примечания
+                            }
+                        }
                         dynamic last = target.Sheets[target.Sheets.Count];
                         ws.Copy(Type.Missing, last); // After: в конец итоговой книги
                         dynamic copied = target.Sheets[target.Sheets.Count];
@@ -809,6 +1029,8 @@ namespace ExcelMerger
                         RaiseTrace("renamed: " + name);
                         fr.SheetName = name;
                         fr.Ok = true;
+                        if (gridNote != null)
+                            AppendNote(fr, gridNote);
 
                         // Лист-диаграмма не имеет ячеек: гиперссылка на A1 невозможна.
                         try { dynamic probe = copied.Range("A1"); fr.Linkable = true; }
@@ -991,9 +1213,18 @@ namespace ExcelMerger
             }
             dynamic areas = formulaCells.Areas;
             int count = (int)areas.Count;
+            // Неудавшийся разлив возвращён формулой: общий проход идёт дальше (остальные формулы,
+            // в том числе ссылки на источник, обязаны стать значениями), но области с уцелевшим
+            // разливом заменяются по ячейкам в обход якоря — иначе его значение стёрло бы разлив.
+            bool spillsKept = !ReplaceSpills(sheet, areas, count);
             for (int i = 1; i <= count; i++)
             {
                 dynamic area = areas[i];
+                if (spillsKept && HasAnySpill(area))
+                {
+                    ReplaceCellByCell(area, true);
+                    continue;
+                }
                 try
                 {
                     object values = area.Value2;
@@ -1011,7 +1242,96 @@ namespace ExcelMerger
             return !AnyFormula((object)sheet.UsedRange.HasFormula);
         }
 
-        private static void ReplaceCellByCell(dynamic area)
+        /// <summary>
+        /// Динамические массивы (Excel 2021 / Microsoft 365): формула живёт ТОЛЬКО в ячейке-якоре,
+        /// а разлив — значения без формул. SpecialCells(формулы) даёт один якорь, запись его
+        /// значения стирает разлив, и данные пропадали, причём проверка «формул не осталось»
+        /// честно проходила. Поэтому разливы заменяются ДО общего прохода и целиком:
+        /// читаем значения всего разлива, пишем значение якоря (разлив исчезает) и затем весь
+        /// прямоугольник по прежнему адресу. Не записалось — формула якоря возвращается, и
+        /// лист получает примечание «заменены не полностью», а не тихую потерю.
+        ///
+        /// Excel без динамических массивов (2019 и старше) свойства HasSpill не знает: чтение
+        /// бросает, и лист идёт прежним путём. Свойство агрегатное (true/false/null для
+        /// диапазона), поэтому по ячейкам идём только в областях, где разлив вообще есть.
+        /// </summary>
+        private static bool ReplaceSpills(dynamic sheet, dynamic areas, int count)
+        {
+            object any;
+            try { any = sheet.UsedRange.HasSpill; }
+            catch (Exception ex) when (!(ex is OutOfMemoryException)) { return true; } // нет динамических массивов
+            if (!AnyFormula(any))
+                return true;
+            var anchors = new List<object>();
+            try
+            {
+                for (int i = 1; i <= count; i++)
+                {
+                    dynamic area = areas[i];
+                    if (!HasAnySpill(area))
+                        continue;
+                    int rows = (int)area.Rows.Count, cols = (int)area.Columns.Count;
+                    for (int r = 1; r <= rows; r++)
+                        for (int c = 1; c <= cols; c++)
+                        {
+                            dynamic cell = area.Cells[r, c];
+                            if (IsSpill(cell))
+                                anchors.Add((object)cell); // ячейка с формулой внутри разлива — его якорь
+                        }
+                }
+            }
+            catch (Exception ex) when (!(ex is OutOfMemoryException))
+            {
+                return false; // ничего ещё не записано; разливы остаются формулами
+            }
+            bool all = true;
+            foreach (object anchorObj in anchors)
+            {
+                dynamic anchor = anchorObj;
+                string address, formula;
+                object values;
+                try
+                {
+                    dynamic spill = anchor.SpillingToRange;
+                    address = (string)spill.Address;
+                    formula = (string)anchor.Formula2;
+                    values = spill.Value2;
+                }
+                catch (Exception ex) when (!(ex is OutOfMemoryException))
+                {
+                    all = false; // не прочитался — не трогаем
+                    continue;
+                }
+                var grid = values as object[,];
+                object first = grid != null ? grid.GetValue(grid.GetLowerBound(0), grid.GetLowerBound(1)) : values;
+                try
+                {
+                    anchor.Value2 = CellText.EscapeValues(first);
+                    sheet.Range(address).Value2 = CellText.EscapeValues(values);
+                }
+                catch (Exception ex) when (!(ex is OutOfMemoryException))
+                {
+                    try { anchor.Formula2 = formula; } catch { } // вернуть разлив, а не потерять его
+                    all = false;
+                }
+            }
+            return all;
+        }
+
+        /// <summary>Есть ли в диапазоне разлив (HasSpill агрегатный: true, false или null). Без динамических массивов — нет.</summary>
+        private static bool HasAnySpill(dynamic range)
+        {
+            try { return AnyFormula((object)range.HasSpill); }
+            catch (Exception ex) when (!(ex is OutOfMemoryException)) { return false; }
+        }
+
+        private static bool IsSpill(dynamic cell)
+        {
+            object spills = cell.HasSpill;
+            return spills is bool && (bool)spills;
+        }
+
+        private static void ReplaceCellByCell(dynamic area, bool skipSpills = false)
         {
             int rows = (int)area.Rows.Count;
             int cols = (int)area.Columns.Count;
@@ -1022,6 +1342,8 @@ namespace ExcelMerger
                     try
                     {
                         // Значение объединённой ячейки живёт в её верхней левой ячейке.
+                        if (skipSpills && IsSpill(area.Cells[r, c]))
+                            continue; // уцелевший разлив: значение якоря стёрло бы его
                         dynamic topLeft = area.Cells[r, c].MergeArea.Cells[1, 1];
                         object v = topLeft.Value2;
                         if (v != null)

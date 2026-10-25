@@ -13,10 +13,10 @@ namespace ExcelMerger
     /// сохранением текста, уровень Acrobat «Reduce File Size»). Фича опциональна:
     /// если GS не найден, вызывающий предлагает ссылку на скачивание.
     ///
-    /// Приоритет поиска: вшитый инсталлятором рядом с exe (&lt;app&gt;\gs\bin) →
-    /// реестр (GPL/Artifex Ghostscript) → Program Files\gs\* → профиль пользователя
-    /// (gs*) → PATH. Результат кэшируется потокобезопасно (Lazy) — оба PDF-инструмента
-    /// зовут его из фоновых потоков.
+    /// Выбор движка (<see cref="Exe"/>): вшитый инсталлятором рядом с exe (&lt;app&gt;\gs\bin) →
+    /// самый новый по версии файла из установленных (реестр GPL/Artifex Ghostscript,
+    /// Program Files\gs\*, профиль пользователя gs*) → самый новый из PATH, только если
+    /// установленных нет. Найденный путь кэшируется под замком, промах — нет.
     /// </summary>
     public static class Ghostscript
     {
@@ -42,12 +42,27 @@ namespace ExcelMerger
                         return _resolvedExe;
                     string found = ResolveForTests != null
                         ? ResolveForTests()
-                        : PickFirstExisting(Candidates(), File.Exists);
+                        : Choose(BundledCandidates(), InstalledCandidates, PathCandidatesOfProcess,
+                            File.Exists, FileVersionOf);
                     if (!string.IsNullOrEmpty(found))
                         _resolvedExe = found;
                     return found;
                 }
             }
+        }
+
+        /// <summary>
+        /// Порядок выбора движка: вшитый → самый новый из установленных → самый новый из PATH.
+        /// Каждый следующий список строится, только если предыдущий пуст: так PATH (с его
+        /// возможными сетевыми каталогами) не опрашивается, пока есть установленный движок.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static string Choose(IEnumerable<string> bundled, Func<IEnumerable<string>> installed,
+            Func<IEnumerable<string>> path, Func<string, bool> exists, Func<string, Version> versionOf)
+        {
+            return PickFirstExisting(bundled, exists)
+                ?? PickNewest(installed(), exists, versionOf)
+                ?? PickNewest(path(), exists, versionOf);
         }
 
         internal static void ResetResolutionForTests()
@@ -83,6 +98,61 @@ namespace ExcelMerger
                 catch { }
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Самый НОВЫЙ из существующих кандидатов (null — ни одного); при равных версиях —
+        /// первый по порядку. Движок читает каждый PDF, который открывает человек, поэтому из
+        /// нескольких установленных берём свежий: старый может нести уже исправленную уязвимость
+        /// (например, CVE-2026-39919 в версиях до 10.08.0). Порядок папок или ключей реестра
+        /// версию не выражает — строковая сортировка ставит gs9.56 выше gs10.08. Кандидат без
+        /// читаемой версии идёт после любого с версией. Чистая — под тест.
+        /// </summary>
+        internal static string PickNewest(IEnumerable<string> candidates, Func<string, bool> exists,
+            Func<string, Version> versionOf)
+        {
+            if (candidates == null || exists == null || versionOf == null)
+                return null;
+            string best = null;
+            Version bestVersion = null;
+            foreach (string c in candidates)
+            {
+                if (string.IsNullOrEmpty(c))
+                    continue;
+                Version version;
+                try
+                {
+                    if (!exists(c))
+                        continue;
+                    version = versionOf(c);
+                }
+                catch { continue; } // недоступный кандидат — просто не кандидат
+                if (best == null || (version != null && (bestVersion == null || version > bestVersion)))
+                {
+                    best = c;
+                    bestVersion = version;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>Версия исполняемого файла по его ресурсу версии; null — не читается.</summary>
+        private static Version FileVersionOf(string path)
+        {
+            string raw = FileVersionInfo.GetVersionInfo(path).FileVersion;
+            return ParseVersion(raw);
+        }
+
+        /// <summary>«10.07.1», «10.08.0 (2026-09-08)» → версия; мусор → null. Чистая — под тест.</summary>
+        internal static Version ParseVersion(string raw)
+        {
+            if (string.IsNullOrEmpty(raw))
+                return null;
+            int end = 0;
+            while (end < raw.Length && (char.IsDigit(raw[end]) || raw[end] == '.'))
+                end++;
+            Version parsed;
+            return Version.TryParse(raw.Substring(0, end).TrimEnd('.'), out parsed) ? parsed : null;
         }
 
         /// <summary>Первый существующий путь из кандидатов (null — ни одного). Чистая — под тест.</summary>
@@ -252,13 +322,16 @@ namespace ExcelMerger
             try { process.WaitForExit(2000); } catch { }
         }
 
-        // ---- Кандидаты на путь к gswin*c.exe, в порядке приоритета ----
+        // ---- Кандидаты на путь к gswin*c.exe ----
 
-        private static List<string> Candidates()
+        /// <summary>
+        /// Вшитый инсталлятором рядом с exe: &lt;app&gt;\gs\bin. Он всегда первый: его версию
+        /// проверяет сборка установщика (tools\stage_gs.ps1 не пропускает устаревший движок), а
+        /// разрядность совпадает с пакетом.
+        /// </summary>
+        private static List<string> BundledCandidates()
         {
             var list = new List<string>();
-
-            // 1. Вшитый инсталлятором рядом с exe: <app>\gs\bin\gswin64c.exe
             try
             {
                 string appGsBin = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gs", "bin");
@@ -266,11 +339,24 @@ namespace ExcelMerger
                 list.Add(Path.Combine(appGsBin, "gswin32c.exe"));
             }
             catch { }
+            return list;
+        }
 
-            // 2. Реестр (GPL/Artifex Ghostscript): из GS_DLL берём каталог bin.
+        /// <summary>
+        /// Установленные движки; из них берётся самый новый (<see cref="PickNewest"/>). PATH сюда
+        /// не входит: его каталоги, в том числе сетевые, опрашиваются только когда установленных
+        /// нет, как и до выбора по версии. Иначе каждый запуск проверял бы все записи PATH, а
+        /// первый вызов идёт из UI-потока (выбор уровня сжатия), и мёртвый \\сервер в PATH
+        /// подвесил бы окно на таймаут сети.
+        /// </summary>
+        private static List<string> InstalledCandidates()
+        {
+            var list = new List<string>();
+
+            // Реестр (GPL/Artifex Ghostscript): из GS_DLL берём каталог bin.
             list.AddRange(RegistryCandidates());
 
-            // 3. Program Files\gs\gs*\bin
+            // Program Files\gs\gs*\bin
             foreach (string pf in new[]
             {
                 Environment.GetEnvironmentVariable("ProgramFiles"),
@@ -281,21 +367,21 @@ namespace ExcelMerger
                     AddGlobBin(list, Path.Combine(pf, "gs"));
             }
 
-            // 4. Профиль пользователя: <profile>\gs*\bin (нестандартная пользовательская установка)
+            // Профиль пользователя: <profile>\gs*\bin (нестандартная пользовательская установка)
             try
             {
                 AddGlobBin(list, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
             }
             catch { }
 
-            // 5. PATH
-            try
-            {
-                list.AddRange(PathCandidates(Environment.GetEnvironmentVariable("PATH")));
-            }
-            catch { }
-
             return list;
+        }
+
+        /// <summary>Кандидаты из PATH текущего процесса — последний шанс, см. <see cref="InstalledCandidates"/>.</summary>
+        private static List<string> PathCandidatesOfProcess()
+        {
+            try { return PathCandidates(Environment.GetEnvironmentVariable("PATH")); }
+            catch { return new List<string>(); }
         }
 
         /// <summary>

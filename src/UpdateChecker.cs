@@ -135,16 +135,66 @@ namespace ExcelMerger
                 : current | SecurityProtocolType.Tls12;
         }
 
+        /// <summary>Ожидание соединения и заголовков, а также каждого чтения тела ответа.</summary>
+        internal const int StepTimeoutMs = 10000;
+        /// <summary>Общий срок запроса целиком: DNS, рукопожатие, заголовки и всё тело.</summary>
+        internal const int DeadlineMs = 20000;
+        /// <summary>Ответы — единицы килобайт; больше мегабайта — не наш ответ.</summary>
+        internal const int MaxResponseChars = 1 << 20;
+
+        /// <summary>
+        /// Параметры запроса без сети. Timeout у HttpWebRequest покрывает только соединение и
+        /// заголовки: чтение тела ждёт ReadWriteTimeout, а он по умолчанию 300 с на КАЖДОЕ
+        /// чтение, и кнопка «Проверить сейчас» могла стоять серой минутами. Прокси — системный,
+        /// но с учётными данными Windows: без них корпоративный прокси с проверкой (NTLM,
+        /// Kerberos) отвечает 407, и проверка не работала там вовсе. Это ровно то, что даёт
+        /// &lt;defaultProxy useDefaultCredentials="true"/&gt;, которого у одиночного exe нет.
+        /// </summary>
+        internal static void Configure(HttpWebRequest request, string accept)
+        {
+            request.UserAgent = "iwoHelperDesktop"; // GitHub требует User-Agent
+            request.Accept = accept;
+            request.Timeout = StepTimeoutMs;
+            request.ReadWriteTimeout = StepTimeoutMs;
+            IWebProxy proxy = request.Proxy;
+            if (proxy != null && proxy.Credentials == null)
+                proxy.Credentials = CredentialCache.DefaultCredentials;
+        }
+
         private static string Download(string url, string accept)
+        {
+            return Download(url, accept, DeadlineMs);
+        }
+
+        /// <summary>Запрос с общим сроком deadlineMs; срок параметром — под тест.</summary>
+        internal static string Download(string url, string accept, int deadlineMs)
         {
             ServicePointManager.SecurityProtocol = WithTls12(ServicePointManager.SecurityProtocol);
             var request = (HttpWebRequest)WebRequest.Create(url);
-            request.UserAgent = "iwoHelperDesktop"; // GitHub требует User-Agent
-            request.Accept = accept;
-            request.Timeout = 10000;
+            Configure(request, accept);
+            // Общий срок: шаговые таймауты не ограничивают ни DNS (его Timeout не покрывает), ни
+            // сервер, отдающий тело по байту. Abort из таймера прерывает любой из этих этапов, и
+            // вызывающий получает обычную ошибку сети.
+            using (new System.Threading.Timer(delegate { request.Abort(); }, null, deadlineMs,
+                System.Threading.Timeout.Infinite))
             using (var response = (HttpWebResponse)request.GetResponse())
             using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-                return reader.ReadToEnd();
+                return ReadLimited(reader, MaxResponseChars);
+        }
+
+        /// <summary>Прочитать не больше limit знаков; больше — ошибка, а не память без предела. Чистая — под тест.</summary>
+        internal static string ReadLimited(TextReader reader, int limit)
+        {
+            var sb = new StringBuilder();
+            var buffer = new char[8192];
+            int read;
+            while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                if (sb.Length + read > limit)
+                    throw new InvalidDataException(Loc.T("update.err.parseVersion"));
+                sb.Append(buffer, 0, read);
+            }
+            return sb.ToString();
         }
 
         private static string UnescapeJson(string s)
@@ -295,7 +345,7 @@ namespace ExcelMerger
         /// <summary>
         /// Проверить обновления: запрос в фоне, результат — в UI-потоке. done вызывается
         /// перед показом результата и возвращает в строй кнопку, которую вызывающий погасил
-        /// на время запроса (сеть с таймаутом 10 с). Если окно успели закрыть, не выполнится
+        /// на время запроса (каждый запрос — не дольше <see cref="UpdateChecker.DeadlineMs"/>, их до двух). Если окно успели закрыть, не выполнится
         /// ни done, ни показ — возвращать в строй уже нечего.
         /// </summary>
         public static void Check(Form owner, Action done)

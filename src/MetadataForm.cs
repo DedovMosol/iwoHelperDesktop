@@ -11,6 +11,8 @@ namespace ExcelMerger
         public string Author = "";
         public string Subject = "";
         public string Keywords = "";
+        /// <summary>Файл объявляет соответствие PDF/A (только чтение; записью не задаётся).</summary>
+        public bool DeclaresPdfA;
     }
 
     /// <summary>

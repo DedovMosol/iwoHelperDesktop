@@ -6,43 +6,14 @@ namespace ExcelMerger
     /// Отображение рамок слов «Сравнения» на отрендеренную страницу. Чистая математика
     /// без PDF и UI — под тест.
     ///
-    /// Слова извлечения живут в пространстве страницы: пункты, X вправо, Y ВВЕРХ,
-    /// размеры страницы БЕЗ учёта её собственного поворота (/Rotate). Системный рендерер
-    /// показывает страницу повёрнутой, как в читалке, поэтому рамку сначала переводим в
-    /// пространство отображения тем же маппингом, что и весь конвейер («см. PageRotation»),
-    /// а затем — в пиксели растра с переворотом оси Y (у растра Y вниз).
+    /// Слова извлечения уже живут в пространстве отображения: пункты, X вправо, Y ВВЕРХ,
+    /// собственный поворот страницы (/Rotate) и сдвиг CropBox PdfPig применил сам — ровно
+    /// так страницу показывает и системный рендерер. Поэтому здесь только перевод в пиксели
+    /// растра с переворотом оси Y (у растра Y вниз); повторный поворот уводил бы рамку с
+    /// повёрнутых страниц.
     /// </summary>
     internal static class PdfReviewGeometry
     {
-        /// <summary>
-        /// Рамка слова (пространство страницы, Y вверх) → рамка в пространстве отображения
-        /// (с учётом поворота страницы, всё ещё пункты и Y вверх).
-        /// </summary>
-        public static PdfReviewBox RawToView(double left, double bottom, double right, double top,
-            int rotation, double pageW, double pageH)
-        {
-            double nl, nb, nr, nt;
-            PageRotation.MapBox(left, bottom, right, top, rotation, pageW, pageH,
-                out nl, out nb, out nr, out nt);
-            return new PdfReviewBox { Left = nl, Bottom = nb, Right = nr, Top = nt };
-        }
-
-        /// <summary>Размеры страницы в пространстве отображения (поворот меняет местами).</summary>
-        public static void ViewSize(double pageW, double pageH, int rotation,
-            out double viewW, out double viewH)
-        {
-            if (PageRotation.SwapsDimensions(rotation))
-            {
-                viewW = pageH;
-                viewH = pageW;
-            }
-            else
-            {
-                viewW = pageW;
-                viewH = pageH;
-            }
-        }
-
         /// <summary>
         /// Рамка в пространстве отображения (пункты, Y вверх) → пиксельный прямоугольник
         /// на растре размером bitmapW×bitmapH (Y вниз). Вырожденные входы — пустой результат,

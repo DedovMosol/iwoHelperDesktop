@@ -23,7 +23,7 @@ namespace ExcelMerger
 
         /// <summary>Префикс расшифрованных копий в %TEMP% (шаблон уборки: iwo_pg_dec_*.pdf).</summary>
         internal const string DecryptedPrefix = "iwo_pg_dec_";
-        /// <summary>Префикс одиночных рендеров страницы в %TEMP% (шаблон уборки: iwo_pg_*.png).</summary>
+        /// <summary>Префикс одиночных рендеров страницы в %TEMP% (уборка: StartupSweep, iwo_pg_&lt;guid&gt;.png).</summary>
         internal const string RenderPrefix = "iwo_pg_";
 
         /// <summary>
@@ -254,7 +254,10 @@ namespace ExcelMerger
             string outputSpec, bool withoutText, string bundledGsRoot)
         {
             var sb = new StringBuilder();
-            sb.Append("-q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=png16m");
+            // -dUseCropBox: растр — это ВИДИМАЯ страница (CropBox), как у PdfPig и системного
+            // рендерера. Без него Ghostscript рисует MediaBox, и у обрезанной страницы подложка
+            // слайда и вырезки картинок ехали относительно текста, посчитанного от CropBox.
+            sb.Append("-q -dNOPAUSE -dBATCH -dSAFER -dUseCropBox -sDEVICE=png16m");
             if (withoutText)
                 sb.Append(" -dFILTERTEXT"); // текст не рисуем: он придёт надписями поверх
             sb.Append(" -r").Append(dpi);

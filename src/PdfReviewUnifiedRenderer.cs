@@ -121,8 +121,13 @@ namespace ExcelMerger
         {
             if (neighbour == null)
                 return false;
-            double height = neighbour.Box.Top - neighbour.Box.Bottom;
-            double x = afterNeighbour ? neighbour.Box.Right : neighbour.Box.Left;
+            // Каретка после соседа — у конца его ПОСЛЕДНЕЙ строки, перед ним — у начала первой:
+            // у слова переноса общая рамка охватывает обе строки, и каретка по ней вставала бы
+            // на край чужой строки высотой в две.
+            IList<PdfReviewBox> boxes = neighbour.DisplayBoxes;
+            PdfReviewBox side = afterNeighbour ? boxes[boxes.Count - 1] : boxes[0];
+            double height = side.Top - side.Bottom;
+            double x = afterNeighbour ? side.Right : side.Left;
             if (!(height > 0) || double.IsNaN(x) || double.IsInfinity(x))
                 return false;
             double width = Math.Max(CaretMinWidthPt, height * CaretWidthShare);
@@ -130,8 +135,8 @@ namespace ExcelMerger
             {
                 Left = x,
                 Right = x + width,
-                Bottom = neighbour.Box.Bottom,
-                Top = neighbour.Box.Top
+                Bottom = side.Bottom,
+                Top = side.Top
             };
             if (anchors.Add(caret))
                 highlight.Boxes.Add(caret);

@@ -25,6 +25,11 @@ namespace ExcelMerger
         private const double BoxPaddingPt = 1.25;
         private const int InkFloor = 12;
         private const double EquivalentInkDifference = 0.035;
+        // Местный порог (окно в знак, см. LocallyEquivalent) мягче общего: в окне из одного-двух
+        // знаков разное сглаживание одинакового текста весит больше, чем на всей строке, а
+        // другой знак — заметную долю окна. Проверено тестами «Аудит RS-3»: замена одного знака в
+        // строке из тридцати не проходит, а тот же рисунок со сдвигом на пиксель проходит.
+        internal const double LocalInkDifference = 0.15;
         private const int CancellationPollWork = 4096;
         private const int MaximumCandidatesPerHunk = 512;
         private const long MaximumRelationChecks = 1000000;
@@ -600,9 +605,12 @@ namespace ExcelMerger
                 foreach (PdfReviewWord word in words)
                 {
                     work.Poller.Worked(1);
-                    NormalizedBox region;
-                    bool valid = TryNormalize(word == null ? new PdfReviewBox() : word.Box,
-                        page, out region);
+                    NormalizedBox region = new NormalizedBox();
+                    // Слово переноса растром не доказывается: его общая рамка накрывает две
+                    // строки чужого текста, и сравнивать пришлось бы не его. Кандидат
+                    // недействителен — компонент воздерживается, правка остаётся.
+                    bool valid = word != null && word.Fragments == null &&
+                        TryNormalize(word.Box, page, out region);
                     var candidate = new Candidate
                     {
                         Word = word,
@@ -1024,6 +1032,8 @@ namespace ExcelMerger
         {
             byte[] dilatedB = Dilate(b, width, height, poller);
             long mass = 0, unmatched = 0;
+            var columnMass = new long[width];
+            var columnUnmatched = new long[width];
             int pending = 0;
             for (int i = 0; i < a.Length; i++)
             {
@@ -1031,9 +1041,12 @@ namespace ExcelMerger
                 int bv = b[i] < InkFloor ? 0 : b[i];
                 int dav = dilatedA[i] < InkFloor ? 0 : dilatedA[i];
                 int dbv = dilatedB[i] < InkFloor ? 0 : dilatedB[i];
+                int x = i % width;
                 mass += av + bv;
-                if (av > dbv) unmatched += av - dbv;
-                if (bv > dav) unmatched += bv - dav;
+                columnMass[x] += av + bv;
+                int miss = (av > dbv ? av - dbv : 0) + (bv > dav ? bv - dav : 0);
+                unmatched += miss;
+                columnUnmatched[x] += miss;
                 if (++pending == 1024)
                 {
                     poller.Worked(pending);
@@ -1041,9 +1054,59 @@ namespace ExcelMerger
                 }
             }
             poller.Worked(pending);
+            // Чернил нет ни с одной стороны — доказывать нечего. Уточнение имеет право только
+            // СНЯТЬ правку по положительному доказательству равенства, поэтому «пусто = пусто»
+            // равенством не считается: иначе неудачная выборка (не та область, бледный текст,
+            // сбой отрисовки глифов) молча стирала бы настоящую замену. Кандидат остаётся.
             if (mass == 0)
-                return true; // одинаково невидимый/служебный текст не должен давать рамки
-            return (double)unmatched / mass <= EquivalentInkDifference;
+                return false;
+            if ((double)unmatched / mass > EquivalentInkDifference)
+                return false;
+            return LocallyEquivalent(columnMass, columnUnmatched, LocalWindow(height));
+        }
+
+        /// <summary>
+        /// Ширина окна местной проверки в столбцах выборки: около половины высоты строки, то
+        /// есть примерно один знак. Чистая — под тест.
+        /// </summary>
+        internal static int LocalWindow(int sampleHeight)
+        {
+            return Math.Max(2, (sampleHeight + 1) / 2);
+        }
+
+        /// <summary>
+        /// Местная проверка равенства: в КАЖДОМ окне шириной около знака расхождение не больше
+        /// <see cref="LocalInkDifference"/>. Общая доля по всему компоненту (строке из десятков
+        /// знаков) пропускала замену одного знака: другая цифра в номере из тридцати знаков —
+        /// около 2 % расхождения, меньше порога, и настоящая правка снималась. Окно с почти
+        /// пустым фоном (пробел, край) делится не на свою крошечную массу, а не меньше чем на
+        /// половину средней массы окна — иначе один пиксель сглаживания проваливал бы равенство.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static bool LocallyEquivalent(long[] columnMass, long[] columnUnmatched, int window)
+        {
+            int width = columnMass.Length;
+            if (width <= window)
+                return true; // компонент сам не шире знака — общая доля и есть местная
+            long total = 0;
+            for (int x = 0; x < width; x++)
+                total += columnMass[x];
+            double floor = Math.Max(1.0, (double)total * window / width / 2);
+            long windowMass = 0, windowUnmatched = 0;
+            for (int x = 0; x < width; x++)
+            {
+                windowMass += columnMass[x];
+                windowUnmatched += columnUnmatched[x];
+                if (x >= window)
+                {
+                    windowMass -= columnMass[x - window];
+                    windowUnmatched -= columnUnmatched[x - window];
+                }
+                if (x >= window - 1 &&
+                    windowUnmatched / Math.Max(floor, windowMass) > LocalInkDifference)
+                    return false;
+            }
+            return true;
         }
 
         private static int PixelsWide(InkRaster raster, NormalizedBox box)

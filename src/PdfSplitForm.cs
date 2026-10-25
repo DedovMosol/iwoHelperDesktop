@@ -177,11 +177,7 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnOps, Loc.T("split.tip.ops"));
             // Открытый документ уезжает туда сам, а если ничего не открыто — окно просто
             // откроется: нажатие обязано что-то делать, иначе кнопку считают сломанной.
-            _btnOps.Click += delegate
-            {
-                if (OpsBridge != null)
-                    OpsBridge(_sourcePath);
-            };
+            _btnOps.Click += delegate { OpenInOps(); };
             Controls.Add(_btnOps);
 
             // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
@@ -195,6 +191,24 @@ namespace ExcelMerger
             Controls.Add(_btnDo);
             RegisterActionButton(_btnDo); // база подменит её кнопкой «Отмена» во время операции
             AcceptButton = _btnDo; // Enter запускает действие — как в «Объединении» и «PDF → Word»
+        }
+
+        /// <summary>
+        /// Передать открытый документ в «Прочие операции». Туда уходит ФАЙЛ: правки сетки
+        /// (порядок, повороты, удалённые и вставленные страницы) живут только здесь, а их
+        /// молчаливая потеря выглядела как «сжал не то». Поэтому при правленой сетке сначала
+        /// спрашиваем — с подсказкой, как унести правки с собой.
+        /// </summary>
+        private void OpenInOps()
+        {
+            if (OpsBridge == null || Working)
+                return;
+            if (IsPageSetDirty && !Dialogs.ConfirmWarning(this, ToolTitle,
+                    Loc.T("split.ask.opsDropsEdits.title"),
+                    string.Format(Loc.T("split.ask.opsDropsEdits.body"), Loc.T("split.mode.extract"),
+                        Loc.T("split.btn.extract"))))
+                return;
+            OpsBridge(_sourcePath);
         }
 
         /// <summary>

@@ -81,9 +81,12 @@ namespace ExcelMerger
         /// уже сохранённые картинки удаляются (<see cref="Cancellation.NoPartialOutput"/>),
         /// иначе «Отменено» оставляло бы в папке половину экспорта.
         /// </summary>
+        /// <param name="baseName">Имя для [BASENAME] — документа человека. Читаемый файл бывает
+        /// временной сборкой («Прочие операции» после перестановки страниц), и тогда имя по нему
+        /// давало бы iwo_ops_&lt;guid&gt;_1.png. Пусто — имя читаемого файла (CLI, тесты).</param>
         public static List<string> ToImages(string sourcePath, IList<int> pageIndexes, string outDir,
             string template, ImageExportFormat format, int dpi,
-            Action<int, int> progress = null, Func<bool> cancelled = null)
+            Action<int, int> progress = null, Func<bool> cancelled = null, string baseName = null)
         {
             if (pageIndexes == null || pageIndexes.Count == 0)
                 throw new MergeException(Loc.T("err.export.noPages"));
@@ -99,7 +102,8 @@ namespace ExcelMerger
             List<PdfPageInfo> sizes;
             try { sizes = PdfMergeService.LoadPages(sourcePath); }
             catch { sizes = new List<PdfPageInfo>(); }
-            string baseName = Path.GetFileNameWithoutExtension(sourcePath);
+            if (string.IsNullOrWhiteSpace(baseName))
+                baseName = Path.GetFileNameWithoutExtension(sourcePath);
             DateTime startedAt = DateTime.Now;
 
             using (var renderer = new PdfThumbnailRenderer())

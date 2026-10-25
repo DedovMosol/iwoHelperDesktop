@@ -66,15 +66,19 @@ def compress(preset, out, downsample=True):
     """Те же аргументы, что строит программа (PdfCompression.BuildArguments).
 
     downsample=False — уровень «Очень хорошо»: пресет изображения не пересчитывает,
-    и программа подпирает это обещание тремя ключами явно. Замер обязан идти с ними,
-    иначе диаграмма покажет не то, что получит человек.
+    и программа подпирает это обещание ключами явно — без даунсэмплинга и без
+    перекодирования в JPEG. Замер обязан идти с ними, иначе диаграмма покажет не то,
+    что получит человек.
     """
     args = [GS, "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4",
             "-dPDFSETTINGS=" + preset]
     if not downsample:
         args += ["-dDownsampleColorImages=false", "-dDownsampleGrayImages=false",
-                 "-dDownsampleMonoImages=false"]
-    args += ["-dNOPAUSE", "-dBATCH", "-dQUIET", "-dSAFER", "-sOutputFile=" + out, src]
+                 "-dDownsampleMonoImages=false",
+                 "-dAutoFilterColorImages=false", "-dAutoFilterGrayImages=false",
+                 "-dColorImageFilter=/FlateEncode", "-dGrayImageFilter=/FlateEncode"]
+    args += ["-dAutoRotatePages=/None",
+             "-dNOPAUSE", "-dBATCH", "-dQUIET", "-dSAFER", "-sOutputFile=" + out, src]
     subprocess.run(args, check=True, capture_output=True)
     return os.path.getsize(out)
 

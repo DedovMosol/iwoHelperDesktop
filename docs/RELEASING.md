@@ -18,15 +18,21 @@ installers come out versioned from ISCC):
   installer checks for .NET Framework 4.8 and points to the download when it is missing.
 
 The four README download buttons link to `releases/download/v<version>/<file>` — a direct
-download pinned to the release. **Update those four URLs (and the version note) in the
-README when you bump the version**, so the buttons point at the new files.
+download pinned to the release. **Change those four URLs (and the version note) only in the
+release commit itself (step 3), never when the version is bumped at the start of a cycle**:
+until the tag is published the new files do not exist, and the README on `main` is what
+visitors see — a cycle that ran for weeks left all four buttons answering 404. The link
+check in CI follows the badge targets and fails on a missing asset of a published release;
+assets of the still-unpublished `AssemblyInfo` version are reported as pending.
 
 ## Prerequisites (maintainer machine)
 
 - .NET SDK (build), [Inno Setup 6/7](https://jrsoftware.org/isdl.php) (installer),
-  Ghostscript in **both bitnesses** — the w64 and w32 builds installed side by side
-  (`tools\stage_gs.ps1 -Arch x64|x86` copies the matching subset into `installer\gs\`
-  and `installer\gs32\`).
+  Ghostscript **10.08.0 or newer** in **both bitnesses** — the w64 and w32 builds installed
+  side by side (`tools\stage_gs.ps1 -Arch x64|x86` copies the matching subset into
+  `installer\gs\` and `installer\gs32\`). Staging picks the newest installed engine by its
+  file version and refuses anything older than `-MinVersion` (10.8.0: earlier builds are
+  exposed to CVE-2026-39919 through crafted PDFs) or without its AGPL license file.
 - [GitHub CLI](https://cli.github.com/) authenticated (`gh auth login`) with push access.
 
 ## Steps
@@ -37,7 +43,8 @@ README when you bump the version**, so the buttons point at the new files.
    release notes verbatim). Work finished before the tag exists goes straight into that
    section: the version in `AssemblyInfo.cs` is the *pending* one until then, so there is
    no need for an “Unreleased” heading and no reason to bump again.
-3. Update the four download buttons and the version note in the README (see above).
+3. Update the four download buttons and the version note in the README (see above) — in
+   the same commit that is about to be tagged, after everything else is final.
 4. Run the full local pyramid (`tests\run_all.cmd`). CI cannot run the parts that need
    Excel and Word, so this is the last chance to catch them. For a public release, also run
    `--selftest`, `--thumbcheck` and one PDF operation in the maintained Windows 8.1/10 VM:

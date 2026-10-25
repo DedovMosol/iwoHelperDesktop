@@ -42,6 +42,75 @@ namespace ExcelMerger
                                  printable.Y + (printable.Height - h) / 2, w, h);
         }
 
+        /// <summary>
+        /// Область, в которую вписывается страница, в координатах Graphics события печати.
+        ///
+        /// При OriginAtMargins = false начало координат у ПРИНТЕРА — угол его печатаемой
+        /// области (сдвинут на жёсткие поля HardMarginX/Y от края листа), а у ПРЕДПРОСМОТРА —
+        /// угол листа (PreviewPrintController рисует в метафайл листа без сдвига). Раньше
+        /// страница вписывалась в весь лист (PageBounds) в обоих случаях: на бумаге она уезжала
+        /// вправо-вниз на жёсткое поле и обрезалась справа и снизу, а предпросмотр этого не
+        /// показывал.
+        ///
+        /// Теперь лист сужается симметрично на большую из непечатаемых полос по каждой оси —
+        /// страница стоит по центру листа и целиком попадает в печатаемую область, — и
+        /// переводится в координаты Graphics вычитанием начала: жёстких полей для принтера,
+        /// нуля для предпросмотра. Предпросмотр так показывает ровно то, что выйдет на бумагу.
+        /// PrintableArea некоторые драйверы отдают «книжной» и для альбомного листа — тогда
+        /// стороны меняются местами. Чистая — под тест.
+        /// </summary>
+        internal static Rectangle PrintTarget(Rectangle pageBounds, RectangleF printableArea,
+            float hardMarginX, float hardMarginY, bool preview)
+        {
+            float pw = printableArea.Width, ph = printableArea.Height;
+            float px = printableArea.X, py = printableArea.Y;
+            if (pw <= 0 || ph <= 0 || pageBounds.Width <= 0 || pageBounds.Height <= 0)
+                return pageBounds; // данных о полях нет — весь лист, как раньше
+            if ((pageBounds.Width > pageBounds.Height) != (pw > ph) && pw != ph)
+            {
+                float t = pw; pw = ph; ph = t;
+                t = px; px = py; py = t;
+            }
+            float left = Math.Max(0, px), top = Math.Max(0, py);
+            float right = Math.Max(0, pageBounds.Width - left - pw);
+            float bottom = Math.Max(0, pageBounds.Height - top - ph);
+            float insetX = Math.Max(left, right), insetY = Math.Max(top, bottom);
+            float width = pageBounds.Width - 2 * insetX, height = pageBounds.Height - 2 * insetY;
+            if (width < 1 || height < 1)
+                return pageBounds; // поля больше листа — данные драйвера не годятся
+            float originX = preview ? 0 : hardMarginX, originY = preview ? 0 : hardMarginY;
+            return Rectangle.Round(new RectangleF(pageBounds.X + insetX - originX,
+                pageBounds.Y + insetY - originY, width, height));
+        }
+
+        /// <summary>
+        /// <see cref="PrintTarget"/> для текущего листа. Поля читаются у листа события (у каждого
+        /// листа могут быть свои настройки), а не у документа. Нет принтера или драйвер не
+        /// отвечает — весь лист, как было до учёта полей: напечатать важнее, чем отцентровать.
+        /// </summary>
+        private static Rectangle PrintTargetOf(PrintDocument doc, PrintPageEventArgs e)
+        {
+            try
+            {
+                PageSettings page = e.PageSettings;
+                return PrintTarget(e.PageBounds, page.PrintableArea, page.HardMarginX, page.HardMarginY, IsPreview(doc));
+            }
+            catch (Exception ex) when (!(ex is OutOfMemoryException))
+            {
+                return e.PageBounds;
+            }
+        }
+
+        /// <summary>
+        /// Рисует ли документ сейчас в предпросмотр. PrintPreviewControl оборачивает свой
+        /// PreviewPrintController в PrintControllerWithStatusDialog, и обёртка отвечает за
+        /// вложенный — поэтому спрашиваем свойство, а не тип контроллера.
+        /// </summary>
+        internal static bool IsPreview(PrintDocument doc)
+        {
+            return doc != null && doc.PrintController != null && doc.PrintController.IsPreview;
+        }
+
         /// <summary>Сколько ждать освобождения памяти перед повторным рендером листа.</summary>
         private const int MemoryWaitMs = 3000;
 
@@ -204,15 +273,16 @@ namespace ExcelMerger
                 if (settings != null)
                     doc.PrinterSettings = settings;
                 doc.DocumentName = NameOf(pages, names, 0);
-                doc.OriginAtMargins = false; // печатаем по всей доступной области, а не по полям
+                doc.OriginAtMargins = false; // печатаем по всей доступной области, а не по полям (см. PrintTarget)
 
                 int next = 0; // индекс в списке страниц, а не номер страницы документа
                 doc.PrintPage += delegate(object s, PrintPageEventArgs e)
                 {
                     PdfPageRef ref_ = pages[next];
-                    // Ширину рендера считаем от РЕАЛЬНОГО размера листа принтера, а не страницы
+                    Rectangle target = PrintTargetOf(doc, e);
+                    // Ширину рендера считаем от РЕАЛЬНОЙ области печати листа, а не страницы
                     // PDF: так одинаково печатаются и A4, и нестандартные вставки.
-                    int width = Math.Max(1, e.PageBounds.Width * RenderDpi / 100);
+                    int width = Math.Max(1, target.Width * RenderDpi / 100);
                     BudgetedBitmap rendered = render(ref_, width);
                     if (rendered == null && strict)
                     {
@@ -234,7 +304,7 @@ namespace ExcelMerger
                             // бумагу: иначе на экране страница стоит правильно, а печатается боком.
                             if (ref_.Rotation != 0)
                                 page.RotateFlip(PageRotation.FlipFor(ref_.Rotation));
-                            e.Graphics.DrawImage(page, FitToPage(page.Size, e.PageBounds));
+                            e.Graphics.DrawImage(page, FitToPage(page.Size, target));
                         }
                     }
                     next++;

@@ -109,6 +109,16 @@ namespace ExcelMerger
         internal string SourceText;
         internal bool SourceTrusted;
         internal int BlockId = -1;
+        // Слово, склеенное из переноса через строку: рамка каждой его строки отдельно. Box —
+        // их объединение (оно нужно сравнению как одна точка привязки), но подсветка, рейка и
+        // каретка по нему накрывали неизменённый текст обеих строк. null — слово в одной рамке.
+        internal List<PdfReviewBox> Fragments;
+
+        /// <summary>Рамки для показа: строки переноса — каждая своей, иначе — сама рамка слова.</summary>
+        internal IList<PdfReviewBox> DisplayBoxes
+        {
+            get { return Fragments ?? new List<PdfReviewBox> { Box }; }
+        }
     }
 
     internal enum PdfReviewMatchKind

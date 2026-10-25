@@ -46,6 +46,8 @@ namespace ExcelMerger
         private volatile bool _cancelRequested;
         private bool _cancelOffered; // на эту операцию показана кнопка отмены (восстановить в EndProgress)
         private const int CancelPageThreshold = 5; // от скольких единиц предлагать отмену
+        /// <summary>Размер операции неизвестен (файл ещё не разобран) — отмену предлагаем.</summary>
+        protected const int UnknownSize = int.MaxValue;
 
         /// <summary>
         /// Идёт операция ИЛИ фоновый разбор PDF: смена языка это окно не пересоздаёт
@@ -702,10 +704,15 @@ namespace ExcelMerger
         /// сообщает, а разовая запись файла не делится на шаги. Полоса сразу становится
         /// бегущей — застывшая на нуле она читается как зависшее окно, и это не догадка:
         /// Ghostscript на большом скане работает минутами. Только UI-поток.
+        ///
+        /// units — размер документа в страницах: от него, как и у измеримых операций, зависит,
+        /// предлагать ли «Отмену» (<see cref="ShouldOfferCancel"/>). Раньше сюда всегда шёл
+        /// ноль, и сжатие, серое, починку и запись свойств нельзя было отменить ни на каком
+        /// документе — хотя минутами работают именно они. Бегущая полоса кнопку не прячет.
         /// </summary>
-        protected void BeginUnmeasuredOperation(string statusText)
+        protected void BeginUnmeasuredOperation(string statusText, int units = 0)
         {
-            BeginOperation(statusText, 0);
+            BeginOperation(statusText, units);
             BeginIndeterminate(statusText);
         }
 

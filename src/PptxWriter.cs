@@ -320,6 +320,15 @@ namespace ExcelMerger
             /// </summary>
             private string AppendBackground()
             {
+                if (_background != null && _background.SolidArgb.HasValue)
+                {
+                    // Сплошной цвет — фоном слайда в любом случае: растягивать нечего, а поля
+                    // вписанной страницы того же цвета смотрятся как продолжение листа. Подложкой
+                    // это не считается (_backgroundPlaced): ни картинок, ни линий в ней нет, и
+                    // подчёркивания и картинки рисуются как без подложки.
+                    return "<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"" + Rgb(_background.SolidArgb.Value)
+                        + "\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>";
+                }
                 if (_background == null || _background.Data == null || _background.Data.Length == 0)
                     return string.Empty;
                 string part = _media.Add(_background.Data, _background.IsJpeg);
@@ -654,10 +663,18 @@ namespace ExcelMerger
                     sb.Append("<a:gridCol w=\"").Append(PptxParts.Num(ColumnWidthEmu(table, c, widthPt, cols))).Append("\"/>");
                 sb.Append("</a:tblGrid>");
 
+                // Линовка источника уже нарисована подложкой (она снята без текста, но с линиями):
+                // своя сетка PowerPoint поверх неё двоилась бы. Без подложки линии рисуем сами.
+                bool drawLines = !table.Borderless && !_backgroundPlaced;
+                double rowTopPt = table.TopPt;
                 for (int r = 0; r < rows; r++)
                 {
-                    sb.Append("<a:tr h=\"").Append(PptxParts.Num(_fit.Size(rowHeightPt))).Append("\">");
                     OcrTableRow row = table.Rows[r];
+                    // Высота строки — настоящая (по линовке), а не доля таблицы: иначе внутренние
+                    // линии PowerPoint и текст строк расходились с линиями подложки.
+                    double thisRowPt = row != null && row.HeightPt > 0 ? row.HeightPt : rowHeightPt;
+                    sb.Append("<a:tr h=\"").Append(PptxParts.Num(_fit.Size(thisRowPt))).Append("\">");
+                    double cellLeftPt = table.LeftPt;
                     for (int c = 0; c < cols; c++)
                     {
                         // Строки и ячейки проверяем на null так же, как MergeGrid: таблица
@@ -678,10 +695,15 @@ namespace ExcelMerger
                         sb.Append("<a:txBody><a:bodyPr/><a:lstStyle/>");
                         sb.Append(CellParagraphs(cell));
                         sb.Append("</a:txBody>");
-                        sb.Append(CellProps(table.Borderless));
+                        double colPt = ColumnWidthPt(table, c, widthPt, cols);
+                        double insetLeft, insetTop;
+                        CellInsets(cell, cellLeftPt, rowTopPt, colPt, thisRowPt, out insetLeft, out insetTop);
+                        sb.Append(CellProps(drawLines, _fit.Size(insetLeft), _fit.Size(insetTop)));
                         sb.Append("</a:tc>");
+                        cellLeftPt += colPt;
                     }
                     sb.Append("</a:tr>");
+                    rowTopPt -= thisRowPt;
                 }
                 sb.Append("</a:tbl></a:graphicData></a:graphic></p:graphicFrame>");
                 _shapes.Append(sb);
@@ -691,11 +713,15 @@ namespace ExcelMerger
             /// <summary>Ширина колонки в EMU; неизвестная — равная доля ширины таблицы.</summary>
             private long ColumnWidthEmu(OcrTable table, int column, double tableWidthPt, int columns)
             {
-                double pt = table.ColumnWidthsPt != null && column < table.ColumnWidthsPt.Count
+                long emu = _fit.Size(ColumnWidthPt(table, column, tableWidthPt, columns));
+                return emu > 0 ? emu : 1;
+            }
+
+            private static double ColumnWidthPt(OcrTable table, int column, double tableWidthPt, int columns)
+            {
+                return table.ColumnWidthsPt != null && column < table.ColumnWidthsPt.Count
                     ? table.ColumnWidthsPt[column]
                     : (columns > 0 ? tableWidthPt / columns : tableWidthPt);
-                long emu = _fit.Size(pt);
-                return emu > 0 ? emu : 1;
             }
 
             /// <summary>
@@ -725,23 +751,34 @@ namespace ExcelMerger
             }
 
             /// <summary>
-            /// Свойства ячейки: границы. Безлиновочная сетка (восстановленная по расположению
-            /// текста, а не по линиям) рисуется БЕЗ границ — иначе на слайде появилась бы
-            /// таблица, которой в источнике не было.
+            /// Свойства ячейки: поля и границы. Без линий рисуются безлиновочная сетка
+            /// (восстановленная по расположению текста — иначе на слайде появилась бы таблица,
+            /// которой в источнике не было) и таблица поверх подложки, где линии уже есть.
+            ///
+            /// Поля — измеренные (<see cref="CellInsets"/>), правое и нижнее — нулевые. Поля
+            /// PowerPoint по умолчанию (0,1″ слева и справа, 0,05″ сверху и снизу) сдвигали текст
+            /// с его места относительно линовки, сужали ячейку до лишних переносов и раздували
+            /// строки. Порядок по схеме CT_TableCellProperties: lnL, lnR, lnT, lnB.
             /// </summary>
-            private static string CellProps(bool borderless)
+            private static string CellProps(bool drawLines, long insetLeftEmu, long insetTopEmu)
             {
-                if (borderless)
-                    return "<a:tcPr><a:lnL><a:noFill/></a:lnL><a:lnR><a:noFill/></a:lnR>"
-                        + "<a:lnT><a:noFill/></a:lnT><a:lnB><a:noFill/></a:lnB></a:tcPr>";
-                const string line = "<a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill>";
-                return "<a:tcPr>"
-                    + "<a:lnL w=\"6350\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\">" + line + "</a:lnL>"
-                    + "<a:lnR w=\"6350\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\">" + line + "</a:lnR>"
-                    + "<a:lnT w=\"6350\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\">" + line + "</a:lnT>"
-                    + "<a:lnB w=\"6350\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\">" + line + "</a:lnB>"
-                    + "</a:tcPr>";
+                var sb = new StringBuilder(512);
+                sb.Append("<a:tcPr marL=\"").Append(PptxParts.Num(Math.Max(0, insetLeftEmu)))
+                  .Append("\" marR=\"0\" marT=\"").Append(PptxParts.Num(Math.Max(0, insetTopEmu)))
+                  .Append("\" marB=\"0\">");
+                foreach (string side in new[] { "lnL", "lnR", "lnT", "lnB" })
+                {
+                    if (drawLines)
+                        sb.Append("<a:").Append(side).Append(" w=\"6350\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\">")
+                          .Append("<a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill></a:").Append(side).Append('>');
+                    else
+                        sb.Append("<a:").Append(side).Append("><a:noFill/></a:").Append(side).Append('>');
+                }
+                sb.Append("</a:tcPr>");
+                return sb.ToString();
             }
+
+
 
             // ---------- картинка ----------
 
@@ -958,6 +995,46 @@ namespace ExcelMerger
                 if (!char.IsWhiteSpace(text[i]))
                     sb.Append(text[i]);
             return sb.Length >= 2 && PdfTextExtract.IsUnderscoreOnly(sb.ToString());
+        }
+
+        /// <summary>
+        /// Поля ячейки по положению её текста в источнике (pt). Сверху — от верха ячейки до
+        /// верха первого абзаца. Слева — от левого края ячейки до самой левой строки, но только
+        /// у текста, выровненного влево (или по ширине: в ячейке он пишется влево): центрированный
+        /// абзац ячейка оставляет по центру, и поле слева сдвинуло бы его центр на половину
+        /// поля. Пустая ячейка — без полей; любое поле не больше половины ячейки (текст обязан
+        /// остаться в ней). Чистая — под тест.
+        /// </summary>
+        internal static void CellInsets(OcrTableCell cell, double cellLeftPt, double cellTopPt,
+            double cellWidthPt, double cellHeightPt, out double leftPt, out double topPt)
+        {
+            leftPt = 0;
+            topPt = 0;
+            if (cell == null || cell.Paragraphs == null || cell.Paragraphs.Count == 0)
+                return;
+            double textLeft = double.MaxValue, textTop = double.MinValue;
+            bool centered = false;
+            foreach (OcrParagraph p in cell.Paragraphs)
+            {
+                if (p == null)
+                    continue;
+                double left = p.MinLeftPt > 0 ? Math.Min(p.MinLeftPt, p.LeftPt) : p.LeftPt;
+                textLeft = Math.Min(textLeft, left);
+                textTop = Math.Max(textTop, p.TopPt);
+                centered |= p.Alignment == OcrAlignment.Center;
+            }
+            if (textLeft == double.MaxValue)
+                return;
+            topPt = ClampInset(cellTopPt - textTop, cellHeightPt / 2);
+            if (!centered)
+                leftPt = ClampInset(textLeft - cellLeftPt, cellWidthPt / 2);
+        }
+
+        private static double ClampInset(double value, double max)
+        {
+            if (double.IsNaN(value) || value < 0)
+                return 0;
+            return max > 0 && value > max ? max : (max > 0 ? value : 0);
         }
 
         /// <summary>Цвет 0xRRGGBB → шесть шестнадцатеричных цифр разметки. Чистая — под тест.</summary>

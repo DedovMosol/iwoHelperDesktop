@@ -4,11 +4,17 @@
 # .lib - not needed at runtime). Source is an installed GS of the SAME bitness
 # (Program Files\gs\gs*, Program Files (x86)\gs\gs* or %USERPROFILE%\gs*); can be set
 # via -Source. Both staging dirs are in .gitignore (large binaries are not committed).
+#
+# The installer ships the engine that then reads every PDF the user opens, so an outdated
+# build is a security defect, not a cosmetic one: Ghostscript before 10.08.0 has a heap
+# overflow in its JPEG 2000 decoder reachable from a crafted PDF (CVE-2026-39919, CVSS 9.8,
+# fixed in 10.08.0 of 2026-09-08). Staging therefore refuses any build below -MinVersion.
 param(
     [string]$Source,
     [string]$Dest,
     [ValidateSet('x64', 'x86')]
-    [string]$Arch = 'x64'
+    [string]$Arch = 'x64',
+    [version]$MinVersion = '10.8.0'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -59,26 +65,48 @@ function Find-GsRoot {
         }
     }
 
-    # Newest version by the FOLDER name (gs10.07 > gs10.05 > gs9.56) - a full-path sort
-    # would compare drive letters first and could prefer an older install.
-    return ($roots | Sort-Object { Split-Path $_ -Leaf } -Descending -Unique | Select-Object -First 1)
+    # Newest by the VERSION of the engine itself. Folder names cannot be trusted for this:
+    # a string sort puts "gs9.56" above "gs10.08" ('9' > '1'), and an install may live in a
+    # folder without any version at all (e.g. %USERPROFILE%\gs64x).
+    return ($roots | Sort-Object -Unique | Sort-Object { Get-GsVersion $_ } -Descending | Select-Object -First 1)
+}
+
+# Engine version from the DLL's file version (e.g. 10.07.1); $null when it cannot be read.
+function Get-GsVersion([string]$root) {
+    $path = Join-Path $root "bin\$dllName"
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    $raw = (Get-Item -LiteralPath $path).VersionInfo.FileVersion
+    $parsed = $null
+    if ($raw -and [version]::TryParse(($raw -replace '[^0-9.].*$', ''), [ref]$parsed)) { return $parsed }
+    return $null
 }
 
 if (-not $Source) { $Source = Find-GsRoot }
-if (-not $Source -or -not (Test-Path $Source)) {
+if (-not $Source -or -not (Test-Path -LiteralPath $Source)) {
     Write-Host "Ghostscript ($Arch) not found. Install the matching build: https://ghostscript.com/releases/gsdnld.html"
-    Write-Host "or pass -Source <gs root, e.g. C:\Program Files\gs\gs10.07>."
+    Write-Host "or pass -Source <gs root, e.g. C:\Program Files\gs\gs10.08.0>."
     exit 1
 }
 
 $dll = Join-Path $Source "bin\$dllName"
 $exe = Join-Path $Source "bin\$exeName"
-if (-not (Test-Path $dll) -or -not (Test-Path $exe)) {
+if (-not (Test-Path -LiteralPath $dll) -or -not (Test-Path -LiteralPath $exe)) {
     Write-Host "Source has no bin\$dllName / bin\$exeName (need a $Arch Ghostscript): $Source"
     exit 1
 }
 
-Write-Host "Ghostscript source ($Arch): $Source"
+$engineVersion = Get-GsVersion $Source
+if (-not $engineVersion) {
+    Write-Host "Cannot read the Ghostscript version of $dll - refusing to bundle an unidentified engine."
+    exit 1
+}
+if ($engineVersion -lt $MinVersion) {
+    Write-Host "Ghostscript $engineVersion ($Source) is older than the required $MinVersion."
+    Write-Host "Install the current release: https://ghostscript.com/releases/gsdnld.html"
+    exit 1
+}
+
+Write-Host "Ghostscript source ($Arch): $Source, version $engineVersion"
 if (Test-Path $Dest) { Remove-Item $Dest -Recurse -Force }
 New-Item -ItemType Directory -Path (Join-Path $Dest 'bin') -Force | Out-Null
 
@@ -93,10 +121,16 @@ foreach ($sub in @('lib', 'Resource', 'iccprofiles')) {
         exit 1
     }
 }
-# GS license (AGPL) - bundled alongside for compliance.
+# GS license (AGPL) - bundled alongside for compliance. Redistribution without it is not
+# allowed, so a source without a license file stops the staging instead of shipping silently.
+$licensed = $false
 foreach ($lic in @('LICENSE', 'doc\COPYING', 'COPYING')) {
     $lp = Join-Path $Source $lic
-    if (Test-Path $lp) { Copy-Item $lp (Join-Path $Dest 'LICENSE') -Force; break }
+    if (Test-Path -LiteralPath $lp) { Copy-Item -LiteralPath $lp (Join-Path $Dest 'LICENSE') -Force; $licensed = $true; break }
+}
+if (-not $licensed) {
+    Write-Host "Ghostscript license (LICENSE / doc\COPYING) not found in $Source - cannot redistribute it."
+    exit 1
 }
 $gsVersion = ''
 try { $gsVersion = ((& $exe --version) | Out-String).Trim() } catch { }

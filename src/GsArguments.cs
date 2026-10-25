@@ -17,6 +17,16 @@ namespace ExcelMerger
     /// </summary>
     internal static class GsArguments
     {
+        /// <summary>
+        /// pdfwrite по умолчанию сам «угадывает» ориентацию страницы по преобладающему тексту
+        /// (AutoRotatePages: /PageByPage у /default и /screen, /All у /ebook — таблица
+        /// VectorDevices). Альбомная таблица на книжном листе или чертёж с подписями сбоку
+        /// после сжатия, серого или починки разворачивались, и ни одна проверка (страницы,
+        /// размер, цвет) этого не видела. Пересобранная страница обязана стоять как стояла.
+        /// Общий для всех построителей pdfwrite — правка в одном месте.
+        /// </summary>
+        internal const string KeepPageOrientation = " -dAutoRotatePages=/None";
+
         /// <summary>Путь в кавычках: пробелы в путях — норма, без кавычек путь распадётся на два аргумента.</summary>
         internal static string Quote(string s)
         {

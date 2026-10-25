@@ -203,10 +203,27 @@ namespace ExcelMerger
             _progressPct.Visible = false;
         }
 
+        /// <summary>
+        /// Цвета поля ввода. В обычной теме — белое поле с основным текстом окна. В высокой
+        /// контрастности — системная пара Window/WindowText: жёсткий белый фон при тёмной
+        /// HC-теме (там WindowText белый) давал белый текст на белом, путь было не видно.
+        /// </summary>
+        private static void ApplyInputColors(TextBox box)
+        {
+            ApplyInputColors(box, SystemInformation.HighContrast);
+        }
+
+        /// <summary>Режим контрастности передаётся явно — так ветку проверяет тест.</summary>
+        internal static void ApplyInputColors(TextBox box, bool highContrast)
+        {
+            box.BackColor = highContrast ? SystemColors.Window : Color.White;
+            box.ForeColor = highContrast ? SystemColors.WindowText : Theme.TextPrimary;
+        }
+
         private TextBox PathBox(int x, int y, int width, string accessible)
         {
             var box = new TextBox();
-            box.BackColor = Color.White;
+            ApplyInputColors(box);
             box.AccessibleName = accessible;
             box.AccessibleDescription = Loc.T("review.source.inputDescription");
             box.SetBounds(x, y, width, 27);
@@ -454,10 +471,6 @@ namespace ExcelMerger
             };
             var input = new TextBox
             {
-                BackColor = SystemInformation.HighContrast
-                    ? SystemColors.Window : Color.White,
-                ForeColor = SystemInformation.HighContrast
-                    ? SystemColors.WindowText : Theme.TextPrimary,
                 Dock = DockStyle.Fill,
                 MaxLength = 10,
                 TextAlign = HorizontalAlignment.Center,
@@ -467,6 +480,7 @@ namespace ExcelMerger
                 Margin = new Padding(0, 0, 6, 0),
                 TabIndex = 0
             };
+            ApplyInputColors(input);
             var range = new Label
             {
                 AutoEllipsis = true,
@@ -1392,8 +1406,12 @@ namespace ExcelMerger
                     if (word != null && !IsStableFooterPageNumber(result, pair,
                         leftSide, page, word))
                     {
-                        highlight.Boxes.Add(word.Box);
-                        highlight.Words.Add(word);
+                        // Слово переноса — рамкой на каждую свою строку (пары Boxes[i]↔Words[i]).
+                        foreach (PdfReviewBox box in word.DisplayBoxes)
+                        {
+                            highlight.Boxes.Add(box);
+                            highlight.Words.Add(word);
+                        }
                     }
 
             Dictionary<int, List<PdfReviewWhitespaceMarker>> whitespaceIndex = leftSide

@@ -134,15 +134,31 @@ namespace ExcelMerger
         /// <summary>Точно одноцветен ли растр; ни одна тонкая линия не теряется из-за выборки.</summary>
         public static bool IsSolidColor(Bitmap bmp)
         {
+            int argb;
+            return TrySolidColor(bmp, out argb);
+        }
+
+        /// <summary>
+        /// То же, что <see cref="IsSolidColor(Bitmap)"/>, и сам цвет (ARGB). Цвет нужен писателю
+        /// слайдов: одноцветная, но НЕ белая страница — это фон, а не пустота, и без него белый
+        /// текст тёмного слайда оказывался белым на белом. Пустой или вырожденный растр —
+        /// одноцветный прозрачный (0).
+        /// </summary>
+        public static bool TrySolidColor(Bitmap bmp, out int argb)
+        {
+            argb = 0;
             if (bmp == null)
                 return true;
             BitmapData data = null;
             try
             {
                 int width = bmp.Width, height = bmp.Height;
-                if (width < 2 || height < 2)
+                if (width < 1 || height < 1)
                     return true;
                 int sampled = bmp.GetPixel(0, 0).ToArgb();
+                argb = sampled;
+                if (width < 2 || height < 2)
+                    return true;
                 int stepX = Math.Max(1, width / 16), stepY = Math.Max(1, height / 16);
                 for (int y = 0; y < height; y += stepY)
                     for (int x = 0; x < width; x += stepX)
@@ -172,17 +188,18 @@ namespace ExcelMerger
                     System.Runtime.InteropServices.Marshal.Copy(start, row, 0, rowBytes);
                     for (int x = 0; x < rowBytes; x += bytesPerPixel)
                     {
-                        int argb = (bytesPerPixel >= 4 ? row[x + 3] : 255) << 24 |
+                        int pixel = (bytesPerPixel >= 4 ? row[x + 3] : 255) << 24 |
                             row[x + 2] << 16 | row[x + 1] << 8 | row[x];
                         if (!haveFirst)
                         {
-                            first = argb;
+                            first = pixel;
                             haveFirst = true;
                         }
-                        else if (argb != first)
+                        else if (pixel != first)
                             return false;
                     }
                 }
+                argb = first;
                 return true;
             }
             catch { return false; }

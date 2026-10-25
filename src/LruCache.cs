@@ -17,7 +17,7 @@ namespace ExcelMerger
     /// </summary>
     internal sealed class LruCache<TValue>
     {
-        private readonly int _capacity;
+        private int _capacity;
         private readonly Action<TValue> _onEvict;
         private readonly Dictionary<string, TValue> _map =
             new Dictionary<string, TValue>(StringComparer.OrdinalIgnoreCase);
@@ -34,6 +34,21 @@ namespace ExcelMerger
 
         /// <summary>Число хранимых элементов.</summary>
         public int Count { get { return _map.Count; } }
+
+        /// <summary>Сколько элементов кэш держит, прежде чем вытеснять.</summary>
+        public int Capacity { get { return _capacity; } }
+
+        /// <summary>
+        /// Сменить ёмкость (масштаб сменил размер записей). Лишнее сверх новой ёмкости
+        /// вытесняется сразу, самые несвежие первыми, через onEvict.
+        /// </summary>
+        public void SetCapacity(int capacity)
+        {
+            if (capacity < 1)
+                throw new ArgumentOutOfRangeException("capacity", "ёмкость LRU должна быть не меньше 1");
+            _capacity = capacity;
+            while (_map.Count > _capacity && TryEvictOldest()) { }
+        }
 
         /// <summary>Значение по ключу; при попадании ключ становится самым свежим.</summary>
         public bool TryGet(string key, out TValue value)

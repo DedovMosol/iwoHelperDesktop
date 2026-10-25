@@ -235,6 +235,14 @@ namespace ExcelMerger
                 encoded[cacheKey] = null;
                 return;
             }
+            if (background.SolidArgb.HasValue)
+            {
+                // Цвет не занимает места в пакете: бюджет медиа на него не тратится.
+                encoded[cacheKey] = background;
+                result[slot] = background;
+                report.Added++;
+                return;
+            }
             if (background.Data == null ||
                 background.Data.Length > MediaBudgetBytes - spent)
             {
@@ -395,8 +403,14 @@ namespace ExcelMerger
                             rotated.RotateFlip(PageRotation.FlipFor(rotation));
                             bitmap = rotated;
                         }
-                        if (RasterUtil.IsSolidColor(bitmap))
-                            return null;
+                        int solid;
+                        if (RasterUtil.TrySolidColor(bitmap, out solid))
+                        {
+                            // Белый лист — пустота: фон образца и так белый. Любой другой сплошной
+                            // цвет — фон слайда, и терять его нельзя: белый текст тёмного слайда
+                            // стал бы белым на белом. Пишется цветом, без картинки и без бюджета.
+                            return Background.IsBlank(solid) ? null : new Background { SolidArgb = solid };
+                        }
                         byte[] png = SavePng(bitmap);
                         if (png == null)
                         {
@@ -472,7 +486,16 @@ namespace ExcelMerger
     {
         public byte[] Data;
         public bool IsJpeg;
+        /// <summary>Страница без текста — сплошной цвет (ARGB): фон слайда цветом, Data нет.</summary>
+        public int? SolidArgb;
         internal PdfMemoryLease Lease;
+
+        /// <summary>Сплошной цвет, который фоном не является: белый или прозрачный. Чистая — под тест.</summary>
+        internal static bool IsBlank(int argb)
+        {
+            int alpha = (argb >> 24) & 0xFF;
+            return alpha == 0 || (argb & 0xFFFFFF) == 0xFFFFFF;
+        }
 
         public void Dispose()
         {

@@ -65,12 +65,36 @@ namespace ExcelMerger
                 object wordObj = word;
                 if (wordObj != null)
                 {
-                    try { word.Quit(WdDoNotSaveChanges); } catch { }
+                    QuitOrHandOver(wordObj);
                     ComSafe.Release(wordObj);
                 }
                 ComSafe.Collect();
                 ComMessageFilter.Revoke();
             }
+        }
+
+        private const int WdAlertsAll = -1;
+
+        /// <summary>
+        /// Закрыть свой Word — или отдать его человеку, если в нём открыты чужие документы
+        /// (<see cref="OfficeInstance"/>): Quit(wdDoNotSaveChanges) отбрасывает изменения ВСЕХ
+        /// документов экземпляра. Свой документ к этому моменту закрыт. Возвращает число чужих
+        /// документов (0 — Word закрыт). После Quit динамических вызовов нет.
+        /// </summary>
+        internal static int QuitOrHandOver(object wordObj)
+        {
+            dynamic word = wordObj;
+            int open = 0;
+            try { open = (int)word.Documents.Count; }
+            catch { open = 0; } // Word не отвечает — закрываем, как раньше
+            if (!OfficeInstance.KeepForUser(open))
+            {
+                try { word.Quit(WdDoNotSaveChanges); } catch { }
+                return 0;
+            }
+            try { word.DisplayAlerts = WdAlertsAll; } catch { }
+            try { word.Visible = true; } catch { }
+            return open;
         }
 
         /// <summary>

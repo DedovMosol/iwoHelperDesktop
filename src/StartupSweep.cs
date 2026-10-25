@@ -27,11 +27,16 @@ namespace ExcelMerger
         // подложек PageBackgrounds (внутри — decrypted.pdf из RenderPagesWithoutText). Свои
         // finally их удаляют, но аварийный выход оставлял бы открытый текст защищённого
         // документа в общей папке навсегда. Имена — ровно те, что создаёт код, чужое не трогаем.
+        //
+        // Туда же — производные от страниц: рендер страницы Ghostscript (PageRasterizer.RenderPage,
+        // iwo_pg_<guid>.png — растр страницы того же расшифрованного документа) и папка картинок,
+        // которые PDF → Word вставляет в документ (WordDocxWriter, iwo_img_<guid>\). Аварийный
+        // выход оставлял их навсегда, а это содержимое документов человека.
         private static readonly Regex TempCopyFile = new Regex(
-            @"^iwo_(?:pg_dec|ops)_[0-9a-fA-F]{32}\.pdf$",
+            @"^iwo_(?:(?:pg_dec|ops)_[0-9a-fA-F]{32}\.pdf|pg_[0-9a-fA-F]{32}\.png)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex TempCopyDir = new Regex(
-            @"^iwo_bg_[0-9a-fA-F]{32}$",
+            @"^iwo_(?:bg|img)_[0-9a-fA-F]{32}$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>
@@ -177,9 +182,10 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Удалить старые (не моложе <see cref="MinAge"/>) временные копии PDF из tempRoot —
-        /// см. <see cref="TempCopyFile"/>. Корень параметром, чтобы тест не трогал настоящий
-        /// %TEMP%. Возвращает число удалённых файлов и папок; сбои молчат, как и вся уборка.
+        /// Удалить старые (не моложе <see cref="MinAge"/>) временные копии из tempRoot —
+        /// см. <see cref="TempCopyFile"/> и <see cref="TempCopyDir"/>. Корень параметром, чтобы
+        /// тест не трогал настоящий %TEMP%. Возвращает число удалённых файлов и папок; сбои
+        /// молчат, как и вся уборка.
         /// </summary>
         internal static int SweepTempCopies(string tempRoot, DateTime nowUtc)
         {
@@ -188,7 +194,7 @@ namespace ExcelMerger
             {
                 if (string.IsNullOrWhiteSpace(tempRoot) || !Directory.Exists(tempRoot))
                     return 0;
-                foreach (string file in Directory.EnumerateFiles(tempRoot, "iwo_*.pdf"))
+                foreach (string file in Directory.EnumerateFiles(tempRoot, "iwo_*"))
                 {
                     if (!TempCopyFile.IsMatch(Path.GetFileName(file)))
                         continue;
@@ -199,7 +205,7 @@ namespace ExcelMerger
                     }
                     catch { }
                 }
-                foreach (string dir in Directory.EnumerateDirectories(tempRoot, "iwo_bg_*"))
+                foreach (string dir in Directory.EnumerateDirectories(tempRoot, "iwo_*"))
                 {
                     if (!TempCopyDir.IsMatch(Path.GetFileName(dir)))
                         continue;

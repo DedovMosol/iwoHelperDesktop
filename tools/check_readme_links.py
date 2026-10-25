@@ -77,6 +77,23 @@ def release_exists(version):
         return None
 
 
+def extract_targets(text):
+    """Все адреса README в порядке появления: ссылки, цели ссылок-бейджей, картинки.
+
+    Ссылка-бейдж — это картинка внутри ссылки: [![подпись](картинка)](цель). Обычное
+    выражение для ссылки видит в ней только первую пару скобок, то есть адрес
+    КАРТИНКИ, а цель не проверялась вовсе. Так месяцами жили битыми кнопки
+    скачивания и бейджи шапки: картинка с shields.io отвечает всегда, файл релиза —
+    нет. Поэтому цели бейджей вынимаются отдельно.
+    """
+    badge_targets = re.findall(
+        r"\[!\[[^\]]*\]\([^)\s]+(?:\s+\"[^\"]*\")?\)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", text)
+    links = re.findall(r"(?<!\!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", text)
+    images = re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", text)
+    html_src = re.findall(r'<img[^>]+src="([^"]+)"', text)
+    return badge_targets + links + images + html_src
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "README.md"
     root = os.path.dirname(os.path.abspath(path)) or "."
@@ -89,18 +106,13 @@ def main():
     for level, heading in re.findall(r"^(#{1,6})\s+(.+?)\s*$", text, re.M):
         anchors.add(anchor_of(heading))
 
-    # Ссылки вида [подпись](адрес) и картинки ![подпись](адрес)
-    links = re.findall(r"(?<!\!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", text)
-    images = re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", text)
-    html_src = re.findall(r'<img[^>]+src="([^"]+)"', text)
-
     # Отказы делятся надвое. «Нет такой страницы» — наш дефект: ссылку правим.
     # Таймаут, 429 от лимита обращений или 5xx на стороне сервиса — не дефект
     # README, и ронять из-за них сборку значит приучить смотреть на красный цвет
     # как на норму. Поэтому такие случаи попадают в предупреждения.
     broken, flaky, checked = [], [], 0
     seen = set()
-    for target in links + images + html_src:
+    for target in extract_targets(text):
         if target in seen:
             continue
         seen.add(target)

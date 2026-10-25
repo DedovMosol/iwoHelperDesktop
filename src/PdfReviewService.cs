@@ -176,11 +176,10 @@ namespace ExcelMerger
                         HeightPt = page.HeightPt,
                         Fingerprint = PdfReviewDiff.Fingerprint(normalized, page.WidthPt, page.HeightPt)
                     };
-                    double viewW, viewH;
-                    PdfReviewGeometry.ViewSize(page.WidthPt, page.HeightPt, page.NativeRotation,
-                        out viewW, out viewH);
-                    reviewPage.ViewWidthPt = viewW;
-                    reviewPage.ViewHeightPt = viewH;
+                    // Извлечение уже отдаёт страницу в пространстве отображения (см. PdfPageText):
+                    // это и есть размер страницы, которую рисует системный рендерер.
+                    reviewPage.ViewWidthPt = page.WidthPt;
+                    reviewPage.ViewHeightPt = page.HeightPt;
                     BuildWords(page, reviewPage);
                     doc.WordCount += reviewPage.Words.Count;
                     doc.Pages.Add(reviewPage);
@@ -244,7 +243,7 @@ namespace ExcelMerger
                     string fragment = word.Text == null ? "" : word.Text.Trim();
                     if (fragment.Length == 0)
                     {
-                        AddWord(lineWords, reviewPage.PageIndex, page, text, fragments,
+                        AddWord(lineWords, reviewPage.PageIndex, text, fragments,
                             left, bottom, right, top);
                         text.Length = 0;
                         fragments.Clear();
@@ -255,7 +254,7 @@ namespace ExcelMerger
                     if (text.Length > 0 && (OcrLayout.HasSpaceBetween(previous, word) ||
                         HasExplicitSourceWhitespace(page, previous, word)))
                     {
-                        AddWord(lineWords, reviewPage.PageIndex, page, text, fragments,
+                        AddWord(lineWords, reviewPage.PageIndex, text, fragments,
                             left, bottom, right, top);
                         text.Length = 0;
                         fragments.Clear();
@@ -278,7 +277,7 @@ namespace ExcelMerger
                     fragments.Add(word);
                     previous = word;
                 }
-                AddWord(lineWords, reviewPage.PageIndex, page, text, fragments,
+                AddWord(lineWords, reviewPage.PageIndex, text, fragments,
                     left, bottom, right, top);
                 bool lineHasWords = lineWords.Count > 0;
                 if (previousLineHasWords)
@@ -347,6 +346,11 @@ namespace ExcelMerger
 
             left.Text = leftText.Substring(0, leftText.Length - 1) + rightText;
             left.Key = left.Text.Normalize(NormalizationForm.FormC);
+            // Рамки строк сохраняем для показа (подсветка, рейка, каретка); объединение — для
+            // сравнения. Цепочка переносов через три строки даёт три рамки.
+            var fragments = new List<PdfReviewBox>(left.DisplayBoxes);
+            fragments.AddRange(right.DisplayBoxes);
+            left.Fragments = fragments;
             left.Box = Union(left.Box, right.Box);
             left.BlockId = left.BlockId >= 0 && left.BlockId == right.BlockId
                 ? left.BlockId : -1;
@@ -612,7 +616,7 @@ namespace ExcelMerger
         }
 
         private static void AddWord(ICollection<PdfReviewWord> words, int pageIndex,
-            PdfPageText page, StringBuilder text, IList<PdfWord> fragments,
+            StringBuilder text, IList<PdfWord> fragments,
             double left, double bottom, double right, double top)
         {
             if (text.Length == 0)
@@ -627,8 +631,7 @@ namespace ExcelMerger
                 Text = display,
                 Key = display.Normalize(NormalizationForm.FormC),
                 PageIndex = pageIndex,
-                Box = PdfReviewGeometry.RawToView(left, bottom, right, top,
-                    page.NativeRotation, page.WidthPt, page.HeightPt),
+                Box = new PdfReviewBox { Left = left, Bottom = bottom, Right = right, Top = top },
                 SourceStart = sourceTrusted ? sourceStart : -1,
                 SourceEnd = sourceTrusted ? sourceEnd : -1,
                 SourceText = sourceTrusted ? sourceText : null,

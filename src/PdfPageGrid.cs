@@ -30,6 +30,15 @@ namespace ExcelMerger
         private const int EnqueueBuffer = 16;   // докачивать миниатюры чуть за пределами видимого
         private const int DragEdgePx = 28;      // зона автопрокрутки у верх/низ края при перетаскивании
         private const int DropFramePx = 3;      // толщина акцентной рамки-подсветки при дропе файла
+        private const int OutOfMemoryBackoffMs = 250; // пауза потока миниатюр после нехватки памяти
+
+        /// <summary>
+        /// Подмена рендера страницы для потока миниатюр (путь, индекс, ширина → растр). Только
+        /// для тестов: так проверяется, что отказ рендера (в том числе нехватка памяти) не
+        /// роняет процесс. Задаётся до SetPages: заявки уходят в поток под замком очереди, и
+        /// он публикует значение; production всегда рендерит через WinRT.
+        /// </summary>
+        internal Func<string, int, int, BudgetedBitmap> RenderThumbForTests { get; set; }
         private static readonly long PageCacheBudget =
             IntPtr.Size == 8 ? 192L << 20 : 48L << 20; // x86: адресное пространство ~2 ГБ
         private static readonly Color HoverMarkColor = Color.FromArgb(185, 185, 185);
@@ -229,7 +238,7 @@ namespace ExcelMerger
             _renderHi = ThumbZoom.RenderWidthFor(DeviceDpi, ThumbZoom.MaxWidth);
             _renderTarget = _renderBase;
             _pageCache = new LruCache<CachedPage>(
-                ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderHi), OnPageEvicted);
+                ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderTarget), OnPageEvicted); // см. SetTileWidth
             // Общие кэшированные шрифты (Ui.Font): грид ими не владеет и не освобождает.
             _badgeFont = Ui.Font(7.5f, FontStyle.Bold);
             _chipFont = Ui.Font(9.5f, FontStyle.Regular, "Segoe UI Symbol"); // глифы ↺/↻ hover-кнопок
@@ -905,8 +914,14 @@ namespace ExcelMerger
                 first = 0;
                 last = Math.Min(count - 1, EnqueueBuffer);
             }
+            // Видимое, что не помещается в кэш целиком, обрезаем: иначе последние видимые
+            // вытесняли бы первые, и плитки мигали бы без конца. Одно место — под Add,
+            // пока вытесняется старое.
+            int capacity = _pageCache.Capacity;
+            if (last - first + 1 > capacity - 1)
+                last = first + Math.Max(1, capacity - 1) - 1;
             int lo, hi;
-            ClampWindow(first, last, count, EnqueueBuffer, out lo, out hi);
+            PrefetchWindow(first, last, count, EnqueueBuffer, capacity, out lo, out hi);
             // A fast scroll makes the old viewport irrelevant. Remove only queued (not
             // in-flight) requests, then enqueue the current visible row first and its buffer
             // second. This keeps one renderer and avoids both duplicate work and stale FIFO lag.
@@ -934,6 +949,37 @@ namespace ExcelMerger
                         EnqueueThumb(page);
                 }
             }
+            // Попадания буфера освежили его записи ПОСЛЕ видимых, и видимые стали самыми
+            // несвежими — первыми на вытеснение. Освежаем видимые последними.
+            CachedPage touched;
+            for (int i = first; i <= last; i++)
+            {
+                var page = _list.Items[i].Tag as PdfPageRef;
+                if (page != null)
+                    _pageCache.TryGet(ThumbKey(page), out touched);
+            }
+        }
+
+        /// <summary>
+        /// Окно докачки [lo..hi] вокруг видимого [first..last], которое помещается в кэш вместе
+        /// с видимым: буфер по сторонам — не больше buffer и не больше свободного места
+        /// (capacity − видимое − 1 под добавление). Сторона, упёршаяся в край списка, отдаёт
+        /// остаток другой. Окно больше кэша вытесняло бы свои же страницы по кругу.
+        /// При большом кэше это просто buffer с каждой стороны в пределах списка. Чистая — под тест.
+        /// </summary>
+        internal static void PrefetchWindow(int first, int last, int count, int buffer, int capacity,
+            out int lo, out int hi)
+        {
+            int visible = Math.Max(0, last - first + 1);
+            int spare = Math.Max(0, capacity - visible - 1);
+            int roomBefore = Math.Max(0, Math.Min(buffer, first));
+            int roomAfter = Math.Max(0, Math.Min(buffer, count - 1 - last));
+            int before = Math.Min(roomBefore, spare / 2);
+            int after = Math.Min(roomAfter, spare / 2);
+            before = Math.Min(roomBefore, before + (spare - before - after));
+            after = Math.Min(roomAfter, after + (spare - before - after));
+            lo = first - before;
+            hi = last + after;
         }
 
         private void DropQueuedThumbs()
@@ -947,17 +993,6 @@ namespace ExcelMerger
                         _thumbRequested.Remove(queued.Key);
                 }
             }
-        }
-
-        /// <summary>Окно докачки [lo..hi] вокруг видимого диапазона. Чистая — под тест.</summary>
-        internal static void ClampWindow(int first, int last, int count, int buffer, out int lo, out int hi)
-        {
-            lo = first - buffer;
-            if (lo < 0)
-                lo = 0;
-            hi = last + buffer;
-            if (hi > count - 1)
-                hi = count - 1;
         }
 
         /// <summary>
@@ -1073,6 +1108,10 @@ namespace ExcelMerger
                 return;
             _tileWidth = width;
             _renderTarget = width > ThumbZoom.BaseWidth ? _renderHi : _renderBase;
+            // Ёмкость — по ширине рендера ЭТОГО масштаба: на мелком зуме страниц на экране
+            // больше всего, а каждая вчетверо легче. Ёмкость по крупному рендеру (24 на x86)
+            // была меньше видимого окна, и сетка крутилась в цикле «отрисовать → вытеснить».
+            _pageCache.SetCapacity(ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderTarget));
             ClearTiles();
             ApplyIconSpacing();
             ScheduleVisibleUpdate(); // дорендер видимых при переходе в крупный зум
@@ -1810,17 +1849,38 @@ namespace ExcelMerger
                     }
                     ThumbRequest request = pending.Value;
                     int width = _renderTarget; // текущая целевая ширина (могла смениться зумом)
-                    BudgetedBitmap page = renderer.RenderOwned(request.SourcePath,
-                        request.PageIndex, width, 0, RasterBudget.ThumbnailPixels);
+                    BudgetedBitmap page;
+                    bool outOfMemory = false;
+                    try
+                    {
+                        Func<string, int, int, BudgetedBitmap> render = RenderThumbForTests;
+                        page = render != null
+                            ? render(request.SourcePath, request.PageIndex, width)
+                            : renderer.RenderOwned(request.SourcePath,
+                                request.PageIndex, width, 0, RasterBudget.ThumbnailPixels);
+                    }
+                    catch (OutOfMemoryException)
+                    {
+                        // Рендер пробрасывает нехватку памяти (её же GDI+ называет и испорченный
+                        // растр). Необработанное исключение фонового потока завершило бы процесс
+                        // вместе с несохранённой раскладкой страниц, поэтому здесь это такой же
+                        // отказ рендера, как null: страница остаётся заглушкой и повторится.
+                        page = null;
+                        outOfMemory = true;
+                    }
                     if (page == null)
                     {
-                        if (PdfMemoryBudget.Used > PdfMemoryBudget.LimitBytes -
+                        if (outOfMemory || PdfMemoryBudget.Used > PdfMemoryBudget.LimitBytes -
                             RasterBudget.ThumbnailPixels * 12L)
                             Ui.OnUi(this, delegate { _pageCache.TryEvictOldest(); });
                         // Сбой рендера: снять ключ дедупа, чтобы видимый тик мог повторить.
                         lock (_qLock)
                             if (request.Generation == _thumbGeneration)
                                 _thumbRequested.Remove(request.Key);
+                        // После нехватки памяти не берём следующую заявку сразу: вытеснение идёт
+                        // на UI-потоке, и без паузы очередь сожгла бы оставшиеся заявки отказами.
+                        if (outOfMemory && !_thumbStop)
+                            Thread.Sleep(OutOfMemoryBackoffMs);
                         continue;
                     }
                     PostPage(request.Key, page, width, request.Generation);

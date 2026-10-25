@@ -232,7 +232,7 @@ namespace ExcelMerger
                     table.ColumnWidthsPt.Add(Xs[c + 1] - Xs[c]);
                 for (int r = 0; r < rows; r++)
                 {
-                    var row = new OcrTableRow();
+                    var row = new OcrTableRow { HeightPt = Ys[r] - Ys[r + 1] };
                     for (int c = 0; c < cols; c++)
                         row.Cells.Add(Origin[r, c] ?? new OcrTableCell { Covered = true });
                     table.Rows.Add(row);

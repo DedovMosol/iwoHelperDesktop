@@ -55,16 +55,22 @@ namespace ExcelMerger
             return RunCore(path, tempOutput, args, timeoutMs, replace, verify, true);
         }
 
+        /// <summary>
+        /// То же над неопубликованным файлом (временным файлом <see cref="AtomicOutput"/>
+        /// вызывающего). cancelled — отмена человеком: движок завершается, его вывод удаляется,
+        /// и наружу уходит <see cref="OperationCanceledException"/>, а не Failed, — иначе
+        /// «Отменено» выглядело бы как «движок не справился».
+        /// </summary>
         internal static GsRewriteResult RunDetailedUnpublished(string path,
             string tempOutput, string args, int timeoutMs, Func<long, long, bool> replace,
-            Func<string, bool> verify = null)
+            Func<string, bool> verify = null, Func<bool> cancelled = null)
         {
-            return RunCore(path, tempOutput, args, timeoutMs, replace, verify, false);
+            return RunCore(path, tempOutput, args, timeoutMs, replace, verify, false, cancelled);
         }
 
         private static GsRewriteResult RunCore(string path, string tempOutput,
             string args, int timeoutMs, Func<long, long, bool> replace,
-            Func<string, bool> verify, bool recoverableTarget)
+            Func<string, bool> verify, bool recoverableTarget, Func<bool> cancelled = null)
         {
             string tmp = tempOutput;
             try
@@ -79,15 +85,19 @@ namespace ExcelMerger
                 // этим чтением и подменой теперь стоит вся работа движка, и окно закрыто.
                 int pagesBefore = PdfPageProbe.PageCount(path);
                 string stderr;
-                int exit = Ghostscript.Run(args, timeoutMs, out stderr);
+                Cancellation.ThrowIf(cancelled);
+                int exit = Ghostscript.Run(args, timeoutMs, out stderr, cancelled);
+                Cancellation.ThrowIf(cancelled); // движок прерван отменой — это не его сбой
                 if (!EngineSucceeded(exit, stderr))
                     return GsRewriteResult.Failed;
                 if (!PdfPageProbe.PagesKept(pagesBefore, PdfPageProbe.PageCount(tmp)))
                     return GsRewriteResult.Failed;
                 if (!replace(origSize, new FileInfo(tmp).Length))
                     return GsRewriteResult.RejectedByPolicy;
+                Cancellation.ThrowIf(cancelled); // проверка по существу бывает долгой
                 if (verify != null && !verify(tmp))
                     return GsRewriteResult.Failed;
+                Cancellation.ThrowIf(cancelled);
                 // Последняя проверка перед подменой: файл всё ещё тот, с которого движок читал.
                 // Работа движка длится минутами, и за это время файл может переписать кто-то
                 // другой (повторный запуск, вторая копия программы, человек сохранил из
@@ -110,6 +120,10 @@ namespace ExcelMerger
                     tmp = null;
                 }
                 return GsRewriteResult.Applied;
+            }
+            catch (OperationCanceledException)
+            {
+                throw; // отмена — решение человека, а не сбой преобразования; вывод удалит finally
             }
             catch
             {

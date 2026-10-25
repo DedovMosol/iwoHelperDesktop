@@ -55,7 +55,14 @@ namespace ExcelMerger
                     {
                         Cancellation.ThrowIf(cancelled); // отмена между страницами; файл ещё не сохранён
                         if (p > 0)
+                        {
+                            // Страница, кончившаяся пунктом списка, оставляет пустой абзац с его
+                            // форматом (TypeParagraph). Разрыв раздела ложится в этот абзац, и Word
+                            // нумерует его — лишний номер на границе страниц. Номер следующего
+                            // пункта при этом сохраняется: LastNumber очистка не трогает.
+                            ClearInheritedList(sel, listState);
                             sel.InsertBreak(WdSectionBreakNextPage); // новый раздел = свой размер листа
+                        }
                         ApplySectionSetup(sel, pages[p]); // размер и поля страницы из источника
                         // Текстовая область страницы (pt): в неё Word укладывает абзацы, от неё
                         // считаются отступы конфайна центрированной колонки (см. WriteParagraphInto).
@@ -225,13 +232,68 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>Состояние последовательности списка: продолжать нумерацию или начать заново.</summary>
-        private sealed class ListState
+        /// <summary>Что сделать с абзацем-пунктом, см. <see cref="ListState.Decide"/>.</summary>
+        internal enum ListStep
+        {
+            /// <summary>Пункт того же вида и уровня сразу за предыдущим: формат унаследован, ничего не делать.</summary>
+            Inherit,
+            /// <summary>Тот же список, другой уровень вложенности: сменить только уровень.</summary>
+            SetLevel,
+            /// <summary>Продолжить список после вставки обычного текста: применить шаблон с продолжением.</summary>
+            Continue,
+            /// <summary>Новый список: применить шаблон заново (со стартовым номером, если он не 1).</summary>
+            Restart
+        }
+
+        /// <summary>
+        /// Состояние последовательности списка: продолжать нумерацию или начать заново. Номера
+        /// хранятся ПО УРОВНЯМ: общий счётчик путал «2.» после подсписка «1) 2) 3)» с новым
+        /// списком, а «2. B» после «1) a» принимал за продолжение подсписка и оставлял на его
+        /// уровне. Чистое (без COM) — под тест.
+        /// </summary>
+        internal sealed class ListState
         {
             public ListKind PrevKind = ListKind.None; // вид непосредственно предыдущего абзаца (для маркированного и очистки)
-            public int LastNumber;                    // номер последнего нумерованного пункта; НЕ сбрасывается несписочным
-                                                      // абзацем — нумерованный список продолжается сквозь вложенный текст
-                                                      // (пункт может содержать внутри обычные абзацы, затем идёт следующий пункт)
+            public int PrevLevel;                     // его уровень (0..MaxLevel)
+            // Номер последнего нумерованного пункта на каждом уровне; НЕ сбрасывается несписочным
+            // абзацем — нумерованный список продолжается сквозь вложенный текст (пункт может
+            // содержать обычные абзацы, затем идёт следующий пункт).
+            public readonly int[] LastNumber = new int[ListNesting.MaxLevel + 1];
+
+            /// <summary>
+            /// Шаг для пункта kind/number на уровне level (0-базный, уже в пределах).
+            ///  • Нумерованный продолжает список, если его номер на 1 больше последнего на ЭТОМ
+            ///    уровне, или если это «1» подсписка сразу под пунктом верхнего уровня (Word
+            ///    сам начинает уровень заново после пункта уровнем выше).
+            ///  • Маркированный продолжается, пока маркеры идут подряд, на любом уровне.
+            /// </summary>
+            public ListStep Decide(ListKind kind, int number, int level)
+            {
+                bool continuePrev;
+                if (kind == ListKind.Numbered)
+                    continuePrev = (LastNumber[level] > 0 && number == LastNumber[level] + 1) ||
+                        (number == 1 && PrevKind == ListKind.Numbered && level > PrevLevel);
+                else
+                    continuePrev = PrevKind == ListKind.Bulleted;
+                if (!continuePrev)
+                    return ListStep.Restart;
+                if (PrevKind != kind)
+                    return ListStep.Continue;
+                return level == PrevLevel ? ListStep.Inherit : ListStep.SetLevel;
+            }
+
+            /// <summary>Пункт записан. Пункт уровня level обнуляет номера более глубоких уровней.</summary>
+            public void Record(ListKind kind, int number, int level)
+            {
+                if (kind == ListKind.Numbered)
+                {
+                    LastNumber[level] = number;
+                    for (int deeper = level + 1; deeper < LastNumber.Length; deeper++)
+                        LastNumber[deeper] = 0;
+                }
+                PrevKind = kind;
+                PrevLevel = level;
+            }
         }
 
         private const int WdListApplyToWholeList = 0;
@@ -257,32 +319,46 @@ namespace ExcelMerger
         ///    заново — так второй список с пунктами 1,2,3 стартует с 1 после первого (1–4).
         ///  • Маркированный — продолжается, только пока буллеты идут подряд (для галочек нумерация
         ///    не важна — вид одинаков).
+        /// Номера и продолжение считаются по уровням вложенности (<see cref="ListState.Decide"/>):
+        /// подсписок — тот же список Word уровнем глубже, а не отдельный список.
         /// </summary>
         private static void ApplyList(dynamic sel, ListTemplates lists, OcrParagraph p, ListState state)
         {
-            bool continuePrev;
-            if (p.ListKind == ListKind.Numbered)
-                continuePrev = state.LastNumber > 0 && p.ListNumber == state.LastNumber + 1;
-            else
-                continuePrev = state.PrevKind == ListKind.Bulleted;
+            int wordLevel = WordListLevel(p.ListLevel);
+            int level = wordLevel - 1;
+            ListStep step = state.Decide(p.ListKind, p.ListNumber, level);
 
             // Пункт СРАЗУ за пунктом того же вида уже унаследовал список от TypeParagraph —
             // переприменение шаблона не нужно: оно и лишние COM-вызовы, и сбивает StartAt
             // рестартованного не с «1.» списка. Шаблон применяется только на старте списка и
-            // при возврате к нему после вложенного обычного текста.
-            if (continuePrev && state.PrevKind == p.ListKind)
+            // при возврате к нему после вложенного обычного текста. Унаследован при этом и
+            // УРОВЕНЬ — его меняем, если пункт глубже или мельче предыдущего.
+            if (step == ListStep.Inherit)
             {
-                if (p.ListKind == ListKind.Numbered)
-                    state.LastNumber = p.ListNumber;
+                state.Record(p.ListKind, p.ListNumber, level);
                 return;
             }
+            if (step == ListStep.SetLevel)
+            {
+                bool leveled = false;
+                try
+                {
+                    sel.Range.ListFormat.ListLevelNumber = wordLevel;
+                    leveled = true;
+                }
+                catch { } // не вышло — применим шаблон с продолжением ниже
+                if (leveled)
+                {
+                    state.Record(p.ListKind, p.ListNumber, level);
+                    return;
+                }
+            }
+            bool continuePrev = step != ListStep.Restart;
 
             dynamic tmpl = p.ListKind == ListKind.Numbered ? lists.Number : lists.Bullet;
             bool applied = false;
             try
             {
-                int wordLevel = WordListLevel(p.ListLevel);
-
                 sel.Range.ListFormat.ApplyListTemplateWithLevel(tmpl, continuePrev, WdListApplyToWholeList, WdWord10ListBehavior, wordLevel);
                 // Список, начинающийся НЕ с «1.» («5. 6. 7.» — продолжение из другого
                 // документа): Word при рестарте всегда нумерует с единицы, поэтому стартовый
@@ -296,9 +372,7 @@ namespace ExcelMerger
             catch { }
             if (applied)
             {
-                if (p.ListKind == ListKind.Numbered)
-                    state.LastNumber = p.ListNumber;
-                state.PrevKind = p.ListKind;
+                state.Record(p.ListKind, p.ListNumber, level);
                 return;
             }
             // Шаблон не применился, а маркер уже снят с текста — вернуть «1.»/«•» в начало
