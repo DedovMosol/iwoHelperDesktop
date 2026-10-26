@@ -76,10 +76,12 @@ namespace ExcelMerger
         private const int WdAlertsAll = -1;
 
         /// <summary>
-        /// Закрыть свой Word — или отдать его человеку, если в нём открыты чужие документы
-        /// (<see cref="OfficeInstance"/>): Quit(wdDoNotSaveChanges) отбрасывает изменения ВСЕХ
-        /// документов экземпляра. Свой документ к этому моменту закрыт. Возвращает число чужих
-        /// документов (0 — Word закрыт). После Quit динамических вызовов нет.
+        /// Закрыть свой Word — или отдать его человеку, если в нём открыты чужие документы:
+        /// Windows открывает документ, по которому щёлкнули дважды, в уже запущенном Word, в том
+        /// числе в нашем скрытом, а Quit(wdDoNotSaveChanges) отбрасывает изменения ВСЕХ
+        /// документов экземпляра. Свой документ к этому моменту закрыт, поэтому всё открытое —
+        /// чужое (то же правило у Excel, см. MergeService.QuitOrHandOver). Возвращает число
+        /// чужих документов (0 — Word закрыт). После Quit динамических вызовов нет.
         /// </summary>
         internal static int QuitOrHandOver(object wordObj)
         {
@@ -87,7 +89,7 @@ namespace ExcelMerger
             int open = 0;
             try { open = (int)word.Documents.Count; }
             catch { open = 0; } // Word не отвечает — закрываем, как раньше
-            if (!OfficeInstance.KeepForUser(open))
+            if (open == 0)
             {
                 try { word.Quit(WdDoNotSaveChanges); } catch { }
                 return 0;

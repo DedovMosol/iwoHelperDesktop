@@ -419,8 +419,13 @@ namespace ExcelMerger
         /// </summary>
         private static bool CopyWillDo(IList<PdfPageRef> pages, string source, int pageCount, bool forEngine)
         {
-            return IsPristine(pages, source, pageCount) &&
-                (!forEngine || string.IsNullOrEmpty(PdfPasswords.For(source)));
+            return IsPristine(pages, source, pageCount) && (!forEngine || !HasPassword(source));
+        }
+
+        /// <summary>Открыт ли документ с паролем (он запомнен на время сеанса, см. PdfPasswords).</summary>
+        private static bool HasPassword(string source)
+        {
+            return !string.IsNullOrEmpty(PdfPasswords.For(source));
         }
 
         /// <summary>
@@ -475,8 +480,7 @@ namespace ExcelMerger
             public static AssembledDoc Whole(string source, IList<PdfPageRef> pages, int pageCount,
                 Func<bool> cancelled, bool forRewrite = false)
             {
-                if (IsPristine(pages, source, pageCount) &&
-                    (!forRewrite || string.IsNullOrEmpty(PdfPasswords.For(source))))
+                if (IsPristine(pages, source, pageCount) && (!forRewrite || !HasPassword(source)))
                     return new AssembledDoc(source, null, null);
                 string temp = Materialize(pages, cancelled);
                 return new AssembledDoc(temp, null, temp);

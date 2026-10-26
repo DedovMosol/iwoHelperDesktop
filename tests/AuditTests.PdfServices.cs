@@ -209,7 +209,16 @@ namespace ExcelMerger.Tests
                 first.Outlines.Add("Раздел 1.1", doc.Pages[1], true);
                 folder.Outlines.Add("Глава 2", doc.Pages[2], true);
                 doc.Outlines.Add("После", doc.Pages[2], true);
-                List<PdfBookmark> marks = PdfBookmarks.Read(doc);
+                // Читаем так же, как объединение и разделение: из сохранённого файла.
+                string path = Path.Combine(Path.GetTempPath(), "iwo_auditc_marks_" + Guid.NewGuid().ToString("N") + ".pdf");
+                List<PdfBookmark> marks;
+                try
+                {
+                    doc.Save(path);
+                    using (PdfDocument saved = PdfReader.Open(path, PdfDocumentOpenMode.Import))
+                        marks = PdfBookmarks.Read(saved);
+                }
+                finally { try { File.Delete(path); } catch { } }
                 var sb = new StringBuilder();
                 foreach (PdfBookmark m in marks)
                     sb.Append(m.Title).Append(':').Append(m.Level).Append(':').Append(m.PageIndex).Append(';');

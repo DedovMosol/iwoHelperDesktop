@@ -46,8 +46,8 @@ namespace ExcelMerger
         private string _lastReportPath;
         private MergeRun _currentRun; // идущий (или только что завершившийся) запуск — для его отчёта
         private MergeRun _lastRun;    // последний запуск с итогом — для повтора и записки
-        // Во время повтора — записи прошлого итога, которые повтор не заменяет (MergeService.RetryKept):
-        // сброс строки начинает её с них. null — обычный свод, строки сбрасываются в пустоту.
+        // Во время повтора — записи прошлого итога, которые повтор не заменяет (MergeRetry.Kept):
+        // сброс строки начинает её с них. null — нет повтора, строки сбрасываются в пустоту.
         private List<FileResult> _retryKept;
 
         // Список файлов до слияния: порядок и включение.
@@ -945,7 +945,6 @@ namespace ExcelMerger
         private void StartMerge(List<string> files, string folder, string outputPath, MergeOptions options)
         {
             // свежий прогон — очистить результаты всех строк
-            _retryKept = null;
             PrepareRun(new MergeRun(folder, options, DateTime.Now, files), outputPath, true);
             StartWorker(delegate { return _service.Merge(files, outputPath, options); });
         }
@@ -953,7 +952,7 @@ namespace ExcelMerger
         private void OnRetryClick(object sender, EventArgs e)
         {
             MergeRun last = _lastRun;
-            if (_running || last == null || last.Result.SkipCount == 0)
+            if (_running || last == null || MergeRetry.Paths(last.Result).Count == 0) // то же условие, что у кнопки
                 return;
             MergeResult previous = last.Result;
             string outputPath = previous.OutputPath;
@@ -969,7 +968,7 @@ namespace ExcelMerger
             // Повтор переносит только упавшие листы: строка файла начинается с того, что повтор
             // не заменяет (перенесённые листы), а не с пустоты — иначе «Янв» в своде, а строка
             // после повтора «Фев» говорила бы «пропущен».
-            _retryKept = MergeService.RetryKept(previous);
+            _retryKept = MergeRetry.Kept(previous);
             ResetRows(run.Paths); // сбросить результат только у повторяемых (ранее пропущенных) файлов
             StartWorker(delegate { return _service.RetrySkipped(outputPath, run.Options, previous); });
         }
@@ -980,8 +979,9 @@ namespace ExcelMerger
             foreach (string path in paths)
             {
                 ListViewItem row;
-                if (path != null && _rowByPath.TryGetValue(Path.GetFullPath(path), out row))
-                    ResetRow(row, Path.GetFullPath(path));
+                string key = MergeRetry.Key(path); // ключ строк — полный путь, как у плана повтора
+                if (key != null && _rowByPath.TryGetValue(key, out row))
+                    ResetRow(row, key);
             }
         }
 
@@ -997,13 +997,8 @@ namespace ExcelMerger
             if (_retryKept == null || fullPath == null)
                 return;
             foreach (FileResult kept in _retryKept)
-            {
-                string keptPath;
-                try { keptPath = kept.FullPath == null ? null : Path.GetFullPath(kept.FullPath); }
-                catch { keptPath = kept.FullPath; }
-                if (string.Equals(keptPath, fullPath, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(MergeRetry.Key(kept.FullPath), fullPath, StringComparison.OrdinalIgnoreCase))
                     results.Add(kept);
-            }
             if (results.Count > 0)
                 UpdateRowDisplay(row, results);
         }
@@ -1165,6 +1160,7 @@ namespace ExcelMerger
 
         private void OnMergeFinished(MergeResult result, Exception error)
         {
+            _retryKept = null; // нужен только пока идёт повтор (сброс строк при перезапуске Excel)
             _running = false;
             _worker = null;
             SetRunning(false);
@@ -1284,7 +1280,7 @@ namespace ExcelMerger
         private void UpdateRetryButton()
         {
             _btnRetry.Visible = !_running && _lastRun != null &&
-                _lastRun.Result.SkipCount > 0 && File.Exists(_lastRun.Result.OutputPath);
+                MergeRetry.Paths(_lastRun.Result).Count > 0 && File.Exists(_lastRun.Result.OutputPath);
         }
 
         /// <summary>Отчёт о завершённом слиянии — в историю (три последних, %APPDATA%).</summary>

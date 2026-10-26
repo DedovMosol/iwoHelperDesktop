@@ -12460,7 +12460,7 @@ namespace ExcelMerger.Tests
             AssertTrue(all.Contains("Замечания отсутствуют"), "формулировка чистого итога");
         }
 
-        // ---------- CombineRetryResults ----------
+        // ---------- MergeRetry.Combine ----------
 
         private static FileResult MakeResult(string path, bool ok, string note)
         {
@@ -12515,7 +12515,7 @@ namespace ExcelMerger.Tests
             // Повтор Б в режиме «все листы» дал два листа.
             var b1 = MakeResult(@"C:\in\Б.xlsx", true, null);
             var b2 = MakeResult(@"C:\in\Б.xlsx", true, null);
-            var combined = MergeService.CombineRetryResults(prev, new List<FileResult> { b1, b2 });
+            var combined = MergeRetry.Combine(prev, new List<FileResult> { b1, b2 });
 
             AssertEqual(3, combined.Files.Count, "А + два листа Б");
             AssertEqual(3, combined.OkCount, "все перенесены");
@@ -12527,7 +12527,7 @@ namespace ExcelMerger.Tests
         {
             MergeResult prev = MakePrevious();
             var attempts = new List<FileResult> { MakeResult(@"C:\in\Б.xlsx", true, null) };
-            MergeResult combined = MergeService.CombineRetryResults(prev, attempts);
+            MergeResult combined = MergeRetry.Combine(prev, attempts);
 
             AssertEqual(3, combined.Files.Count, "число записей");
             AssertEqual(2, combined.OkCount, "перенесено после повтора");
@@ -12540,7 +12540,7 @@ namespace ExcelMerger.Tests
         {
             MergeResult prev = MakePrevious();
             var attempts = new List<FileResult> { MakeResult(@"C:\in\Б.xlsx", false, "снова битый") };
-            MergeResult combined = MergeService.CombineRetryResults(prev, attempts);
+            MergeResult combined = MergeRetry.Combine(prev, attempts);
 
             AssertEqual(1, combined.OkCount, "перенесено не изменилось");
             AssertEqual(2, combined.SkipCount, "пропущенных столько же");
@@ -12555,7 +12555,7 @@ namespace ExcelMerger.Tests
                 MakeResult(@"C:\in\В.xlsx", true, null),
                 MakeResult(@"C:\in\Б.xlsx", true, null)
             };
-            MergeResult combined = MergeService.CombineRetryResults(prev, attempts);
+            MergeResult combined = MergeRetry.Combine(prev, attempts);
 
             AssertEqual("А.xlsx|Б.xlsx|В.xlsx",
                 combined.Files[0].FileName + "|" + combined.Files[1].FileName + "|" + combined.Files[2].FileName,
@@ -16681,13 +16681,7 @@ namespace ExcelMerger.Tests
                 && (string)locks.Attribute("noSelect") == "1", "подложка-картинка закреплена");
 
             byte[] bytes = package.ToArray();
-            int media = 0;
-            using (var ms = new MemoryStream(bytes))
-            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
-                foreach (ZipArchiveEntry e in zip.Entries)
-                    if (e.FullName.StartsWith("ppt/media/", StringComparison.OrdinalIgnoreCase))
-                        media++;
-            AssertEqual(1, media, "одинаковые подложки кладутся один раз");
+            AssertEqual(1, PptxMediaCount(bytes), "одинаковые подложки кладутся один раз");
 
             var failures = new List<string>();
             AssertOoxmlSelfConsistent(bytes, failures);
@@ -16804,18 +16798,7 @@ namespace ExcelMerger.Tests
             try
             {
                 PptxWriter.Write(pages, path, PptxStamp);
-                var problems = new List<string>();
-                using (var doc = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false))
-                {
-                    var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(
-                        DocumentFormat.OpenXml.FileFormatVersions.Office2013);
-                    foreach (DocumentFormat.OpenXml.Validation.ValidationErrorInfo info in validator.Validate(doc))
-                    {
-                        problems.Add(info.Description + " @ " + (info.Path == null ? "?" : info.Path.XPath));
-                        if (problems.Count >= 5)
-                            break;
-                    }
-                }
+                List<string> problems = PptxValidationProblems(path);
                 AssertTrue(problems.Count == 0, "валидатор нашёл: " + string.Join(" | ", problems.ToArray()));
             }
             finally
@@ -16824,31 +16807,39 @@ namespace ExcelMerger.Tests
             }
         }
 
+        /// <summary>Замечания официального валидатора Open XML (Office 2013) к файлу .pptx — до пяти.</summary>
+        private static List<string> PptxValidationProblems(string path)
+        {
+            var problems = new List<string>();
+            using (var doc = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false))
+            {
+                var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(
+                    DocumentFormat.OpenXml.FileFormatVersions.Office2013);
+                foreach (DocumentFormat.OpenXml.Validation.ValidationErrorInfo info in validator.Validate(doc))
+                {
+                    problems.Add(info.Description + " @ " + (info.Path == null ? "?" : info.Path.XPath));
+                    if (problems.Count >= 5)
+                        break;
+                }
+            }
+            return problems;
+        }
+
+        /// <summary>Сколько картинок (ppt/media/*) в пакете .pptx.</summary>
+        private static int PptxMediaCount(byte[] package)
+        {
+            int media = 0;
+            using (var ms = new MemoryStream(package))
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+                foreach (ZipArchiveEntry e in zip.Entries)
+                    if (e.FullName.StartsWith("ppt/media/", StringComparison.OrdinalIgnoreCase))
+                        media++;
+            return media;
+        }
+
         private static void TestPptxValidator()
         {
-            string path = Path.Combine(Path.GetTempPath(), "iwo_pptx_" + Guid.NewGuid().ToString("N") + ".pptx");
-            try
-            {
-                PptxWriter.Write(new List<PdfPageText> { PptxPage(960, 540) }, path,
-                    new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc));
-                var problems = new List<string>();
-                using (var doc = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false))
-                {
-                    var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(
-                        DocumentFormat.OpenXml.FileFormatVersions.Office2013);
-                    foreach (DocumentFormat.OpenXml.Validation.ValidationErrorInfo info in validator.Validate(doc))
-                    {
-                        problems.Add(info.Description + " @ " + (info.Path == null ? "?" : info.Path.XPath));
-                        if (problems.Count >= 5)
-                            break;
-                    }
-                }
-                AssertTrue(problems.Count == 0, "валидатор нашёл: " + string.Join(" | ", problems.ToArray()));
-            }
-            finally
-            {
-                try { File.Delete(path); } catch { }
-            }
+            AssertPptxValid(new List<PdfPageText> { PptxPage(960, 540) });
         }
 
         /// <summary>

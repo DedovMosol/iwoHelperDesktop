@@ -269,149 +269,12 @@ namespace ExcelMerger
             if (!File.Exists(outputPath))
                 throw new MergeException(Loc.T("err.merge.noOutput"));
 
-            List<string> retryPaths = RetryPaths(previous);
+            List<string> retryPaths = MergeRetry.Paths(previous);
             if (retryPaths.Count == 0)
                 throw new MergeException(Loc.T("err.merge.nothingToRetry"));
 
             ValidateOutput(outputPath);
-            return Run(outputPath, retryPaths, options, previous, RetrySheets(previous));
-        }
-
-        /// <summary>
-        /// Набор повтора — файлы с пропущенными записями прошлого прогона, каждый ОДИН раз и в
-        /// исходном порядке. Общий для сервиса и окна: окно сбрасывает строки именно этих файлов
-        /// (и при перезапуске Excel тоже). Раньше файл с двумя упавшими листами попадал сюда
-        /// дважды и переносился дважды.
-        /// </summary>
-        internal static List<string> RetryPaths(MergeResult previous)
-        {
-            var paths = new List<string>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (FileResult fr in previous.Files)
-            {
-                if (!fr.Ok && fr.FullPath != null && seen.Add(RetryKey(fr.FullPath)))
-                    paths.Add(fr.FullPath);
-            }
-            return paths;
-        }
-
-        /// <summary>
-        /// Какие листы каждого файла повторять: имена упавших листов, или null — файл целиком
-        /// (он не открылся вовсе, или ни один его лист не перенёсся). Без этого повтор в режиме
-        /// «все листы» копировал заново и уже перенесённые листы: в своде появлялись «Янв_2»,
-        /// «Фев_2», а оглавление и счётчики их дублировали. Ключ — полный путь. Чистая — под тест.
-        /// </summary>
-        internal static Dictionary<string, HashSet<string>> RetrySheets(MergeResult previous)
-        {
-            var failed = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-            var anyOk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (FileResult fr in previous.Files)
-            {
-                if (fr.FullPath == null)
-                    continue;
-                string key = RetryKey(fr.FullPath);
-                if (fr.Ok)
-                {
-                    anyOk.Add(key);
-                    continue;
-                }
-                HashSet<string> sheets;
-                if (!failed.TryGetValue(key, out sheets))
-                    failed[key] = sheets = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // имена листов Excel не различают регистр
-                // Без имени листа (файл не открылся, имя не прочиталось) прицельный повтор
-                // невозможен: такой файл повторяется целиком, только если в нём ничего не
-                // перенеслось, — иначе весь файл заново дал бы дубли перенесённых листов.
-                if (fr.SourceSheet != null)
-                    sheets.Add(fr.SourceSheet);
-            }
-            var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-            foreach (KeyValuePair<string, HashSet<string>> item in failed)
-                result[item.Key] = anyOk.Contains(item.Key) ? item.Value : null;
-            return result;
-        }
-
-        /// <summary>Заменяет ли повтор эту запись прошлого прогона (по плану <see cref="RetrySheets"/>).</summary>
-        private static bool IsRetried(FileResult fr, Dictionary<string, HashSet<string>> plan)
-        {
-            if (fr.Ok || fr.FullPath == null)
-                return false;
-            HashSet<string> sheets;
-            if (!plan.TryGetValue(RetryKey(fr.FullPath), out sheets))
-                return false;
-            return sheets == null || (fr.SourceSheet != null && sheets.Contains(fr.SourceSheet));
-        }
-
-        /// <summary>
-        /// Записи прошлого прогона, которые повтор не заменяет: успешные листы и пропуски, которые
-        /// не повторяются. С них окно начинает строки повторяемых файлов — иначе строка файла с
-        /// перенесённым «Янв» и упавшим «Фев» после повтора показывала бы один «Фев».
-        /// Чистая — под тест.
-        /// </summary>
-        internal static List<FileResult> RetryKept(MergeResult previous)
-        {
-            Dictionary<string, HashSet<string>> plan = RetrySheets(previous);
-            var kept = new List<FileResult>();
-            foreach (FileResult fr in previous.Files)
-                if (!IsRetried(fr, plan))
-                    kept.Add(fr);
-            return kept;
-        }
-
-        private static string RetryKey(string path)
-        {
-            try { return Path.GetFullPath(path); }
-            catch { return path; } // недопустимый путь — сравниваем как есть
-        }
-
-        /// <summary>
-        /// Итог после повторной попытки: пропущенные записи предыдущего прогона
-        /// заменяются свежими результатами (по полному пути), успешные и порядок
-        /// сохраняются. Чистая функция — покрыта юнит-тестами.
-        /// </summary>
-        public static MergeResult CombineRetryResults(MergeResult previous, IList<FileResult> attempts)
-        {
-            // Свежие результаты повтора, сгруппированные по исходному файлу
-            // (в режиме «все листы» один файл даёт несколько листов).
-            var freshByPath = new Dictionary<string, List<FileResult>>(StringComparer.OrdinalIgnoreCase);
-            foreach (FileResult a in attempts)
-            {
-                string key = a.FullPath ?? a.FileName;
-                List<FileResult> bucket;
-                if (!freshByPath.TryGetValue(key, out bucket))
-                {
-                    bucket = new List<FileResult>();
-                    freshByPath[key] = bucket;
-                }
-                bucket.Add(a);
-            }
-
-            var combined = new MergeResult();
-            combined.OutputPath = previous.OutputPath;
-            combined.MacrosCarried = previous.MacrosCarried; // свод тот же; при сохранении проверится заново
-            var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            Dictionary<string, HashSet<string>> plan = RetrySheets(previous);
-            foreach (FileResult old in previous.Files)
-            {
-                if (old.Ok)
-                {
-                    combined.Files.Add(old); // успешные листы сохраняются
-                    continue;
-                }
-                string key = old.FullPath ?? old.FileName;
-                List<FileResult> fresh;
-                if (key != null && IsRetried(old, plan) && freshByPath.TryGetValue(key, out fresh))
-                {
-                    if (expanded.Add(key)) // разворачиваем файл один раз — на месте первой заменённой записи
-                        combined.Files.AddRange(fresh);
-                }
-                else
-                {
-                    combined.Files.Add(old); // запись не повторялась
-                }
-            }
-            foreach (FileResult f in combined.Files)
-                if (f.Ok) combined.OkCount++; else combined.SkipCount++;
-            return combined;
+            return Run(outputPath, retryPaths, options, previous, MergeRetry.Sheets(previous));
         }
 
         private static void ValidateOutput(string outputPath)
@@ -515,7 +378,7 @@ namespace ExcelMerger
             HashSet<string> excluded, Dictionary<string, HashSet<string>> onlySheets)
         {
             bool intoExisting = previous != null;
-            bool legacy = OutputFormats.FileFormatFor(outputPath) == XlExcel8;
+            bool legacy = OutputFormats.FileFormatFor(outputPath) == OutputFormats.Xls;
             var copyTarget = new CopyTarget
             {
                 Legacy = legacy,
@@ -637,7 +500,7 @@ namespace ExcelMerger
                     throw new MergeException(Loc.T("err.merge.noSheets"));
 
                 MergeResult final = intoExisting
-                    ? CombineRetryResults(previous, attempt.Files)
+                    ? MergeRetry.Combine(previous, attempt.Files)
                     : attempt;
 
                 if (intoExisting && attempt.OkCount == 0)
@@ -734,7 +597,7 @@ namespace ExcelMerger
             int open = 0;
             try { open = (int)excel.Workbooks.Count; }
             catch { open = 0; } // экземпляр не отвечает — закрываем, как раньше
-            if (!OfficeInstance.KeepForUser(open))
+            if (open == 0)
             {
                 try { excel.Quit(); } catch { }
                 return 0;
@@ -858,8 +721,7 @@ namespace ExcelMerger
             }
         }
 
-        private const int XlExcel8 = 56; // формат .xls: 65 536 строк × 256 столбцов
-        internal const long LegacyRows = 65536;
+        internal const long LegacyRows = 65536; // сетка формата .xls (OutputFormats.Xls)
         internal const long LegacyColumns = 256;
 
         /// <summary>Куда переносятся листы: от этого зависит, что проверять у источника.</summary>
@@ -954,7 +816,7 @@ namespace ExcelMerger
 
                 HashSet<string> wanted = null;
                 if (options.AllSheets && into.OnlySheets != null)
-                    into.OnlySheets.TryGetValue(RetryKey(path), out wanted); // null — файл целиком
+                    into.OnlySheets.TryGetValue(MergeRetry.Key(path), out wanted); // null — файл целиком
                 if (wanted != null)
                 {
                     var pending = new HashSet<string>(wanted, StringComparer.OrdinalIgnoreCase);

@@ -298,9 +298,9 @@ namespace ExcelMerger.Tests
             previous.Files.Add(Stage1Sheet(b, null, false)); // файл не открылся
             previous.Files.Add(Stage1Sheet(c, "Лист1", false));
             previous.Files.Add(Stage1Sheet(c, "Лист2", false)); // ни один лист файла не перенёсся
-            AssertEqual(a + "|" + b + "|" + c, string.Join("|", MergeService.RetryPaths(previous).ToArray()),
+            AssertEqual(a + "|" + b + "|" + c, string.Join("|", MergeRetry.Paths(previous).ToArray()),
                 "каждый файл — один раз, порядок прежний");
-            Dictionary<string, HashSet<string>> sheets = MergeService.RetrySheets(previous);
+            Dictionary<string, HashSet<string>> sheets = MergeRetry.Sheets(previous);
             var forA = new List<string>(sheets[a]);
             forA.Sort(StringComparer.Ordinal);
             AssertEqual("Апр|Мар", string.Join("|", forA.ToArray()), "у частично перенесённого — только упавшие листы");
@@ -313,7 +313,7 @@ namespace ExcelMerger.Tests
             partial.Files.Add(Stage1Sheet(a, "Янв", true));
             partial.Files.Add(Stage1Sheet(a, "Мар", false));
             partial.Files.Add(Stage1Sheet(a, "Апр", false));
-            MergeResult combined = MergeService.CombineRetryResults(partial, fresh);
+            MergeResult combined = MergeRetry.Combine(partial, fresh);
             var names = new List<string>();
             foreach (FileResult f in combined.Files)
                 names.Add(f.SourceSheet + (f.Ok ? "+" : "-"));
@@ -389,7 +389,6 @@ namespace ExcelMerger.Tests
         private static void AuditXl4ExcelWithUserBookIsHandedOverLive()
         {
             AuditBRequireExcel();
-            AssertTrue(OfficeInstance.KeepForUser(1) && !OfficeInstance.KeepForUser(0), "правило решения");
             AuditBOfficeSta(90000, delegate
             {
                 // С «книгой пользователя»: экземпляр остаётся и показывается.
@@ -719,15 +718,21 @@ namespace ExcelMerger.Tests
             previous.Files.Add(Stage1Sheet(a, "Фев", false));
             previous.Files.Add(Stage1Sheet(d, "Лист1", true));
             previous.Files.Add(Stage1Sheet(d, null, false)); // имя листа не прочиталось
-            Dictionary<string, HashSet<string>> plan = MergeService.RetrySheets(previous);
+            Dictionary<string, HashSet<string>> plan = MergeRetry.Sheets(previous);
             AssertTrue(plan[d] != null && plan[d].Count == 0,
                 "лист без имени в частично перенесённом файле не повторяется — иначе дубли перенесённых");
+            AssertEqual(a, string.Join("|", MergeRetry.Paths(previous).ToArray()),
+                "файл, где повторять нечего, в Excel не открывается");
+            var onlyNameless = new MergeResult();
+            onlyNameless.Files.Add(Stage1Sheet(d, "Лист1", true));
+            onlyNameless.Files.Add(Stage1Sheet(d, null, false));
+            AssertEq(0, MergeRetry.Paths(onlyNameless).Count, "повторять нечего — кнопки «Повторить» нет");
             var kept = new List<string>();
-            foreach (FileResult fr in MergeService.RetryKept(previous))
+            foreach (FileResult fr in MergeRetry.Kept(previous))
                 kept.Add(Path.GetFileNameWithoutExtension(fr.FullPath) + ":" + (fr.SourceSheet ?? "?") + (fr.Ok ? "+" : "-"));
             AssertEqual("a:Янв+,d:Лист1+,d:?-", string.Join(",", kept.ToArray()),
                 "строкам остаются перенесённые листы и неповторяемый пропуск");
-            MergeResult combined = MergeService.CombineRetryResults(previous,
+            MergeResult combined = MergeRetry.Combine(previous,
                 new List<FileResult> { Stage1Sheet(a, "Фев", true) });
             var names = new List<string>();
             foreach (FileResult fr in combined.Files)
@@ -826,33 +831,13 @@ namespace ExcelMerger.Tests
             try
             {
                 File.WriteAllBytes(path, package);
-                var problems = new List<string>();
-                using (var doc = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false))
-                    foreach (DocumentFormat.OpenXml.Validation.ValidationErrorInfo info in
-                        new DocumentFormat.OpenXml.Validation.OpenXmlValidator(
-                            DocumentFormat.OpenXml.FileFormatVersions.Office2013).Validate(doc))
-                    {
-                        problems.Add(info.Description + " @ " + (info.Path == null ? "?" : info.Path.XPath));
-                        if (problems.Count >= 5)
-                            break;
-                    }
+                List<string> problems = PptxValidationProblems(path);
                 var consistency = new List<string>();
                 AssertOoxmlSelfConsistent(package, consistency);
                 problems.AddRange(consistency);
                 AssertTrue(problems.Count == 0, what + ": " + string.Join(" | ", problems.ToArray()));
             }
             finally { try { File.Delete(path); } catch { } }
-        }
-
-        private static int Stage1MediaCount(byte[] package)
-        {
-            int media = 0;
-            using (var ms = new MemoryStream(package))
-            using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
-                foreach (ZipArchiveEntry e in zip.Entries)
-                    if (e.FullName.StartsWith("ppt/media/", StringComparison.OrdinalIgnoreCase))
-                        media++;
-            return media;
         }
 
         [Test("Аудит WP-2: одноцветная небелая подложка становится цветом фона слайда")]
@@ -894,7 +879,7 @@ namespace ExcelMerger.Tests
                     "слайд " + n + ": цвет — не подложка, подчёркивание остаётся");
             }
             byte[] bytes = package.ToArray();
-            AssertEqual(0, Stage1MediaCount(bytes), "цвет не занимает места картинкой");
+            AssertEqual(0, PptxMediaCount(bytes), "цвет не занимает места картинкой");
             Stage1ValidatePptx(bytes, "пакет с цветным фоном");
         }
 

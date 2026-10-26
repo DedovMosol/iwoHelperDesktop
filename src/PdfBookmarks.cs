@@ -48,6 +48,10 @@ namespace ExcelMerger
         /// строка (дерево имён <c>/Names /Dests</c>), в том числе словарь назначения с <c>/D</c>.
         /// Оглавление — обвязка документа: испорченная закладка теряется сама, но никогда не
         /// роняет операцию над страницами.
+        ///
+        /// Читается документ, открытый из файла (так его открывают объединение и разделение).
+        /// У оглавления, построенного в памяти через doc.Outlines, сырых /First и /Next нет до
+        /// сохранения — их пишет запись, — и такой документ читается пустым.
         /// </summary>
         public static List<PdfBookmark> Read(PdfDocument doc)
         {
@@ -64,53 +68,12 @@ namespace ExcelMerger
                     indexByObject[page.Reference.ObjectID] = i;
             }
             PdfDictionary catalog = doc.Internals.Catalog;
-            PdfItem rootItem = Deref(catalog.Elements["/Outlines"]);
-            PdfOutline built = rootItem as PdfOutline;
-            if (built != null)
-            {
-                // Оглавление уже собрано объектами PDFsharp (документ создан или правлен в
-                // памяти, кто-то обратился к doc.Outlines). Сырых /First и /Next у такого дерева
-                // до сохранения нет — они пишутся только при записи, — источник правды здесь
-                // сами объекты. Бросающий конструктор PdfOutline к этому моменту уже отработал.
-                CollectBuilt(built.Outlines, 0, indexByObject, result);
-                return result;
-            }
-            PdfDictionary root = rootItem as PdfDictionary;
+            PdfDictionary root = Deref(catalog.Elements["/Outlines"]) as PdfDictionary;
             if (root == null)
                 return result;
             var reader = new OutlineReader(catalog, indexByObject, doc.PageCount);
             reader.Collect(Deref(root.Elements["/First"]) as PdfDictionary, result);
             return result;
-        }
-
-        /// <summary>
-        /// Обход дерева, уже собранного объектами PDFsharp. Циклов в нём нет: его строит API,
-        /// а не чужой файл. Правило выпадения то же, что и у сырого обхода.
-        /// </summary>
-        private static void CollectBuilt(PdfOutlineCollection outlines, int level,
-            Dictionary<PdfObjectID, int> indexByObject, List<PdfBookmark> into)
-        {
-            if (outlines == null)
-                return;
-            foreach (PdfOutline outline in outlines)
-            {
-                PdfPage dest = outline.DestinationPage;
-                int index;
-                if (dest == null || dest.Reference == null ||
-                    !indexByObject.TryGetValue(dest.Reference.ObjectID, out index))
-                {
-                    CollectBuilt(outline.Outlines, level, indexByObject, into);
-                    continue;
-                }
-                into.Add(new PdfBookmark
-                {
-                    Title = outline.Title ?? string.Empty,
-                    PageIndex = index,
-                    Level = level,
-                    Opened = outline.Opened
-                });
-                CollectBuilt(outline.Outlines, level + 1, indexByObject, into);
-            }
         }
 
         /// <summary>

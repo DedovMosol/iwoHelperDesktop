@@ -44,7 +44,7 @@ namespace ExcelMerger
         {
             if (Result == null)
                 throw new InvalidOperationException("повторять можно только запуск с итогом");
-            return new MergeRun(InputFolder, Options, startedAt, MergeService.RetryPaths(Result));
+            return new MergeRun(InputFolder, Options, startedAt, MergeRetry.Paths(Result));
         }
 
         /// <summary>

@@ -12,6 +12,9 @@ namespace ExcelMerger
         /// <summary>Расширения в порядке отображения в интерфейсе.</summary>
         public static readonly string[] Extensions = { ".xlsx", ".xlsm", ".xlsb", ".xls" };
 
+        /// <summary>Код XlFileFormat старого формата .xls (xlExcel8): сетка 65 536 строк × 256 столбцов.</summary>
+        public const int Xls = 56;
+
         /// <summary>
         /// Код XlFileFormat для SaveAs по расширению пути; 0 — формат не поддержан.
         /// </summary>
@@ -25,7 +28,7 @@ namespace ExcelMerger
             if (string.Equals(ext, ".xlsb", StringComparison.OrdinalIgnoreCase))
                 return 50; // xlExcel12
             if (string.Equals(ext, ".xls", StringComparison.OrdinalIgnoreCase))
-                return 56; // xlExcel8 (Excel 97–2003)
+                return Xls; // xlExcel8 (Excel 97–2003)
             return 0;
         }
 
