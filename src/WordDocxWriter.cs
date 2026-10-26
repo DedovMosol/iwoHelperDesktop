@@ -108,7 +108,7 @@ namespace ExcelMerger
                     // сохраняет .docx (Ghostscript-подобная точка невозврата) — снять кнопку отмены.
                     if (onCommitting != null)
                         onCommitting();
-                });
+                }, cancelled); // зависшее наполнение отмена прерывает остановкой Word (сторож WordCom)
             }
             finally
             {

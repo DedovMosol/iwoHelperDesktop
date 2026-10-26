@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ExcelMerger
 {
@@ -39,8 +40,9 @@ namespace ExcelMerger
     /// (например, после перезапуска из-за зависшего файла) иначе остаётся висеть
     /// невидимым EXCEL.EXE и мешает всем следующим COM-вызовам на машине. Время старта
     /// защищает от переиспользования PID: чужой процесс с тем же номером не тронем.
+    /// Тот же процесс останавливает и сторож зависшего вызова (<see cref="ComWatchdog"/>).
     /// </summary>
-    internal sealed class OwnedOfficeProcess
+    internal sealed class OwnedOfficeProcess : IWatchedProcess
     {
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -51,9 +53,21 @@ namespace ExcelMerger
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowEnabled(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindow(IntPtr hWnd, uint command);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
 
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        private const uint GwOwner = 4; // GW_OWNER: владелец верхнего окна
 
         public readonly int Id;
         private readonly DateTime _startTime;
@@ -99,14 +113,13 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Добивать ли процесс: он ещё жив, это ТОТ ЖЕ процесс (время старта совпало) и ни одно
-        /// его окно не показано. Видимое окно значит, что экземпляром завладел пользователь
-        /// (например, открыл в нём файл двойным щелчком) — его несохранённую работу не убиваем.
-        /// Чистая — под тест.
+        /// Добивать ли процесс: он ещё жив, это ТОТ ЖЕ процесс (время старта совпало) и у него нет
+        /// окна человека. Окно человека значит, что экземпляром завладел пользователь (например,
+        /// открыл в нём файл двойным щелчком) — его несохранённую работу не убиваем. Чистая — под тест.
         /// </summary>
-        internal static bool ShouldKill(bool stillRunning, DateTime ownedStart, DateTime actualStart, bool windowVisible)
+        internal static bool ShouldKill(bool stillRunning, DateTime ownedStart, DateTime actualStart, bool humanWindow)
         {
-            return stillRunning && ownedStart == actualStart && !windowVisible;
+            return stillRunning && ownedStart == actualStart && !humanWindow;
         }
 
         /// <summary>
@@ -121,11 +134,7 @@ namespace ExcelMerger
                 {
                     if (p.WaitForExit(waitMs))
                         return false; // вышел сам — штатный путь
-                    if (!ShouldKill(!p.HasExited, _startTime, p.StartTime, HasVisibleWindow(Id)))
-                        return false;
-                    p.Kill();
-                    p.WaitForExit(2000);
-                    return true;
+                    return Kill(p);
                 }
             }
             catch
@@ -134,27 +143,105 @@ namespace ExcelMerger
             }
         }
 
-        /// <summary>
-        /// Видно ли хоть одно верхнее окно процесса — на момент решения, а не окно, запомненное при
-        /// старте: в SDI-Excel рамку Application.Hwnd забирает первая книга (свод), и target.Close
-        /// её уничтожает, а книга, открытая человеком, живёт в своём окне. Перебор окон не шлёт
-        /// процессу сообщений — ответ есть и у заклинившего экземпляра. У скрытого Excel все
-        /// верхние окна невидимы (проверено на живом Excel 15.0).
-        /// </summary>
-        private static bool HasVisibleWindow(int pid)
+        /// <summary>Остановить зависший процесс сразу (сторож вызова). false — нельзя или он уже вышел.</summary>
+        public bool TryStop()
         {
-            bool visible = false;
+            try
+            {
+                using (Process p = Process.GetProcessById(Id))
+                    return Kill(p);
+            }
+            catch
+            {
+                return false; // процесса уже нет или доступ закрыт
+            }
+        }
+
+        private bool Kill(Process p)
+        {
+            if (!ShouldKill(!p.HasExited, _startTime, p.StartTime, Scan(Id).Human))
+                return false;
+            p.Kill();
+            p.WaitForExit(2000);
+            return true;
+        }
+
+        /// <summary>
+        /// Заголовок модального окна скрытого экземпляра ("" — без заголовка); null — такого окна
+        /// нет или экземпляром пользуется человек. Модальное окно Office выключает своё главное
+        /// окно-владельца; у скрытого экземпляра владелец ещё и невидим (проверено на живых Excel
+        /// и Word 15.0: «Открытие документа» — видимое окно #32770, его владелец XLMAIN или
+        /// OpusApp невидим и выключен). Занятый расчётом экземпляр окно не выключает.
+        /// </summary>
+        public string ModalWindowTitle()
+        {
+            WindowScan scan = Scan(Id);
+            return scan.Human ? null : scan.ModalTitle;
+        }
+
+        private struct WindowScan
+        {
+            public bool Human;        // есть окно человека
+            public string ModalTitle; // первое модальное окно скрытого экземпляра
+        }
+
+        /// <summary>
+        /// Окна процесса на момент решения (а не окно, запомненное при старте: в SDI-Excel рамку
+        /// Application.Hwnd забирает первая книга-свод, и target.Close её уничтожает, а книга
+        /// человека живёт в своём окне). Видимое верхнее окно, чей корневой владелец
+        /// (<see cref="RootOwner"/>) невидим и выключен, — модальное окно скрытого экземпляра: ответить на
+        /// него некому. Любое другое видимое окно — окно человека (рамка Excel или Word без
+        /// владельца, окна поверх видимой рамки). Перебор окон, проверки видимости и
+        /// заголовок окна чужого процесса сообщений процессу не шлют — ответ есть и у
+        /// заклинившего экземпляра (заголовок GetWindowText для окна другого процесса читает
+        /// из системы, без WM_GETTEXT).
+        /// </summary>
+        private static WindowScan Scan(int pid)
+        {
+            var scan = new WindowScan();
             EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
             {
                 uint owner;
-                if (GetWindowThreadProcessId(hWnd, out owner) != 0 && owner == (uint)pid && IsWindowVisible(hWnd))
+                if (GetWindowThreadProcessId(hWnd, out owner) == 0 || owner != (uint)pid || !IsWindowVisible(hWnd))
+                    return true;
+                IntPtr root = RootOwner(hWnd);
+                bool modalOfHidden = root != hWnd && !IsWindowVisible(root) && !IsWindowEnabled(root);
+                if (!modalOfHidden)
                 {
-                    visible = true;
-                    return false; // нашли — перебор можно остановить
+                    scan.Human = true;
+                    return false; // окно человека решает всё — перебор можно остановить
                 }
+                if (scan.ModalTitle == null)
+                    scan.ModalTitle = WindowText(hWnd);
                 return true;
             }, IntPtr.Zero);
-            return visible;
+            return scan;
+        }
+
+        /// <summary>
+        /// Последний владелец в цепочке GW_OWNER (у окна без владельца — оно само). Не GetAncestor
+        /// (GA_ROOTOWNER): тот идёт по GetParent, а GetParent отдаёт владельца только окнам WS_POPUP —
+        /// у владеемого окна без этого стиля корнем оказалось бы оно само (проверено на WinForms).
+        /// Глубина ограничена: цикл владельцев система не допускает, но перебор не должен зависеть от этого.
+        /// </summary>
+        private static IntPtr RootOwner(IntPtr hWnd)
+        {
+            IntPtr root = hWnd;
+            for (int depth = 0; depth < 64; depth++)
+            {
+                IntPtr owner = GetWindow(root, GwOwner);
+                if (owner == IntPtr.Zero)
+                    break;
+                root = owner;
+            }
+            return root;
+        }
+
+        private static string WindowText(IntPtr hWnd)
+        {
+            var text = new StringBuilder(256);
+            GetWindowText(hWnd, text, text.Capacity);
+            return text.ToString();
         }
     }
 }

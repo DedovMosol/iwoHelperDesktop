@@ -17,11 +17,22 @@ namespace ExcelMerger
         private const int WdDoNotSaveChanges = 0;
 
         /// <summary>
+        /// Пределы сторожа зависшего вызова Word: без предела длительности — наполнение
+        /// растёт с числом страниц; модальное окно и отмена — как у Excel. Тесты подставляют короткие.
+        /// </summary>
+        internal static ComWatchdog.Limits WatchdogLimits = new ComWatchdog.Limits();
+
+        /// <summary>
         /// Наполняет и сохраняет .docx. build получает (word, document) как object —
         /// приводить к dynamic внутри; вызывается до сохранения и закрытия (документ
-        /// открыт). lockLabel — как называть файл в сообщении о занятости.
+        /// открыт). lockLabel — как называть файл в сообщении о занятости. cancelled —
+        /// отмена (потокобезопасный флаг; null — нет): наполнение, которое Word не закончил за
+        /// отсрочку сторожа, прерывается остановкой Word — OperationCanceledException.
+        /// Модальное окно в скрытом Word (ответить некому) — остановка и MergeException с
+        /// причиной. Запись файла отменой не прерывается.
         /// </summary>
-        public static void WriteDocx(string path, string lockLabel, Action<object, object> build)
+        public static void WriteDocx(string path, string lockLabel, Action<object, object> build,
+            Func<bool> cancelled = null)
         {
             if (build == null)
                 throw new ArgumentNullException("build");
@@ -34,6 +45,7 @@ namespace ExcelMerger
 
             dynamic word = null;
             dynamic doc = null;
+            ComWatchdog watchdog = null;
             ComMessageFilter.Register();
             try
             {
@@ -41,9 +53,14 @@ namespace ExcelMerger
                 word.Visible = false;
                 word.DisplayAlerts = 0; // wdAlertsNone
                 doc = word.Documents.Add();
+                // Окно Word (а с ним и процесс) появляется только с документом; запуск до этого — без сторожа.
+                watchdog = new ComWatchdog(OwnWordProcess((object)word), cancelled, WatchdogLimits);
 
+                watchdog.Begin(true);
                 build((object)word, (object)doc);
+                watchdog.EndStep();
 
+                watchdog.Begin(false); // запись не прерываем отменой
                 try
                 {
                     SaveDocx(doc, path);
@@ -52,9 +69,19 @@ namespace ExcelMerger
                 {
                     throw new MergeException(string.Format(Loc.T("err.word.saveFailed"), Path.GetFileName(path), DiskSpace.Describe(ex, path)));
                 }
+                watchdog.End(); // запись вернулась без ошибки — файл записан, успех не перечёркиваем
+            }
+            catch (Exception) when (watchdog != null && watchdog.Stop != WatchdogStop.None)
+            {
+                // Любая ошибка после остановки — её следствие; человеку — причина.
+                if (watchdog.Stop == WatchdogStop.Cancel)
+                    throw new OperationCanceledException();
+                throw new MergeException(watchdog.Describe("Word"));
             }
             finally
             {
+                if (watchdog != null)
+                    watchdog.Begin(true); // закрытие тоже под сторожем
                 // Статические ссылки: после Close/Quit — никаких динамических операций.
                 object docObj = doc;
                 if (docObj != null)
@@ -68,8 +95,27 @@ namespace ExcelMerger
                     QuitOrHandOver(wordObj);
                     ComSafe.Release(wordObj);
                 }
+                if (watchdog != null)
+                    watchdog.Dispose();
                 ComSafe.Collect();
                 ComMessageFilter.Revoke();
+            }
+        }
+
+        /// <summary>
+        /// Процесс Word по окну документа (Window.Hwnd, Word 2013+). null — определить не удалось
+        /// (старый Word, сбой): запись идёт без сторожа, как раньше.
+        /// </summary>
+        internal static OwnedOfficeProcess OwnWordProcess(object wordObj)
+        {
+            dynamic word = wordObj;
+            try
+            {
+                return OwnedOfficeProcess.FromWindow((long)word.ActiveWindow.Hwnd);
+            }
+            catch
+            {
+                return null;
             }
         }
 

@@ -893,6 +893,12 @@ namespace ExcelMerger
                 "Drive {0} is almost out of free space ({1} MB). Excel won’t be able to open files — free up space and try again.");
             A("err.merge.excelUnstable", "Excel не удалось стабилизировать после файла «{0}». Исключите этот файл из списка (снимите галочку) и повторите.",
                 "Excel could not be stabilized after the file “{0}”. Exclude this file from the list (untick it) and try again.");
+            A("err.office.dialog", "{0} ждал ответа в окне «{1}», поэтому его процесс остановлен. Откройте {0} вручную, закройте это окно и повторите.",
+                "{0} was waiting for an answer in the “{1}” window, so its process was stopped. Open {0} manually, close that window and try again.");
+            A("err.office.dialogUntitled", "{0} ждал ответа в диалоговом окне, поэтому его процесс остановлен. Откройте {0} вручную, закройте окно и повторите.",
+                "{0} was waiting for an answer in a dialog box, so its process was stopped. Open {0} manually, close the dialog and try again.");
+            A("err.office.timeout", "{0} не отвечал {1} мин, поэтому его процесс остановлен. Повторите операцию.",
+                "{0} did not respond for {1} min, so its process was stopped. Try again.");
             A("err.merge.excelMissing", "Microsoft Excel не установлен: COM-компонент Excel.Application не найден.",
                 "Microsoft Excel is not installed: the Excel.Application COM component was not found.");
             A("err.merge.tocFailed", "лист «Содержание» создать не удалось ({0})",

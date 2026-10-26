@@ -196,7 +196,8 @@ on the header while building would put it *first* and land the focus on “Home�
 
 | File | Responsibility |
 |---|---|
-| `ComSafe.cs` | `Release(object)` / `Collect()` — deterministic RCW release. |
+| `ComSafe.cs` | `Release(object)` / `Collect()` — deterministic RCW release; `OwnedOfficeProcess` — our Office process (PID + start time): the window rules (a visible window whose root owner is hidden and disabled is a modal dialog of the hidden instance, any other visible window belongs to a human), `KillIfLingering` after `Quit`, `TryStop` for the watchdog. |
+| `ComWatchdog.cs` | Watchdog thread for a hung COM call. Work is marked with `Begin`/`End` steps; a step stuck on a modal dialog (10 s), over its time limit (Excel: 10 min) or cancelled and unfinished after a 5 s grace stops our process, and the blocked call returns with an RPC error. Never acts between steps or on a human-owned instance. |
 | `ComMessageFilter.cs` | `IOleMessageFilter` that auto-retries `SERVERCALL_RETRYLATER` (busy Excel, AV scans) instead of surfacing `RPC_E_CALL_REJECTED`. |
 | `WordCom.cs` | The one place that starts/quits Word and hosts the write-a-docx skeleton shared by `WordNoteWriter` and `WordDocxWriter`. |
 
@@ -544,14 +545,18 @@ flowchart TB
     D --> E["TocBuilder<br>«Содержание» + buttons"]
     E --> F["SaveAs (OutputFormats)"]
     F --> G["ReportWriter report<br>NoteText → WordNoteWriter"]
-    C -->|"Workbooks.Count probe fails"| H["ExcelWedgedException →<br>restart Excel (≤3), exclude file"]
+    C -->|"Workbooks.Count probe fails<br>or ComWatchdog stop"| H["ExcelWedgedException →<br>restart Excel (≤3), exclude file"]
     H --> C
 ```
 
 Resilience is the point of this pipeline: signature pre-filtering keeps poisonous files
 away from the shared Excel instance, `ComMessageFilter` absorbs busy-server rejections,
 a responsiveness probe between files catches a wedged Excel, which is then restarted
-with the offending file excluded, skipped files can be retried later without a full
+with the offending file excluded, `ComWatchdog` stops an Excel blocked inside a call (a
+modal dialog nobody can answer, endless work, a cancel the call ignores) — the file is
+skipped with the reason and the run restarts without it; outside a file the run fails
+with that reason, and a cancel is a cancel. Writing the result is never interrupted by
+Cancel; a write that returned is never undone by a late stop. Skipped files can be retried later without a full
 rebuild (`RetrySkipped` merges old and new results). All failure reasons flow as one
 wording into the list UI, the report and the cover note.
 
@@ -682,6 +687,10 @@ Late-bound COM is powerful and unforgiving, these rules are load-bearing:
   a value starting with `=` becomes a formula, a leading `'` silently disappears.
 - **Wait for readiness under load** (`WaitExcelReady` polls `Workbooks.Count`) — a
   freshly started Excel may reject calls for seconds.
+- **Make every COM call inside a `ComWatchdog` step.** Between `End` and the next
+  `Begin` only managed work; after a stop any further call fails fast with RPC
+  `0x800706BE`/`0x800706BA` (`MergeService.IsServerGone`), so do not retry it. Word gets
+  its process from `ActiveWindow.Hwnd`, which exists only after `Documents.Add`.
 
 ## Threading model
 
@@ -689,6 +698,9 @@ Late-bound COM is powerful and unforgiving, these rules are load-bearing:
   callbacks throttled, taskbar progress mirrors the in-window bar.
 - **STA worker threads** — one per Office job (merge, note, PDF → Word write): COM
   apartments require it.
+- **COM watchdog thread** — one per Office instance (`ComWatchdog`), polls every 0.5 s
+  and only inspects windows and stops our process; decisions and `Begin`/`End` share one
+  lock, and `Dispose` joins the thread.
 - **Thumbnail thread** — one background renderer per grid with a work queue, joined
   (with a timeout) before the form disposes. The page-preview window renders on its own
   short-lived background thread.

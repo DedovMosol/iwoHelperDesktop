@@ -99,7 +99,12 @@ namespace ExcelMerger
     internal class ExcelWedgedException : Exception
     {
         public readonly string FilePath;
-        public ExcelWedgedException(string filePath) { FilePath = filePath; }
+        public readonly string Note; // примечание к файлу в следующем проходе (почему пропущен)
+        public ExcelWedgedException(string filePath, string note = MergeService.WedgedNote)
+        {
+            FilePath = filePath;
+            Note = note;
+        }
     }
 
     /// <summary>
@@ -139,11 +144,28 @@ namespace ExcelMerger
 
         private volatile bool _cancel;
 
-        /// <summary>Мягкая отмена: останов после текущего файла, без сохранения результата.</summary>
+        /// <summary>
+        /// Отмена: останов после текущего файла, без сохранения результата. Файл, который Excel не
+        /// закончил за отсрочку сторожа (<see cref="ComWatchdog.Limits.CancelMs"/>), прерывается
+        /// остановкой процесса Excel. Запись свода, если уже началась, доводится до конца.
+        /// </summary>
         public void Cancel()
         {
             _cancel = true;
         }
+
+        /// <summary>Предел одного шага (файл, оглавление, запись): Excel, занятый дольше, считается зависшим.</summary>
+        internal const int StepLimitMs = 10 * 60 * 1000;
+
+        /// <summary>Пределы сторожа зависшего вызова Excel; тесты подставляют короткие.</summary>
+        internal ComWatchdog.Limits WatchdogLimits = new ComWatchdog.Limits { StepMs = StepLimitMs };
+
+        /// <summary>
+        /// Шов для живых тестов: вызывается в шаге сторожа с экземпляром Excel и путём источника —
+        /// перед его открытием, а с path = null — перед записью свода. Тест вешает здесь Excel
+        /// модальным окном или долгим расчётом, как это делает «трудный» файл.
+        /// </summary>
+        internal Action<object, string> StepHookForTests { get; set; }
 
         /// <summary>
         /// Файлы Excel папки в естественном порядке; временные файлы «~$*»
@@ -347,7 +369,8 @@ namespace ExcelMerger
             if (spaceError != null)
                 throw new MergeException(spaceError);
 
-            var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Файлы, подвесившие Excel, — с примечанием, почему пропущены.
+            var excluded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             for (int restart = 0; ; restart++)
             {
                 try
@@ -357,10 +380,11 @@ namespace ExcelMerger
                 catch (ExcelWedgedException wedge)
                 {
                     // Виновный файл в чёрный список и перезапуск свежего Excel.
-                    // Add вернёт false, если файл уже исключён (защита от зацикливания).
-                    if (restart >= MaxWedgeRestarts || !excluded.Add(wedge.FilePath))
+                    // Уже исключённый файл снова виноват быть не может — защита от зацикливания.
+                    if (restart >= MaxWedgeRestarts || excluded.ContainsKey(wedge.FilePath))
                         throw new MergeException(string.Format(Loc.T("err.merge.excelUnstable"),
                             Path.GetFileName(wedge.FilePath)));
+                    excluded.Add(wedge.FilePath, wedge.Note);
                     RaiseTrace("перезапуск Excel после зависания на " + Path.GetFileName(wedge.FilePath));
                     var restarting = Restarting;
                     if (restarting != null)
@@ -371,11 +395,13 @@ namespace ExcelMerger
 
         /// <summary>
         /// Один проход слияния в отдельном экземпляре Excel. Файлы из excluded
-        /// пропускаются без открытия (ранее подвесили Excel). Бросает
-        /// ExcelWedgedException, если очередной файл подвесил Workbooks.
+        /// пропускаются без открытия (ранее подвесили Excel) с их примечанием. Бросает
+        /// ExcelWedgedException, если очередной файл подвесил Workbooks или на нём сработал
+        /// сторож вызова (<see cref="ComWatchdog"/>): модальное окно или предел времени шага.
+        /// Все вызовы Excel идут внутри шагов сторожа; запись свода — шаг без отмены.
         /// </summary>
         private MergeResult RunOnce(string outputPath, List<string> files, MergeOptions options, MergeResult previous,
-            HashSet<string> excluded, Dictionary<string, HashSet<string>> onlySheets)
+            Dictionary<string, string> excluded, Dictionary<string, HashSet<string>> onlySheets)
         {
             bool intoExisting = previous != null;
             bool legacy = OutputFormats.FileFormatFor(outputPath) == OutputFormats.Xls;
@@ -395,12 +421,15 @@ namespace ExcelMerger
             dynamic excel = null;
             dynamic target = null;
             OwnedOfficeProcess excelProcess = null; // страховка от осиротевшего EXCEL.EXE (см. finally)
+            ComWatchdog watchdog = null;            // сторож зависшего вызова этого экземпляра
             bool askToUpdateLinks = true; // настройка экземпляра до свода — вернуть, если он достанется человеку
             ComMessageFilter.Register(); // авто-повтор вызовов, отклонённых занятым Excel
             try
             {
                 excel = Activator.CreateInstance(excelType);
                 excelProcess = OwnExcelProcess((object)excel);
+                watchdog = new ComWatchdog(excelProcess, delegate { return _cancel; }, WatchdogLimits);
+                watchdog.Begin(true); // подготовка: на диске ничего не меняется — отмена безопасна
                 excel.Visible = false;
                 excel.DisplayAlerts = false;
                 excel.ScreenUpdating = false;
@@ -443,6 +472,7 @@ namespace ExcelMerger
                 }
                 if (options.AddToc)
                     namer.Reserve(TocSheetName); // файл с таким именем получит суффикс _2
+                watchdog.EndStep();
 
                 int index = 0;
                 foreach (string path in files)
@@ -455,16 +485,19 @@ namespace ExcelMerger
                     index++;
                     RaiseProgress(index, files.Count, Path.GetFileName(path));
 
-                    if (excluded.Contains(Path.GetFullPath(path)))
+                    string full = Path.GetFullPath(path);
+                    string excludedNote;
+                    if (excluded.TryGetValue(full, out excludedNote))
                     {
                         // Файл ранее подвесил Excel — не открываем повторно.
-                        FileResult skip = Skipped(Path.GetFileName(path), path, WedgedNote);
+                        FileResult skip = Skipped(Path.GetFileName(path), path, excludedNote);
                         attempt.Files.Add(skip);
                         attempt.SkipCount++;
                         RaiseFileDone(skip);
                         continue;
                     }
 
+                    watchdog.Begin(true);
                     List<FileResult> frs;
                     try
                     {
@@ -479,6 +512,21 @@ namespace ExcelMerger
                         fr.Note = "не удалось обработать (" + ShortMessage(ex) + ")";
                         frs = new List<FileResult> { fr };
                     }
+                    bool responsive = IsExcelResponsive((object)excel); // тоже вызов Excel — внутри шага
+                    WatchdogStop stop = watchdog.End();
+                    if (stop == WatchdogStop.Cancel)
+                    {
+                        // Файл прерван остановкой Excel: его ошибки — следствие отмены, не показываем.
+                        RaiseTrace("отмена: Excel не закончил «" + Path.GetFileName(path) + "» вовремя — процесс остановлен");
+                        attempt.Cancelled = true;
+                        break;
+                    }
+                    if (stop != WatchdogStop.None)
+                    {
+                        string note = StalledNote(stop, watchdog.DialogTitle, watchdog.StepLimitMs);
+                        RaiseTrace("сторож: " + note + " на «" + Path.GetFileName(path) + "» — процесс Excel остановлен");
+                        throw new ExcelWedgedException(full, note); // перезапуск без этого файла
+                    }
                     foreach (FileResult fr in frs)
                     {
                         attempt.Files.Add(fr);
@@ -489,8 +537,8 @@ namespace ExcelMerger
                     // Отказоустойчивость: если файл подвесил Excel (Workbooks не
                     // отвечают), уходим на перезапуск экземпляра без него — иначе
                     // все следующие файлы были бы ложно «пропущены».
-                    if (!IsExcelResponsive((object)excel))
-                        throw new ExcelWedgedException(Path.GetFullPath(path));
+                    if (!responsive)
+                        throw new ExcelWedgedException(full);
                 }
 
                 if (attempt.Cancelled)
@@ -506,6 +554,7 @@ namespace ExcelMerger
                 if (intoExisting && attempt.OkCount == 0)
                     return final; // ни одна повторная попытка не удалась — файл не трогаем
 
+                watchdog.Begin(true); // оглавление и подготовка к записи: свод ещё в памяти
                 if (!intoExisting)
                     try { target.Sheets[PlaceholderName].Delete(); } catch { }
 
@@ -535,8 +584,20 @@ namespace ExcelMerger
                     }
                 }
 
+                watchdog.EndStep();
+
+                // Точка невозврата: дальше запись. Отмена, пришедшая до неё, — отмена: файл не создаётся
+                // (существующий свод не меняется), как и при отмене между файлами.
+                if (_cancel)
+                {
+                    attempt.Cancelled = true;
+                    return attempt;
+                }
+                watchdog.Begin(false); // запись не прерываем отменой: остановить можно только зависшую
                 try
                 {
+                    if (StepHookForTests != null)
+                        StepHookForTests((object)excel, null);
                     if (intoExisting)
                         target.Save(); // формат существующего файла сохраняется
                     else
@@ -546,11 +607,31 @@ namespace ExcelMerger
                 {
                     throw new MergeException(string.Format(Loc.T("err.merge.saveFailed"), DiskSpace.Describe(ex, outputPath)));
                 }
+                // Запись вернулась без ошибки — файл записан, даже если сторож остановил Excel в тот
+                // же миг: успех не перечёркиваем (закрытие ниже переживёт остановленный процесс).
+                watchdog.End();
 
                 return final;
             }
+            catch (Exception ex) when (watchdog != null && watchdog.Stop != WatchdogStop.None && !(ex is ExcelWedgedException))
+            {
+                // Сторож остановил Excel вне файла (запуск, свод, оглавление, запись): любая ошибка
+                // после этого — следствие остановки; человеку — её причина, а не «сбой RPC».
+                if (watchdog.Stop == WatchdogStop.Cancel)
+                {
+                    RaiseTrace("отмена: Excel не ответил вовремя — процесс остановлен");
+                    attempt.Cancelled = true;
+                    return attempt;
+                }
+                string message = watchdog.Describe("Excel");
+                RaiseTrace("сторож: " + message);
+                throw new MergeException(message);
+            }
             finally
             {
+                // Закрытие тоже под сторожем: Quit, упёршийся в модальное окно, иначе висел бы вечно.
+                if (watchdog != null)
+                    watchdog.Begin(true);
                 // Статические ссылки: после Close/Quit никаких динамических операций
                 // над объектами (см. комментарий у ComSafe.Release).
                 object targetObj = target;
@@ -566,6 +647,8 @@ namespace ExcelMerger
                     foreignBooks = QuitOrHandOver(excelObj, askToUpdateLinks);
                     ComSafe.Release(excelObj);
                 }
+                if (watchdog != null)
+                    watchdog.Dispose(); // дальше вызовов Excel нет
                 ComSafe.Collect();
                 ComMessageFilter.Revoke();
                 if (foreignBooks > 0)
@@ -798,6 +881,8 @@ namespace ExcelMerger
                 RaiseTrace("open: " + fileName);
                 try
                 {
+                    if (StepHookForTests != null)
+                        StepHookForTests(excelObj, path);
                     source = OpenSource(excel, path);
                 }
                 catch (Exception ex)
@@ -971,8 +1056,9 @@ namespace ExcelMerger
                 catch (Exception ex)
                 {
                     last = ex;
-                    // Проблема самого файла — повторять бессмысленно.
-                    if (IsPermanentOpenError(Unwrap(ex).Message))
+                    // Проблема самого файла или процесс Excel завершён (сторож, сбой) —
+                    // повторять бессмысленно.
+                    if (IsPermanentOpenError(Unwrap(ex).Message) || IsServerGone(Unwrap(ex).HResult))
                         throw;
                     System.Threading.Thread.Sleep(500); // транзиентный сбой — подождать и повторить
                 }
@@ -1034,6 +1120,42 @@ namespace ExcelMerger
         /// списка и оглавление (иначе там было бы «пропущен: пропущен: …»).
         /// </summary>
         internal const string WedgedNote = "вызывал зависание Excel";
+
+        /// <summary>
+        /// Примечание к файлу, на котором сторож остановил Excel (Dialog или Timeout; без «пропущен:»,
+        /// как <see cref="WedgedNote"/>): человек видит, что именно случилось, — окно с вопросом,
+        /// которое в скрытом Excel некому закрыть, или бесконечную работу. Чистая — под тест.
+        /// </summary>
+        internal static string StalledNote(WatchdogStop stop, string dialogTitle, int stepLimitMs)
+        {
+            if (stop == WatchdogStop.Timeout)
+                return "Excel не ответил за " + ComWatchdog.LimitMinutes(stepLimitMs) + " мин";
+            if (stop == WatchdogStop.Dialog && !string.IsNullOrEmpty(dialogTitle))
+                return "Excel ждал ответа в окне «" + dialogTitle + "»";
+            if (stop == WatchdogStop.Dialog)
+                return "Excel ждал ответа в диалоговом окне";
+            return WedgedNote;
+        }
+
+        /// <summary>
+        /// Процесс-сервер COM завершён или недоступен (его остановил сторож или он упал): вызовы в
+        /// него не пройдут, повторять бессмысленно. RPC_S_CALL_FAILED, RPC_S_SERVER_UNAVAILABLE,
+        /// RPC_E_DISCONNECTED, RPC_E_SERVER_DIED, RPC_E_SERVER_DIED_DNE. Чистая — под тест.
+        /// </summary>
+        internal static bool IsServerGone(int hresult)
+        {
+            switch ((uint)hresult)
+            {
+                case 0x800706BE:
+                case 0x800706BA:
+                case 0x80010108:
+                case 0x80010007:
+                case 0x80010012:
+                    return true;
+                default:
+                    return false;
+            }
+        }
 
         /// <summary>
         /// Есть ли формулы по значению UsedRange.HasFormula: true — все ячейки, false — ни
