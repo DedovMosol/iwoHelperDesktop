@@ -317,7 +317,7 @@ namespace ExcelMerger
         }
 
         /// <summary>Шов для теста: подмена чтения размеров соседней страницы (null — настоящее).</summary>
-        internal static Func<PdfPageRef, PdfPageInfo> SizeOfForTests;
+        internal static Func<PdfPageRef, PdfPageInfo> SizeOfForTests { get; set; }
 
         /// <summary>
         /// Размеры страницы. Только с фонового потока: разбор документа не мгновенный.

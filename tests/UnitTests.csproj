@@ -32,6 +32,7 @@
     <Compile Include="..\src\**\*.cs" />
     <!-- Все исходники тестов каталога (раннер, основной набор, тематические файлы). -->
     <Compile Include="*.cs" />
+    <EmbeddedResource Include="golden\*.txt" LogicalName="golden.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

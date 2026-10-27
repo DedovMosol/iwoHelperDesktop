@@ -82,7 +82,7 @@ namespace ExcelMerger.Tests
                     System.Windows.Forms.Application.DoEvents();
                     BudgetedBitmap page = AuditDBitmap(8, 8);
                     owned = page.Bitmap;
-                    SetField(preview, "_ownedImage", page);
+                    SetInternal(preview, "_ownedImage", page);
                     preview.Dispose(); // без Close: FormClosed не поднимается (проверено)
                 }
             });

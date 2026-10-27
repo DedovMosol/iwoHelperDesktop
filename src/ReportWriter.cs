@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 
@@ -27,7 +28,7 @@ namespace ExcelMerger
         {
             var sb = new StringBuilder();
             sb.AppendLine("iwo Helper Desktop — отчёт о слиянии");
-            sb.AppendLine("Дата:           " + startedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("Дата:           " + startedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
             sb.AppendLine("Папка:          " + inputFolder);
             sb.AppendLine("Итоговый файл:  " + result.OutputPath);
             sb.AppendLine("Параметры:      лист «Содержание»: " + (options.AddToc ? "да" : "нет") +
@@ -58,7 +59,7 @@ namespace ExcelMerger
             Directory.CreateDirectory(directory);
 
             // Имя сортируется лексикографически по времени; коллизии — суффиксом.
-            string baseName = FilePrefix + timestamp.ToString("yyyy-MM-dd_HH-mm-ss");
+            string baseName = FilePrefix + timestamp.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
             string path = Path.Combine(directory, baseName + ".txt");
             for (int i = 2; File.Exists(path); i++)
                 path = Path.Combine(directory, baseName + "_" + i + ".txt");

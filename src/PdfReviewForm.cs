@@ -40,6 +40,12 @@ namespace ExcelMerger
         private int _leftRowIndex = -1, _rightRowIndex = -1;
         private int _pathTop; // ордината ряда выбора файлов: пересчитывается в OnResize
         private string _leftFile, _rightFile;
+        // Наблюдаемое состояние для тестов (TS-11), только UI-поток: строки, показанные слева и
+        // справа, и файлы сравнения — вместо чтения приватных полей по имени.
+        internal int LeftRowIndex { get { return _leftRowIndex; } }
+        internal int RightRowIndex { get { return _rightRowIndex; } }
+        internal string LeftFile { get { return _leftFile; } }
+        internal string RightFile { get { return _rightFile; } }
         private bool _pathTextSync;
         private bool _pageTextSync, _leftPageDirty, _rightPageDirty;
         private int _leftSourceGeneration, _rightSourceGeneration;

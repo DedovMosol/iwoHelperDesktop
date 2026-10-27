@@ -832,7 +832,20 @@ The pyramid, bottom-up:
      nor attributed.
    - **Real windows in a child process** (`WindowChild`): window-rule tests start the test
      exe itself with `--window-child <layout>`. It starts in a fraction of a second, has the
-     run's bitness and exits when its stdin closes (5-minute cap otherwise).
+     run's bitness, reads stdin as UTF-8 without BOM (CI consoles are UTF-8) and exits when
+     its stdin closes (5-minute cap otherwise).
+   - **Unhandled exceptions fail the test on every thread:** windows live on their own STA
+     threads, and a handler exception there would otherwise open a modal dialog.
+   - **Environment dependencies are named:** `SkipMissing("office" | "printer" | "desktop" |
+     "shortnames", …)`; one printer policy (`RequirePrinter`) for all print tests.
+
+   **Golden tests** compare the merge report and the cover note with
+   `tests/golden/*.txt` (embedded into the test exe) as a whole, built under the Thai
+   culture so the output must not depend on the machine's culture. `IWO_UPDATE_GOLDEN=1`
+   rewrites the reference in the repository and fails the test, so a format change always
+   arrives as a reviewed diff. Shared test helpers (modal-dialog answerer, window text,
+   printer, access to internal state) live in `tests/TestSupport.cs`; test seams in the app
+   are `null`-by-default auto-properties named `…ForTests`.
 2. **Self-checks in the exe** — `--selftest` (every window created headless),
    `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded PdfSharp,
    embedded PdfPig extraction, WinRT thumbnail render from memory, Ghostscript

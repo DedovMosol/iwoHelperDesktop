@@ -29,25 +29,47 @@ namespace ExcelMerger
             }
             catch { return false; }
 
-            var elapsed = Stopwatch.StartNew();
-            while (true)
+            FileStream held = Acquire(lockPath);
+            if (held == null)
+                return false;
+            using (held)
             {
                 try
                 {
-                    using (new FileStream(lockPath, FileMode.OpenOrCreate,
-                        FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None))
-                        return action();
-                }
-                catch (IOException ex)
-                {
-                    if (!IsSharingViolation(ex) ||
-                        elapsed.ElapsedMilliseconds >= WaitMilliseconds)
-                        return false;
+                    return action();
                 }
                 catch
                 {
                     // Optional state must not abort the document operation or crash the UI.
                     return false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Взять lock-файл, повторяя только «занято другим» до срока; null — не взяли. Ожидание
+        /// отделено от действия: раньше IOException о занятости, брошенный самим действием
+        /// (антивирус держит файл данных), принимался за занятый lock — и действие, возможно
+        /// уже частично выполненное, запускалось заново.
+        /// </summary>
+        private static FileStream Acquire(string lockPath)
+        {
+            var elapsed = Stopwatch.StartNew();
+            while (true)
+            {
+                try
+                {
+                    return new FileStream(lockPath, FileMode.OpenOrCreate,
+                        FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
+                }
+                catch (IOException ex)
+                {
+                    if (!IsSharingViolation(ex) || elapsed.ElapsedMilliseconds >= WaitMilliseconds)
+                        return null;
+                }
+                catch
+                {
+                    return null; // нет доступа к папке и т. п. — без блокировки не публикуем
                 }
                 Thread.Sleep(RetryMilliseconds);
             }

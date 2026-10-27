@@ -303,7 +303,7 @@ namespace ExcelMerger.Tests
                 if (n == 0 || n >= shortName.Capacity ||
                     string.Equals(Path.GetFileName(shortName.ToString()), Path.GetFileName(src),
                         StringComparison.OrdinalIgnoreCase))
-                    Skip("короткие имена 8.3 на этом томе выключены");
+                    SkipMissing("shortnames", "короткие имена 8.3 на этом томе выключены");
                 AssertTrue(OutputFile.IsSameFile(src, shortName.ToString()), "имя 8.3 — тот же файл: " + shortName);
             }
         }

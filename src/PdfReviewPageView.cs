@@ -203,6 +203,13 @@ namespace ExcelMerger
 
         internal bool HasVisiblePage { get { return _state == PdfReviewPageViewState.Ready && _bitmap != null; } }
         internal double ZoomScale { get { return _scale; } }
+
+        // Наблюдаемое состояние для тестов (TS-11): чтение по имени приватного поля ломалось бы
+        // молча при переименовании и читало флаг рендера мимо его блокировки.
+        internal Bitmap ShownBitmap { get { return _bitmap; } }   // только UI-поток
+        internal PdfPageRef ShownPage { get { return _page; } }   // только UI-поток
+        internal bool RenderWorkerActive { get { lock (_renderGate) return _renderWorker; } }
+        internal int ShowGeneration { get { return _generation; } } // только UI-поток
         internal Point ScrollOffset
         {
             get { return new Point(-_viewport.AutoScrollPosition.X, -_viewport.AutoScrollPosition.Y); }

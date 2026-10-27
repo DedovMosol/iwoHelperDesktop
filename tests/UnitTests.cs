@@ -1934,13 +1934,13 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
-                        ReviewPrivateField<RoundedButton>(form,
+                        Internal<RoundedButton>(form,
                             "_sideModeButton").PerformClick();
                         Application.DoEvents();
-                        TextBox left = ReviewPrivateField<TextBox>(form, "_leftPath");
-                        TextBox right = ReviewPrivateField<TextBox>(form, "_rightPath");
-                        Button compare = ReviewPrivateField<Button>(form, "_compare");
-                        Button swap = ReviewPrivateField<Button>(form, "_swap");
+                        TextBox left = Internal<TextBox>(form, "_leftPath");
+                        TextBox right = Internal<TextBox>(form, "_rightPath");
+                        Button compare = Internal<Button>(form, "_compare");
+                        Button swap = Internal<Button>(form, "_swap");
                         AssertTrue(!left.ReadOnly && !right.ReadOnly,
                             "оба пути можно печатать и вставлять вручную");
                         AssertTrue(!compare.Enabled, "до двух проверенных источников Compare выключена");
@@ -1950,7 +1950,7 @@ namespace ExcelMerger.Tests
                         right.Focus(); // Leave левого поля — тот же commit, что у browse/drop
                         AssertTrue(WaitFor(delegate
                         {
-                            return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
+                            return string.Equals(form.LeftFile,
                                 Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
                         }), "Leave проверил и нормализовал вручную введённый левый путь");
                         AssertEq(Path.GetFullPath(first), left.Text,
@@ -1960,39 +1960,39 @@ namespace ExcelMerger.Tests
                         right.Focus();
                         bool enterHandled = InvokeReviewProcessCmdKey(form, Keys.Enter);
                         AssertTrue(enterHandled, "Enter в поле перехвачен до AcceptButton");
-                        AssertTrue(ReviewPrivateField<bool>(form, "_rightSourceChecking"),
+                        AssertTrue(Internal<bool>(form, "_rightSourceChecking"),
                             "на время асинхронной пробы сторона помечена checking");
                         AssertTrue(!compare.Enabled, "во время пробы Compare неактивна");
                         AssertTrue(WaitFor(delegate
                         {
-                            return string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                            return string.Equals(form.RightFile,
                                 Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase);
                         }), "Enter проверил правый путь");
                         AssertTrue(compare.Enabled, "два разных проверенных PDF включают Compare");
 
                         right.Text = first;
-                        AssertTrue(ReviewPrivateField<string>(form, "_rightFile") == null,
+                        AssertTrue(form.RightFile == null,
                             "редактирование сразу стирает скрытый старый источник");
                         AssertTrue(!compare.Enabled, "после первого же изменения текста Compare выключена");
                         InvokeReviewProcessCmdKey(form, Keys.Enter);
                         AssertTrue(WaitFor(delegate
                         {
-                            return string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                            return string.Equals(form.RightFile,
                                 Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
                         }), "повторный Enter завершил проверку");
                         AssertTrue(!compare.Enabled, "один файл на обе стороны Compare не включает");
                         AssertEq(Loc.T("review.err.sameFile"),
-                            ReviewPrivateField<Label>(form, "_summary").Text,
+                            Internal<Label>(form, "_summary").Text,
                             "same-file объяснён в строке состояния");
 
                         string missing = Path.Combine(dir, "missing.pdf");
                         left.Focus();
                         left.Text = missing;
-                        AssertTrue(ReviewPrivateField<string>(form, "_leftFile") == null,
+                        AssertTrue(form.LeftFile == null,
                             "ручная правка инвалидирует модель до потери фокуса");
                         InvokeReviewProcessCmdKey(form, Keys.Enter);
                         AssertEq(PdfReviewSourceError.Missing,
-                            ReviewPrivateField<PdfReviewSourceError>(form, "_leftSourceError"),
+                            Internal<PdfReviewSourceError>(form, "_leftSourceError"),
                             "несуществующий typed path остаётся видимым, но не становится источником");
                         AssertEq(missing, left.Text, "ошибочный ввод не стирается без ведома пользователя");
 
@@ -2001,11 +2001,11 @@ namespace ExcelMerger.Tests
                         InvokeReviewProcessCmdKey(form, Keys.Enter);
                         AssertTrue(WaitFor(delegate
                         {
-                            return string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                            return string.Equals(form.RightFile,
                                 Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase);
                         }), "валидная правая проба завершилась рядом с ошибкой слева");
                         AssertEq(Loc.T("review.err.source.missing"),
-                            ReviewPrivateField<Label>(form, "_summary").Text,
+                            Internal<Label>(form, "_summary").Text,
                             "успешный callback одной стороны не скрывает ошибку другой");
 
                         left.Focus();
@@ -2013,7 +2013,7 @@ namespace ExcelMerger.Tests
                         InvokeReviewProcessCmdKey(form, Keys.Enter);
                         AssertTrue(WaitFor(delegate
                         {
-                            return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
+                            return string.Equals(form.LeftFile,
                                 Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
                         }), "левый источник восстановлен после ошибки");
                         right.Focus();
@@ -2029,27 +2029,27 @@ namespace ExcelMerger.Tests
                             "swap сохраняет вторую сторону");
                         AssertTrue(WaitFor(delegate
                         {
-                            return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
+                            return string.Equals(form.LeftFile,
                                        Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase) &&
-                                   string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                                   string.Equals(form.RightFile,
                                        Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
                         }), "swap провёл обе стороны через общий validation route");
                         AssertTrue(compare.Enabled, "после swap разные проверенные PDF готовы к сравнению");
 
-                        string sourceBeforeClose = ReviewPrivateField<string>(form, "_leftFile");
-                        int generationBeforeClose = ReviewPrivateField<int>(form,
+                        string sourceBeforeClose = form.LeftFile;
+                        int generationBeforeClose = Internal<int>(form,
                             "_leftSourceGeneration");
                         form.Close();
-                        AssertTrue(ReviewPrivateField<bool>(form, "_sourceCallbacksStopped"),
+                        AssertTrue(Internal<bool>(form, "_sourceCallbacksStopped"),
                             "закрытие явно останавливает source callbacks");
-                        int closedGeneration = ReviewPrivateField<int>(form,
+                        int closedGeneration = Internal<int>(form,
                             "_leftSourceGeneration");
                         AssertTrue(closedGeneration > generationBeforeClose,
                             "закрытие инвалидирует уже поставленную в очередь пробу");
                         InvokeReviewCompleteSource(form, true, closedGeneration,
                             new PdfReviewSourceResult { Path = first });
                         AssertEq(sourceBeforeClose,
-                            ReviewPrivateField<string>(form, "_leftFile"),
+                            form.LeftFile,
                             "callback не меняет модель закрытой формы даже с текущим generation");
                     }
                 });
@@ -2073,17 +2073,17 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
-                        ReviewPrivateField<RoundedButton>(form,
+                        Internal<RoundedButton>(form,
                             "_sideModeButton").PerformClick();
                         Application.DoEvents();
                         AssertEq(ReviewControlTreeCount(form), form.DropWiredControlCount,
                             "каждый существующий дочерний control подписан на drop");
 
-                        TextBox leftPath = ReviewPrivateField<TextBox>(form, "_leftPath");
-                        Button rightPick = ReviewPrivateField<Button>(form, "_pickRight");
-                        Button swap = ReviewPrivateField<Button>(form, "_swap");
-                        PdfReviewPageView leftView = ReviewPrivateField<PdfReviewPageView>(form, "_leftSource");
-                        PdfReviewPageView rightView = ReviewPrivateField<PdfReviewPageView>(form, "_rightSource");
+                        TextBox leftPath = Internal<TextBox>(form, "_leftPath");
+                        Button rightPick = Internal<Button>(form, "_pickRight");
+                        Button swap = Internal<Button>(form, "_swap");
+                        PdfReviewPageView leftView = Internal<PdfReviewPageView>(form, "_leftSource");
+                        PdfReviewPageView rightView = Internal<PdfReviewPageView>(form, "_rightSource");
                         AssertEq(PdfReviewDropTarget.Left,
                             form.ReviewDropTargetAt(ReviewScreenCenter(leftPath)),
                             "поле левого пути — явная левая цель");
@@ -2147,24 +2147,24 @@ namespace ExcelMerger.Tests
                         AssertEq(first, leftPath.Text,
                             "первый neutral single-drop заполнил левую сторону");
                         form.AcceptFiles(new[] { second });
-                        AssertEq(second, ReviewPrivateField<TextBox>(form, "_rightPath").Text,
+                        AssertEq(second, Internal<TextBox>(form, "_rightPath").Text,
                             "второй neutral single-drop заполнил правую сторону");
                         AssertTrue(WaitFor(delegate
                         {
-                            return ReviewPrivateField<string>(form, "_leftFile") != null &&
-                                   ReviewPrivateField<string>(form, "_rightFile") != null;
+                            return form.LeftFile != null &&
+                                   form.RightFile != null;
                         }), "оба dropped PDF прошли асинхронную пробу");
 
                         form.AcceptFiles(new[] { second, first });
                         AssertEq(second, leftPath.Text,
                             "two-file drop сохранил первый файл слева");
-                        AssertEq(first, ReviewPrivateField<TextBox>(form, "_rightPath").Text,
+                        AssertEq(first, Internal<TextBox>(form, "_rightPath").Text,
                             "two-file drop сохранил второй файл справа");
                         AssertTrue(WaitFor(delegate
                         {
-                            return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
+                            return string.Equals(form.LeftFile,
                                        Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase) &&
-                                   string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
+                                   string.Equals(form.RightFile,
                                        Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
                         }), "two-file drop назначил стороны в исходном порядке");
                         form.Close();
@@ -2174,18 +2174,6 @@ namespace ExcelMerger.Tests
             finally { Directory.Delete(dir, true); }
         }
 
-        private static T ReviewPrivateField<T>(object target, string name)
-        {
-            Type type = target.GetType();
-            while (type != null)
-            {
-                FieldInfo field = type.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-                if (field != null)
-                    return (T)field.GetValue(target);
-                type = type.BaseType;
-            }
-            throw new Exception("нет поля " + name);
-        }
 
         private static bool InvokeReviewProcessCmdKey(PdfReviewForm form, Keys key)
         {
@@ -2238,7 +2226,7 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
-                        ReviewPrivateField<RoundedButton>(form,
+                        Internal<RoundedButton>(form,
                             "_sideModeButton").PerformClick();
                         form.ClientSize = new System.Drawing.Size(width, form.ClientSize.Height);
                         form.PerformLayout();
@@ -2255,13 +2243,13 @@ namespace ExcelMerger.Tests
                                    !summary.Bounds.IntersectsWith(compare.Bounds),
                             "нет наложений строки статуса (ширина " + width + ")");
 
-                        Label leftLegend = ReviewPrivateField<Label>(form, "_leftLegend");
-                        Label rightLegend = ReviewPrivateField<Label>(form, "_rightLegend");
+                        Label leftLegend = Internal<Label>(form, "_leftLegend");
+                        Label rightLegend = Internal<Label>(form, "_rightLegend");
                         AssertReviewCompactLegend(leftLegend,
-                            ReviewPrivateField<TextBox>(form, "_leftPageInput"),
+                            Internal<TextBox>(form, "_leftPageInput"),
                             width, "левая");
                         AssertReviewCompactLegend(rightLegend,
-                            ReviewPrivateField<TextBox>(form, "_rightPageInput"),
+                            Internal<TextBox>(form, "_rightPageInput"),
                             width, "правая");
                         AssertEq(Loc.T("review.legend.removed"), leftLegend.Text,
                             "левая легенда содержит только краткое значение цвета");
@@ -7297,8 +7285,8 @@ namespace ExcelMerger.Tests
                         new MouseEventArgs(MouseButtons.Left, 1, 58, 25, 0));
                     AssertEq(3, surface.SelectedWordCount,
                         "forward mouse drag выбирает contiguous canonical range");
-                    AssertTrue(!ReviewPrivateField<bool>(surface, "_dragging") &&
-                               !ReviewPrivateField<Timer>(surface,
+                    AssertTrue(!Internal<bool>(surface, "_dragging") &&
+                               !Internal<Timer>(surface,
                                    "_autoScrollTimer").Enabled,
                         "mouse-up снимает capture intent и останавливает timer");
 
@@ -7328,13 +7316,13 @@ namespace ExcelMerger.Tests
 
                     InvokeReviewSurfaceMouse(surface, "OnMouseDown",
                         new MouseEventArgs(MouseButtons.Left, 1, 32, 25, 0));
-                    AssertTrue(ReviewPrivateField<bool>(surface, "_dragging") &&
+                    AssertTrue(Internal<bool>(surface, "_dragging") &&
                                surface.Capture,
                         "drag начинается только после exact word hit");
                     surface.Capture = false;
                     Application.DoEvents();
-                    AssertTrue(!ReviewPrivateField<bool>(surface, "_dragging") &&
-                               !ReviewPrivateField<Timer>(surface,
+                    AssertTrue(!Internal<bool>(surface, "_dragging") &&
+                               !Internal<Timer>(surface,
                                    "_autoScrollTimer").Enabled,
                         "capture loss завершает drag/timer без изменения semantic model");
 
@@ -10378,9 +10366,9 @@ namespace ExcelMerger.Tests
                     host.Show();
                     Application.DoEvents();
 
-                    PictureBox picture = ReviewPrivateField<PictureBox>(view, "_picture");
-                    Label message = ReviewPrivateField<Label>(view, "_message");
-                    Label status = ReviewPrivateField<Label>(view, "_status");
+                    PictureBox picture = Internal<PictureBox>(view, "_picture");
+                    Label message = Internal<Label>(view, "_message");
+                    Label status = Internal<Label>(view, "_status");
                     AssertEq(PdfReviewPageViewState.Empty, view.ViewState,
                         "первый кадр — настоящий Empty, не missing-page");
                     AssertReviewNoCanvas(view, "первый кадр");
@@ -10411,7 +10399,7 @@ namespace ExcelMerger.Tests
                     AssertReviewNoCanvas(view, "Loading");
 
                     var page = new PdfPageRef { SourcePath = "synthetic.pdf", PageIndex = 2 };
-                    InvokeReviewApplyRendered(view, ReviewPrivateField<int>(view, "_generation"),
+                    InvokeReviewApplyRendered(view, view.ShowGeneration,
                         page, new Bitmap(1200, 1800), "Левый документ");
                     AssertEq(PdfReviewPageViewState.Ready, view.ViewState, "готовый bitmap даёт Ready");
                     AssertTrue(view.HasVisiblePage, "Ready сообщает о видимой странице");
@@ -10440,7 +10428,7 @@ namespace ExcelMerger.Tests
                     AssertReviewNoCanvas(view, "MissingCounterpart");
 
                     InvokeReviewBeginState(view, "Не рендерится", PdfReviewPageViewState.Loading);
-                    InvokeReviewApplyRendered(view, ReviewPrivateField<int>(view, "_generation"),
+                    InvokeReviewApplyRendered(view, view.ShowGeneration,
                         new PdfPageRef { SourcePath = "broken.pdf", PageIndex = 0 }, null,
                         "Не рендерится");
                     AssertEq(PdfReviewPageViewState.Unavailable, view.ViewState,
@@ -10480,7 +10468,7 @@ namespace ExcelMerger.Tests
                         Application.DoEvents();
 
                         InvokeReviewBeginState(view, "Старый запрос", PdfReviewPageViewState.Loading);
-                        int staleGeneration = ReviewPrivateField<int>(view, "_generation");
+                        int staleGeneration = view.ShowGeneration;
                         view.ShowEmpty("Новый Empty");
                         var stale = new Bitmap(40, 60);
                         InvokeReviewApplyRendered(view, staleGeneration,
@@ -10493,20 +10481,20 @@ namespace ExcelMerger.Tests
                             delegate { stale.GetPixel(0, 0); });
 
                         InvokeReviewBeginState(view, "Текущий запрос", PdfReviewPageViewState.Loading);
-                        int currentGeneration = ReviewPrivateField<int>(view, "_generation");
+                        int currentGeneration = view.ShowGeneration;
                         var current = new Bitmap(400, 700);
                         InvokeReviewApplyRendered(view, currentGeneration,
                             new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, current,
                             "Текущий запрос");
                         AssertTrue(ReferenceEquals(current,
-                            ReviewPrivateField<Bitmap>(view, "_bitmap")),
+                            view.ShownBitmap),
                             "актуальный raster принят без лишней копии");
                         var older = new Bitmap(40, 60);
                         InvokeReviewApplyRendered(view, currentGeneration - 1,
                             new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, older,
                             "Опоздавший");
                         AssertTrue(ReferenceEquals(current,
-                            ReviewPrivateField<Bitmap>(view, "_bitmap")),
+                            view.ShownBitmap),
                             "ещё более поздний stale callback не заменил текущий raster");
                         AssertThrowsExactly<ArgumentException>("второй stale bitmap освобождён",
                             delegate { older.GetPixel(0, 0); });
@@ -10516,12 +10504,12 @@ namespace ExcelMerger.Tests
                         view.ShowEmpty("Отменено");
                         AssertTrue(WaitFor(delegate
                         {
-                            return !ReviewPrivateField<bool>(view, "_renderWorker");
+                            return !view.RenderWorkerActive;
                         }), "реальный фоновый renderer завершился после отмены");
                         Application.DoEvents();
                         AssertEq(PdfReviewPageViewState.Empty, view.ViewState,
                             "late worker callback не переоткрыл отменённую страницу");
-                        AssertEq("Отменено", ReviewPrivateField<Label>(view, "_status").Text,
+                        AssertEq("Отменено", Internal<Label>(view, "_status").Text,
                             "late worker callback не стёр новый caption");
                         AssertReviewNoCanvas(view, "после реального late worker");
                         host.Close();
@@ -10553,19 +10541,19 @@ namespace ExcelMerger.Tests
                     // null не запускает Windows.Data.Pdf worker, но создаёт новый generation и
                     // revision target; затем имитируем атомарное завершение этого request.
                     view.ShowPage(null, null, 41L, "Первая", null);
-                    int generation = ReviewPrivateField<int>(view, "_generation");
+                    int generation = view.ShowGeneration;
                     var firstRaster = new Bitmap(400, 600);
                     InvokeReviewApplyRendered(view, generation, 41L, physical,
                         firstPage, firstRaster, "Первая");
 
                     PdfReviewPageSurface surface =
-                        ReviewPrivateField<PdfReviewPageSurface>(view, "_picture");
+                        Internal<PdfReviewPageSurface>(view, "_picture");
                     AssertEq(PdfReviewPageViewState.Ready, view.ViewState,
                         "matching generation/revision принимает raster и trusted layer вместе");
                     AssertTrue(ReferenceEquals(firstRaster,
-                        ReviewPrivateField<Bitmap>(view, "_bitmap")) &&
+                        view.ShownBitmap) &&
                         ReferenceEquals(firstPage,
-                            ReviewPrivateField<PdfReviewPage>(view, "_reviewPage")),
+                            Internal<PdfReviewPage>(view, "_reviewPage")),
                         "опубликованные raster/model принадлежат одной completion");
                     AssertTrue(surface.HasSelectableText && surface.SelectionModel.Count == 2,
                         "готовый surface построен из matching trusted PdfReviewPage");
@@ -10583,9 +10571,9 @@ namespace ExcelMerger.Tests
                     InvokeReviewApplyRendered(view, generation, 40L, physical,
                         stalePage, staleRaster, "Старая");
                     AssertTrue(ReferenceEquals(firstRaster,
-                                   ReviewPrivateField<Bitmap>(view, "_bitmap")) &&
+                                   view.ShownBitmap) &&
                                ReferenceEquals(firstPage,
-                                   ReviewPrivateField<PdfReviewPage>(view, "_reviewPage")),
+                                   Internal<PdfReviewPage>(view, "_reviewPage")),
                         "same-generation completion старой revision не смешивает слои");
                     AssertEq("first publication",
                         surface.SelectionModel.BuildCopyText().Text,
@@ -10603,7 +10591,7 @@ namespace ExcelMerger.Tests
                     AssertThrowsExactly<ArgumentException>("заменённый raster освобождён при начале новой revision",
                         delegate { firstRaster.GetPixel(0, 0); });
 
-                    generation = ReviewPrivateField<int>(view, "_generation");
+                    generation = view.ShowGeneration;
                     var secondRaster = new Bitmap(300, 500);
                     var secondPhysical = new PdfPageRef
                     {
@@ -10621,7 +10609,7 @@ namespace ExcelMerger.Tests
                     surface.SelectAllWords();
                     view.ShowEmpty("Очищено");
                     AssertTrue(!surface.HasSelectableText && !surface.HasSelection &&
-                               ReviewPrivateField<PdfReviewPage>(view, "_reviewPage") == null,
+                               Internal<PdfReviewPage>(view, "_reviewPage") == null,
                         "Empty transition атомарно удаляет trusted layer");
                     AssertThrowsExactly<ArgumentException>("Empty transition освобождает последний raster",
                         delegate { secondRaster.GetPixel(0, 0); });
@@ -10641,7 +10629,7 @@ namespace ExcelMerger.Tests
                     host.Controls.Add(view);
                     host.Show();
                     Application.DoEvents();
-                    Panel viewport = ReviewPrivateField<Panel>(view, "_viewport");
+                    Panel viewport = Internal<Panel>(view, "_viewport");
                     Point center = new Point(viewport.ClientSize.Width / 2,
                         viewport.ClientSize.Height / 2);
                     AssertEq(PdfReviewWheelResult.NotHandled,
@@ -10777,34 +10765,34 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
-                        ReviewPrivateField<RoundedButton>(form,
+                        Internal<RoundedButton>(form,
                             "_sideModeButton").PerformClick();
                         Application.DoEvents();
-                        PdfReviewPageView left = ReviewPrivateField<PdfReviewPageView>(form,
+                        PdfReviewPageView left = Internal<PdfReviewPageView>(form,
                             "_leftSource");
-                        PdfReviewPageView right = ReviewPrivateField<PdfReviewPageView>(form,
+                        PdfReviewPageView right = Internal<PdfReviewPageView>(form,
                             "_rightSource");
-                        TextBox leftInput = ReviewPrivateField<TextBox>(form,
+                        TextBox leftInput = Internal<TextBox>(form,
                             "_leftPageInput");
-                        TextBox rightInput = ReviewPrivateField<TextBox>(form,
+                        TextBox rightInput = Internal<TextBox>(form,
                             "_rightPageInput");
-                        Label leftRange = ReviewPrivateField<Label>(form,
+                        Label leftRange = Internal<Label>(form,
                             "_leftPageRange");
-                        Label rightRange = ReviewPrivateField<Label>(form,
+                        Label rightRange = Internal<Label>(form,
                             "_rightPageRange");
-                        Label summary = ReviewPrivateField<Label>(form, "_summary");
-                        Button compare = ReviewPrivateField<Button>(form, "_compare");
-                        ListBox pairList = ReviewPrivateField<ListBox>(form, "_pairs");
-                        Panel leftViewport = ReviewPrivateField<Panel>(left, "_viewport");
-                        Panel rightViewport = ReviewPrivateField<Panel>(right, "_viewport");
+                        Label summary = Internal<Label>(form, "_summary");
+                        Button compare = Internal<Button>(form, "_compare");
+                        ListBox pairList = Internal<ListBox>(form, "_pairs");
+                        Panel leftViewport = Internal<Panel>(left, "_viewport");
+                        Panel rightViewport = Internal<Panel>(right, "_viewport");
 
                         form.AcceptFiles(new[] { leftPath, rightPath });
                         AssertTrue(WaitFor(delegate
                         {
-                            return string.Equals(ReviewPrivateField<string>(form,
+                            return string.Equals(Internal<string>(form,
                                        "_leftFile"), leftPath,
                                        StringComparison.OrdinalIgnoreCase) &&
-                                   string.Equals(ReviewPrivateField<string>(form,
+                                   string.Equals(Internal<string>(form,
                                        "_rightFile"), rightPath,
                                        StringComparison.OrdinalIgnoreCase) &&
                                    compare.Enabled;
@@ -10814,8 +10802,8 @@ namespace ExcelMerger.Tests
                         {
                             return left.ViewState == PdfReviewPageViewState.Ready &&
                                 right.ViewState == PdfReviewPageViewState.Ready &&
-                                !ReviewPrivateField<bool>(left, "_renderWorker") &&
-                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                                !left.RenderWorkerActive &&
+                                !right.RenderWorkerActive;
                         }), "исходная строка физической навигации отрендерена");
                         string restingStatus = summary.Text;
                         AssertTrue(leftInput.Enabled && rightInput.Enabled,
@@ -10865,9 +10853,9 @@ namespace ExcelMerger.Tests
                                 "правый pane увеличен перед независимым переходом слева");
                         AssertTrue(form.RouteWheel(rightPoint, -120, false),
                             "правый pane получил ненулевой offset");
-                        PdfPageRef rightPageBefore = ReviewPrivateField<PdfPageRef>(right,
+                        PdfPageRef rightPageBefore = Internal<PdfPageRef>(right,
                             "_page");
-                        Bitmap rightBitmapBefore = ReviewPrivateField<Bitmap>(right,
+                        Bitmap rightBitmapBefore = Internal<Bitmap>(right,
                             "_bitmap");
                         double rightScaleBefore = right.ZoomScale;
                         Point rightOffsetBefore = right.ScrollOffset;
@@ -10885,26 +10873,26 @@ namespace ExcelMerger.Tests
                             "Enter физической страницы не запускает Compare");
                         AssertTrue(WaitFor(delegate
                         {
-                            PdfPageRef page = ReviewPrivateField<PdfPageRef>(left, "_page");
+                            PdfPageRef page = left.ShownPage;
                             return left.ViewState == PdfReviewPageViewState.Ready &&
                                 page != null && page.PageIndex == 1 &&
-                                !ReviewPrivateField<bool>(left, "_renderWorker");
+                                !left.RenderWorkerActive;
                         }), "левое поле открыло вторую физическую страницу");
                         AssertEq(2, pairList.SelectedIndex,
                             "выбрана существующая left-only alignment-row");
-                        AssertEq(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(2, form.LeftRowIndex,
                             "левая сторона хранит строку введённой страницы");
-                        AssertEq(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(0, form.RightRowIndex,
                             "правая сторона сохранила свою строку");
                         AssertEq("2", leftInput.Text,
                             "успешный переход канонизировал левый one-based ввод");
                         AssertEq("1", rightInput.Text,
                             "успешный левый переход не изменил правое поле");
                         AssertTrue(ReferenceEquals(rightPageBefore,
-                            ReviewPrivateField<PdfPageRef>(right, "_page")),
+                            right.ShownPage),
                             "левое поле не заменило логическую страницу справа");
                         AssertTrue(ReferenceEquals(rightBitmapBefore,
-                            ReviewPrivateField<Bitmap>(right, "_bitmap")),
+                            right.ShownBitmap),
                             "левое поле не перерендерило bitmap справа");
                         AssertEq(rightScaleBefore, right.ZoomScale,
                             "левое поле сохранило правый zoom");
@@ -10923,9 +10911,9 @@ namespace ExcelMerger.Tests
                                 "левый pane увеличен перед независимым переходом справа");
                         AssertTrue(form.RouteWheel(leftPoint, -120, false),
                             "левый pane получил ненулевой offset");
-                        PdfPageRef leftPageBefore = ReviewPrivateField<PdfPageRef>(left,
+                        PdfPageRef leftPageBefore = Internal<PdfPageRef>(left,
                             "_page");
-                        Bitmap leftBitmapBefore = ReviewPrivateField<Bitmap>(left,
+                        Bitmap leftBitmapBefore = Internal<Bitmap>(left,
                             "_bitmap");
                         double leftScaleBefore = left.ZoomScale;
                         Point leftOffsetBefore = left.ScrollOffset;
@@ -10935,26 +10923,26 @@ namespace ExcelMerger.Tests
                         leftInput.Focus(); // Leave правого поля выполняет тот же side-local route
                         AssertTrue(WaitFor(delegate
                         {
-                            PdfPageRef page = ReviewPrivateField<PdfPageRef>(right, "_page");
+                            PdfPageRef page = right.ShownPage;
                             return right.ViewState == PdfReviewPageViewState.Ready &&
                                 page != null && page.PageIndex == 1 &&
-                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                                !right.RenderWorkerActive;
                         }), "Leave правого поля открыл вторую физическую страницу");
                         AssertEq(1, pairList.SelectedIndex,
                             "правое поле выбрало существующую right-only строку");
-                        AssertEq(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(2, form.LeftRowIndex,
                             "правое поле не изменило левую viewer-строку");
-                        AssertEq(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(1, form.RightRowIndex,
                             "правая сторона хранит свою viewer-строку");
                         AssertEq("2", leftInput.Text,
                             "правый переход сохранил левую физическую страницу");
                         AssertEq("2", rightInput.Text,
                             "правый переход канонизировал своё поле");
                         AssertTrue(ReferenceEquals(leftPageBefore,
-                            ReviewPrivateField<PdfPageRef>(left, "_page")),
+                            left.ShownPage),
                             "правое поле не заменило логическую страницу слева");
                         AssertTrue(ReferenceEquals(leftBitmapBefore,
-                            ReviewPrivateField<Bitmap>(left, "_bitmap")),
+                            left.ShownBitmap),
                             "правое поле не перерендерило bitmap слева");
                         AssertEq(leftScaleBefore, left.ZoomScale,
                             "правое поле сохранило левый zoom");
@@ -10970,9 +10958,9 @@ namespace ExcelMerger.Tests
                             new MouseEventArgs(MouseButtons.Left, 1, 4, 4, 0)
                         });
                         Application.DoEvents();
-                        AssertEq(1, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(1, form.LeftRowIndex,
                             "повторный клик выбранной строки синхронизировал левую сторону");
-                        AssertEq(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(1, form.RightRowIndex,
                             "повторный клик сохранил правую сторону на выбранной строке");
                         AssertEq(PdfReviewPageViewState.MissingCounterpart, left.ViewState,
                             "явная right-only строка показывает отсутствие слева");
@@ -10984,27 +10972,27 @@ namespace ExcelMerger.Tests
                         pairList.SelectedIndex = 3;
                         AssertTrue(WaitFor(delegate
                         {
-                            PdfPageRef leftPage = ReviewPrivateField<PdfPageRef>(left, "_page");
-                            PdfPageRef rightPage = ReviewPrivateField<PdfPageRef>(right, "_page");
+                            PdfPageRef leftPage = left.ShownPage;
+                            PdfPageRef rightPage = right.ShownPage;
                             return left.ViewState == PdfReviewPageViewState.Ready &&
                                 right.ViewState == PdfReviewPageViewState.Ready &&
                                 leftPage != null && leftPage.PageIndex == 2 &&
                                 rightPage != null && rightPage.PageIndex == 2 &&
-                                !ReviewPrivateField<bool>(left, "_renderWorker") &&
-                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                                !left.RenderWorkerActive &&
+                                !right.RenderWorkerActive;
                         }), "обычный выбор alignment-row синхронизировал обе стороны");
-                        AssertEq(3, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(3, form.LeftRowIndex,
                             "обычная selection хранится слева");
-                        AssertEq(3, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(3, form.RightRowIndex,
                             "обычная selection хранится справа");
                         AssertEq("3", leftInput.Text,
                             "после синхронизации левое поле показывает страницу 3");
                         AssertEq("3", rightInput.Text,
                             "после синхронизации правое поле показывает страницу 3");
-                        AssertEq(0, ReviewPrivateField<int>(form, "_navigationSide"),
+                        AssertEq(0, Internal<int>(form, "_navigationSide"),
                             "side-local request сброшен после всех переходов");
                         AssertEq(PdfReviewPagePosition.Default,
-                            ReviewPrivateField<PdfReviewPagePosition>(form,
+                            Internal<PdfReviewPagePosition>(form,
                                 "_navigationPosition"),
                             "page-position request не протекает между переходами");
                         AssertTrue(ReferenceEquals(statsBefore, result.Stats),
@@ -11139,22 +11127,22 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
-                        ReviewPrivateField<RoundedButton>(form,
+                        Internal<RoundedButton>(form,
                             "_sideModeButton").PerformClick();
                         Application.DoEvents();
                         AssertTrue(form.WheelFilterRegistered,
                             "форма регистрирует один wheel filter при показе");
-                        PdfReviewPageView left = ReviewPrivateField<PdfReviewPageView>(form,
+                        PdfReviewPageView left = Internal<PdfReviewPageView>(form,
                             "_leftSource");
-                        PdfReviewPageView right = ReviewPrivateField<PdfReviewPageView>(form,
+                        PdfReviewPageView right = Internal<PdfReviewPageView>(form,
                             "_rightSource");
-                        ListBox pairList = ReviewPrivateField<ListBox>(form, "_pairs");
-                        TextBox leftPageInput = ReviewPrivateField<TextBox>(form,
+                        ListBox pairList = Internal<ListBox>(form, "_pairs");
+                        TextBox leftPageInput = Internal<TextBox>(form,
                             "_leftPageInput");
-                        TextBox rightPageInput = ReviewPrivateField<TextBox>(form,
+                        TextBox rightPageInput = Internal<TextBox>(form,
                             "_rightPageInput");
-                        Panel leftViewport = ReviewPrivateField<Panel>(left, "_viewport");
-                        Panel rightViewport = ReviewPrivateField<Panel>(right, "_viewport");
+                        Panel leftViewport = Internal<Panel>(left, "_viewport");
+                        Panel rightViewport = Internal<Panel>(right, "_viewport");
 
                         PdfReviewDocument leftDocument = ReviewDocument(leftPath,
                             "left zero", "left one", "left two");
@@ -11179,8 +11167,8 @@ namespace ExcelMerger.Tests
                         {
                             return left.ViewState == PdfReviewPageViewState.Ready &&
                                 right.ViewState == PdfReviewPageViewState.Ready &&
-                                !ReviewPrivateField<bool>(left, "_renderWorker") &&
-                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                                !left.RenderWorkerActive &&
+                                !right.RenderWorkerActive;
                         }), "первая viewer-строка отрендерена с обеих сторон");
                         AssertEq(0, pairList.SelectedIndex,
                             "после применения результата выбрана первая строка");
@@ -11217,9 +11205,9 @@ namespace ExcelMerger.Tests
                         Point leftScrollBefore = left.ScrollOffset;
                         double rightScaleBeforeLeftNavigation = right.ZoomScale;
                         PdfPageRef rightPageBeforeLeftNavigation =
-                            ReviewPrivateField<PdfPageRef>(right, "_page");
+                            right.ShownPage;
                         Bitmap rightBitmapBeforeLeftNavigation =
-                            ReviewPrivateField<Bitmap>(right, "_bitmap");
+                            right.ShownBitmap;
                         AssertTrue(form.RouteWheel(leftPoint, -120, false),
                             "wheel над левой областью сначала прокручивает текущую страницу");
                         AssertTrue(left.ScrollOffset.Y > leftScrollBefore.Y,
@@ -11237,15 +11225,15 @@ namespace ExcelMerger.Tests
                         AssertTrue(WaitFor(delegate
                         {
                             return left.ViewState == PdfReviewPageViewState.Ready &&
-                                !ReviewPrivateField<bool>(left, "_renderWorker");
+                                !left.RenderWorkerActive;
                         }), "следующая левая физическая страница отрендерена");
-                        AssertEq(1, ReviewPrivateField<PdfPageRef>(left, "_page").PageIndex,
+                        AssertEq(1, left.ShownPage.PageIndex,
                             "открыта именно следующая физическая страница слева");
                         AssertEq(0, left.ScrollOffset.Y,
                             "движение вниз открывает следующую страницу сверху");
-                        AssertEq(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(2, form.LeftRowIndex,
                             "активная левая сторона хранит новую viewer-строку");
-                        AssertEq(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(0, form.RightRowIndex,
                             "неактивная правая сторона остаётся на прежней viewer-строке");
                         AssertEq("2", leftPageInput.Text,
                             "левое поле следует за активной физической страницей");
@@ -11254,10 +11242,10 @@ namespace ExcelMerger.Tests
                         AssertEq(PdfReviewPageViewState.Ready, right.ViewState,
                             "right pane не превращается в Missing из-за left-only выбранной строки");
                         AssertTrue(ReferenceEquals(rightPageBeforeLeftNavigation,
-                            ReviewPrivateField<PdfPageRef>(right, "_page")),
+                            right.ShownPage),
                             "left wheel сохраняет объект логической страницы справа");
                         AssertTrue(ReferenceEquals(rightBitmapBeforeLeftNavigation,
-                            ReviewPrivateField<Bitmap>(right, "_bitmap")),
+                            right.ShownBitmap),
                             "left wheel не перерендеривает raster справа");
                         AssertEq(rightScaleBeforeLeftNavigation, right.ZoomScale,
                             "left wheel сохраняет масштаб справа");
@@ -11271,16 +11259,16 @@ namespace ExcelMerger.Tests
                         AssertTrue(WaitFor(delegate
                         {
                             return left.ViewState == PdfReviewPageViewState.Ready &&
-                                !ReviewPrivateField<bool>(left, "_renderWorker");
+                                !left.RenderWorkerActive;
                         }), "предыдущая левая viewer-страница снова отрендерена");
-                        AssertEq(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(0, form.LeftRowIndex,
                             "левая сторона вернулась на первую строку");
-                        AssertEq(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(0, form.RightRowIndex,
                             "правая сторона всё время оставалась на первой строке");
                         AssertTrue(ReferenceEquals(rightBitmapBeforeLeftNavigation,
-                            ReviewPrivateField<Bitmap>(right, "_bitmap")),
+                            right.ShownBitmap),
                             "обратный left wheel также не перерендерил right pane");
-                        PictureBox leftPicture = ReviewPrivateField<PictureBox>(left, "_picture");
+                        PictureBox leftPicture = Internal<PictureBox>(left, "_picture");
                         int expectedBottom = Math.Max(0,
                             leftPicture.Height - leftViewport.ClientSize.Height);
                         AssertTrue(expectedBottom > 0,
@@ -11309,9 +11297,9 @@ namespace ExcelMerger.Tests
                             ReviewScrollToBoundary(right, rightLocal, -120),
                             "правая страница достигает нижней границы");
                         PdfPageRef leftPageBeforeRightNavigation =
-                            ReviewPrivateField<PdfPageRef>(left, "_page");
+                            left.ShownPage;
                         Bitmap leftBitmapBeforeRightNavigation =
-                            ReviewPrivateField<Bitmap>(left, "_bitmap");
+                            left.ShownBitmap;
                         double leftScaleBeforeRightNavigation = left.ZoomScale;
                         Point leftOffsetBeforeRightNavigation = left.ScrollOffset;
 
@@ -11322,13 +11310,13 @@ namespace ExcelMerger.Tests
                         AssertTrue(WaitFor(delegate
                         {
                             return right.ViewState == PdfReviewPageViewState.Ready &&
-                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                                !right.RenderWorkerActive;
                         }), "right-only страница отрендерена");
                         AssertEq(0, right.ScrollOffset.Y,
                             "right wheel вниз открывает страницу сверху");
-                        AssertEq(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(0, form.LeftRowIndex,
                             "right wheel не меняет строку левой стороны");
-                        AssertEq(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(1, form.RightRowIndex,
                             "активная правая сторона хранит right-only строку");
                         AssertEq("1", leftPageInput.Text,
                             "левое поле не переписывается правой навигацией");
@@ -11337,10 +11325,10 @@ namespace ExcelMerger.Tests
                         AssertEq(PdfReviewPageViewState.Ready, left.ViewState,
                             "left pane не превращается в Missing из-за right-only выбранной строки");
                         AssertTrue(ReferenceEquals(leftPageBeforeRightNavigation,
-                            ReviewPrivateField<PdfPageRef>(left, "_page")),
+                            left.ShownPage),
                             "right wheel сохраняет объект логической страницы слева");
                         AssertTrue(ReferenceEquals(leftBitmapBeforeRightNavigation,
-                            ReviewPrivateField<Bitmap>(left, "_bitmap")),
+                            left.ShownBitmap),
                             "right wheel не перерендеривает raster слева");
                         AssertEq(leftScaleBeforeRightNavigation, left.ZoomScale,
                             "right wheel сохраняет масштаб слева");
@@ -11358,18 +11346,18 @@ namespace ExcelMerger.Tests
                         AssertTrue(WaitFor(delegate
                         {
                             return right.ViewState == PdfReviewPageViewState.Ready &&
-                                !ReviewPrivateField<bool>(right, "_renderWorker");
+                                !right.RenderWorkerActive;
                         }), "последняя правая физическая страница отрендерена");
-                        AssertEq(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(0, form.LeftRowIndex,
                             "переход справа через missing-row оставил левую строку");
-                        AssertEq(3, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(3, form.RightRowIndex,
                             "правая сторона дошла до последней строки");
                         AssertEq("1", leftPageInput.Text,
                             "левая физическая страница по-прежнему независима");
                         AssertEq("3", rightPageInput.Text,
                             "правое поле дошло до третьей физической страницы");
                         AssertTrue(ReferenceEquals(leftBitmapBeforeRightNavigation,
-                            ReviewPrivateField<Bitmap>(left, "_bitmap")),
+                            left.ShownBitmap),
                             "последующий right wheel также не перерендерил left pane");
                         AssertEq(0, right.ScrollOffset.Y,
                             "после пропуска отсутствующей стороны новая страница открыта сверху");
@@ -11381,10 +11369,10 @@ namespace ExcelMerger.Tests
                             "нижняя граница последней страницы не поглощается и не оборачивается");
                         AssertEq(3, pairList.SelectedIndex,
                             "на нижней границе выбранная строка не изменилась");
-                        AssertEq(0, ReviewPrivateField<int>(form, "_navigationSide"),
+                        AssertEq(0, Internal<int>(form, "_navigationSide"),
                             "неуспешный переход не оставляет отложенную сторону");
                         AssertEq(PdfReviewPagePosition.Default,
-                            ReviewPrivateField<PdfReviewPagePosition>(form, "_navigationPosition"),
+                            Internal<PdfReviewPagePosition>(form, "_navigationPosition"),
                             "неуспешный переход не оставляет Top/Bottom intent");
 
                         Point outside = form.PointToScreen(new Point(8, 8));
@@ -11408,7 +11396,7 @@ namespace ExcelMerger.Tests
 
         private static void AssertReviewNoCanvas(PdfReviewPageView view, string context)
         {
-            PictureBox picture = ReviewPrivateField<PictureBox>(view, "_picture");
+            PictureBox picture = Internal<PictureBox>(view, "_picture");
             AssertTrue(!picture.Visible, context + ": белый PictureBox скрыт");
             AssertEq(Size.Empty, picture.Size, context + ": у белого PictureBox нулевой размер");
             AssertTrue(picture.Image == null, context + ": raster отсутствует");
@@ -11428,7 +11416,7 @@ namespace ExcelMerger.Tests
             PdfReviewPagePosition position = PdfReviewPagePosition.Default)
         {
             InvokeReviewApplyRendered(view, generation,
-                ReviewPrivateField<long>(view, "_targetContentRevision"), page, null,
+                Internal<long>(view, "_targetContentRevision"), page, null,
                 bitmap, caption, position);
         }
 
@@ -11461,7 +11449,7 @@ namespace ExcelMerger.Tests
             string caption, int pageIndex)
         {
             InvokeReviewBeginState(view, caption, PdfReviewPageViewState.Loading);
-            InvokeReviewApplyRendered(view, ReviewPrivateField<int>(view, "_generation"),
+            InvokeReviewApplyRendered(view, view.ShowGeneration,
                 new PdfPageRef { SourcePath = "synthetic.pdf", PageIndex = pageIndex },
                 new Bitmap(width, height), caption);
         }
@@ -11704,21 +11692,21 @@ namespace ExcelMerger.Tests
                     {
                         form.Show();
                         Application.DoEvents();
-                        SplitContainer body = ReviewPrivateField<SplitContainer>(form, "_body");
-                        Panel unified = ReviewPrivateField<Panel>(form, "_unifiedHost");
-                        SplitContainer side = ReviewPrivateField<SplitContainer>(form,
+                        SplitContainer body = Internal<SplitContainer>(form, "_body");
+                        Panel unified = Internal<Panel>(form, "_unifiedHost");
+                        SplitContainer side = Internal<SplitContainer>(form,
                             "_sourceSplit");
-                        RoundedButton unifiedButton = ReviewPrivateField<RoundedButton>(form,
+                        RoundedButton unifiedButton = Internal<RoundedButton>(form,
                             "_unifiedModeButton");
-                        RoundedButton sideButton = ReviewPrivateField<RoundedButton>(form,
+                        RoundedButton sideButton = Internal<RoundedButton>(form,
                             "_sideModeButton");
-                        PdfReviewPageView unifiedView = ReviewPrivateField<PdfReviewPageView>(
+                        PdfReviewPageView unifiedView = Internal<PdfReviewPageView>(
                             form, "_unifiedSource");
 
                         AssertEq(PdfReviewViewMode.Unified,
-                            ReviewPrivateField<PdfReviewViewMode>(form, "_viewMode"),
+                            Internal<PdfReviewViewMode>(form, "_viewMode"),
                             "общий redline — режим по умолчанию");
-                        Panel unifiedLegend = ReviewPrivateField<Panel>(form,
+                        Panel unifiedLegend = Internal<Panel>(form,
                             "_unifiedLegend");
                         AssertTrue(unified.Visible && !side.Visible && unifiedButton.Selected &&
                                    unifiedLegend.Visible,
@@ -11739,7 +11727,7 @@ namespace ExcelMerger.Tests
                         sideButton.PerformClick();
                         Application.DoEvents();
                         AssertEq(PdfReviewViewMode.SideBySide,
-                            ReviewPrivateField<PdfReviewViewMode>(form, "_viewMode"),
+                            Internal<PdfReviewViewMode>(form, "_viewMode"),
                             "бок о бок остаётся доступен");
                         AssertTrue(side.Visible && !unified.Visible && sideButton.Selected &&
                                    !unifiedLegend.Visible,
@@ -11791,11 +11779,11 @@ namespace ExcelMerger.Tests
                     {
                         form.Show();
                         Application.DoEvents();
-                        Panel support = ReviewPrivateField<Panel>(form, "_supportPanel");
-                        Panel scroll = ReviewPrivateField<Panel>(form, "_scroll");
-                        LinkLabel supportLink = ReviewPrivateField<LinkLabel>(form,
+                        Panel support = Internal<Panel>(form, "_supportPanel");
+                        Panel scroll = Internal<Panel>(form, "_scroll");
+                        LinkLabel supportLink = Internal<LinkLabel>(form,
                             "_supportLink");
-                        AccentCheckBox option = ReviewPrivateField<AccentCheckBox>(form,
+                        AccentCheckBox option = Internal<AccentCheckBox>(form,
                             "_dontShow");
                         AssertEq(0, -scroll.AutoScrollPosition.Y,
                             "первое открытие начинается с первого пункта без пустого поля");
@@ -20202,7 +20190,7 @@ namespace ExcelMerger.Tests
 
                         // С готовым файлом пункт обязан отдать именно его.
                         SetProtected(merge, "OpsBridge", (Action<string>)delegate(string p) { handed = p; });
-                        SetField(merge, "_lastResult", result);
+                        SetInternal(merge, "_lastResult", result);
                         item.PerformClick();
                         if (!string.Equals(handed, result, StringComparison.OrdinalIgnoreCase))
                             failures.Add("отдан не тот файл: " + (handed ?? "ничего"));
@@ -20227,18 +20215,6 @@ namespace ExcelMerger.Tests
             throw new Exception("нет свойства " + property);
         }
 
-        private static void SetField(object target, string field, object value)
-        {
-            Type t = target.GetType();
-            while (t != null)
-            {
-                System.Reflection.FieldInfo fi = t.GetField(field,
-                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                if (fi != null) { fi.SetValue(target, value); return; }
-                t = t.BaseType;
-            }
-            throw new Exception("нет поля " + field);
-        }
 
         private static System.Windows.Forms.ToolStripMenuItem MenuItemWithText(
             System.Windows.Forms.Form form, string text)
@@ -20791,7 +20767,7 @@ namespace ExcelMerger.Tests
                         try
                         {
                             form.Show();
-                            AuditDCall(form, "AddBlankPage");
+                            CallInternal(form, "AddBlankPage");
                             if (!PumpUntil(delegate { return seen("размеры") && !form.IsBusy; }, 15000))
                                 failures.Add("пустой лист не вставился");
                         }
@@ -21135,7 +21111,7 @@ namespace ExcelMerger.Tests
 
                 IDisposable renderer;
                 using (System.Drawing.Printing.PrintDocument doc =
-                    PdfPrintService.CreateDocument(pages, LivePrinter(), null, null, out renderer))
+                    PdfPrintService.CreateDocument(pages, RequirePrinter(), null, null, out renderer))
                 using (renderer)
                 {
                     AssertTrue(doc != null, "задание печати собрано");
@@ -21170,29 +21146,6 @@ namespace ExcelMerger.Tests
             finally { doc.PrintController = saved; }
         }
 
-        /// <summary>
-        /// Годные настройки принтера для живого теста. На системный дефолт полагаться нельзя:
-        /// политика «Разрешить Windows управлять принтером по умолчанию» (стандарт с Win10)
-        /// оставляет сессию вообще без принтера по умолчанию, и .NET бросает
-        /// InvalidPrinterException даже на перечисление листов. Продукту это не мешает — он
-        /// всегда получает настройки из диалога печати; тесту нужен свой источник. Виртуальные
-        /// принтеры в приоритете: ничего не уедет на сетевой офисный.
-        /// </summary>
-        private static System.Drawing.Printing.PrinterSettings LivePrinter()
-        {
-            string[] virtuals = { "Microsoft Print to PDF", "Microsoft XPS Document Writer", "Adobe PDF" };
-            foreach (string name in virtuals)
-            {
-                var candidate = new System.Drawing.Printing.PrinterSettings { PrinterName = name };
-                if (candidate.IsValid) return candidate;
-            }
-            foreach (string name in System.Drawing.Printing.PrinterSettings.InstalledPrinters)
-            {
-                var candidate = new System.Drawing.Printing.PrinterSettings { PrinterName = name };
-                if (candidate.IsValid) return candidate;
-            }
-            throw new Exception("на машине для теста нет ни одного доступного принтера");
-        }
 
         // ---------- Командная строка для PDF ----------
 

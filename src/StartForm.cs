@@ -487,7 +487,7 @@ namespace ExcelMerger
         }
 
         /// <summary>Шов для теста: подмена проверки существования недавних файлов (null — File.Exists).</summary>
-        internal static Func<string, bool> RecentExistsForTests;
+        internal static Func<string, bool> RecentExistsForTests { get; set; }
 
         private void StartRecentWorker(int generation)
         {

@@ -86,7 +86,7 @@ namespace ExcelMerger
         /// пустой пароль защищённый файл не откроет).
         /// </summary>
         /// <summary>Шов для теста: ответ вместо модального окна (имя файла, повтор) → пароль; null — окно.</summary>
-        internal static Func<string, bool, string> ShowForTests;
+        internal static Func<string, bool, string> ShowForTests { get; set; }
 
         public static string Show(IWin32Window owner, string fileName, bool retry)
         {

@@ -63,22 +63,22 @@ namespace ExcelMerger.Tests
                     try
                     {
                         form.Show();
-                        AuditDCall(form, "AddBlankPage");
+                        CallInternal(form, "AddBlankPage");
                         if (!WaitFor(delegate { return !form.IsBusy && FindPageGrid(form).Count == 1; }, 10000))
                         {
                             failures.Add("пустой лист не вставился");
                             return;
                         }
-                        wrapDir = (string)AuditDField(form, "_wrapDir");
+                        wrapDir = (string)Internal<object>(form, "_wrapDir");
                         string[] own = Directory.GetFiles(wrapDir);
                         if (own.Length != 1)
                             failures.Add("ожидалась одна своя обёртка, в папке: " + own.Length);
 
                         // Первая страница — пустой лист, за ним настоящий документ: диалог
                         // сохранения обязан предложить папку документа, а не временную.
-                        var order = (PdfPageOrder)AuditDField(form, "_order");
+                        var order = (PdfPageOrder)Internal<object>(form, "_order");
                         order.AddDocument(doc, 1);
-                        string hint = (string)AuditDCall(form, "OutputFolderHint", new object[] { null });
+                        string hint = (string)CallInternal(form, "OutputFolderHint", new object[] { null });
                         if (!string.Equals(hint, docs.Path, StringComparison.OrdinalIgnoreCase))
                             failures.Add("предложена папка «" + hint + "» вместо «" + docs.Path + "»");
 
@@ -191,8 +191,8 @@ namespace ExcelMerger.Tests
                     host.Show();
                     var calls = new List<string>();
                     a.ReorderRequested += delegate(int from, int to) { calls.Add(from + "→" + to); };
-                    var listA = (ListView)AuditDField(a, "_list");
-                    var listB = (ListView)AuditDField(b, "_list");
+                    var listA = (ListView)Internal<object>(a, "_list");
+                    var listB = (ListView)Internal<object>(b, "_list");
 
                     AuditDDropItem(a, listA, listB.Items[2], 1);
                     if (calls.Count != 0)
@@ -214,7 +214,7 @@ namespace ExcelMerger.Tests
             list.InsertionMark.Index = markIndex;
             list.InsertionMark.AppearsAfterItem = false;
             var e = new DragEventArgs(new DataObject(item), 0, 0, 0, DragDropEffects.Move, DragDropEffects.Move);
-            AuditDCall(grid, "OnListDragDrop", list, e);
+            CallInternal(grid, "OnListDragDrop", list, e);
         }
 
         // ---------- 3. План разделения со вставленными листами ----------
@@ -434,12 +434,12 @@ namespace ExcelMerger.Tests
                 foreach (Form form in new Form[] { new PdfMergeForm(), new PdfSplitForm() })
                     using (form)
                     {
-                        string blank = (string)AuditDCall(form, "UserPathOf", AuditDBlankPath);
+                        string blank = (string)CallInternal(form, "UserPathOf", AuditDBlankPath);
                         if (blank != Loc.T("ops.blankPage.name"))
                             failures.Add(form.GetType().Name + ": пустой лист — «" + blank + "»");
-                        if ((string)AuditDCall(form, "UserPathOf", AuditDSource) != AuditDSource)
+                        if ((string)CallInternal(form, "UserPathOf", AuditDSource) != AuditDSource)
                             failures.Add(form.GetType().Name + ": путь документа изменён");
-                        if (AuditDCall(form, "UserPathOf", new object[] { null }) != null)
+                        if (CallInternal(form, "UserPathOf", new object[] { null }) != null)
                             failures.Add(form.GetType().Name + ": null — не null");
                     }
             });
@@ -513,11 +513,7 @@ namespace ExcelMerger.Tests
         /// <summary>Принтер для живых тестов печати (лучше локальный PDF: без бумаги) и контроллер.</summary>
         private static void AuditDUseLocalPrinter(PrintDocument doc, PrintController controller)
         {
-            if (PrinterSettings.InstalledPrinters.Count == 0)
-                Skip("в системе нет ни одного принтера — контроллеру печати не из чего взять лист");
-            foreach (string name in PrinterSettings.InstalledPrinters)
-                if (name == "Microsoft Print to PDF")
-                    doc.PrinterSettings.PrinterName = name; // локальный, без очереди и бумаги
+            doc.PrinterSettings.PrinterName = RequirePrinter().PrinterName; // общая политика (TS-7)
             doc.PrintController = controller;
         }
 
@@ -561,7 +557,7 @@ namespace ExcelMerger.Tests
             {
                 var bounds = new Rectangle(0, 0, 85, 110);
                 var e = new PrintPageEventArgs(g, bounds, bounds, new PageSettings());
-                AuditDCall(doc, "OnPrintPage", e);
+                CallInternal(doc, "OnPrintPage", e);
                 return e;
             }
         }
@@ -674,7 +670,7 @@ namespace ExcelMerger.Tests
                             return new List<string> { chosen };
                         };
                         // openTarget = null: результат не открываем во внешней программе.
-                        AuditDCall(form, "RunSplit", work, current, null, false, (Action)delegate { }, 1);
+                        CallInternal(form, "RunSplit", work, current, null, false, (Action)delegate { }, 1);
                         if (!WaitFor(delegate { return !form.IsBusy; }, 60000))
                             failures.Add(current + ": операция не завершилась");
                         if (!File.Exists(chosen))
@@ -737,11 +733,11 @@ namespace ExcelMerger.Tests
                         form.Show();
                         AuditDJoinPreviewWorker(form);
                         Application.DoEvents();
-                        SetField(form, "_image", image);
+                        SetInternal(form, "_image", image);
                         // Курсор — над областью просмотра: иначе фильтр отказался бы и без правки.
                         Point cursor = Cursor.Position;
                         form.Location = new Point(cursor.X - form.Width / 2, cursor.Y - form.Height / 2);
-                        var viewport = (Control)AuditDField(form, "_viewport");
+                        var viewport = (Control)Internal<object>(form, "_viewport");
                         Func<bool> cursorOver = delegate
                         {
                             return viewport.RectangleToScreen(viewport.ClientRectangle).Contains(Cursor.Position);
@@ -770,14 +766,14 @@ namespace ExcelMerger.Tests
                     finally
                     {
                         AuditDDestroyWindow(popup);
-                        SetField(form, "_image", null); // растр теста освобождает тест
+                        SetInternal(form, "_image", null); // растр теста освобождает тест
                         form.Close();
                         form.Dispose();
                     }
                 }
             });
             if (skip != null)
-                Skip(skip);
+                SkipMissing("desktop", skip); // нет интерактивного рабочего стола или курсор увели (TS-7)
             AssertTrue(failures.Count == 0, "колесо в предпросмотре: " + string.Join(" | ", failures.ToArray()));
         }
 
@@ -798,7 +794,7 @@ namespace ExcelMerger.Tests
         /// <summary>Дождаться фонового рендера окна (несуществующий файл — быстрый отказ).</summary>
         private static void AuditDJoinPreviewWorker(PagePreviewForm form)
         {
-            var worker = AuditDField(form, "_worker") as System.Threading.Thread;
+            var worker = Internal<object>(form, "_worker") as System.Threading.Thread;
             if (worker != null && !worker.Join(15000))
                 throw new Exception("фоновый рендер предпросмотра не завершился");
         }
@@ -844,11 +840,11 @@ namespace ExcelMerger.Tests
                     AuditDWritePng(png);
                     form.Show();
 
-                    AuditDCall(form, "BeginLoad", "занято"); // окно занято чужой работой
-                    AuditDCall(form, "AcceptDroppedPaths", new object[] { new[] { first, png } });
-                    AuditDCall(form, "EndLoad");
+                    CallInternal(form, "BeginLoad", "занято"); // окно занято чужой работой
+                    CallInternal(form, "AcceptDroppedPaths", new object[] { new[] { first, png } });
+                    CallInternal(form, "EndLoad");
                     // Следующая, не связанная загрузка не должна «подобрать» отклонённую картинку.
-                    AuditDCall(form, "LoadSource", second);
+                    CallInternal(form, "LoadSource", second);
                     if (!WaitFor(delegate { return SourcePathOf(form) == second; }, 10000))
                         failures.Add("второй документ не открылся");
                     AuditDWaitIdle(form);
@@ -874,10 +870,10 @@ namespace ExcelMerger.Tests
                     AuditDWritePng(png);
                     form.Show();
 
-                    AuditDCall(form, "AcceptDroppedPaths", new object[] { new[] { pdf, png } });
+                    CallInternal(form, "AcceptDroppedPaths", new object[] { new[] { pdf, png } });
                     if (!form.IsBusy)
                         failures.Add("разбор документа не начался");
-                    SetField(form, "_cancelRequested", true); // «Отмена» во время разбора
+                    SetInternal(form, "_cancelRequested", true); // «Отмена» во время разбора
                     AuditDWaitIdle(form);
                     int count = FindPageGrid(form).Count;
                     if (count != 0)
@@ -908,9 +904,9 @@ namespace ExcelMerger.Tests
                 using (var form = new PdfMergeForm())
                 {
                     form.Show();
-                    var order = (PdfPageOrder)AuditDField(form, "_order");
+                    var order = (PdfPageOrder)Internal<object>(form, "_order");
                     order.AddDocument(@"C:\docs\нет.pdf", 4);
-                    AuditDCall(form, "RefreshGrid");
+                    CallInternal(form, "RefreshGrid");
                     order.Checkpoint();
                     order.Move(0, 3);
                     order.Undo(); // есть что вернуть по Ctrl+Y
@@ -926,7 +922,7 @@ namespace ExcelMerger.Tests
                     {
                         var args = new object[call.Length - 1];
                         Array.Copy(call, 1, args, 0, args.Length);
-                        AuditDCall(form, (string)call[0], args);
+                        CallInternal(form, (string)call[0], args);
                         if (!order.CanRedo || order.CanUndo)
                         {
                             failures.Add(call[0] + "(" + string.Join(",", Array.ConvertAll(args, AuditDText)) +
@@ -934,7 +930,7 @@ namespace ExcelMerger.Tests
                             return;
                         }
                     }
-                    AuditDCall(form, "OnReorder", 0, 2); // настоящая перестановка — шаг есть
+                    CallInternal(form, "OnReorder", 0, 2); // настоящая перестановка — шаг есть
                     if (!order.CanUndo)
                         failures.Add("настоящая перестановка не попала в историю");
                 }
@@ -978,7 +974,7 @@ namespace ExcelMerger.Tests
                     host.Controls.Add(grid);
                     grid.SetPages(AuditDPristine(pdf, 1));
                     host.Show();
-                    var tiles = (System.Collections.ICollection)AuditDField(grid, "_tiles");
+                    var tiles = (System.Collections.ICollection)Internal<object>(grid, "_tiles");
                     if (!WaitFor(delegate { return tiles.Count > 0; }, 15000))
                     {
                         skip = "миниатюра не отрисовалась: системный рендер PDF (WinRT) недоступен";
@@ -990,7 +986,7 @@ namespace ExcelMerger.Tests
                     {
                         // Плитки сняты (их резерв вернулся в бюджет), а весь бюджет тут же выбрали
                         // другие окна: при отрисовке плитка не составляется — остаётся заглушка.
-                        AuditDCall(grid, "ClearTiles");
+                        CallInternal(grid, "ClearTiles");
                         if (!PdfMemoryBudget.TryAcquire(PdfMemoryBudget.LimitBytes - PdfMemoryBudget.Used, out big))
                         {
                             failures.Add("не удалось занять весь бюджет");
@@ -998,7 +994,7 @@ namespace ExcelMerger.Tests
                         }
                         if (PdfMemoryBudget.TryAcquire(1, out refused)) // отказ: кто-то ждёт пополнения
                             refused.Dispose();
-                        ((Control)AuditDField(grid, "_list")).Invalidate();
+                        ((Control)Internal<object>(grid, "_list")).Invalidate();
                         Pump(host, 300);
                         if (tiles.Count != 0)
                         {
@@ -1094,7 +1090,7 @@ namespace ExcelMerger.Tests
                     host.Show();
                     long before = PdfMemoryBudget.Used;
                     page = AuditDBitmap(64, 64);
-                    AuditDCall(grid, "PostPage", "k", page, 64, 0); // как фоновый рендер
+                    CallInternal(grid, "PostPage", "k", page, 64, 0); // как фоновый рендер
                     host.Dispose(); // окно закрыли раньше, чем UI-поток дошёл до ApplyPage
                     for (int i = 0; i < 5; i++)
                         Application.DoEvents();
@@ -1125,7 +1121,7 @@ namespace ExcelMerger.Tests
                         AuditDJoinPreviewWorker(form);
                         long before = PdfMemoryBudget.Used;
                         page = AuditDBitmap(64, 64);
-                        AuditDCall(form, "Post", page); // как фоновый рендер
+                        CallInternal(form, "Post", page); // как фоновый рендер
                         form.Close(); // раньше, чем UI-поток дошёл до Apply
                         form.Dispose();
                         for (int i = 0; i < 5; i++)
@@ -1157,7 +1153,7 @@ namespace ExcelMerger.Tests
                     string pdf = dir.File("документ.pdf");
                     PdfProbe.WriteOnePagePdf(pdf);
                     form.Show();
-                    AuditDCall(form, "LoadSource", pdf);
+                    CallInternal(form, "LoadSource", pdf);
                     if (!WaitFor(delegate { return SourcePathOf(form) == pdf && !form.IsBusy; }, 10000))
                     {
                         failures.Add("документ не открылся");
@@ -1179,9 +1175,9 @@ namespace ExcelMerger.Tests
                     };
                     closer.Start();
 
-                    AuditDCall(form, "EditMetadata");
+                    CallInternal(form, "EditMetadata");
                     bool busy = form.IsBusy;
-                    SetField(form, "_cancelRequested", true); // «Отмена», пока свойства читаются
+                    SetInternal(form, "_cancelRequested", true); // «Отмена», пока свойства читаются
                     AuditDWaitIdle(form);
                     if (!busy)
                         failures.Add("свойства прочитаны на потоке интерфейса — окно не было занято");
@@ -1229,32 +1225,7 @@ namespace ExcelMerger.Tests
             }
         }
 
-        private static object AuditDField(object target, string name)
-        {
-            for (Type t = target.GetType(); t != null; t = t.BaseType)
-            {
-                FieldInfo field = t.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
-                if (field != null)
-                    return field.GetValue(target);
-            }
-            throw new Exception("нет поля " + name + " у " + target.GetType().Name);
-        }
 
         /// <summary>Вызвать непубличный метод экземпляра по имени и числу параметров (по цепочке типов).</summary>
-        private static object AuditDCall(object target, string name, params object[] args)
-        {
-            for (Type t = target.GetType(); t != null; t = t.BaseType)
-                foreach (MethodInfo method in t.GetMethods(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
-                    if (method.Name == name && method.GetParameters().Length == args.Length)
-                    {
-                        try { return method.Invoke(target, args); }
-                        catch (TargetInvocationException ex) when (ex.InnerException != null)
-                        {
-                            ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
-                            throw;
-                        }
-                    }
-            throw new Exception("нет метода " + name + "/" + args.Length + " у " + target.GetType().Name);
-        }
     }
 }
