@@ -90,9 +90,18 @@ namespace ExcelMerger.Tests
 
             var stdin = new Thread(delegate()
             {
+                // При кодовой странице консоли UTF-8 (так на раннерах CI) Process.StandardInput
+                // родителя пишет BOM перед первой строкой, а Console.In дочернего процесса без
+                // консоли читает по кодовой странице ANSI: BOM превращался в «п»ї», команда не
+                // узнавалась, тест ждал ответа 30 с (воспроизведено локально через chcp 65001).
+                // Поэтому stdin читается как UTF-8 с распознаванием и снятием BOM.
+                var input = new System.IO.StreamReader(Console.OpenStandardInput(), new System.Text.UTF8Encoding(false), true);
                 string line;
-                while ((line = Console.In.ReadLine()) != null)
+                while ((line = input.ReadLine()) != null)
                 {
+                    // BOM может прийти и не один (StreamWriter родителя пишет свой при AutoFlush),
+                    // а U+FEFF — не пробел для Trim.
+                    line = line.Trim().TrimStart('\uFEFF').Trim();
                     if (line == "close-first" && close != null)
                         first.BeginInvoke((Action)delegate
                         {

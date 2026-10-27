@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 
 namespace ExcelMerger.Tests
 {
@@ -92,6 +93,12 @@ namespace ExcelMerger.Tests
                 try
                 {
                     AssertTrue(window != 0, "окно сообщено");
+                    // Команда с BOM — как её пишет Process.StandardInput при консоли UTF-8 (раннеры CI):
+                    // байтами, чтобы проверка не зависела от кодовой страницы этой машины.
+                    byte[] command = Encoding.UTF8.GetBytes("\uFEFFclose-first\r\n");
+                    child.StandardInput.BaseStream.Write(command, 0, command.Length);
+                    child.StandardInput.BaseStream.Flush();
+                    AssertEq("closed", WindowChild.ReadLine(child), "команда с BOM узнана");
                     child.StandardInput.Close(); // как родитель, который завершился, не убрав за собой
                     AssertTrue(child.WaitForExit(10000), "без родителя дочерний процесс не остаётся");
                 }
