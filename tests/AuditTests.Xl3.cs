@@ -192,42 +192,24 @@ namespace ExcelMerger.Tests
         // ---------- Правила окон: дочерний процесс с настоящими окнами ----------
 
         /// <summary>
-        /// Дочерний процесс (WinForms в Windows PowerShell): рамка и окно поверх неё, как у Office с
+        /// Дочерний процесс (<see cref="WindowChild"/>): рамка и окно поверх неё, как у Office с
         /// модальным окном. Рамка выключена (так её выключает модальное окно); показана — как у
-        /// экземпляра человека, или нет — как у скрытого. Окна за пределами экрана.
+        /// экземпляра человека, или нет — как у скрытого. Окна созданы и показаны до ответа процесса.
         /// </summary>
         private static Process Xl3StartDialogProcess(bool frameVisible, out OwnedOfficeProcess owned)
         {
-            string shell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
-            if (!File.Exists(shell))
-                Skip("нет Windows PowerShell — дочерний процесс с окнами запустить нечем");
-            string script =
-                "$ProgressPreference = 'SilentlyContinue';" +
-                "Add-Type -AssemblyName System.Windows.Forms;" +
-                "function New-Window($text) { $f = New-Object Windows.Forms.Form; $f.Text = $text;" +
-                " $f.StartPosition = 'Manual'; $f.Location = New-Object Drawing.Point(-32000, -32000); $f };" +
-                "$frame = New-Window 'Рамка';" +
-                (frameVisible ? "$frame.ShowInTaskbar = $false; $frame.Show();" : "[void]$frame.Handle;") +
-                "$dialog = New-Window 'Проверка сторожа'; $dialog.Show($frame);" +
-                "$frame.Enabled = $false;" +
-                "[Console]::Out.WriteLine($frame.Handle.ToInt64()); [Windows.Forms.Application]::Run()";
-            var info = new ProcessStartInfo(shell, "-NoProfile -NonInteractive -EncodedCommand " +
-                Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
-            info.UseShellExecute = false;
-            info.CreateNoWindow = true;
-            info.RedirectStandardOutput = true;
-            Process child = Process.Start(info);
+            long window;
+            Process child = WindowChild.Start(
+                frameVisible ? WindowChild.DialogVisibleFrame : WindowChild.DialogHiddenFrame, out window);
             try
             {
-                long window;
-                AssertTrue(long.TryParse(AuditBReadLine(child), out window), "дочерний процесс сообщил окно");
                 owned = OwnedOfficeProcess.FromWindow(window);
                 AssertTrue(owned != null && owned.Id == child.Id, "процесс определён по окну");
                 return child;
             }
             catch
             {
-                AuditBStop(child);
+                WindowChild.Stop(child);
                 child.Dispose();
                 throw;
             }
@@ -241,14 +223,13 @@ namespace ExcelMerger.Tests
             {
                 try
                 {
-                    AssertTrue(WaitFor(delegate { return owned.ModalWindowTitle() != null; }, 10000), "модальное окно найдено");
-                    AssertEq("Проверка сторожа", owned.ModalWindowTitle(), "заголовок окна");
+                    AssertEq(WindowChild.DialogTitle, owned.ModalWindowTitle(), "модальное окно найдено по заголовку");
                     AssertTrue(owned.TryStop(), "окна человека нет — процесс останавливается");
                     AssertTrue(child.WaitForExit(5000), "процесс действительно завершён");
                 }
                 finally
                 {
-                    AuditBStop(child);
+                    WindowChild.Stop(child);
                 }
             }
         }
@@ -261,7 +242,6 @@ namespace ExcelMerger.Tests
             {
                 try
                 {
-                    Thread.Sleep(300); // окна созданы до ответа процесса; запас на показ
                     AssertTrue(owned.ModalWindowTitle() == null, "рамка видна — это окно человека, а не скрытого экземпляра");
                     AssertTrue(!owned.TryStop(), "экземпляр человека не останавливается");
                     AssertTrue(!owned.KillIfLingering(100), "и страховкой после Quit тоже");
@@ -269,7 +249,7 @@ namespace ExcelMerger.Tests
                 }
                 finally
                 {
-                    AuditBStop(child);
+                    WindowChild.Stop(child);
                 }
             }
         }

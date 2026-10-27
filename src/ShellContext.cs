@@ -380,6 +380,17 @@ namespace ExcelMerger
                     _activation.Dispose();
                     _activation = null;
                 }
+                // Окна, которые оболочка открыла и ещё держит, — её собственность. В приложении к
+                // этому моменту их нет (цикл сообщений кончается с последним окном), а оболочка,
+                // уничтоженная раньше (тесты окон), иначе оставляла бы хаб и инструменты жить.
+                foreach (Form form in _windows.ToArray())
+                {
+                    form.FormClosed -= OnWindowClosed;
+                    if (!form.IsDisposed)
+                        form.Dispose();
+                }
+                _windows.Clear();
+                _hub = null;
             }
             base.Dispose(disposing);
         }

@@ -440,48 +440,22 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static Process AuditBStartTwoWindowProcess(bool secondVisible, out OwnedOfficeProcess owned)
         {
-            string shell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
-            if (!File.Exists(shell))
-                Skip("нет Windows PowerShell — дочерний процесс с окнами запустить нечем");
-            string script =
-                "$ProgressPreference = 'SilentlyContinue';" + // без CLIXML-прогресса в общем stderr прогона
-                "Add-Type -AssemblyName System.Windows.Forms;" +
-                "function New-Window { $f = New-Object Windows.Forms.Form; $f.ShowInTaskbar = $false;" +
-                " $f.StartPosition = 'Manual'; $f.Location = New-Object Drawing.Point(-32000, -32000); $f };" +
-                "$first = New-Window; $first.Show(); $second = New-Window;" +
-                (secondVisible ? "$second.Show();" : "[void]$second.Handle;") + // Handle без Show — окно создано скрытым
-                "[Console]::Out.WriteLine($first.Handle.ToInt64()); [void][Console]::In.ReadLine();" +
-                "$first.Close(); [Console]::Out.WriteLine('closed'); [Windows.Forms.Application]::Run()";
-            var info = new ProcessStartInfo(shell, "-NoProfile -NonInteractive -EncodedCommand " +
-                Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
-            info.UseShellExecute = false;
-            info.CreateNoWindow = true; // консоли нет: верхние окна процесса — только наши формы
-            info.RedirectStandardInput = true;
-            info.RedirectStandardOutput = true;
-            Process child = Process.Start(info);
+            long window;
+            Process child = WindowChild.Start(secondVisible ? WindowChild.TwoVisible : WindowChild.TwoHidden, out window);
             try
             {
-                long window;
-                AssertTrue(long.TryParse(AuditBReadLine(child), out window), "дочерний процесс сообщил окно");
                 owned = OwnedOfficeProcess.FromWindow(window);
                 AssertTrue(owned != null && owned.Id == child.Id, "процесс определён по окну");
-                child.StandardInput.WriteLine();
-                AssertEq("closed", AuditBReadLine(child), "запомненное окно закрыто");
+                child.StandardInput.WriteLine("close-first");
+                AssertEq("closed", WindowChild.ReadLine(child), "запомненное окно закрыто");
                 return child;
             }
             catch
             {
-                AuditBStop(child);
+                WindowChild.Stop(child);
                 child.Dispose();
                 throw;
             }
-        }
-
-        private static string AuditBReadLine(Process child)
-        {
-            var line = child.StandardOutput.ReadLineAsync();
-            AssertTrue(line.Wait(60000), "дочерний процесс не ответил за 60 с");
-            return line.Result;
         }
 
         [Test("Аудит B: по недействительному окну процесс не определяется — страховки нет, сбоя тоже")]
@@ -810,7 +784,9 @@ namespace ExcelMerger.Tests
                 watch.Stop();
 
                 AssertTrue(!found, "в зацикленном каталоге потока нет");
-                AssertTrue(watch.ElapsedMilliseconds < 1000,
+                // Без потолка зацикленная цепочка не кончается вовсе; с потолком разбор — миллисекунды.
+                // 5 с — запас на загруженный раннер CI, а не мера скорости (TS-5).
+                AssertTrue(watch.ElapsedMilliseconds < 5000,
                     "разбор занял " + watch.ElapsedMilliseconds + " мс: цепочка каталога не ограничена потолком");
             }
         }
@@ -1269,13 +1245,13 @@ namespace ExcelMerger.Tests
         private static void AuditBRequireExcel()
         {
             if (Type.GetTypeFromProgID("Excel.Application") == null)
-                Skip("Excel не установлен — живую проверку COM выполнить нечем");
+                SkipMissing("office", "Excel не установлен — живую проверку COM выполнить нечем");
         }
 
         private static void AuditBRequireWord()
         {
             if (Type.GetTypeFromProgID("Word.Application") == null)
-                Skip("Word не установлен — живую проверку COM выполнить нечем");
+                SkipMissing("office", "Word не установлен — живую проверку COM выполнить нечем");
         }
 
         /// <summary>

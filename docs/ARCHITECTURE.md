@@ -748,8 +748,9 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` (522 tests, custom exe runner, zero
-   dependencies, no Office) covering the pure core: layout analysis, table/grid/stamp
+1. **Unit tests** — `tests/UnitTests.cs` and `tests/AuditTests.*.cs` (523 listed with
+   `Run(...)` plus the `[Test]`-attributed audit tests, custom exe runner; tests that need
+   Office, a printer or Ghostscript skip honestly when it is missing) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
    zoom percentage and wheel-step chaining, the number-strip hit-test and double-click
    classification, the preview's centring and zoom maths, the card's content centring, the
@@ -816,9 +817,22 @@ The pyramid, bottom-up:
    were written. One more measures every button caption in the button's **own font** and
    fails if it would be cut with an ellipsis: clipping is silent, and it had already shipped
    in a dialog whose primary button is set larger and bold than the window it lives in. Run by `tests\build_tests.cmd [x86]`, and CI runs both
-   architectures because cache sizing branches on `IntPtr.Size`. The runner also requires the
-   registered test count to equal 522 exactly, so adding or deleting a `Run(...)` line must be
-   accompanied by an intentional count update.
+   architectures because cache sizing branches on `IntPtr.Size`. The runner also requires
+   exactly 523 `Run(...)` registrations (a skip or a filter does not change the count), so
+   adding or deleting a `Run(...)` line must be accompanied by an intentional count update.
+
+   What the runner enforces besides pass/fail:
+   - **Strict mode** (`IWO_STRICT=1`, set in CI): a skip fails the run unless its reason is a
+     dependency named in `IWO_OPTIONAL` (CI: `office`). Tests mark such skips with
+     `SkipMissing("office", …)`; a missing Ghostscript or fixture stays a failure.
+   - **No leaked windows:** a test that leaves a form open fails, and the forms of a failed
+     test are disposed so they cannot affect the next one.
+   - **No lost tests:** a `[Test]` the runner would not execute (instance method, wrong
+     class or signature) fails the run, as does a `Test*` method that is neither listed
+     nor attributed.
+   - **Real windows in a child process** (`WindowChild`): window-rule tests start the test
+     exe itself with `--window-child <layout>`. It starts in a fraction of a second, has the
+     run's bitness and exits when its stdin closes (5-minute cap otherwise).
 2. **Self-checks in the exe** — `--selftest` (every window created headless),
    `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded PdfSharp,
    embedded PdfPig extraction, WinRT thumbnail render from memory, Ghostscript
@@ -836,7 +850,9 @@ needs Office gets a `verify` script.
 - **Build:** `build.cmd [x86]` → `dotnet build -c Release [-p:Arch=x86]` → single
   `dist\iwoHelperDesktop.exe` (x86: `dist\x86\iwoHelperDesktop.exe`), embedded resources
   included. Needs only the .NET SDK.
-- **CI** (`.github/workflows/ci.yml`, windows-latest, an x64/x86 matrix): per
+- **CI** (`.github/workflows/ci.yml`, windows-latest, an x64/x86 matrix; actions pinned
+  by commit SHA, choco packages by version, job and step time limits, the unit-test log
+  kept as an artifact): per
   architecture — build → Ghostscript and Inno Setup → unit tests **of that architecture** →
   GUI smoke → embedded-dependency probes (the 32-bit exe runs under WOW64) → Ghostscript
   round-trip → installer compile check (Inno Setup, `/DArch`, version taken from the built

@@ -15,9 +15,18 @@ on:
 permissions:
   contents: read # релиз собирается и подписывается локально (tools\make_release.ps1)
 
+# Новый push в ту же ветку PR отменяет устаревший прогон; прогоны main и тегов доводятся до конца.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Действия закреплены по SHA коммита (в комментарии — версия): подвижный тег может указать на
+# другой код без изменения этого файла. Поднимаются вручную: Dependabot не подходит — его
+# коммиты с чужим автором не пройдут проверку авторства (задача docs ниже).
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 90 # обычный прогон — около 15 минут; зависание не держит раннер 6 часов
     strategy:
       fail-fast: false
       matrix:
@@ -29,12 +38,20 @@ jobs:
             dist: dist/x86
             gs_choco: '--x86'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Установка .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
+
+      # Пакеты NuGet между прогонами: ключ — файлы проектов, где записаны версии пакетов.
+      - name: Кэш пакетов NuGet
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-${{ matrix.arch }}-
 
       - name: Сборка приложения
         shell: cmd
@@ -47,8 +64,12 @@ jobs:
       # 503, в логе стояло «installed 0/1 packages», а шаг был зелёным — отказ всплывал через
       # два шага и указывал на Ghostscript вместо установки. Поэтому: повтор при временном
       # сбое сети (5xx на стороне фида проходят сами) и ЯВНАЯ проверка, что пакет на месте.
-      # Не поставился после трёх попыток — падаем здесь и с правильной причиной: собирать
-      # дальше можно, но проверять сжатие уже нечем, а зелёная сборка без этой проверки лжёт.
+      # Успех попытки решает ТОЛЬКО эта проверка: 2026-10-26 фид отдал 504, choco написал
+      # «installed 0/0 packages» без «packages failed» и вернул 0 — шаг ушёл дальше без
+      # повтора. Не поставился после трёх попыток — падаем здесь и с правильной причиной:
+      # собирать дальше можно, но проверять сжатие уже нечем, а зелёная сборка лжёт.
+      # Версии закреплены (CI-7): сборка не меняется сама от выхода нового пакета. Ghostscript
+      # не ниже 10.08.0 (CVE-2026-39919); поднимать версию — вручную, сверяясь с stage_gs.ps1.
       - name: Ghostscript и Inno Setup (сжатие и установщик)
         shell: pwsh
         timeout-minutes: 30
@@ -95,27 +116,45 @@ jobs:
           function Install-WithRetry([string]$package, [string]$extra) {
             for ($try = 1; $try -le 3; $try++) {
               $result = Invoke-ChocoAttempt $package $extra $try
-              if (($result.Finished -and $result.ExitCode -eq 0 -and
-                   $result.Log -notmatch 'packages failed') -or (Test-PackageInstalled $package)) {
+              if (Test-PackageInstalled $package) {
                 Write-Host "$package установлен"
                 return
               }
+              Write-Host "::warning::${package}: попытка $try не поставила пакет (код $($result.ExitCode), завершён: $($result.Finished))"
               if ($try -lt 3) { Start-Sleep -Seconds (15 * $try) }
             }
             Write-Host "::error::$package не установлен после трёх ограниченных попыток"
             exit 1
           }
-          Install-WithRetry 'ghostscript' '${{ matrix.gs_choco }}'
-          Install-WithRetry 'innosetup' ''
+          Install-WithRetry 'ghostscript' '--version=10.8.0 ${{ matrix.gs_choco }}'
+          Install-WithRetry 'innosetup' '--version=6.7.1'
           $gs = Get-ChildItem "$env:ProgramFiles\gs", "${env:ProgramFiles(x86)}\gs" -Directory -ErrorAction SilentlyContinue
           if (-not $gs) { Write-Host '::error::Ghostscript не найден после установки'; exit 1 }
           Write-Host ('Ghostscript: ' + ($gs | ForEach-Object { $_.FullName }) -join ', ')
 
       # Тесты собираются СВОЕЙ разрядностью: иначе обе ветки матрицы гоняли один и тот же
       # 64-битный exe и ветки IntPtr.Size == 4 не проверялись.
+      # Строгий режим: пропуск теста — провал, кроме пропусков из-за отсутствующего Office (на
+      # раннере его нет). Иначе сорванная установка Ghostscript или пропавшая фикстура давали
+      # бы зелёный прогон, который ничего не проверил (TS-2, TS-4). Журнал — артефактом.
       - name: Юнит-тесты
-        shell: cmd
-        run: call tests\build_tests.cmd ${{ matrix.arch }}
+        shell: pwsh
+        timeout-minutes: 40 # обычно 7–8 минут; зависший тест раньше останавливает сторож раннера (10 мин)
+        env:
+          IWO_STRICT: '1'
+          IWO_OPTIONAL: office
+        run: |
+          cmd /c "tests\build_tests.cmd ${{ matrix.arch }}" 2>&1 | Tee-Object -FilePath "unit-tests-${{ matrix.arch }}.log"
+          exit $LASTEXITCODE
+
+      - name: Журнал юнит-тестов
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-tests-${{ matrix.arch }}
+          path: unit-tests-${{ matrix.arch }}.log
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Смоук-тест GUI (создание окон без показа, руководство внутри exe)
         shell: pwsh
@@ -181,16 +220,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Host "iscc exit=$LASTEXITCODE"; exit 1 }
 
       - name: Артефакт сборки
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: iwoHelperDesktop-${{ matrix.arch }}
           path: ${{ matrix.dist }}/iwoHelperDesktop.exe
+          retention-days: 30
 
       - name: Артефакт установщика (без подписи — подпись локально)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: iwoHelperDesktop-setup-${{ matrix.arch }}
           path: dist/iwoHelperDesktop-setup-*.exe
+          retention-days: 30
 
       # Релизы на GitHub создаются ЛОКАЛЬНО (tools\make_release.ps1): все четыре
       # артефакта (portable + installer, x64 + x86) подписываются самоподписанным
@@ -204,14 +245,15 @@ jobs:
   # версии, а якорь заголовка с эмодзи несёт невидимый U+FE0F и ломается незаметно.
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # Вся история и все теги: проверка авторства смотрит каждый достижимый коммит,
       # а при неглубокой копии видела бы один последний.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.x'
 

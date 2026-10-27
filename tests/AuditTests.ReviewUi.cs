@@ -1557,14 +1557,12 @@ namespace ExcelMerger.Tests
         [Test("Аудит F2: путь проверяется без обращения к сети на UI-потоке")]
         private static void AuditReviewSourceChecksAvoidUiBlocking()
         {
+            // Сервера нет: если бы Resolve проверял существование файла, ответ был бы «нет файла».
+            // «Принят» доказывает, что обращения не было, без порога по секундомеру (TS-5).
             const string unc = @"\\iwo-f2-unreachable.invalid\share\source.pdf";
-            var watch = System.Diagnostics.Stopwatch.StartNew();
             PdfReviewSourceResult resolved = PdfReviewInput.Resolve(unc);
-            watch.Stop();
             AssertTrue(resolved.IsValid && resolved.Path == unc,
                 "сетевой путь синтаксически принят, существование проверит фоновая проба");
-            AssertTrue(watch.ElapsedMilliseconds < 500,
-                "Resolve не ходил в сеть: " + watch.ElapsedMilliseconds + " мс");
             AssertTrue(!PdfReviewInput.IsLocalDiskPath(unc) &&
                        !PdfReviewInput.IsLocalDiskPath(@"\\?\C:\x.pdf"),
                 "UNC и \\\\?\\-пути не локальные");

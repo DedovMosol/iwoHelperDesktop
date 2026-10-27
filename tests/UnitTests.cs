@@ -26,6 +26,10 @@ namespace ExcelMerger.Tests
 
         private static int Main(string[] args)
         {
+            // Дочерний процесс с окнами для тестов правил окон — до настройки раннера: ни профиля,
+            // ни сторожа прогона ему не нужно.
+            if (args.Length == 2 && args[0] == WindowChild.Switch)
+                return WindowChild.Run(args[1]);
             if (!ConfigureRunner(args))
                 return 2;
             Run("SheetNamer: запрещённые символы заменяются на «_»", TestNamerForbiddenChars);
@@ -560,7 +564,7 @@ namespace ExcelMerger.Tests
             Run("RasterBudget: пиксели, ширина и DPI ограничены", TestRasterBudget);
             Run("PageBackgrounds: runs не плодятся на разреженной выборке", TestBackgroundRenderRuns);
 
-            int registered = _passed + _failed;
+            int registered = _runRegistrations;
             RunDiscoveredTests(); // тесты с атрибутом [Test] — без ручной строки Run(...)
 
             Console.WriteLine();
@@ -587,9 +591,12 @@ namespace ExcelMerger.Tests
                     code = 1;
                 }
             }
-            if (_strictSkips && _skipped > 0)
+            if (_strictSkips && _skippedRequired > 0)
             {
-                Console.WriteLine("ОШИБКА: строгий режим (IWO_STRICT=1) — пропуски недопустимы: " + _skipped);
+                Console.WriteLine("ОШИБКА: строгий режим (IWO_STRICT=1) — пропуски недопустимы: " + _skippedRequired +
+                    (_optionalDependencies.Count > 0
+                        ? " (допустимы только из-за отсутствия: " + string.Join(", ", new List<string>(_optionalDependencies).ToArray()) + ")"
+                        : ""));
                 code = 1;
             }
             try { Directory.Delete(_sessionRoot, true); } catch { } // профиль прогона больше не нужен
@@ -6692,7 +6699,7 @@ namespace ExcelMerger.Tests
                 AssertEqual(Color.White.ToArgb(), marked.GetPixel(7, 45).ToArgb(),
                     "normal mode не рисует устаревшую внешнюю change bar");
             }
-            AssertThrowsAny("успешная композиция освобождает исходный bitmap",
+            AssertThrowsExactly<ArgumentException>("успешная композиция освобождает исходный bitmap",
                 delegate { source.GetPixel(0, 0); });
 
             lineHighlight.Color = Theme.ReviewInsertFill;
@@ -6891,7 +6898,7 @@ namespace ExcelMerger.Tests
                     rendered.PixelFormat, "опубликованный compositor raster нормализован в 32bpp");
                 AssertEqual(Theme.ReviewInsertFill.ToArgb(), rendered.GetPixel(3, 3).ToArgb(),
                     "готовая копия содержит fill в преобразованной PDF-рамке");
-                AssertThrowsAny("после commit исходный bitmap освобождён ровно владельцем renderer",
+                AssertThrowsExactly<ArgumentException>("после commit исходный bitmap освобождён ровно владельцем renderer",
                     delegate { source.GetPixel(0, 0); });
             }
             finally { rendered.Dispose(); }
@@ -6920,7 +6927,7 @@ namespace ExcelMerger.Tests
                     "отдельный whitespace layer также публикуется транзакционной копией");
                 AssertEqual(0, whitespaceOnly.Boxes.Count,
                     "рисование whitespace token не превращает его в word-box");
-                AssertThrowsAny("whitespace commit освобождает прежний raster",
+                AssertThrowsExactly<ArgumentException>("whitespace commit освобождает прежний raster",
                     delegate { source.GetPixel(0, 0); });
             }
             finally { rendered.Dispose(); }
@@ -7749,7 +7756,7 @@ namespace ExcelMerger.Tests
             for (int i = 0; i < bitmaps.Count; i++)
             {
                 Bitmap bitmap = bitmaps[i];
-                AssertThrowsAny(context + ": bitmap " + i + " освобождён",
+                AssertThrowsExactly<ArgumentException>(context + ": bitmap " + i + " освобождён",
                     delegate { bitmap.GetPixel(0, 0); });
             }
         }
@@ -10482,7 +10489,7 @@ namespace ExcelMerger.Tests
                         AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
                             "старое завершение не возвращает отменённую страницу");
                         AssertTrue(!view.HasVisiblePage, "после stale completion страницы нет");
-                        AssertThrowsAny("отброшенный stale bitmap освобождён",
+                        AssertThrowsExactly<ArgumentException>("отброшенный stale bitmap освобождён",
                             delegate { stale.GetPixel(0, 0); });
 
                         InvokeReviewBeginState(view, "Текущий запрос", PdfReviewPageViewState.Loading);
@@ -10501,7 +10508,7 @@ namespace ExcelMerger.Tests
                         AssertTrue(ReferenceEquals(current,
                             ReviewPrivateField<Bitmap>(view, "_bitmap")),
                             "ещё более поздний stale callback не заменил текущий raster");
-                        AssertThrowsAny("второй stale bitmap освобождён",
+                        AssertThrowsExactly<ArgumentException>("второй stale bitmap освобождён",
                             delegate { older.GetPixel(0, 0); });
 
                         view.ShowPage(new PdfPageRef { SourcePath = pdf, PageIndex = 0 },
@@ -10583,7 +10590,7 @@ namespace ExcelMerger.Tests
                     AssertEqual("first publication",
                         surface.SelectionModel.BuildCopyText().Text,
                         "stale completion не восстанавливает старый selectable source");
-                    AssertThrowsAny("stale-revision bitmap освобождён",
+                    AssertThrowsExactly<ArgumentException>("stale-revision bitmap освобождён",
                         delegate { staleRaster.GetPixel(0, 0); });
 
                     PdfReviewPage secondPage = ReviewTrustedPage(1,
@@ -10593,7 +10600,7 @@ namespace ExcelMerger.Tests
                         "новый request сразу убирает canvas до atomic commit");
                     AssertTrue(!surface.HasSelectableText && !surface.HasSelection,
                         "новая revision сразу снимает старый text/selection layer");
-                    AssertThrowsAny("заменённый raster освобождён при начале новой revision",
+                    AssertThrowsExactly<ArgumentException>("заменённый raster освобождён при начале новой revision",
                         delegate { firstRaster.GetPixel(0, 0); });
 
                     generation = ReviewPrivateField<int>(view, "_generation");
@@ -10616,7 +10623,7 @@ namespace ExcelMerger.Tests
                     AssertTrue(!surface.HasSelectableText && !surface.HasSelection &&
                                ReviewPrivateField<PdfReviewPage>(view, "_reviewPage") == null,
                         "Empty transition атомарно удаляет trusted layer");
-                    AssertThrowsAny("Empty transition освобождает последний raster",
+                    AssertThrowsExactly<ArgumentException>("Empty transition освобождает последний raster",
                         delegate { secondRaster.GetPixel(0, 0); });
                     host.Close();
                 }
@@ -14953,16 +14960,16 @@ namespace ExcelMerger.Tests
         private static void TestOoxmlPartNames()
         {
             var pkg = new OoxmlPackage();
-            AssertThrowsAny("ведущий слэш в имени части", delegate { pkg.AddXml("/ppt/a.xml", "<a/>"); });
-            AssertThrowsAny("обратный слэш в имени части", delegate { pkg.AddXml("ppt\\a.xml", "<a/>"); });
-            AssertThrowsAny("не-ASCII в имени части", delegate { pkg.AddXml("ppt/слайд.xml", "<a/>"); });
-            AssertThrowsAny("пустой сегмент в имени части", delegate { pkg.AddXml("ppt//a.xml", "<a/>"); });
+            AssertThrowsExactly<ArgumentException>("ведущий слэш в имени части", delegate { pkg.AddXml("/ppt/a.xml", "<a/>"); });
+            AssertThrowsExactly<ArgumentException>("обратный слэш в имени части", delegate { pkg.AddXml("ppt\\a.xml", "<a/>"); });
+            AssertThrowsExactly<ArgumentException>("не-ASCII в имени части", delegate { pkg.AddXml("ppt/слайд.xml", "<a/>"); });
+            AssertThrowsExactly<ArgumentException>("пустой сегмент в имени части", delegate { pkg.AddXml("ppt//a.xml", "<a/>"); });
             pkg.AddXml("ppt/a.xml", "<a/>");
-            AssertThrowsAny("дубль имени части", delegate { pkg.AddXml("ppt/a.xml", "<a/>"); });
-            AssertThrowsAny("двоичная часть без типа содержимого", delegate { pkg.AddBinary("ppt/media/i.png", new byte[1], null); });
+            AssertThrowsExactly<ArgumentException>("дубль имени части", delegate { pkg.AddXml("ppt/a.xml", "<a/>"); });
+            AssertThrowsExactly<ArgumentException>("двоичная часть без типа содержимого", delegate { pkg.AddBinary("ppt/media/i.png", new byte[1], null); });
             // Правило по расширению одно на весь пакет: второй тип для «png» выразить нечем.
             pkg.AddBinary("ppt/media/i1.png", new byte[1], PptxParts.CtPng);
-            AssertThrowsAny("одно расширение — два разных типа", delegate { pkg.AddBinary("ppt/media/i2.png", new byte[1], "image/jpeg"); });
+            AssertThrowsExactly<ArgumentException>("одно расширение — два разных типа", delegate { pkg.AddBinary("ppt/media/i2.png", new byte[1], "image/jpeg"); });
         }
 
         private static void TestPptxPackageConsistency()
@@ -15804,7 +15811,8 @@ namespace ExcelMerger.Tests
                         };
                         run.Invoke(form, new object[] { work, CompressionLevel.Small,
                             outDir, true, (Action)delegate { }, 8 });
-                        Pump(form, 4000);
+                        if (!PumpUntil(delegate { return !form.IsBusy; }, 60000))
+                            offenders.Add("операция не завершилась за 60 с");
 
                         string[] left = Directory.GetFiles(outDir);
                         if (left.Length != 0)
@@ -15822,6 +15830,25 @@ namespace ExcelMerger.Tests
             for (int i = 0; i < ms; i += 30)
             {
                 System.Windows.Forms.Application.DoEvents();
+                System.Threading.Thread.Sleep(30);
+            }
+        }
+
+        /// <summary>
+        /// Прокачивать очередь, пока не выполнится условие (не дольше timeoutMs). Вместо паузы
+        /// «на глаз»: на быстром компьютере тест не ждёт лишнего, на загруженном раннере CI не
+        /// проверяет раньше времени (TS-6). false — условие так и не выполнилось.
+        /// </summary>
+        private static bool PumpUntil(Func<bool> ready, int timeoutMs)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (true)
+            {
+                System.Windows.Forms.Application.DoEvents();
+                if (ready())
+                    return true;
+                if (watch.ElapsedMilliseconds >= timeoutMs)
+                    return false;
                 System.Threading.Thread.Sleep(30);
             }
         }
@@ -16865,6 +16892,7 @@ namespace ExcelMerger.Tests
 
         private static void Run(string name, Action test)
         {
+            _runRegistrations++; // регистрация, а не исход: пропуск и фильтр счёт не меняют
             if (test != null)
                 _registeredMethods.Add(test.Method);
             RunCore(name, test);
@@ -20556,7 +20584,7 @@ namespace ExcelMerger.Tests
                 damaged.AddRange(new List<byte>(bytes).GetRange(0, at));
                 damaged.AddRange(System.Text.Encoding.ASCII.GetBytes("startxref\n999999999\n%%EOF\n"));
                 File.WriteAllBytes(broken, damaged.ToArray());
-                AssertThrowsAny("битый файл не открывается", delegate { PdfPageCount(broken); });
+                AssertThrowsExactly<PdfSharp.Pdf.IO.PdfReaderException>("битый файл не открывается", delegate { PdfPageCount(broken); });
 
                 AssertTrue(PdfConvert.Apply(broken, PdfConvertMode.Repair), "восстановление применено");
                 AssertEqual(1, PdfPageCount(broken), "починенный файл снова открывается");
@@ -20679,13 +20707,6 @@ namespace ExcelMerger.Tests
                     return i;
             }
             return -1;
-        }
-
-        private static void AssertThrowsAny(string what, Action action)
-        {
-            try { action(); }
-            catch { return; }
-            throw new Exception(what + ": ожидалось исключение, но его не было");
         }
 
         private static void TestConvertArguments()
@@ -20891,7 +20912,8 @@ namespace ExcelMerger.Tests
                     using (var form = new StartForm())
                     {
                         form.Show();
-                        Pump(form, 1500);              // карточки строятся в фоне — даём им прийти
+                        // Карточки строятся в фоне: ждём все три записанных файла, а не паузу.
+                        PumpUntil(delegate { return CountRecentCards(form) >= 3; }, 15000);
                         int cards = CountRecentCards(form);
                         if (cards == 0)
                         {
@@ -21056,7 +21078,7 @@ namespace ExcelMerger.Tests
                 }
 
                 // Пустой набор — понятная ошибка, а не попытка печатать пустоту.
-                AssertThrowsAny("печатать нечего", delegate
+                AssertThrowsExactly<MergeException>("печатать нечего", delegate
                 {
                     IDisposable none;
                     PdfPrintService.CreateDocument(new List<PdfPageRef>(), null, null, null, out none);
@@ -21826,7 +21848,7 @@ namespace ExcelMerger.Tests
                     System.Text.Encoding.ASCII.GetBytes("/ObjStm")) >= 0;
                 AssertEqual(3, PdfPageProbe.PageCount(modern), "PdfPig читает файл версии 1.5");
                 if (hasObjectStreams)
-                    AssertThrowsAny("PdfSharp 1.50 на потоках объектов спотыкается — потому и PdfPig",
+                    AssertThrowsExactly<ArgumentOutOfRangeException>("PdfSharp 1.50 на потоках объектов спотыкается — потому и PdfPig",
                         delegate { PdfPageCount(modern); });
             }
             finally { try { Directory.Delete(dir, true); } catch { } }

@@ -14,7 +14,7 @@ namespace ExcelMerger.Tests
     /// строку в Main добавлять не нужно, а забытая регистрация невозможна.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-    internal sealed class TestAttribute : Attribute
+    public sealed class TestAttribute : Attribute // public: тест раннера вешает его на метод динамической сборки
     {
         public TestAttribute(string name) { Name = name; }
         public string Name { get; private set; }
@@ -22,11 +22,19 @@ namespace ExcelMerger.Tests
 
     /// <summary>
     /// Тест честно сообщает, что проверить нечего (нет Ghostscript, нет WinRT): это не PASS.
-    /// Пропуск считается отдельно и в строгом режиме (IWO_STRICT=1) валит прогон.
+    /// Пропуск считается отдельно и в строгом режиме (IWO_STRICT=1) валит прогон — кроме
+    /// пропусков из-за зависимости, названной в IWO_OPTIONAL (например, «office» в CI, где
+    /// Office не установлен). Dependency = null — пропуск без названной зависимости, в строгом
+    /// режиме недопустим всегда.
     /// </summary>
     internal sealed class SkipTestException : Exception
     {
-        public SkipTestException(string reason) : base(reason) { }
+        public SkipTestException(string reason, string dependency = null) : base(reason)
+        {
+            Dependency = dependency;
+        }
+
+        public string Dependency { get; private set; }
     }
 
     /// <summary>
@@ -36,9 +44,12 @@ namespace ExcelMerger.Tests
     internal static partial class UnitTests
     {
         private static int _skipped;
+        private static int _skippedRequired; // пропуски, недопустимые в строгом режиме
+        private static int _runRegistrations; // вызовы Run(...): сверяются с ExactTests
         private static string _filter;
         private static bool _listOnly;
         private static bool _strictSkips;
+        private static HashSet<string> _optionalDependencies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private static int _timeoutSeconds = 600;
         private static readonly HashSet<MethodInfo> _registeredMethods = new HashSet<MethodInfo>();
 
@@ -79,6 +90,7 @@ namespace ExcelMerger.Tests
                 }
             }
             _strictSkips = Environment.GetEnvironmentVariable("IWO_STRICT") == "1";
+            _optionalDependencies = OptionalDependencies(Environment.GetEnvironmentVariable("IWO_OPTIONAL"));
 
             _sessionRoot = Path.Combine(Path.GetTempPath(), "iwo_tests_" + Guid.NewGuid().ToString("N"));
             AppPaths.SetRootForTests(_sessionRoot);
@@ -115,17 +127,25 @@ namespace ExcelMerger.Tests
             }
             Lang lang = Loc.Current;
             long budget = PdfMemoryBudget.Used;
+            var formsBefore = new HashSet<Form>(OpenFormsNow());
             _currentStartedTicks = DateTime.UtcNow.Ticks;
             _currentTest = name;
             try
             {
                 test();
+                // Окно, оставленное тестом, живёт до конца прогона: держит память, ловит чужие
+                // события и меняет следующим тестам Application.OpenForms (TS-8).
+                List<Form> left = FormsOpenedSince(formsBefore);
+                if (left.Count > 0)
+                    throw new Exception("тест оставил открытые окна: " + FormNames(left));
                 _passed++;
                 Console.WriteLine("PASS  " + name);
             }
             catch (SkipTestException skip)
             {
                 _skipped++;
+                if (!SkipAllowed(skip.Dependency, _optionalDependencies))
+                    _skippedRequired++;
                 Console.WriteLine("SKIP  " + name + " — " + skip.Message);
             }
             catch (Exception ex)
@@ -145,12 +165,85 @@ namespace ExcelMerger.Tests
                 long leaked = PdfMemoryBudget.Used - budget;
                 if (leaked > 0)
                     Console.WriteLine("WARN  " + name + " — резерв PdfMemoryBudget не вернулся: +" + leaked + " байт");
+                // Упавший тест мог не закрыть свои окна — закрываем, чтобы не мешали следующим.
+                foreach (Form form in FormsOpenedSince(formsBefore))
+                    try { form.Dispose(); } catch { }
             }
+        }
+
+        private static List<Form> OpenFormsNow()
+        {
+            var forms = new List<Form>();
+            foreach (Form form in Application.OpenForms)
+                forms.Add(form);
+            return forms;
+        }
+
+        /// <summary>Открытые сейчас окна, которых не было в before.</summary>
+        private static List<Form> FormsOpenedSince(HashSet<Form> before)
+        {
+            var opened = new List<Form>();
+            foreach (Form form in OpenFormsNow())
+                if (!before.Contains(form) && !form.IsDisposed)
+                    opened.Add(form);
+            return opened;
+        }
+
+        private static string FormNames(List<Form> forms)
+        {
+            var names = new List<string>();
+            foreach (Form form in forms)
+                names.Add(form.GetType().Name);
+            return string.Join(", ", names.ToArray());
+        }
+
+        /// <summary>Зависимости, отсутствие которых допустимо в строгом режиме: «office, printer». Чистая — под тест.</summary>
+        internal static HashSet<string> OptionalDependencies(string value)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string part in (value ?? "").Split(','))
+                if (part.Trim().Length > 0)
+                    set.Add(part.Trim());
+            return set;
+        }
+
+        /// <summary>Допустим ли пропуск в строгом режиме: только из-за названной допустимой зависимости. Чистая — под тест.</summary>
+        internal static bool SkipAllowed(string dependency, HashSet<string> optional)
+        {
+            return dependency != null && optional.Contains(dependency);
+        }
+
+        /// <summary>
+        /// Методы с [Test], которые раннер не выполнит: не статические, не в классе UnitTests
+        /// (поиск идёт только по нему) или с параметрами/результатом. Раньше такие молча
+        /// пропускались — написанный тест не выполнялся, а прогон был зелёным.
+        /// </summary>
+        private static List<string> MisplacedTestMethods(IEnumerable<Type> types)
+        {
+            var names = new List<string>();
+            const BindingFlags all = BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public |
+                BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+            foreach (Type type in types)
+                foreach (MethodInfo m in type.GetMethods(all))
+                {
+                    var attr = (TestAttribute)Attribute.GetCustomAttribute(m, typeof(TestAttribute));
+                    if (attr == null)
+                        continue;
+                    if (type != typeof(UnitTests) || !m.IsStatic || m.GetParameters().Length != 0 ||
+                        m.ReturnType != typeof(void))
+                        names.Add(type.Name + "." + m.Name + " («" + attr.Name + "»)");
+                }
+            return names;
         }
 
         /// <summary>Тесты с [Test] — после явного списка, в порядке объявления в исходнике.</summary>
         private static void RunDiscoveredTests()
         {
+            foreach (string misplaced in MisplacedTestMethods(typeof(UnitTests).Assembly.GetTypes()))
+            {
+                _failed++;
+                Console.WriteLine("FAIL  " + misplaced + " — [Test] допустим только на static void-методе без параметров в UnitTests");
+            }
             var tests = new List<KeyValuePair<MethodInfo, TestAttribute>>();
             foreach (MethodInfo m in typeof(UnitTests).GetMethods(BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public))
             {
@@ -166,11 +259,7 @@ namespace ExcelMerger.Tests
             {
                 MethodInfo method = t.Key;
                 if (method.GetParameters().Length != 0 || method.ReturnType != typeof(void))
-                {
-                    _failed++;
-                    Console.WriteLine("FAIL  " + t.Value.Name + " — [Test] допустим только на void-методе без параметров");
-                    continue;
-                }
+                    continue; // уже отмечен провалом в MisplacedTestMethods
                 RunCore(t.Value.Name, delegate
                 {
                     try { method.Invoke(null, null); }
@@ -186,7 +275,7 @@ namespace ExcelMerger.Tests
         private static string UnregisteredTestMethods()
         {
             var names = new List<string>();
-            foreach (MethodInfo m in typeof(UnitTests).GetMethods(BindingFlags.Static | BindingFlags.NonPublic))
+            foreach (MethodInfo m in typeof(UnitTests).GetMethods(BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public))
             {
                 if (!m.Name.StartsWith("Test", StringComparison.Ordinal) || m.GetParameters().Length != 0 ||
                     m.ReturnType != typeof(void) || m.IsDefined(typeof(TestAttribute), false))
@@ -201,6 +290,15 @@ namespace ExcelMerger.Tests
         private static void Skip(string reason)
         {
             throw new SkipTestException(reason);
+        }
+
+        /// <summary>
+        /// Пропуск из-за отсутствующей зависимости окружения (dependency — её имя для IWO_OPTIONAL,
+        /// например «office»): в строгом режиме допустим, только если зависимость там названа.
+        /// </summary>
+        private static void SkipMissing(string dependency, string reason)
+        {
+            throw new SkipTestException(reason, dependency);
         }
 
         /// <summary>

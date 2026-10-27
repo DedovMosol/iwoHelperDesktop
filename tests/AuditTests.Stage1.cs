@@ -524,7 +524,7 @@ namespace ExcelMerger.Tests
                 });
             });
             if (!spills)
-                Skip("в этом Excel нет динамических массивов (нужен 2021 или Microsoft 365)");
+                SkipMissing("office", "в этом Excel нет динамических массивов (нужен 2021 или Microsoft 365)");
             using (var dir = new TempDir("iwo_stage1_xl1_"))
             {
                 string source = dir.File("Разлив.xlsx");
