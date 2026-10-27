@@ -29,16 +29,16 @@ namespace ExcelMerger.Tests
                 // Папка с тем же префиксом, но НЕ прямо в папке временных — это папка человека.
                 string lookalike = Path.Combine(root.Path, "Документы", "iwo_wrap_мой", "скан.pdf");
 
-                AssertEqual(Path.GetDirectoryName(user),
+                AssertEq(Path.GetDirectoryName(user),
                     PdfPageOrderFormBase.FirstUserFolder(new[] { wrapper, user }, root.Path),
                     "пустой лист первым: папка берётся у следующей настоящей страницы");
-                AssertEqual(Path.GetDirectoryName(user),
+                AssertEq(Path.GetDirectoryName(user),
                     PdfPageOrderFormBase.FirstUserFolder(new[] { null, "", "пустая страница", user }, root.Path),
                     "null, пустая строка и подпись вместо пути пропускаются");
-                AssertEqual(null, PdfPageOrderFormBase.FirstUserFolder(new[] { wrapper }, root.Path),
+                AssertEq(null, PdfPageOrderFormBase.FirstUserFolder(new[] { wrapper }, root.Path),
                     "одни обёртки — папку выбирает сам диалог");
-                AssertEqual(null, PdfPageOrderFormBase.FirstUserFolder(null, root.Path), "null-набор");
-                AssertEqual(Path.GetDirectoryName(lookalike),
+                AssertEq(null, PdfPageOrderFormBase.FirstUserFolder(null, root.Path), "null-набор");
+                AssertEq(Path.GetDirectoryName(lookalike),
                     PdfPageOrderFormBase.FirstUserFolder(new[] { lookalike }, root.Path),
                     "похожее имя вне папки временных — обычная папка человека");
                 AssertTrue(PdfPageOrderFormBase.IsWrapperPath(wrapper, root.Path + "\\"),
@@ -226,26 +226,26 @@ namespace ExcelMerger.Tests
             // Лист вставлен после стр. 3: его место — во второй части, а не в первой по «номеру» 0.
             List<PdfPageRef> working = AuditDWorking("s0", "s1", "s2", "blank", "s3");
             List<PdfSplitPart> parts = PdfSplitPlan.ByRanges(working, ranges);
-            AssertEqual(2, parts.Count, "две части");
-            AssertEqual("s0,s1", AuditDSig(parts[0].Pages), "первая часть без чужого листа");
-            AssertEqual("s2,blank,s3", AuditDSig(parts[1].Pages), "лист — вслед за стр. 3");
+            AssertEq(2, parts.Count, "две части");
+            AssertEq("s0,s1", AuditDSig(parts[0].Pages), "первая часть без чужого листа");
+            AssertEq("s2,blank,s3", AuditDSig(parts[1].Pages), "лист — вслед за стр. 3");
 
             // Ведущий лист: в первую непустую часть, а не в часть со стр. 1 (её здесь нет).
             parts = PdfSplitPlan.ByRanges(AuditDWorking("blank", "s0", "s1", "s2", "s3"),
                 new List<PageRange> { new PageRange(2, 3) });
-            AssertEqual(1, parts.Count, "одна часть");
-            AssertEqual("blank,s2,s3", AuditDSig(parts[0].Pages), "ведущий лист — в начало первой части");
+            AssertEq(1, parts.Count, "одна часть");
+            AssertEq("blank,s2,s3", AuditDSig(parts[0].Pages), "ведущий лист — в начало первой части");
 
             // Лист за страницей, не вошедшей ни в один диапазон, уходит вместе с ней.
             parts = PdfSplitPlan.ByRanges(AuditDWorking("s0", "blank", "s1", "s2"),
                 new List<PageRange> { new PageRange(1, 2) }, AuditDSource);
-            AssertEqual("s1,s2", AuditDSig(parts[0].Pages), "лист за исключённой стр. 1 не попадает в часть");
+            AssertEq("s1,s2", AuditDSig(parts[0].Pages), "лист за исключённой стр. 1 не попадает в часть");
 
-            AssertEqual(0, PdfSplitPlan.ByRanges(null, ranges).Count, "null-набор");
-            AssertEqual(0, PdfSplitPlan.ByRanges(working, null).Count, "null-диапазоны");
-            AssertEqual(AuditDSource, PdfSplitPlan.InferSource(AuditDWorking("blank", "blank", "blank", "s0", "s1")),
+            AssertEq(0, PdfSplitPlan.ByRanges(null, ranges).Count, "null-набор");
+            AssertEq(0, PdfSplitPlan.ByRanges(working, null).Count, "null-диапазоны");
+            AssertEq(AuditDSource, PdfSplitPlan.InferSource(AuditDWorking("blank", "blank", "blank", "s0", "s1")),
                 "источник — файл с наибольшим числом разных страниц, а не самый частый лист");
-            AssertEqual(null, PdfSplitPlan.InferSource(null), "null-набор — источника нет");
+            AssertEq(null, PdfSplitPlan.InferSource(null), "null-набор — источника нет");
         }
 
         [Test("Аудит D: разделение по закладкам — вставленный лист идёт за своей страницей")]
@@ -258,14 +258,14 @@ namespace ExcelMerger.Tests
             };
             List<PdfSplitPart> parts = PdfSplitPlan.ByBookmarks(
                 AuditDWorking("s0", "s1", "s2", "blank", "s3"), marks, 4);
-            AssertEqual(2, parts.Count, "две главы");
-            AssertEqual("s0,s1", AuditDSig(parts[0].Pages), "глава A без чужого листа");
-            AssertEqual("s2,blank,s3", AuditDSig(parts[1].Pages), "лист — в главе B, за стр. 3");
-            AssertEqual("B", parts[1].BookmarkTitle, "название главы сохранено");
+            AssertEq(2, parts.Count, "две главы");
+            AssertEq("s0,s1", AuditDSig(parts[0].Pages), "глава A без чужого листа");
+            AssertEq("s2,blank,s3", AuditDSig(parts[1].Pages), "лист — в главе B, за стр. 3");
+            AssertEq("B", parts[1].BookmarkTitle, "название главы сохранено");
 
             parts = PdfSplitPlan.ByBookmarks(AuditDWorking("blank", "s2", "s3"), marks, 4, AuditDSource);
-            AssertEqual(1, parts.Count, "пустая глава A пропущена");
-            AssertEqual("blank,s2,s3", AuditDSig(parts[0].Pages), "ведущий лист — в первую живую главу");
+            AssertEq(1, parts.Count, "пустая глава A пропущена");
+            AssertEq("blank,s2,s3", AuditDSig(parts[0].Pages), "ведущий лист — в первую живую главу");
         }
 
         [Test("Аудит D: источник разделения при равенстве — документ, а не вставленный лист")]
@@ -279,18 +279,18 @@ namespace ExcelMerger.Tests
             // От документа осталась стр. 8, перед ней вставлен пустой лист: по одной странице у обоих.
             List<PdfPageRef> working = AuditDWorking("blank", "s7");
             List<PdfSplitPart> parts = PdfSplitPlan.ByBookmarks(working, marks, 10);
-            AssertEqual(1, parts.Count, "одна глава");
-            AssertEqual("B", parts[0].BookmarkTitle, "стр. 8 — в главе B, а не в A");
-            AssertEqual("blank,s7", AuditDSig(parts[0].Pages), "ведущий лист — вместе с ней");
+            AssertEq(1, parts.Count, "одна глава");
+            AssertEq("B", parts[0].BookmarkTitle, "стр. 8 — в главе B, а не в A");
+            AssertEq("blank,s7", AuditDSig(parts[0].Pages), "ведущий лист — вместе с ней");
 
-            AssertEqual(AuditDSource, PdfSplitPlan.InferSource(AuditDWorking("s7", "blank", "blank")),
+            AssertEq(AuditDSource, PdfSplitPlan.InferSource(AuditDWorking("s7", "blank", "blank")),
                 "скопированный лист чаще встречается, но источником не становится");
             var twoFiles = new List<PdfPageRef>
             {
                 new PdfPageRef { SourcePath = @"C:\docs\first.pdf", PageIndex = 0 },
                 new PdfPageRef { SourcePath = AuditDSource, PageIndex = 0 }
             };
-            AssertEqual(@"C:\docs\first.pdf", PdfSplitPlan.InferSource(twoFiles),
+            AssertEq(@"C:\docs\first.pdf", PdfSplitPlan.InferSource(twoFiles),
                 "два настоящих файла поровну — по-прежнему первый встреченный");
         }
 
@@ -334,7 +334,7 @@ namespace ExcelMerger.Tests
                 AssertTrue(error.Message.Contains("5") && error.Message.Contains("договор.pdf"),
                     "сообщение называет страницу файла и файл: " + error.Message);
             }
-            AssertEqual(2, calls, "одна повторная попытка перед отказом");
+            AssertEq(2, calls, "одна повторная попытка перед отказом");
 
             // Со второй попытки отрисовалась — печатается как обычно.
             calls = 0;
@@ -344,7 +344,7 @@ namespace ExcelMerger.Tests
                 PrintPageEventArgs e = AuditDPrintPage(doc);
                 AssertTrue(!e.HasMorePages, "единственный лист — последний");
             }
-            AssertEqual(2, calls, "повтор дал страницу");
+            AssertEq(2, calls, "повтор дал страницу");
 
             // Предпросмотр не строгий: исключение из отрисовки окна уронило бы приложение.
             using (PrintDocument doc = PdfPrintService.CreateJob(pages, null, null, null,
@@ -366,7 +366,7 @@ namespace ExcelMerger.Tests
                 delegate { return AuditDBitmap(40, 60); }, true))
                 AssertThrowsExactly<OperationCanceledException>("отмена после первого листа",
                     delegate { AuditDPrintPage(doc); });
-            AssertEqual("1", string.Join(",", progress.ConvertAll(delegate(int i) { return i.ToString(); }).ToArray()),
+            AssertEq("1", string.Join(",", progress.ConvertAll(delegate(int i) { return i.ToString(); }).ToArray()),
                 "начатый лист допечатан и учтён");
 
             // Отмена после ПОСЛЕДНЕГО листа уже ничего не отменяет: задание целиком отдано.
@@ -405,7 +405,7 @@ namespace ExcelMerger.Tests
             using (PrintDocument doc = PdfPrintService.CreateJob(pages, null, null, null,
                 delegate { return null; }, true, names))
             {
-                AssertEqual(caption, doc.DocumentName, "имя задания в очереди принтера");
+                AssertEq(caption, doc.DocumentName, "имя задания в очереди принтера");
                 MergeException error = AssertThrowsExactly<MergeException>("пустой рендер листа",
                     delegate { AuditDPrintPage(doc); });
                 AssertTrue(error.Message.Contains(caption) && !error.Message.Contains("blank0000"),
@@ -422,7 +422,7 @@ namespace ExcelMerger.Tests
             // Без имён — как раньше: имя файла страницы.
             using (PrintDocument doc = PdfPrintService.CreateJob(pages, null, null, null,
                 delegate { return null; }, false))
-                AssertEqual("blank0000.pdf", doc.DocumentName, "имена не переданы — имя файла");
+                AssertEq("blank0000.pdf", doc.DocumentName, "имена не переданы — имя файла");
         }
 
         [Test("Аудит D: вставленный пустой лист для человека — «пустая страница», а не имя обёртки")]
@@ -456,7 +456,7 @@ namespace ExcelMerger.Tests
             using (PrintDocument doc = AuditDLiveJob(controller, 3, delegate { rendered++; }))
                 AssertThrowsExactly<OperationCanceledException>("«Отмена» после первого листа",
                     delegate { PdfPrintService.RunJob(doc); });
-            AssertEqual(1, rendered, "после «Отмены» листы больше не рисуются");
+            AssertEq(1, rendered, "после «Отмены» листы больше не рисуются");
             AssertTrue(controller.EndPrintCancel == true,
                 "контроллер закрыл задание как отменённое (AbortDoc), получено: " + controller.EndPrintCancel);
         }
@@ -471,7 +471,7 @@ namespace ExcelMerger.Tests
                 delegate { rendered++; }))
                 AssertThrowsExactly<OperationCanceledException>("задание не начато",
                     delegate { PdfPrintService.RunJob(doc); });
-            AssertEqual(0, rendered, "ни одного листа не нарисовано");
+            AssertEq(0, rendered, "ни одного листа не нарисовано");
         }
 
         [Test("Аудит D: печать (живое) — «Отмена», нажатая после отправки задания, не отмена")]
@@ -483,7 +483,7 @@ namespace ExcelMerger.Tests
             int rendered = 0;
             using (PrintDocument doc = AuditDLiveJob(controller, 2, delegate { rendered++; }))
                 PdfPrintService.RunJob(doc);
-            AssertEqual(2, rendered, "напечатаны оба листа");
+            AssertEq(2, rendered, "напечатаны оба листа");
             AssertTrue(controller.EndPrintCancel == false, "задание закрыто штатно (EndDoc)");
         }
 
@@ -579,7 +579,7 @@ namespace ExcelMerger.Tests
                 "объединение, движок упал: " + merge);
             AssertTrue(PdfMergeForm.DoneStatus(3, GsRewriteResult.RejectedByPolicy, CompressionLevel.Small)
                 .StartsWith("✓"), "файл не уменьшился — это всё ещё успех");
-            AssertEqual(null, PdfToolFormBase.CompressedPart(GsRewriteResult.Failed, CompressionLevel.None),
+            AssertEq(null, PdfToolFormBase.CompressedPart(GsRewriteResult.Failed, CompressionLevel.None),
                 "сжатие не заказывали — о нём молчим");
 
             string extract = PdfSplitForm.DoneStatus(false, 1, 4, 0, 1, CompressionLevel.Good);
@@ -615,7 +615,7 @@ namespace ExcelMerger.Tests
                     PdfPasswords.Remember(locked, "1234"); // человек открыл файл, введя пароль
                     string copy = dir.File("копия.pdf");
                     PdfOpsForm.WriteWorkingCopy(locked, AuditDPristine(locked, 1), 1, copy);
-                    AssertEqual(1, PdfPageProbe.PageCount(copy),
+                    AssertEq(1, PdfPageProbe.PageCount(copy),
                         "копия читается без пароля — движку не нужен пароль в командной строке");
                     if (Ghostscript.Available)
                         AssertTrue(PdfCompression.CompressDetailedUnpublished(copy, CompressionLevel.Small) !=

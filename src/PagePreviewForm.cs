@@ -642,6 +642,17 @@ namespace ExcelMerger
             _closed = true;
             Application.RemoveMessageFilter(this); // снимаем всегда: фильтр держал бы ссылку на окно
             base.OnFormClosed(e);
+            ReleasePage();
+        }
+
+        /// <summary>
+        /// Показанный и «летящий» растр с их резервом памяти. Зовётся и из закрытия, и из Dispose:
+        /// окно, уничтоженное без закрытия (Dispose не поднимает FormClosed — проверено), иначе
+        /// оставляло бы глобальный фильтр сообщений со ссылкой на себя и растр в резерве бюджета.
+        /// Повторный вызов безопасен.
+        /// </summary>
+        private void ReleasePage()
+        {
             _picture.Image = null;
             _image = null;
             if (_ownedImage != null)
@@ -652,6 +663,14 @@ namespace ExcelMerger
 
         protected override void Dispose(bool disposing)
         {
+            if (disposing)
+            {
+                // Тот же порядок, что при закрытии: сначала флаг, затем поле «в пути» — поздний
+                // рендер увидит флаг и освободит растр сам (см. Post).
+                _closed = true;
+                Application.RemoveMessageFilter(this);
+                ReleasePage();
+            }
             // ContextMenuStrip назначен свойством, а не добавлен в Controls: сам он не освободится.
             // Освобождаем здесь, а не в Closed — там меню ещё может обрабатывать свой клик.
             // Сначала отвязываем от формы, чтобы база не трогала уже освобождённый объект.

@@ -129,7 +129,7 @@ namespace ExcelMerger.Tests
                     + "/Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >> "
                     + "/Extend [true true] >> >>");
                 List<PdfPageText> pages = PdfTextExtract.Extract(path);
-                AssertEqual(1, pages.Count, "страница извлечена");
+                AssertEq(1, pages.Count, "страница извлечена");
                 string all = string.Join(" ", WordTexts(pages[0]).ToArray());
                 AssertTrue(all.Contains("Gradient") && all.Contains("words"), "слова с узором на месте: " + all);
                 AssertTrue(all.Contains("Plain"), "обычная строка на месте: " + all);

@@ -18,10 +18,10 @@ namespace ExcelMerger.Tests
         [Test("Аудит C: «%» в -sOutputFile удваивается, шаблон страниц — только в имени")]
         private static void AuditGsOutputPercentEscaped()
         {
-            AssertEqual(@"C:\Счета 50%%\Contract%%20draft.pdf",
+            AssertEq(@"C:\Счета 50%%\Contract%%20draft.pdf",
                 GsArguments.LiteralOutput(@"C:\Счета 50%\Contract%20draft.pdf"), "буквальный путь");
-            AssertEqual(@"C:\a\b.pdf", GsArguments.LiteralOutput(@"C:\a\b.pdf"), "без «%» — как есть");
-            AssertEqual(@"C:\Папка 50%%\bg-%04d.png",
+            AssertEq(@"C:\a\b.pdf", GsArguments.LiteralOutput(@"C:\a\b.pdf"), "без «%» — как есть");
+            AssertEq(@"C:\Папка 50%%\bg-%04d.png",
                 GsArguments.OutputPattern(@"C:\Папка 50%", "bg-%04d.png"), "папка экранирована, шаблон — нет");
 
             string compress = PdfCompression.BuildArguments(@"C:\в 50%\a.pdf", @"C:\в 50%\a%20.tmp",
@@ -57,22 +57,22 @@ namespace ExcelMerger.Tests
                 string[] before = AuditCNames(dir);
 
                 AssertTrue(PdfCompression.Compress(img, CompressionLevel.Small), "сжатие с «%» применено");
-                AssertEqual(2, PdfPageCount(img), "сжатие: страницы на месте");
+                AssertEq(2, PdfPageCount(img), "сжатие: страницы на месте");
                 AssertTrue(PdfConvert.Apply(color, PdfConvertMode.Grayscale), "серое с «%20d» применено");
-                AssertEqual(3, PdfPageCount(color), "серое: страницы на месте");
+                AssertEq(3, PdfPageCount(color), "серое: страницы на месте");
                 // Короткое ожидание — не на наш код: однажды наблюдался мимолётный
                 // «<ИМЯ>.IWO-<guid>.PDF.tmp» в верхнем регистре — так пишет не приложение, а
                 // замена файла средствами ОС/антивирус. Файлы на страницу от «%20d» сами не
                 // исчезли бы, поэтому проверку это не ослабляет.
                 string expected = string.Join("|", before);
                 WaitFor(delegate { return expected == string.Join("|", AuditCNames(dir)); });
-                AssertEqual(expected, string.Join("|", AuditCNames(dir)),
+                AssertEq(expected, string.Join("|", AuditCNames(dir)),
                     "в папке ни лишних, ни пропавших файлов");
 
                 string outDir = Path.Combine(dir, "фон 5%");
                 List<string> pages = PageRasterizer.RenderPagesWithoutText(color, 1, 3, 36, outDir, null);
-                AssertEqual(3, pages.Count, "растр: по файлу на страницу в папке с «%»");
-                AssertEqual(3, Directory.GetFiles(outDir).Length, "растр: в папке только страницы");
+                AssertEq(3, pages.Count, "растр: по файлу на страницу в папке с «%»");
+                AssertEq(3, Directory.GetFiles(outDir).Length, "растр: в папке только страницы");
             }
         }
 
@@ -122,7 +122,7 @@ namespace ExcelMerger.Tests
                     AssertTrue(!doc.Info.Elements.ContainsKey("/Author"), "пустой автор — ключа нет");
                     AssertTrue(!doc.Info.Elements.ContainsKey("/Keywords"), "пустые ключевые слова — ключа нет");
                     AssertTrue(!doc.Info.Elements.ContainsKey("/Subject"), "null-тема — ключа нет");
-                    AssertEqual("Новый заголовок", doc.Info.Title, "заголовок записан");
+                    AssertEq("Новый заголовок", doc.Info.Title, "заголовок записан");
                 }
                 AssertTrue(AuditCIndexOf(File.ReadAllBytes(output), Encoding.ASCII.GetBytes("Ivan Petrov")) < 0,
                     "имени автора в файле не осталось нигде");
@@ -222,7 +222,7 @@ namespace ExcelMerger.Tests
                 var sb = new StringBuilder();
                 foreach (PdfBookmark m in marks)
                     sb.Append(m.Title).Append(':').Append(m.Level).Append(':').Append(m.PageIndex).Append(';');
-                AssertEqual("Глава 1:0:0;Раздел 1.1:1:1;Глава 2:0:2;После:0:2;", sb.ToString(),
+                AssertEq("Глава 1:0:0;Раздел 1.1:1:1;Глава 2:0:2;После:0:2;", sb.ToString(),
                     "дети «папки» на месте");
             }
         }
@@ -232,18 +232,18 @@ namespace ExcelMerger.Tests
         [Test("Аудит C: имена устройств Windows получают «_» без учёта регистра")]
         private static void AuditSanitizeDeviceNames()
         {
-            AssertEqual("CON_", NameTemplate.Sanitize("CON"), "CON");
-            AssertEqual("con_.part", NameTemplate.Sanitize("con.part"), "con.part");
-            AssertEqual("Nul_", NameTemplate.Sanitize("Nul"), "Nul");
-            AssertEqual("prn_", NameTemplate.Sanitize("prn."), "хвостовая точка срезается, потом проверка");
-            AssertEqual("AUX_.a.b", NameTemplate.Sanitize("AUX.a.b"), "часть до первой точки");
-            AssertEqual("COM1_", NameTemplate.Sanitize("COM1"), "COM1");
-            AssertEqual("lpt9_.pdf", NameTemplate.Sanitize("lpt9.pdf"), "lpt9");
-            AssertEqual("COM\u00B9_", NameTemplate.Sanitize("COM\u00B9"), "COM¹");
-            AssertEqual("COM0", NameTemplate.Sanitize("COM0"), "COM0 — обычное имя");
-            AssertEqual("CONSOLE", NameTemplate.Sanitize("CONSOLE"), "CONSOLE — обычное имя");
-            AssertEqual("CON отчёт", NameTemplate.Sanitize("CON отчёт"), "CON с продолжением — обычное имя");
-            AssertEqual("LPT10", NameTemplate.Sanitize("LPT10"), "LPT10 — обычное имя");
+            AssertEq("CON_", NameTemplate.Sanitize("CON"), "CON");
+            AssertEq("con_.part", NameTemplate.Sanitize("con.part"), "con.part");
+            AssertEq("Nul_", NameTemplate.Sanitize("Nul"), "Nul");
+            AssertEq("prn_", NameTemplate.Sanitize("prn."), "хвостовая точка срезается, потом проверка");
+            AssertEq("AUX_.a.b", NameTemplate.Sanitize("AUX.a.b"), "часть до первой точки");
+            AssertEq("COM1_", NameTemplate.Sanitize("COM1"), "COM1");
+            AssertEq("lpt9_.pdf", NameTemplate.Sanitize("lpt9.pdf"), "lpt9");
+            AssertEq("COM\u00B9_", NameTemplate.Sanitize("COM\u00B9"), "COM¹");
+            AssertEq("COM0", NameTemplate.Sanitize("COM0"), "COM0 — обычное имя");
+            AssertEq("CONSOLE", NameTemplate.Sanitize("CONSOLE"), "CONSOLE — обычное имя");
+            AssertEq("CON отчёт", NameTemplate.Sanitize("CON отчёт"), "CON с продолжением — обычное имя");
+            AssertEq("LPT10", NameTemplate.Sanitize("LPT10"), "LPT10 — обычное имя");
         }
 
         [Test("Аудит C: разбиение по закладке «CON» создаёт файл")]
@@ -263,9 +263,9 @@ namespace ExcelMerger.Tests
                 string outDir = Path.Combine(tmp.Path, "out");
                 List<string> parts = PdfSplitService.SplitByBookmarks(src, outDir, "исходник",
                     null, null, null, "[BOOKMARK]");
-                AssertEqual(2, parts.Count, "две части");
-                AssertEqual("CON_.pdf", Path.GetFileName(parts[0]), "часть «CON»");
-                AssertEqual("nul_.pdf", Path.GetFileName(parts[1]), "часть «nul»");
+                AssertEq(2, parts.Count, "две части");
+                AssertEq("CON_.pdf", Path.GetFileName(parts[0]), "часть «CON»");
+                AssertEq("nul_.pdf", Path.GetFileName(parts[1]), "часть «nul»");
                 AssertTrue(File.Exists(parts[0]) && File.Exists(parts[1]), "файлы на диске");
             }
         }
@@ -338,14 +338,14 @@ namespace ExcelMerger.Tests
         {
             List<string> list = Ghostscript.PathCandidates(
                 @".;bin;C:tools;\gs\bin; ;;..\x;C:\gs\bin; \\srv\share\gs ;D:/gs");
-            AssertEqual(string.Join("|", new[]
+            AssertEq(string.Join("|", new[]
                 {
                     @"C:\gs\bin\gswin64c.exe", @"C:\gs\bin\gswin32c.exe",
                     @"\\srv\share\gs\gswin64c.exe", @"\\srv\share\gs\gswin32c.exe",
                     @"D:/gs\gswin64c.exe", @"D:/gs\gswin32c.exe"
                 }), string.Join("|", list.ToArray()), "кандидаты");
-            AssertEqual(0, Ghostscript.PathCandidates(null).Count, "PATH не задан");
-            AssertEqual(0, Ghostscript.PathCandidates("C:|bad\x01;C:").Count, "мусор не роняет");
+            AssertEq(0, Ghostscript.PathCandidates(null).Count, "PATH не задан");
+            AssertEq(0, Ghostscript.PathCandidates("C:|bad\x01;C:").Count, "мусор не роняет");
         }
 
         // ---------- 7. Разделение открывает исходник один раз ----------
@@ -359,12 +359,12 @@ namespace ExcelMerger.Tests
                 MakeBookmarkedPdf(src);
                 PdfSourceSet.OpensForTests = 0;
                 List<string> every = PdfSplitService.SplitEveryN(src, 1, Path.Combine(tmp.Path, "n"), "исходник");
-                AssertEqual(4, every.Count, "постранично — четыре части");
-                AssertEqual(1, PdfSourceSet.OpensForTests, "постранично: исходник разобран один раз");
+                AssertEq(4, every.Count, "постранично — четыре части");
+                AssertEq(1, PdfSourceSet.OpensForTests, "постранично: исходник разобран один раз");
                 PdfSourceSet.OpensForTests = 0;
                 List<string> byMarks = PdfSplitService.SplitByBookmarks(src, Path.Combine(tmp.Path, "b"), "исходник");
-                AssertEqual(2, byMarks.Count, "по закладкам — две части");
-                AssertEqual(1, PdfSourceSet.OpensForTests, "по закладкам: исходник разобран один раз");
+                AssertEq(2, byMarks.Count, "по закладкам — две части");
+                AssertEq(1, PdfSourceSet.OpensForTests, "по закладкам: исходник разобран один раз");
                 // Кэш оглавления на серию не должен ломать перенос: вложенная закладка на месте.
                 string marks = ReadMarks(byMarks[0]);
                 AssertTrue(marks.Contains("Глава А") && marks.Contains("Раздел А.1"), "оглавление части: " + marks);
@@ -463,7 +463,7 @@ namespace ExcelMerger.Tests
                 {
                     MergeException busy = AssertThrowsExactly<MergeException>("занятый файл",
                         delegate { PdfMergeService.Merge(order, locked); });
-                    AssertEqual(busyText, busy.Message, "занятый файл — «занят»");
+                    AssertEq(busyText, busy.Message, "занятый файл — «занят»");
                 }
 
                 string folder = tmp.File("это папка.pdf");
@@ -502,8 +502,8 @@ namespace ExcelMerger.Tests
                         PageRasterizer.DecryptedPrefix + "*.pdf"), StringComparer.OrdinalIgnoreCase);
                     string outDir = Path.Combine(tmp.Path, "фон");
                     List<string> pages = PageRasterizer.RenderPagesWithoutText(pdf, 1, 1, 36, outDir, null);
-                    AssertEqual(1, pages.Count, "страница отрисована с паролем");
-                    AssertEqual(1, Directory.GetFiles(outDir).Length, "в папке вызывающего только страница");
+                    AssertEq(1, pages.Count, "страница отрисована с паролем");
+                    AssertEq(1, Directory.GetFiles(outDir).Length, "в папке вызывающего только страница");
                     using (BudgetedBitmap bmp = PageRasterizer.RenderPage(pdf, 1, 595, 842))
                         AssertTrue(bmp != null, "одиночный рендер с паролем");
                     foreach (string f in Directory.GetFiles(Path.GetTempPath(), PageRasterizer.DecryptedPrefix + "*.pdf"))

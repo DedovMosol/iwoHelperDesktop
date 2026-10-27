@@ -486,6 +486,9 @@ namespace ExcelMerger
             StartRecentWorker(generation);
         }
 
+        /// <summary>Шов для теста: подмена проверки существования недавних файлов (null — File.Exists).</summary>
+        internal static Func<string, bool> RecentExistsForTests;
+
         private void StartRecentWorker(int generation)
         {
             _recentWorkerActive = true;
@@ -495,8 +498,10 @@ namespace ExcelMerger
                 List<HistoryEntry> found = null;
                 try
                 {
+                    // Проверка существования — только здесь, в фоне: путь на отключённой сетевой
+                    // шаре отвечает около секунды, и на потоке интерфейса это задерживало запуск.
                     found = OperationHistory.RecentFiles(OperationHistory.Load(),
-                        RecentCount, System.IO.File.Exists);
+                        RecentCount, RecentExistsForTests ?? System.IO.File.Exists);
                 }
                 catch { }
                 StartForm form = owner.Target as StartForm;

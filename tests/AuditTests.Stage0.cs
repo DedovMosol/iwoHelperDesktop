@@ -272,7 +272,7 @@ namespace ExcelMerger.Tests
                     // 15: лист дерева имён
                     "<< /Limits [(sec.1) (sec.2)] /Names [(sec.1) [3 0 R /Fit] (sec.2) << /D [4 0 R /Fit] >>] >>");
                 List<PdfBookmark> marks = Stage0ReadBookmarks(path);
-                AssertEqual("Intro@0/L0+, Child@1/L1, Strings@1/L0, Names@1/L0, Number@1/L0",
+                AssertEq("Intro@0/L0+, Child@1/L1, Strings@1/L0, Names@1/L0, Number@1/L0",
                     Stage0BookmarkSig(marks), "все виды цели разрешены, /GoToR пропущен");
 
                 // Объединение с таким файлом раньше падало целиком на чтении оглавления.
@@ -282,7 +282,7 @@ namespace ExcelMerger.Tests
                     new PdfPageRef { SourcePath = path, PageIndex = 0 },
                     new PdfPageRef { SourcePath = path, PageIndex = 1 }
                 }, merged);
-                AssertEqual("Intro@0/L0+, Child@1/L1, Strings@1/L0, Names@1/L0, Number@1/L0",
+                AssertEq("Intro@0/L0+, Child@1/L1, Strings@1/L0, Names@1/L0, Number@1/L0",
                     Stage0BookmarkSig(Stage0ReadBookmarks(merged)), "оглавление перенесено в результат");
             }
         }
@@ -325,7 +325,7 @@ namespace ExcelMerger.Tests
                     });
                     doc.Save(path);
                 }
-                AssertEqual("A@0/L0+, A1@1/L1, A1a@1/L2, B@2/L0, B1@2/L1+, B1a@2/L2",
+                AssertEq("A@0/L0+, A1@1/L1, A1a@1/L2, B@2/L0, B1@2/L1+, B1a@2/L2",
                     Stage0BookmarkSig(Stage0ReadBookmarks(path)), "раскрытость пережила запись и чтение");
                 using (PdfDocument doc = PdfReader.Open(path, PdfDocumentOpenMode.Import))
                 {
@@ -334,7 +334,7 @@ namespace ExcelMerger.Tests
                     Stage0RawCounts(root, counts);
                     // Видно: A, A1 (A раскрыта), B. Свёрнутая A1 прячет 1, свёрнутая B — 2 (B1 и,
                     // раз B1 раскрыта, B1a). У листьев /Count нет.
-                    AssertEqual("root=3, A=1, A1=-1, A1a=-, B=-2, B1=1, B1a=-",
+                    AssertEq("root=3, A=1, A1=-1, A1a=-, B=-2, B1=1, B1a=-",
                         string.Join(", ", counts.ToArray()), "/Count каждой закладки");
                 }
             }
@@ -372,7 +372,7 @@ namespace ExcelMerger.Tests
                 worker.Start();
                 AssertTrue(worker.Join(30000), "обход закончился");
                 AssertTrue(failure == null, "чтение не бросило: " + failure);
-                AssertEqual("", Stage0BookmarkSig(marks), "закладка глубже предела отброшена, остальное — папки без цели");
+                AssertEq("", Stage0BookmarkSig(marks), "закладка глубже предела отброшена, остальное — папки без цели");
             }
         }
 
@@ -399,14 +399,14 @@ namespace ExcelMerger.Tests
                     PdfBookmarks.AppendTopLevel(doc, "Part", 1);
                     doc.Save(path);
                 }
-                AssertEqual("A@0/L0+, A1@1/L1, Part@1/L0", Stage0BookmarkSig(Stage0ReadBookmarks(path)),
+                AssertEq("A@0/L0+, A1@1/L1, Part@1/L0", Stage0BookmarkSig(Stage0ReadBookmarks(path)),
                     "старое оглавление на месте, подпись части — в конце");
                 using (PdfDocument doc = PdfReader.Open(path, PdfDocumentOpenMode.Import))
                 {
                     PdfDictionary root = Stage0Dict(doc.Internals.Catalog.Elements["/Outlines"]);
                     var counts = new List<string> { "root=" + root.Elements["/Count"] };
                     Stage0RawCounts(root, counts);
-                    AssertEqual("root=3, A=1, A1=-, Part=-", string.Join(", ", counts.ToArray()),
+                    AssertEq("root=3, A=1, A1=-, Part=-", string.Join(", ", counts.ToArray()),
                         "видно A, A1 и Part; PDFsharp не затёр /Count корня своим счётчиком");
                 }
             }
@@ -429,7 +429,7 @@ namespace ExcelMerger.Tests
                 worker.IsBackground = true;
                 worker.Start();
                 AssertTrue(worker.Join(10000), "обход закончился (цикл /Next не бесконечен)");
-                AssertEqual("One@0/L0, Orphan@1/L0", Stage0BookmarkSig(marks),
+                AssertEq("One@0/L0, Orphan@1/L0", Stage0BookmarkSig(marks),
                     "битая закладка выпала, её ребёнок поднят, цикл оборван");
             }
         }
@@ -483,20 +483,8 @@ namespace ExcelMerger.Tests
         /// <summary>Ответить на ближайший вопрос MessageForm (Да/Нет), когда он откроется.</summary>
         private static System.Windows.Forms.Timer Stage0AnswerNextConfirm(bool yes, Action seen)
         {
-            var timer = new System.Windows.Forms.Timer { Interval = 50 };
-            timer.Tick += delegate
-            {
-                foreach (Form f in Application.OpenForms)
-                    if (f is MessageForm && f.Visible)
-                    {
-                        timer.Stop();
-                        if (seen != null) seen();
-                        f.DialogResult = yes ? DialogResult.Yes : DialogResult.No;
-                        return;
-                    }
-            };
-            timer.Start();
-            return timer;
+            return AnswerMessages(yes ? DialogResult.Yes : DialogResult.No, 1,
+                delegate { if (seen != null) seen(); });
         }
 
         [Test("Аудит PF-2: переход в «Прочие операции» с правленой сеткой сначала спрашивает")]
@@ -574,7 +562,7 @@ namespace ExcelMerger.Tests
                             FileShare.Read | FileShare.Delete))
                             output.Commit();
                     }
-                    AssertEqual("fresh", File.ReadAllText(target), (replace ? "замена" : "новый") + ": содержимое опубликовано");
+                    AssertEq("fresh", File.ReadAllText(target), (replace ? "замена" : "новый") + ": содержимое опубликовано");
                     AssertEq(1, Directory.GetFiles(dir.Path, Path.GetFileName(target) + "*").Length +
                         Directory.GetFiles(dir.Path, Path.GetFileNameWithoutExtension(target) + ".iwo-*").Length,
                         (replace ? "замена" : "новый") + ": временных файлов не осталось");
@@ -590,7 +578,7 @@ namespace ExcelMerger.Tests
                     output.Commit();
                 }
                 File.SetAttributes(readOnlyTarget, FileAttributes.Normal); // иначе TempDir не уберёт
-                AssertEqual("fresh", File.ReadAllText(readOnlyTarget), "только чтение: содержимое опубликовано");
+                AssertEq("fresh", File.ReadAllText(readOnlyTarget), "только чтение: содержимое опубликовано");
             }
         }
 
@@ -753,15 +741,15 @@ namespace ExcelMerger.Tests
             };
             var order = new List<string>(versions.Keys);
             string picked = Ghostscript.PickNewest(order, versions.ContainsKey, delegate(string p) { return versions[p]; });
-            AssertEqual(@"C:\gs\gs10.08.0\bin\gswin64c.exe", picked, "самый новый из четырёх");
-            AssertEqual(@"C:\user\gs64x\bin\gswin64c.exe", Ghostscript.PickNewest(
+            AssertEq(@"C:\gs\gs10.08.0\bin\gswin64c.exe", picked, "самый новый из четырёх");
+            AssertEq(@"C:\user\gs64x\bin\gswin64c.exe", Ghostscript.PickNewest(
                 new[] { @"C:\user\gs64x\bin\gswin64c.exe" }, versions.ContainsKey, delegate(string p) { return versions[p]; }),
                 "единственный без версии всё равно годится");
-            AssertEqual(@"C:\gs\gs9.56.1\bin\gswin64c.exe", Ghostscript.PickNewest(
+            AssertEq(@"C:\gs\gs9.56.1\bin\gswin64c.exe", Ghostscript.PickNewest(
                 new[] { @"C:\user\gs64x\bin\gswin64c.exe", @"C:\gs\gs9.56.1\bin\gswin64c.exe" },
                 versions.ContainsKey, delegate(string p) { return versions[p]; }), "с версией важнее, чем без неё");
-            AssertEqual(null, Ghostscript.PickNewest(order, delegate { return false; }, delegate { return null; }), "ни одного — null");
-            AssertEqual(@"C:\gs\gs10.07.1\bin\gswin64c.exe", Ghostscript.PickNewest(order,
+            AssertEq(null, Ghostscript.PickNewest(order, delegate { return false; }, delegate { return null; }), "ни одного — null");
+            AssertEq(@"C:\gs\gs10.07.1\bin\gswin64c.exe", Ghostscript.PickNewest(order,
                 delegate(string p) { return !p.Contains("10.08") && !p.Contains("9.56"); },
                 delegate(string p) { if (p.Contains("gs64x")) throw new IOException("нет доступа"); return versions[p]; }),
                 "сбой чтения версии исключает только этого кандидата");
@@ -779,12 +767,12 @@ namespace ExcelMerger.Tests
                 { @"D:\tools\gs\gswin64c.exe", new Version(99, 0, 0) }
             };
             Func<string, Version> versionOf = delegate(string p) { return all[p]; };
-            AssertEqual(@"C:\app\gs\bin\gswin64c.exe", Ghostscript.Choose(new[] { @"C:\app\gs\bin\gswin64c.exe" },
+            AssertEq(@"C:\app\gs\bin\gswin64c.exe", Ghostscript.Choose(new[] { @"C:\app\gs\bin\gswin64c.exe" },
                 delegate { return order; }, pathList, all.ContainsKey, versionOf), "вшитый — первым");
-            AssertEqual(@"C:\gs\gs10.08.0\bin\gswin64c.exe", Ghostscript.Choose(new[] { @"C:\app\none.exe" },
+            AssertEq(@"C:\gs\gs10.08.0\bin\gswin64c.exe", Ghostscript.Choose(new[] { @"C:\app\none.exe" },
                 delegate { return order; }, pathList, all.ContainsKey, versionOf), "без вшитого — самый новый установленный");
             AssertTrue(!pathAsked, "при установленном движке PATH не опрашивается");
-            AssertEqual(@"D:\tools\gs\gswin64c.exe", Ghostscript.Choose(new string[0],
+            AssertEq(@"D:\tools\gs\gswin64c.exe", Ghostscript.Choose(new string[0],
                 delegate { return new string[0]; }, pathList, all.ContainsKey, versionOf), "PATH — последний шанс");
             AssertTrue(pathAsked, "без установленных PATH опрошен");
 

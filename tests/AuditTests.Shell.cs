@@ -336,8 +336,8 @@ namespace ExcelMerger.Tests
             string notes = UpdateChecker.DialogNotes(EightBulletNotes(), "9.9.9", "ru");
             string[] lines = notes.Replace("\r\n", "\n").Split('\n');
             AssertEq(7, lines.Length, "шесть строк и многоточие");
-            AssertEqual("…", lines[6], "отброшенное заменено многоточием");
-            AssertEqual("", UpdateChecker.DialogNotes("мусор", "9.9.9", "ru"), "битый файл — пустая сводка");
+            AssertEq("…", lines[6], "отброшенное заменено многоточием");
+            AssertEq("", UpdateChecker.DialogNotes("мусор", "9.9.9", "ru"), "битый файл — пустая сводка");
         }
 
         // ---------- 1. Проверка обновлений при запуске: fail closed ----------

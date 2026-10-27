@@ -67,6 +67,29 @@ namespace ExcelMerger.Tests
             AssertTrue(tool.IsDisposed, "инструмент закрыт вместе с оболочкой");
         }
 
+        [Test("Аудит TS-8: предпросмотр, уничтоженный без закрытия, отпускает растр и его резерв памяти")]
+        private static void AuditTs8PreviewDisposeReleases()
+        {
+            System.Drawing.Bitmap owned = null;
+            long budget = PdfMemoryBudget.Used;
+            InIsolatedSettings("iwo_ts8_preview_", delegate
+            {
+                using (var dir = new TempDir("iwo_ts8_preview_"))
+                {
+                    PagePreviewForm preview = AuditDNewPreview(dir.File("нет.pdf"));
+                    preview.Show();
+                    AuditDJoinPreviewWorker(preview);
+                    System.Windows.Forms.Application.DoEvents();
+                    BudgetedBitmap page = AuditDBitmap(8, 8);
+                    owned = page.Bitmap;
+                    SetField(preview, "_ownedImage", page);
+                    preview.Dispose(); // без Close: FormClosed не поднимается (проверено)
+                }
+            });
+            AssertThrowsExactly<ArgumentException>("растр окна освобождён Dispose", delegate { owned.GetPixel(0, 0); });
+            AssertEq(budget, PdfMemoryBudget.Used, "резерв памяти растра вернулся");
+        }
+
         [Test("Аудит TS-17: дочерний процесс с окнами — неизвестная раскладка даёт код 2, закрытый stdin завершает процесс")]
         private static void AuditTs17WindowChildLifecycle()
         {

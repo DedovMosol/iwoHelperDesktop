@@ -85,8 +85,13 @@ namespace ExcelMerger
         /// Возвращает введённое или null при отказе (пустая строка тоже считается отказом:
         /// пустой пароль защищённый файл не откроет).
         /// </summary>
+        /// <summary>Шов для теста: ответ вместо модального окна (имя файла, повтор) → пароль; null — окно.</summary>
+        internal static Func<string, bool, string> ShowForTests;
+
         public static string Show(IWin32Window owner, string fileName, bool retry)
         {
+            if (ShowForTests != null)
+                return ShowForTests(fileName, retry);
             string prompt = string.Format(Loc.T(retry ? "pdf.password.again" : "pdf.password.prompt"), fileName);
             using (var dialog = new PasswordPromptDialog(Loc.T("pdf.password.title"), prompt))
             {

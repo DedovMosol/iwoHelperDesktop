@@ -615,7 +615,7 @@ namespace ExcelMerger.Tests
         private static void TestNamerForbiddenChars()
         {
             var n = new SheetNamer();
-            AssertEqual("От_чет _март_ 1_", n.Next("От:чет [март] 1?"), "санитизация");
+            AssertEq("От_чет _март_ 1_", n.Next("От:чет [март] 1?"), "санитизация");
         }
 
         private static void TestNamerTruncation()
@@ -623,16 +623,16 @@ namespace ExcelMerger.Tests
             var n = new SheetNamer();
             string name = n.Next("Очень длинное имя файла отчета за первый квартал");
             AssertTrue(name.Length <= 31, "длина " + name.Length + " превышает 31");
-            AssertEqual("Очень длинное имя файла отчета", name, "обрезка с зачисткой хвоста");
+            AssertEq("Очень длинное имя файла отчета", name, "обрезка с зачисткой хвоста");
         }
 
         private static void TestNamerDedupe()
         {
             var n = new SheetNamer();
-            AssertEqual("Отчет", n.Next("Отчет"), "первое имя");
-            AssertEqual("Отчет_2", n.Next("Отчет"), "второе имя");
+            AssertEq("Отчет", n.Next("Отчет"), "первое имя");
+            AssertEq("Отчет_2", n.Next("Отчет"), "второе имя");
             // Дубликаты ищутся без учёта регистра, но регистр исходного имени сохраняется.
-            AssertEqual("отчет_3", n.Next("отчет"), "регистронезависимый дубль");
+            AssertEq("отчет_3", n.Next("отчет"), "регистронезависимый дубль");
         }
 
         private static void TestNamerDedupeLong()
@@ -641,7 +641,7 @@ namespace ExcelMerger.Tests
             string baseName = new string('а', 31);
             string first = n.Next(baseName);
             string second = n.Next(baseName);
-            AssertEqual(31, first.Length, "длина первого");
+            AssertEq(31, first.Length, "длина первого");
             AssertTrue(second.Length <= 31, "длина дубля " + second.Length);
             AssertTrue(second.EndsWith("_2"), "суффикс дубля: " + second);
         }
@@ -650,25 +650,25 @@ namespace ExcelMerger.Tests
         {
             var n = new SheetNamer();
             n.Reserve("Содержание");
-            AssertEqual("Содержание_2", n.Next("Содержание"), "резерв обходится суффиксом");
+            AssertEq("Содержание_2", n.Next("Содержание"), "резерв обходится суффиксом");
         }
 
         private static void TestNamerEmpty()
         {
             var n = new SheetNamer();
-            AssertEqual("Лист", n.Next("   "), "пустое имя");
+            AssertEq("Лист", n.Next("   "), "пустое имя");
         }
 
         private static void TestNamerHistory()
         {
             var n = new SheetNamer();
-            AssertEqual("History_", n.Next("History"), "зарезервированное имя");
+            AssertEq("History_", n.Next("History"), "зарезервированное имя");
         }
 
         private static void TestNamerApostrophes()
         {
             var n = new SheetNamer();
-            AssertEqual("абв", n.Next("'абв'"), "апострофы по краям");
+            AssertEq("абв", n.Next("'абв'"), "апострофы по краям");
         }
 
         // ---------- NaturalStringComparer ----------
@@ -681,21 +681,21 @@ namespace ExcelMerger.Tests
 
         private static void TestNaturalCase()
         {
-            AssertEqual(0, NaturalStringComparer.Instance.Compare("отчет 10", "ОТЧЕТ 10"), "регистр");
+            AssertEq(0, NaturalStringComparer.Instance.Compare("отчет 10", "ОТЧЕТ 10"), "регистр");
         }
 
         private static void TestNaturalNulls()
         {
             AssertTrue(NaturalStringComparer.Instance.Compare(null, "a") < 0, "null < строки");
             AssertTrue(NaturalStringComparer.Instance.Compare("a", null) > 0, "строка > null");
-            AssertEqual(0, NaturalStringComparer.Instance.Compare(null, null), "null == null");
+            AssertEq(0, NaturalStringComparer.Instance.Compare(null, null), "null == null");
         }
 
         private static void TestNaturalSortList()
         {
             var items = new List<string> { "Файл 10", "Файл 2", "Файл 1", "Файл 20" };
             items.Sort(NaturalStringComparer.Instance);
-            AssertEqual("Файл 1|Файл 2|Файл 10|Файл 20", string.Join("|", items.ToArray()), "порядок");
+            AssertEq("Файл 1|Файл 2|Файл 10|Файл 20", string.Join("|", items.ToArray()), "порядок");
         }
 
         // ---------- FindSourceFiles ----------
@@ -720,7 +720,7 @@ namespace ExcelMerger.Tests
                 var names = new List<string>();
                 foreach (string f in files)
                     names.Add(Path.GetFileName(f));
-                AssertEqual("бинарный.xlsb|макрос.xlsm|Отчет 2.XLSX|Отчет 10.xlsx|старый.xls",
+                AssertEq("бинарный.xlsb|макрос.xlsm|Отчет 2.XLSX|Отчет 10.xlsx|старый.xls",
                     string.Join("|", names.ToArray()), "состав и порядок");
             }
             finally
@@ -733,19 +733,19 @@ namespace ExcelMerger.Tests
 
         private static void TestCellTextEscape()
         {
-            AssertEqual("'=SUM(A1)", CellText.EscapeForEntry("=SUM(A1)"), "формула-инъекция");
-            AssertEqual("'12 345", CellText.EscapeForEntry("12 345"), "число-подобная строка");
-            AssertEqual("'01.02.2026", CellText.EscapeForEntry("01.02.2026"), "дата-подобная строка");
-            AssertEqual("''уже с апострофом", CellText.EscapeForEntry("'уже с апострофом"), "апостроф сохраняется");
-            AssertEqual(null, CellText.EscapeForEntry(null), "null");
-            AssertEqual("", CellText.EscapeForEntry(""), "пустая строка");
+            AssertEq("'=SUM(A1)", CellText.EscapeForEntry("=SUM(A1)"), "формула-инъекция");
+            AssertEq("'12 345", CellText.EscapeForEntry("12 345"), "число-подобная строка");
+            AssertEq("'01.02.2026", CellText.EscapeForEntry("01.02.2026"), "дата-подобная строка");
+            AssertEq("''уже с апострофом", CellText.EscapeForEntry("'уже с апострофом"), "апостроф сохраняется");
+            AssertEq(null, CellText.EscapeForEntry(null), "null");
+            AssertEq("", CellText.EscapeForEntry(""), "пустая строка");
         }
 
         private static void TestCellTextPassthrough()
         {
-            AssertEqual(42.5, CellText.EscapeValues(42.5), "число");
-            AssertEqual(true, CellText.EscapeValues(true), "булево");
-            AssertEqual(null, CellText.EscapeValues(null), "null");
+            AssertEq(42.5, CellText.EscapeValues(42.5), "число");
+            AssertEq(true, CellText.EscapeValues(true), "булево");
+            AssertEq(null, CellText.EscapeValues(null), "null");
         }
 
         private static void TestCellTextArrays()
@@ -755,8 +755,8 @@ namespace ExcelMerger.Tests
             plain[0, 0] = "=x";
             plain[0, 1] = 7.0;
             var outPlain = (object[,])CellText.EscapeValues(plain);
-            AssertEqual("'=x", outPlain[0, 0], "строка в 0-базном массиве");
-            AssertEqual(7.0, outPlain[0, 1], "число в 0-базном массиве");
+            AssertEq("'=x", outPlain[0, 0], "строка в 0-базном массиве");
+            AssertEq(7.0, outPlain[0, 1], "число в 0-базном массиве");
 
             // 1-базный массив — именно такой возвращает Range.Value2 через COM
             var comStyle = (object[,])Array.CreateInstance(
@@ -764,8 +764,8 @@ namespace ExcelMerger.Tests
             comStyle[1, 1] = "12 345";
             comStyle[2, 1] = 30.0;
             var outCom = (object[,])CellText.EscapeValues(comStyle);
-            AssertEqual("'12 345", outCom[1, 1], "строка в 1-базном массиве");
-            AssertEqual(30.0, outCom[2, 1], "число в 1-базном массиве");
+            AssertEq("'12 345", outCom[1, 1], "строка в 1-базном массиве");
+            AssertEq(30.0, outCom[2, 1], "число в 1-базном массиве");
         }
 
         // ---------- CLI ----------
@@ -800,12 +800,12 @@ namespace ExcelMerger.Tests
             ok.FileName = "а.xlsx";
             ok.Ok = true;
             ok.SheetName = "а";
-            AssertEqual("OK      а.xlsx -> [а]", ReportWriter.FormatFileLine(ok), "перенесённый");
+            AssertEq("OK      а.xlsx -> [а]", ReportWriter.FormatFileLine(ok), "перенесённый");
 
             var skip = new FileResult();
             skip.FileName = "б.xlsx";
             skip.Note = "битый";
-            AssertEqual("SKIPPED б.xlsx | битый", ReportWriter.FormatFileLine(skip), "пропущенный");
+            AssertEq("SKIPPED б.xlsx | битый", ReportWriter.FormatFileLine(skip), "пропущенный");
         }
 
         private static void TestReportBuild()
@@ -840,11 +840,11 @@ namespace ExcelMerger.Tests
                     ReportWriter.SaveWithRotation(dir, "отчёт " + i, stamp.AddMinutes(i), 3);
 
                 string[] files = Directory.GetFiles(dir, "report_*.txt");
-                AssertEqual(3, files.Length, "число отчётов после ротации");
+                AssertEq(3, files.Length, "число отчётов после ротации");
                 Array.Sort(files, StringComparer.OrdinalIgnoreCase);
                 AssertTrue(files[0].Contains("10-02-00"), "старейший из оставшихся");
                 AssertTrue(files[2].Contains("10-04-00"), "новейший");
-                AssertEqual("отчёт 4", File.ReadAllText(files[2]).TrimStart('﻿'), "содержимое новейшего");
+                AssertEq("отчёт 4", File.ReadAllText(files[2]).TrimStart('﻿'), "содержимое новейшего");
             }
             finally
             {
@@ -861,7 +861,7 @@ namespace ExcelMerger.Tests
                 string p1 = ReportWriter.SaveWithRotation(dir, "первый", stamp, 3);
                 string p2 = ReportWriter.SaveWithRotation(dir, "второй", stamp, 3);
                 AssertTrue(!string.Equals(p1, p2, StringComparison.OrdinalIgnoreCase), "имена различаются");
-                AssertEqual(2, Directory.GetFiles(dir, "report_*.txt").Length, "оба сохранены");
+                AssertEq(2, Directory.GetFiles(dir, "report_*.txt").Length, "оба сохранены");
             }
             finally
             {
@@ -880,11 +880,11 @@ namespace ExcelMerger.Tests
             var form = new System.Windows.Forms.Form();
             reg.Add("a", form);
             AssertTrue(reg.TryGetOpen("a", out f) && ReferenceEquals(f, form), "добавленный — открыт");
-            AssertEqual(1, reg.OpenForms().Count, "одно живое окно");
+            AssertEq(1, reg.OpenForms().Count, "одно живое окно");
 
             form.Dispose();
             AssertTrue(!reg.TryGetOpen("a", out f), "после Dispose — не открыт");
-            AssertEqual(0, reg.OpenForms().Count, "закрытые не считаются");
+            AssertEq(0, reg.OpenForms().Count, "закрытые не считаются");
 
             var f2 = new System.Windows.Forms.Form();
             reg.Add("b", f2);
@@ -900,9 +900,9 @@ namespace ExcelMerger.Tests
             var extra = new System.Windows.Forms.ToolStripMenuItem("Папка отчётов");
             using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }, extra))
             {
-                AssertEqual(1, menu.Items.Count, "один пункт строки меню");
+                AssertEq(1, menu.Items.Count, "один пункт строки меню");
                 var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
-                AssertEqual(Loc.T("menu.root"), help.Text, "название пункта");
+                AssertEq(Loc.T("menu.root"), help.Text, "название пункта");
 
                 var texts = new List<string>();
                 foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
@@ -928,7 +928,7 @@ namespace ExcelMerger.Tests
                 foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         menuItems++;
-                AssertEqual(3, menuItems, "без extras — три пункта (справка, статистика, язык)");
+                AssertEq(3, menuItems, "без extras — три пункта (справка, статистика, язык)");
             }
         }
 
@@ -936,9 +936,9 @@ namespace ExcelMerger.Tests
 
         private static void TestThumbZoomClamp()
         {
-            AssertEqual(ThumbZoom.MinWidth, ThumbZoom.Clamp(ThumbZoom.MinWidth - 50), "ниже минимума");
-            AssertEqual(ThumbZoom.MaxWidth, ThumbZoom.Clamp(ThumbZoom.MaxWidth + 50), "выше максимума");
-            AssertEqual(150, ThumbZoom.Clamp(150), "в диапазоне");
+            AssertEq(ThumbZoom.MinWidth, ThumbZoom.Clamp(ThumbZoom.MinWidth - 50), "ниже минимума");
+            AssertEq(ThumbZoom.MaxWidth, ThumbZoom.Clamp(ThumbZoom.MaxWidth + 50), "выше максимума");
+            AssertEq(150, ThumbZoom.Clamp(150), "в диапазоне");
         }
 
         private static void TestThumbZoomWheel()
@@ -947,22 +947,22 @@ namespace ExcelMerger.Tests
             int down = ThumbZoom.StepFromWheel(132, -120); // один щелчок вниз
             AssertTrue(up > 132, "колесо вверх увеличивает: " + up);
             AssertTrue(down < 132, "колесо вниз уменьшает: " + down);
-            AssertEqual(ThumbZoom.MaxWidth, ThumbZoom.StepFromWheel(ThumbZoom.MaxWidth, 1200), "не выше максимума");
-            AssertEqual(ThumbZoom.MinWidth, ThumbZoom.StepFromWheel(ThumbZoom.MinWidth, -1200), "не ниже минимума");
+            AssertEq(ThumbZoom.MaxWidth, ThumbZoom.StepFromWheel(ThumbZoom.MaxWidth, 1200), "не выше максимума");
+            AssertEq(ThumbZoom.MinWidth, ThumbZoom.StepFromWheel(ThumbZoom.MinWidth, -1200), "не ниже минимума");
         }
 
         private static void TestThumbZoomTile()
         {
             System.Drawing.Size s = ThumbZoom.TileSize(160);
-            AssertEqual(160, s.Width, "ширина");
+            AssertEq(160, s.Width, "ширина");
             AssertTrue(s.Height > s.Width, "высота больше ширины (портрет): " + s.Height);
 
             // Сетка owner-draw: лимита ImageList 256×256 больше нет, но ширина клампится
             // диапазоном масштаба [MinWidth..MaxWidth].
             System.Drawing.Size over = ThumbZoom.TileSize(10000);
-            AssertEqual(ThumbZoom.MaxWidth, over.Width, "кламп к максимуму масштаба");
+            AssertEq(ThumbZoom.MaxWidth, over.Width, "кламп к максимуму масштаба");
             System.Drawing.Size under = ThumbZoom.TileSize(1);
-            AssertEqual(ThumbZoom.MinWidth, under.Width, "кламп к минимуму масштаба");
+            AssertEq(ThumbZoom.MinWidth, under.Width, "кламп к минимуму масштаба");
         }
 
         // ---------- ListReorder ----------
@@ -970,23 +970,23 @@ namespace ExcelMerger.Tests
         private static void TestListReorderMoves()
         {
             var l = new List<string> { "a", "b", "c" };
-            AssertEqual(0, ListReorder.MoveUp(l, 0), "верхний вверх — на месте");
-            AssertEqual(2, ListReorder.MoveDown(l, 2), "нижний вниз — на месте");
-            AssertEqual(0, ListReorder.MoveUp(l, 1), "b вверх -> индекс 0");
-            AssertEqual("b|a|c", string.Join("|", l.ToArray()), "после MoveUp");
-            AssertEqual(1, ListReorder.MoveDown(l, 0), "b вниз -> индекс 1");
-            AssertEqual("a|b|c", string.Join("|", l.ToArray()), "MoveDown вернул порядок");
+            AssertEq(0, ListReorder.MoveUp(l, 0), "верхний вверх — на месте");
+            AssertEq(2, ListReorder.MoveDown(l, 2), "нижний вниз — на месте");
+            AssertEq(0, ListReorder.MoveUp(l, 1), "b вверх -> индекс 0");
+            AssertEq("b|a|c", string.Join("|", l.ToArray()), "после MoveUp");
+            AssertEq(1, ListReorder.MoveDown(l, 0), "b вниз -> индекс 1");
+            AssertEq("a|b|c", string.Join("|", l.ToArray()), "MoveDown вернул порядок");
         }
 
         private static void TestListReorderMoveRemove()
         {
             var l = new List<string> { "a", "b", "c", "d" };
             ListReorder.Move(l, 0, 3);
-            AssertEqual("b|c|a|d", string.Join("|", l.ToArray()), "перенос a перед позицией 3");
+            AssertEq("b|c|a|d", string.Join("|", l.ToArray()), "перенос a перед позицией 3");
             ListReorder.Move(l, 2, 0);
-            AssertEqual("a|b|c|d", string.Join("|", l.ToArray()), "перенос обратно");
+            AssertEq("a|b|c|d", string.Join("|", l.ToArray()), "перенос обратно");
             ListReorder.RemoveAt(l, new[] { 3, 1, 1, -1, 99 });
-            AssertEqual("a|c", string.Join("|", l.ToArray()), "удаление набора индексов без дублей");
+            AssertEq("a|c", string.Join("|", l.ToArray()), "удаление набора индексов без дублей");
         }
 
         // ---------- SourceFileList ----------
@@ -1000,20 +1000,20 @@ namespace ExcelMerger.Tests
         {
             var list = new SourceFileList();
             list.SetFiles(new[] { @"C:\in\А.xlsx", @"C:\in\Б.xlsx", @"C:\in\В.xlsx" });
-            AssertEqual(3, list.Count, "три файла");
-            AssertEqual(3, list.IncludedCount, "все включены");
+            AssertEq(3, list.Count, "три файла");
+            AssertEq(3, list.IncludedCount, "все включены");
 
             list[1].Include = false; // исключаем Б
-            AssertEqual(2, list.IncludedCount, "два включённых");
-            AssertEqual("А.xlsx|В.xlsx", IncludedSig(list), "исключённый не в списке");
+            AssertEq(2, list.IncludedCount, "два включённых");
+            AssertEq("А.xlsx|В.xlsx", IncludedSig(list), "исключённый не в списке");
 
             // Перестановка по позициям всего списка [А, Б, В] -> [В, А, Б]
             list.MoveUp(2); // [А, В, Б]
             list.MoveUp(1); // [В, А, Б]
-            AssertEqual("В.xlsx|А.xlsx", IncludedSig(list), "порядок среди включённых изменился");
+            AssertEq("В.xlsx|А.xlsx", IncludedSig(list), "порядок среди включённых изменился");
 
             list.SetAllIncluded(true);
-            AssertEqual(3, list.IncludedCount, "все снова включены");
+            AssertEq(3, list.IncludedCount, "все снова включены");
         }
 
         private static void TestSourceFileSort()
@@ -1021,7 +1021,7 @@ namespace ExcelMerger.Tests
             var list = new SourceFileList();
             list.SetFiles(new[] { @"C:\in\Отчет 10.xlsx", @"C:\in\Отчет 2.xlsx", @"C:\in\Отчет 1.xlsx" });
             list.SortByName();
-            AssertEqual("Отчет 1.xlsx|Отчет 2.xlsx|Отчет 10.xlsx", IncludedSig(list), "естественный порядок");
+            AssertEq("Отчет 1.xlsx|Отчет 2.xlsx|Отчет 10.xlsx", IncludedSig(list), "естественный порядок");
         }
 
         // ---------- PrepareSourceList ----------
@@ -1034,9 +1034,9 @@ namespace ExcelMerger.Tests
             };
             List<string> prepared = MergeService.PrepareSourceList(files, @"C:\in\Свод.xlsx");
             var names = prepared.ConvertAll(System.IO.Path.GetFileName);
-            AssertEqual("А.xlsx|Б.xlsx", string.Join("|", names.ToArray()),
+            AssertEq("А.xlsx|Б.xlsx", string.Join("|", names.ToArray()),
                 "свод исключён, дубликат убран, порядок сохранён");
-            AssertEqual(0, MergeService.PrepareSourceList(null, "x").Count, "null -> пусто");
+            AssertEq(0, MergeService.PrepareSourceList(null, "x").Count, "null -> пусто");
         }
 
         // ---------- FileSignature ----------
@@ -1049,21 +1049,21 @@ namespace ExcelMerger.Tests
             {
                 string txt = Path.Combine(dir, "битый.xlsx");
                 File.WriteAllText(txt, "this is not an excel file");
-                AssertEqual(ExcelContainer.NotExcel, FileSignature.Detect(txt), "текст с расширением .xlsx");
+                AssertEq(ExcelContainer.NotExcel, FileSignature.Detect(txt), "текст с расширением .xlsx");
 
                 string empty = Path.Combine(dir, "пустой.xlsx");
                 File.WriteAllBytes(empty, new byte[0]);
-                AssertEqual(ExcelContainer.NotExcel, FileSignature.Detect(empty), "пустой файл");
+                AssertEq(ExcelContainer.NotExcel, FileSignature.Detect(empty), "пустой файл");
 
                 string zip = Path.Combine(dir, "ooxml.xlsx");
                 File.WriteAllBytes(zip, new byte[] { 0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00 });
-                AssertEqual(ExcelContainer.Zip, FileSignature.Detect(zip), "ZIP-сигнатура PK — OOXML");
+                AssertEq(ExcelContainer.Zip, FileSignature.Detect(zip), "ZIP-сигнатура PK — OOXML");
 
                 string ole = Path.Combine(dir, "запарол.xlsx");
                 File.WriteAllBytes(ole, new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 });
-                AssertEqual(ExcelContainer.Ole2, FileSignature.Detect(ole), "OLE2/CFB — xls или шифр");
+                AssertEq(ExcelContainer.Ole2, FileSignature.Detect(ole), "OLE2/CFB — xls или шифр");
 
-                AssertEqual(ExcelContainer.Unreadable, FileSignature.Detect(Path.Combine(dir, "нет.xlsx")),
+                AssertEq(ExcelContainer.Unreadable, FileSignature.Detect(Path.Combine(dir, "нет.xlsx")),
                     "отсутствующий файл — решает Excel");
             }
             finally
@@ -1074,8 +1074,8 @@ namespace ExcelMerger.Tests
 
         private static void TestLowSpaceMessage()
         {
-            AssertEqual(null, MergeService.LowSpaceMessage(@"C:\", 5L * 1024 * 1024 * 1024), "5 ГБ — достаточно");
-            AssertEqual(null, MergeService.LowSpaceMessage(@"C:\", 200L * 1024 * 1024), "ровно порог 200 МБ — достаточно");
+            AssertEq(null, MergeService.LowSpaceMessage(@"C:\", 5L * 1024 * 1024 * 1024), "5 ГБ — достаточно");
+            AssertEq(null, MergeService.LowSpaceMessage(@"C:\", 200L * 1024 * 1024), "ровно порог 200 МБ — достаточно");
             string low = MergeService.LowSpaceMessage(@"C:\", 10L * 1024 * 1024);
             AssertTrue(low != null && low.Contains(@"C:\") && low.Contains("10 МБ"), "мало места: " + low);
             string zero = MergeService.LowSpaceMessage(@"C:\", 0);
@@ -1087,25 +1087,25 @@ namespace ExcelMerger.Tests
         private static void TestHeaderTextBound()
         {
             // Нет дочерних контролов — граница у правого края с отступом.
-            AssertEqual(760, HeaderBand.TextRightBound(780, int.MaxValue), "без кнопки — правый край - 20");
+            AssertEq(760, HeaderBand.TextRightBound(780, int.MaxValue), "без кнопки — правый край - 20");
             // Кнопка слева от края — текст обрезается до её левой границы минус зазор.
-            AssertEqual(588, HeaderBand.TextRightBound(780, 600), "с кнопкой — левее её на 12");
-            AssertEqual(488, HeaderBand.TextRightBound(700, 500), "узкое окно — левее кнопки");
+            AssertEq(588, HeaderBand.TextRightBound(780, 600), "с кнопкой — левее её на 12");
+            AssertEq(488, HeaderBand.TextRightBound(700, 500), "узкое окно — левее кнопки");
             // Кнопка правее правого поля — не выходим за край панели.
-            AssertEqual(760, HeaderBand.TextRightBound(780, 900), "кнопка за краем — ограничены полем");
+            AssertEq(760, HeaderBand.TextRightBound(780, 900), "кнопка за краем — ограничены полем");
         }
 
         private static void TestClassifyListKey()
         {
             var Alt = System.Windows.Forms.Keys.Alt;
             var Ctrl = System.Windows.Forms.Keys.Control;
-            AssertEqual(MainForm.ListKeyAction.MoveUp, MainForm.ClassifyListKey(Alt | System.Windows.Forms.Keys.Up), "Alt+Up");
-            AssertEqual(MainForm.ListKeyAction.MoveDown, MainForm.ClassifyListKey(Alt | System.Windows.Forms.Keys.Down), "Alt+Down");
-            AssertEqual(MainForm.ListKeyAction.Copy, MainForm.ClassifyListKey(Ctrl | System.Windows.Forms.Keys.C), "Ctrl+C — копировать");
-            AssertEqual(MainForm.ListKeyAction.SelectAll, MainForm.ClassifyListKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
-            AssertEqual(MainForm.ListKeyAction.Exclude, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Delete), "Delete — исключить");
-            AssertEqual(MainForm.ListKeyAction.Swallow, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Enter), "Enter — не сливать");
-            AssertEqual(MainForm.ListKeyAction.None, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Up), "просто ↑ — навигация");
+            AssertEq(MainForm.ListKeyAction.MoveUp, MainForm.ClassifyListKey(Alt | System.Windows.Forms.Keys.Up), "Alt+Up");
+            AssertEq(MainForm.ListKeyAction.MoveDown, MainForm.ClassifyListKey(Alt | System.Windows.Forms.Keys.Down), "Alt+Down");
+            AssertEq(MainForm.ListKeyAction.Copy, MainForm.ClassifyListKey(Ctrl | System.Windows.Forms.Keys.C), "Ctrl+C — копировать");
+            AssertEq(MainForm.ListKeyAction.SelectAll, MainForm.ClassifyListKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
+            AssertEq(MainForm.ListKeyAction.Exclude, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Delete), "Delete — исключить");
+            AssertEq(MainForm.ListKeyAction.Swallow, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Enter), "Enter — не сливать");
+            AssertEq(MainForm.ListKeyAction.None, MainForm.ClassifyListKey(System.Windows.Forms.Keys.Up), "просто ↑ — навигация");
         }
 
         private static void TestIsResetZoomKey()
@@ -1121,32 +1121,32 @@ namespace ExcelMerger.Tests
         {
             var Alt = System.Windows.Forms.Keys.Alt;
             var Ctrl = System.Windows.Forms.Keys.Control;
-            AssertEqual(PdfToolFormBase.PageKeyAction.Remove, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Delete), "Delete — удалить");
-            AssertEqual(PdfToolFormBase.PageKeyAction.MoveEarlier, PdfToolFormBase.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Left), "Alt+← — раньше");
-            AssertEqual(PdfToolFormBase.PageKeyAction.MoveLater, PdfToolFormBase.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Right), "Alt+→ — позже");
-            AssertEqual(PdfToolFormBase.PageKeyAction.SelectAll, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
-            AssertEqual(PdfToolFormBase.PageKeyAction.Swallow, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Enter), "Enter — не сохранять");
-            AssertEqual(PdfToolFormBase.PageKeyAction.None, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Left), "просто ← — навигация");
+            AssertEq(PdfToolFormBase.PageKeyAction.Remove, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Delete), "Delete — удалить");
+            AssertEq(PdfToolFormBase.PageKeyAction.MoveEarlier, PdfToolFormBase.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Left), "Alt+← — раньше");
+            AssertEq(PdfToolFormBase.PageKeyAction.MoveLater, PdfToolFormBase.ClassifyPageKey(Alt | System.Windows.Forms.Keys.Right), "Alt+→ — позже");
+            AssertEq(PdfToolFormBase.PageKeyAction.SelectAll, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.A), "Ctrl+A — выделить всё");
+            AssertEq(PdfToolFormBase.PageKeyAction.Swallow, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Enter), "Enter — не сохранять");
+            AssertEq(PdfToolFormBase.PageKeyAction.None, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Left), "просто ← — навигация");
             // v1.18.4: зум с клавиатуры и переход на первую/последнюю страницу.
             var Shift = System.Windows.Forms.Keys.Shift;
-            AssertEqual(PdfToolFormBase.PageKeyAction.ZoomIn, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Oemplus), "Ctrl+« + » — крупнее");
-            AssertEqual(PdfToolFormBase.PageKeyAction.ZoomIn, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Add), "Ctrl+Num« + » — крупнее");
-            AssertEqual(PdfToolFormBase.PageKeyAction.ZoomOut, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.OemMinus), "Ctrl+« − » — мельче");
-            AssertEqual(PdfToolFormBase.PageKeyAction.ZoomOut, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Subtract), "Ctrl+Num« − » — мельче");
-            AssertEqual(PdfToolFormBase.PageKeyAction.FirstPage, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Home), "Home — первая страница");
-            AssertEqual(PdfToolFormBase.PageKeyAction.LastPage, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.End), "End — последняя страница");
+            AssertEq(PdfToolFormBase.PageKeyAction.ZoomIn, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Oemplus), "Ctrl+« + » — крупнее");
+            AssertEq(PdfToolFormBase.PageKeyAction.ZoomIn, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Add), "Ctrl+Num« + » — крупнее");
+            AssertEq(PdfToolFormBase.PageKeyAction.ZoomOut, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.OemMinus), "Ctrl+« − » — мельче");
+            AssertEq(PdfToolFormBase.PageKeyAction.ZoomOut, PdfToolFormBase.ClassifyPageKey(Ctrl | System.Windows.Forms.Keys.Subtract), "Ctrl+Num« − » — мельче");
+            AssertEq(PdfToolFormBase.PageKeyAction.FirstPage, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.Home), "Home — первая страница");
+            AssertEq(PdfToolFormBase.PageKeyAction.LastPage, PdfToolFormBase.ClassifyPageKey(System.Windows.Forms.Keys.End), "End — последняя страница");
             // Порядок проверок нагружен: Ctrl+Shift+«+» это ПОВОРОТ, а не зум. Перестановка
             // двух ветвей в ClassifyPageKey молча превратила бы поворот в масштабирование.
-            AssertEqual(PdfToolFormBase.PageKeyAction.RotateRight, PdfToolFormBase.ClassifyPageKey(Ctrl | Shift | System.Windows.Forms.Keys.Oemplus), "Ctrl+Shift+« + » — поворот, не зум");
-            AssertEqual(PdfToolFormBase.PageKeyAction.RotateLeft, PdfToolFormBase.ClassifyPageKey(Ctrl | Shift | System.Windows.Forms.Keys.OemMinus), "Ctrl+Shift+« − » — поворот, не зум");
+            AssertEq(PdfToolFormBase.PageKeyAction.RotateRight, PdfToolFormBase.ClassifyPageKey(Ctrl | Shift | System.Windows.Forms.Keys.Oemplus), "Ctrl+Shift+« + » — поворот, не зум");
+            AssertEq(PdfToolFormBase.PageKeyAction.RotateLeft, PdfToolFormBase.ClassifyPageKey(Ctrl | Shift | System.Windows.Forms.Keys.OemMinus), "Ctrl+Shift+« − » — поворот, не зум");
         }
 
         private static void TestPageRangePresetsShorten()
         {
             // Короткая строка не трогается.
-            AssertEqual("1-10", PageRangePresets.Shorten("1-10"), "короткая строка как есть");
-            AssertEqual("", PageRangePresets.Shorten(""), "пустая строка");
-            AssertEqual("", PageRangePresets.Shorten(null), "null → пустая строка");
+            AssertEq("1-10", PageRangePresets.Shorten("1-10"), "короткая строка как есть");
+            AssertEq("", PageRangePresets.Shorten(""), "пустая строка");
+            AssertEq("", PageRangePresets.Shorten(null), "null → пустая строка");
 
             // Длинный перечень сокращается и не режет число посередине.
             string odd = PageRangePresets.Odd(500);
@@ -1182,17 +1182,17 @@ namespace ExcelMerger.Tests
             }
             // Ключевой случай регрессии: у одностраничного документа чётных страниц нет,
             // и preset «Чётные» не должен ни строиться, ни доходить до разбора.
-            AssertEqual("", PageRangePresets.Even(1), "1 страница → «Чётные» пуст, preset не добавляется");
+            AssertEq("", PageRangePresets.Even(1), "1 страница → «Чётные» пуст, preset не добавляется");
         }
 
         private static void TestWordListLevel()
         {
             // 0-базный уровень → 1-базный индекс Word, с клампом в [1..9].
-            AssertEqual(1, WordDocxWriter.WordListLevel(0), "уровень 0 → Word 1");
-            AssertEqual(2, WordDocxWriter.WordListLevel(1), "уровень 1 → Word 2");
-            AssertEqual(9, WordDocxWriter.WordListLevel(ListNesting.MaxLevel), "MaxLevel → Word 9");
-            AssertEqual(9, WordDocxWriter.WordListLevel(50), "выше предела → 9, не исключение");
-            AssertEqual(1, WordDocxWriter.WordListLevel(-1), "отрицательный → 1");
+            AssertEq(1, WordDocxWriter.WordListLevel(0), "уровень 0 → Word 1");
+            AssertEq(2, WordDocxWriter.WordListLevel(1), "уровень 1 → Word 2");
+            AssertEq(9, WordDocxWriter.WordListLevel(ListNesting.MaxLevel), "MaxLevel → Word 9");
+            AssertEq(9, WordDocxWriter.WordListLevel(50), "выше предела → 9, не исключение");
+            AssertEq(1, WordDocxWriter.WordListLevel(-1), "отрицательный → 1");
         }
 
         private static string RangeSig(System.Collections.Generic.List<PageRange> ranges)
@@ -1205,13 +1205,13 @@ namespace ExcelMerger.Tests
 
         private static void TestPageRangesParse()
         {
-            AssertEqual("0-2|4-4|7-9", RangeSig(PageRanges.Parse("1-3, 5, 8-", 10)), "1-3,5,8- при 10");
-            AssertEqual("1-1", RangeSig(PageRanges.Parse("2", 5)), "одна страница");
-            AssertEqual("0-2", RangeSig(PageRanges.Parse("-3", 10)), "открытое начало");
-            AssertEqual("0-1|3-3", RangeSig(PageRanges.Parse("  1 - 2 , 4 ", 5)), "пробелы");
-            AssertEqual("5-8", PageRanges.Parse("5-", 8)[0].Label, "открытый конец 5.. -> 5-8");
-            AssertEqual("8", PageRanges.Parse("8-", 8)[0].Label, "последняя страница -> метка 8");
-            AssertEqual("1-3", PageRanges.Parse("1-3", 3)[0].Label, "метка диапазона");
+            AssertEq("0-2|4-4|7-9", RangeSig(PageRanges.Parse("1-3, 5, 8-", 10)), "1-3,5,8- при 10");
+            AssertEq("1-1", RangeSig(PageRanges.Parse("2", 5)), "одна страница");
+            AssertEq("0-2", RangeSig(PageRanges.Parse("-3", 10)), "открытое начало");
+            AssertEq("0-1|3-3", RangeSig(PageRanges.Parse("  1 - 2 , 4 ", 5)), "пробелы");
+            AssertEq("5-8", PageRanges.Parse("5-", 8)[0].Label, "открытый конец 5.. -> 5-8");
+            AssertEq("8", PageRanges.Parse("8-", 8)[0].Label, "последняя страница -> метка 8");
+            AssertEq("1-3", PageRanges.Parse("1-3", 3)[0].Label, "метка диапазона");
         }
 
         private static void TestPageRangesParseErrors()
@@ -1225,27 +1225,27 @@ namespace ExcelMerger.Tests
 
         private static void TestPageRangesEveryN()
         {
-            AssertEqual("0-2|3-5|6-8|9-9", RangeSig(PageRanges.EveryN(10, 3)), "10 по 3");
-            AssertEqual("0-1|2-3|4-5", RangeSig(PageRanges.EveryN(6, 2)), "6 по 2");
-            AssertEqual("0-0|1-1|2-2", RangeSig(PageRanges.EveryN(3, 1)), "по одной");
-            AssertEqual("0-4", RangeSig(PageRanges.EveryN(5, 10)), "n больше всего");
+            AssertEq("0-2|3-5|6-8|9-9", RangeSig(PageRanges.EveryN(10, 3)), "10 по 3");
+            AssertEq("0-1|2-3|4-5", RangeSig(PageRanges.EveryN(6, 2)), "6 по 2");
+            AssertEq("0-0|1-1|2-2", RangeSig(PageRanges.EveryN(3, 1)), "по одной");
+            AssertEq("0-4", RangeSig(PageRanges.EveryN(5, 10)), "n больше всего");
             AssertThrows("n<1", delegate { PageRanges.EveryN(5, 0); });
         }
 
         private static void TestPageRangesToIndices()
         {
             var idx = PageRanges.ToIndices(PageRanges.Parse("1-3, 5, 8-", 10)); // 0-2,4,7-9
-            AssertEqual("0,1,2,4,7,8,9", string.Join(",", idx.ConvertAll(i => i.ToString()).ToArray()), "порядок");
+            AssertEq("0,1,2,4,7,8,9", string.Join(",", idx.ConvertAll(i => i.ToString()).ToArray()), "порядок");
             // Повторы и обратный смысл ввода сохраняются: «1-4, 1» -> ...,0
             var dup = PageRanges.ToIndices(PageRanges.Parse("1-4, 1", 10));
-            AssertEqual("0,1,2,3,0", string.Join(",", dup.ConvertAll(i => i.ToString()).ToArray()), "повторы сохраняются");
+            AssertEq("0,1,2,3,0", string.Join(",", dup.ConvertAll(i => i.ToString()).ToArray()), "повторы сохраняются");
         }
 
         private static void TestUpdateChecker()
         {
-            AssertEqual(new Version(1, 11, 2), UpdateChecker.ParseTag("v1.11.2"), "тег с v");
-            AssertEqual(new Version(1, 12, 0), UpdateChecker.ParseTag("1.12.0"), "тег без v");
-            AssertEqual(null, UpdateChecker.ParseTag("release"), "мусор -> null");
+            AssertEq(new Version(1, 11, 2), UpdateChecker.ParseTag("v1.11.2"), "тег с v");
+            AssertEq(new Version(1, 12, 0), UpdateChecker.ParseTag("1.12.0"), "тег без v");
+            AssertEq(null, UpdateChecker.ParseTag("release"), "мусор -> null");
             AssertTrue(UpdateChecker.IsNewer(new Version(1, 12, 0), new Version(1, 11, 2)), "1.12.0 новее 1.11.2");
             AssertTrue(!UpdateChecker.IsNewer(new Version(1, 11, 2), new Version(1, 11, 2)), "равные — не новее");
             AssertTrue(!UpdateChecker.IsNewer(new Version(1, 11, 0), new Version(1, 11, 2)), "старее — не новее");
@@ -1261,35 +1261,35 @@ namespace ExcelMerger.Tests
         private static void TestWhatsNewNotes()
         {
             string json = "{\"1.18.4\":{\"ru\":\"Кратко\",\"en\":\"Short\"}}";
-            AssertEqual("Кратко", UpdateChecker.ExtractNotes(json, "1.18.4", "ru"), "русская сводка");
-            AssertEqual("Short", UpdateChecker.ExtractNotes(json, "1.18.4", "en"), "английская сводка");
-            AssertEqual("", UpdateChecker.ExtractNotes(json, "1.18.5", "ru"), "нет такой версии");
-            AssertEqual("", UpdateChecker.ExtractNotes(json, "1.18.4", "de"), "нет такого языка");
-            AssertEqual("", UpdateChecker.ExtractNotes("", "1.18.4", "ru"), "пустой файл");
-            AssertEqual("", UpdateChecker.ExtractNotes("не json", "1.18.4", "ru"), "мусор вместо файла");
-            AssertEqual("", UpdateChecker.ExtractNotes("{\"1.18.4\":{\"ru\":\"без конца", "1.18.4", "ru"),
+            AssertEq("Кратко", UpdateChecker.ExtractNotes(json, "1.18.4", "ru"), "русская сводка");
+            AssertEq("Short", UpdateChecker.ExtractNotes(json, "1.18.4", "en"), "английская сводка");
+            AssertEq("", UpdateChecker.ExtractNotes(json, "1.18.5", "ru"), "нет такой версии");
+            AssertEq("", UpdateChecker.ExtractNotes(json, "1.18.4", "de"), "нет такого языка");
+            AssertEq("", UpdateChecker.ExtractNotes("", "1.18.4", "ru"), "пустой файл");
+            AssertEq("", UpdateChecker.ExtractNotes("не json", "1.18.4", "ru"), "мусор вместо файла");
+            AssertEq("", UpdateChecker.ExtractNotes("{\"1.18.4\":{\"ru\":\"без конца", "1.18.4", "ru"),
                 "объект не закрыт");
 
             // Скобка ВНУТРИ русского текста не должна обрывать объект: иначе английская
             // сводка, лежащая за ней, потерялась бы.
             string braces = "{\"1.2.3\":{\"ru\":\"текст со } скобкой\",\"en\":\"english\"}}";
-            AssertEqual("english", UpdateChecker.ExtractNotes(braces, "1.2.3", "en"), "«}» в тексте не рвёт разбор");
+            AssertEq("english", UpdateChecker.ExtractNotes(braces, "1.2.3", "en"), "«}» в тексте не рвёт разбор");
 
             // Упоминание номера версии в пояснении — не ключ: ключ ищется как «"версия": {».
             string withComment = "{\"_comment\":\"версия 1.2.3 описана ниже\",\"1.2.3\":{\"ru\":\"да\"}}";
-            AssertEqual("да", UpdateChecker.ExtractNotes(withComment, "1.2.3", "ru"), "пояснение не сходит за ключ");
+            AssertEq("да", UpdateChecker.ExtractNotes(withComment, "1.2.3", "ru"), "пояснение не сходит за ключ");
 
-            AssertEqual("стр1\nстр2", UpdateChecker.ExtractNotes("{\"1.0\":{\"ru\":\"стр1\\nстр2\"}}", "1.0", "ru"),
+            AssertEq("стр1\nстр2", UpdateChecker.ExtractNotes("{\"1.0\":{\"ru\":\"стр1\\nстр2\"}}", "1.0", "ru"),
                 "\\n разворачивается в перевод строки");
-            AssertEqual("«ёлка»", UpdateChecker.ExtractNotes("{\"1.0\":{\"ru\":\"\\u00ab\\u0451\\u043b\\u043a\\u0430\\u00bb\"}}", "1.0", "ru"),
+            AssertEq("«ёлка»", UpdateChecker.ExtractNotes("{\"1.0\":{\"ru\":\"\\u00ab\\u0451\\u043b\\u043a\\u0430\\u00bb\"}}", "1.0", "ru"),
                 "\\uXXXX разворачивается");
 
             // Обрезка: окно фиксированной ширины растёт вниз без предела, поэтому длинную
             // сводку укорачиваем, а не показываем кнопками за краем экрана.
-            AssertEqual("1\r\n2\r\n3", UpdateChecker.LimitNotes("1\r\n2\r\n3"), "короткая сводка не тронута");
-            AssertEqual("1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n…", UpdateChecker.LimitNotes("1\n2\n3\n4\n5\n6\n7\n8"),
+            AssertEq("1\r\n2\r\n3", UpdateChecker.LimitNotes("1\r\n2\r\n3"), "короткая сводка не тронута");
+            AssertEq("1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n…", UpdateChecker.LimitNotes("1\n2\n3\n4\n5\n6\n7\n8"),
                 "лишние строки заменены на «…»");
-            AssertEqual("", UpdateChecker.LimitNotes(null), "null — пустая строка");
+            AssertEq("", UpdateChecker.LimitNotes(null), "null — пустая строка");
         }
 
         /// <summary>
@@ -1342,9 +1342,9 @@ namespace ExcelMerger.Tests
                     "запись не должна содержать переводов строки: " + path);
                 HistoryEntry back = OperationHistory.ParseEntry(line);
                 AssertTrue(back != null, "строка не разобралась: " + path);
-                AssertEqual(path, back.Path, "путь пережил запись и чтение");
-                AssertEqual("hist.op.merge", back.Operation, "ключ операции цел");
-                AssertEqual(when, back.WhenUtc, "время цело");
+                AssertEq(path, back.Path, "путь пережил запись и чтение");
+                AssertEq("hist.op.merge", back.Operation, "ключ операции цел");
+                AssertEq(when, back.WhenUtc, "время цело");
             }
 
             // Испорченное — пропускается, а не роняет.
@@ -1368,17 +1368,17 @@ namespace ExcelMerger.Tests
             var few = new List<HistoryEntry>();
             for (int i = 0; i < 5; i++)
                 few.Add(new HistoryEntry { Path = "f" + i });
-            AssertEqual(5, OperationHistory.Trim(few).Count, "мало записей — не режем");
+            AssertEq(5, OperationHistory.Trim(few).Count, "мало записей — не режем");
 
             var many = new List<HistoryEntry>();
             for (int i = 0; i < OperationHistory.MaxEntries + 25; i++)
                 many.Add(new HistoryEntry { Path = "f" + i });
             List<HistoryEntry> cut = OperationHistory.Trim(many);
-            AssertEqual(OperationHistory.MaxEntries, cut.Count, "обрезано до предела");
-            AssertEqual("f25", cut[0].Path, "остались ПОСЛЕДНИЕ, старые вытеснены");
-            AssertEqual("f" + (OperationHistory.MaxEntries + 24), cut[cut.Count - 1].Path, "самая новая на месте");
+            AssertEq(OperationHistory.MaxEntries, cut.Count, "обрезано до предела");
+            AssertEq("f25", cut[0].Path, "остались ПОСЛЕДНИЕ, старые вытеснены");
+            AssertEq("f" + (OperationHistory.MaxEntries + 24), cut[cut.Count - 1].Path, "самая новая на месте");
 
-            AssertEqual(0, OperationHistory.Trim(null).Count, "null — пустой список, не исключение");
+            AssertEq(0, OperationHistory.Trim(null).Count, "null — пустой список, не исключение");
         }
 
         /// <summary>
@@ -1397,19 +1397,19 @@ namespace ExcelMerger.Tests
                 new HistoryEntry { WhenUtc = now.AddHours(-2), Path = "сегодняшняя" }
             };
 
-            AssertEqual(3, OperationHistory.KeepRecent(all, now, 0).Count, "период 0 — не убираем ничего");
+            AssertEq(3, OperationHistory.KeepRecent(all, now, 0).Count, "период 0 — не убираем ничего");
 
             List<HistoryEntry> week = OperationHistory.KeepRecent(all, now, 7);
-            AssertEqual(1, week.Count, "при недельной давности остаётся только свежая");
-            AssertEqual("сегодняшняя", week[0].Path, "СЕГОДНЯШНЯЯ ЗАПИСЬ НЕ СТИРАЕТСЯ из-за старой");
+            AssertEq(1, week.Count, "при недельной давности остаётся только свежая");
+            AssertEq("сегодняшняя", week[0].Path, "СЕГОДНЯШНЯЯ ЗАПИСЬ НЕ СТИРАЕТСЯ из-за старой");
 
-            AssertEqual(2, OperationHistory.KeepRecent(all, now, 30).Count, "при 30 днях уходит только тридцатидневная");
-            AssertEqual(1, OperationHistory.KeepRecent(all, now, 1).Count, "при сутках остаётся только двухчасовая");
-            AssertEqual(0, OperationHistory.KeepRecent(null, now, 7).Count, "null — пустой список, не исключение");
+            AssertEq(2, OperationHistory.KeepRecent(all, now, 30).Count, "при 30 днях уходит только тридцатидневная");
+            AssertEq(1, OperationHistory.KeepRecent(all, now, 1).Count, "при сутках остаётся только двухчасовая");
+            AssertEq(0, OperationHistory.KeepRecent(null, now, 7).Count, "null — пустой список, не исключение");
 
             // Ровно на границе периода запись уже старая: «хранить 7 дней» значит меньше семи.
             var edge = new List<HistoryEntry> { new HistoryEntry { WhenUtc = now.AddDays(-7), Path = "граница" } };
-            AssertEqual(0, OperationHistory.KeepRecent(edge, now, 7).Count, "ровно семь дней — уже не хранится");
+            AssertEq(0, OperationHistory.KeepRecent(edge, now, 7).Count, "ровно семь дней — уже не хранится");
         }
 
         /// <summary>
@@ -1420,12 +1420,12 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestVersionDisplay()
         {
-            AssertEqual("1.18.0", UpdateChecker.Display(new Version(1, 18, 0)), "три числа — как есть");
-            AssertEqual("1.18", UpdateChecker.Display(new Version(1, 18)), "два числа не роняют показ");
-            AssertEqual("1.18.0", UpdateChecker.Display(new Version(1, 18, 0, 7)), "четвёртое число не показываем");
-            AssertEqual("", UpdateChecker.Display(null), "null — пустая строка, не исключение");
+            AssertEq("1.18.0", UpdateChecker.Display(new Version(1, 18, 0)), "три числа — как есть");
+            AssertEq("1.18", UpdateChecker.Display(new Version(1, 18)), "два числа не роняют показ");
+            AssertEq("1.18.0", UpdateChecker.Display(new Version(1, 18, 0, 7)), "четвёртое число не показываем");
+            AssertEq("", UpdateChecker.Display(null), "null — пустая строка, не исключение");
             // Сквозной случай: тег с GitHub из двух чисел проходит весь путь без исключения.
-            AssertEqual("1.18", UpdateChecker.Display(UpdateChecker.ParseTag("v1.18")), "тег «v1.18» показывается целиком");
+            AssertEq("1.18", UpdateChecker.Display(UpdateChecker.ParseTag("v1.18")), "тег «v1.18» показывается целиком");
         }
 
         /// <summary>
@@ -1442,16 +1442,16 @@ namespace ExcelMerger.Tests
                 shown++;
                 UpdateUi.ShowOnce(delegate { shown++; }); // как второй воркер во время показа
             });
-            AssertEqual(1, shown, "вложенный показ отсечён");
+            AssertEq(1, shown, "вложенный показ отсечён");
 
             UpdateUi.ShowOnce(delegate { shown++; });
-            AssertEqual(2, shown, "после закрытия окна следующий показ проходит");
+            AssertEq(2, shown, "после закрытия окна следующий показ проходит");
 
             // Сорвавшийся показ не должен запирать сторож навсегда.
             try { UpdateUi.ShowOnce(delegate { throw new InvalidOperationException("сбой показа"); }); }
             catch (InvalidOperationException) { }
             UpdateUi.ShowOnce(delegate { shown++; });
-            AssertEqual(3, shown, "исключение внутри показа отпускает сторож");
+            AssertEq(3, shown, "исключение внутри показа отпускает сторож");
         }
 
         private static void TestShouldAutoClear()
@@ -1474,22 +1474,22 @@ namespace ExcelMerger.Tests
                 PdfToWord = 8, PdfToPptx = 9, PdfCompressions = 99
             };
             // Total — сумма ОПЕРАЦИЙ (1+…+9); сжатие — параметр, в Total не входит.
-            AssertEqual(45, s.Total, "Total включает Compare/конвертации и исключает сжатия");
+            AssertEq(45, s.Total, "Total включает Compare/конвертации и исключает сжатия");
         }
 
         private static void TestMessageButtonX()
         {
-            AssertEqual(164, MessageForm.ButtonX(0, 1, 440, 112, 20), "одна кнопка — по центру");
-            AssertEqual(20, MessageForm.ButtonX(0, 2, 440, 112, 20), "две: первая слева");
-            AssertEqual(308, MessageForm.ButtonX(1, 2, 440, 112, 20), "две: вторая справа");
+            AssertEq(164, MessageForm.ButtonX(0, 1, 440, 112, 20), "одна кнопка — по центру");
+            AssertEq(20, MessageForm.ButtonX(0, 2, 440, 112, 20), "две: первая слева");
+            AssertEq(308, MessageForm.ButtonX(1, 2, 440, 112, 20), "две: вторая справа");
         }
 
         private static void TestSanitize()
         {
-            AssertEqual("Глава 1", PdfSplitService.Sanitize("Глава 1"), "обычный заголовок");
-            AssertEqual("a_b_c", PdfSplitService.Sanitize("a/b:c"), "недопустимые символы");
-            AssertEqual("без_имени", PdfSplitService.Sanitize(""), "пустое имя");
-            AssertEqual("без_имени", PdfSplitService.Sanitize("   "), "только пробелы");
+            AssertEq("Глава 1", PdfSplitService.Sanitize("Глава 1"), "обычный заголовок");
+            AssertEq("a_b_c", PdfSplitService.Sanitize("a/b:c"), "недопустимые символы");
+            AssertEq("без_имени", PdfSplitService.Sanitize(""), "пустое имя");
+            AssertEq("без_имени", PdfSplitService.Sanitize("   "), "только пробелы");
         }
 
         private static int PdfPageCount(string path)
@@ -1516,15 +1516,15 @@ namespace ExcelMerger.Tests
                 File.WriteAllText(target, "old");
                 using (var output = new AtomicOutput(target))
                     File.WriteAllText(output.TempPath, "unfinished"); // без Commit
-                AssertEqual("old", File.ReadAllText(target), "старый target пережил незавершённую запись");
+                AssertEq("old", File.ReadAllText(target), "старый target пережил незавершённую запись");
 
                 using (var output = new AtomicOutput(target))
                 {
                     File.WriteAllText(output.TempPath, "new");
                     output.Commit();
                 }
-                AssertEqual("new", File.ReadAllText(target), "commit заменил target");
-                AssertEqual(1, Directory.GetFiles(dir).Length, "temp/backup не остались");
+                AssertEq("new", File.ReadAllText(target), "commit заменил target");
+                AssertEq(1, Directory.GetFiles(dir).Length, "temp/backup не остались");
             }
             finally { Directory.Delete(dir, true); }
         }
@@ -1556,15 +1556,15 @@ namespace ExcelMerger.Tests
                 // freshOrphan только что создан: возраст нулевой, трогать нельзя.
 
                 int removed = StartupSweep.Sweep(new[] { dir }, now);
-                AssertEqual(2, removed, "удалены только старые сироты обоих видов");
+                AssertEq(2, removed, "удалены только старые сироты обоих видов");
                 AssertTrue(!File.Exists(orphanAtomic), "старая сирота AtomicOutput удалена");
                 AssertTrue(!File.Exists(orphanGs), "старая сирота GsRewrite удалена");
                 AssertTrue(File.Exists(freshOrphan), "свежий файл не тронут (запас по возрасту)");
                 AssertTrue(File.Exists(userLookalike), "файл пользователя с похожим именем не тронут");
                 AssertTrue(File.Exists(normal), "обычный файл не тронут");
 
-                AssertEqual(0, StartupSweep.Sweep(new[] { dir }, now), "повторный прогон ничего не находит");
-                AssertEqual(0, StartupSweep.Sweep(new[] { null, "", dir + "_нет" }, now),
+                AssertEq(0, StartupSweep.Sweep(new[] { dir }, now), "повторный прогон ничего не находит");
+                AssertEq(0, StartupSweep.Sweep(new[] { null, "", dir + "_нет" }, now),
                     "плохие папки переносятся тихо");
             }
             finally { Directory.Delete(dir, true); }
@@ -1586,7 +1586,7 @@ namespace ExcelMerger.Tests
                 File.WriteAllText(marker, "");
 
                 StartupSweep.Sweep(new[] { dir }, DateTime.UtcNow);
-                AssertEqual("old", File.ReadAllText(target),
+                AssertEq("old", File.ReadAllText(target),
                     "при отсутствующем target восстановлена исходная backup");
                 AssertTrue(!File.Exists(temp) && !File.Exists(backup) && !File.Exists(marker),
                     "после восстановления удалён только мусор транзакции");
@@ -1607,7 +1607,7 @@ namespace ExcelMerger.Tests
                         "открытый journal защищает живую транзакцию");
                 }
                 StartupSweep.Sweep(new[] { dir }, DateTime.UtcNow.AddDays(1));
-                AssertEqual("old-live", File.ReadAllText(target2),
+                AssertEq("old-live", File.ReadAllText(target2),
                     "после аварийного освобождения journal backup восстановлена");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
@@ -1629,7 +1629,7 @@ namespace ExcelMerger.Tests
                     AssertTrue(!settings.SaveView(333, 2),
                         "SaveView сообщает отказ на непрочитанном снимке");
                 }
-                AssertEqual(Convert.ToBase64String(settingsBefore),
+                AssertEq(Convert.ToBase64String(settingsBefore),
                     Convert.ToBase64String(File.ReadAllBytes(AppPaths.SettingsFile)),
                     "settings не заменены defaults");
 
@@ -1642,7 +1642,7 @@ namespace ExcelMerger.Tests
                     OperationHistory.Record("hist.op.merge", @"C:\lost.pdf");
                     OperationHistory.Clear();
                 }
-                AssertEqual(Convert.ToBase64String(historyBefore),
+                AssertEq(Convert.ToBase64String(historyBefore),
                     Convert.ToBase64String(File.ReadAllBytes(AppPaths.HistoryFile)),
                     "history не очищена поверх непрочитанного снимка");
 
@@ -1651,7 +1651,7 @@ namespace ExcelMerger.Tests
                 using (new FileStream(AppPaths.StatsFile, FileMode.Open, FileAccess.Read,
                     FileShare.None))
                     UsageStats.RecordPdfCompare();
-                AssertEqual(Convert.ToBase64String(statsBefore),
+                AssertEq(Convert.ToBase64String(statsBefore),
                     Convert.ToBase64String(File.ReadAllBytes(AppPaths.StatsFile)),
                     "stats не сброшена поверх непрочитанного снимка");
             }
@@ -1673,17 +1673,17 @@ namespace ExcelMerger.Tests
                 PdfMemoryLease lease;
                 AssertTrue(PdfMemoryBudget.TryAcquire(1024 * 1024, out lease),
                     "малый lease допускается");
-                AssertEqual(before + 1024 * 1024, PdfMemoryBudget.Used,
+                AssertEq(before + 1024 * 1024, PdfMemoryBudget.Used,
                     "резерв учтён до allocation");
                 PdfMemoryLease blocked;
                 AssertTrue(!PdfMemoryBudget.TryAcquire(PdfMemoryBudget.LimitBytes, out blocked),
                     "реальное давление отмечает ожидающего");
                 lease.ReduceTo(256 * 1024);
-                AssertEqual(before + 256 * 1024, PdfMemoryBudget.Used,
+                AssertEq(before + 256 * 1024, PdfMemoryBudget.Used,
                     "лишний transient budget освобождён");
                 lease.Dispose();
                 lease.Dispose();
-                AssertEqual(before, PdfMemoryBudget.Used,
+                AssertEq(before, PdfMemoryBudget.Used,
                     "double Dispose не вычитает чужой резерв");
                 AssertTrue(releases >= 1, "ожидающий получил один coalesced сигнал освобождения");
                 PdfMemoryLease impossible;
@@ -1706,7 +1706,7 @@ namespace ExcelMerger.Tests
                 int exit = Ghostscript.Run(
                     "/d /c \"(for /L %i in (1,1,7000) do @echo 1234567890 1>&2) & " +
                     "echo **** 1>&2 & exit /b 0\"", 10000, out stderr);
-                AssertEqual(0, exit, "helper завершился с нулём");
+                AssertEq(0, exit, "helper завершился с нулём");
                 AssertTrue(!GsRewrite.EngineSucceeded(exit, stderr),
                     "fatal sentinel после 64 KiB не потерян");
                 AssertTrue(stderr.Length < 70000, "сохранённая диагностика ограничена");
@@ -1715,7 +1715,7 @@ namespace ExcelMerger.Tests
                 exit = Ghostscript.Run(
                     "/d /c \"ping 127.0.0.1 -n 6 >nul\"", 100, out stderr);
                 watch.Stop();
-                AssertEqual(-1, exit, "таймаут — отказ");
+                AssertEq(-1, exit, "таймаут — отказ");
                 AssertTrue(watch.ElapsedMilliseconds < 5000,
                     "после timeout нет неограниченного WaitForExit");
             }
@@ -1725,11 +1725,11 @@ namespace ExcelMerger.Tests
 
         private static void TestReviewCodePoints()
         {
-            AssertEqual(0, PdfReviewDiff.CodePoints(null), "null — ноль знаков");
-            AssertEqual(0, PdfReviewDiff.CodePoints(""), "пусто — ноль знаков");
-            AssertEqual(5, PdfReviewDiff.CodePoints("abcde"), "обычный текст — по числу букв");
+            AssertEq(0, PdfReviewDiff.CodePoints(null), "null — ноль знаков");
+            AssertEq(0, PdfReviewDiff.CodePoints(""), "пусто — ноль знаков");
+            AssertEq(5, PdfReviewDiff.CodePoints("abcde"), "обычный текст — по числу букв");
             // «🙂» — одна кодовая точка из двух char (D83D DE42)
-            AssertEqual(3, PdfReviewDiff.CodePoints("a\U0001F642b"), "эмодзи считается одним знаком");
+            AssertEq(3, PdfReviewDiff.CodePoints("a\U0001F642b"), "эмодзи считается одним знаком");
         }
 
         /// <summary>
@@ -1754,7 +1754,7 @@ namespace ExcelMerger.Tests
                 }
                 catch (PdfReviewException ex)
                 {
-                    AssertEqual(PdfReviewFailure.Unreadable, ex.Reason, "мусор — «не читается»");
+                    AssertEq(PdfReviewFailure.Unreadable, ex.Reason, "мусор — «не читается»");
                     AssertTrue(ex.Message.Length > 0, "у мусора есть сообщение");
                 }
 
@@ -1766,7 +1766,7 @@ namespace ExcelMerger.Tests
                 }
                 catch (PdfReviewException ex)
                 {
-                    AssertEqual(PdfReviewFailure.Unreadable, ex.Reason, "нет файла — «не читается»");
+                    AssertEq(PdfReviewFailure.Unreadable, ex.Reason, "нет файла — «не читается»");
                 }
 
                 // Парольный файл: отдельный исход, чтобы форма показала диалог пароля.
@@ -1790,7 +1790,7 @@ namespace ExcelMerger.Tests
                         }
                         catch (PdfReviewException ex)
                         {
-                            AssertEqual(PdfReviewFailure.PasswordRequired, ex.Reason,
+                            AssertEq(PdfReviewFailure.PasswordRequired, ex.Reason,
                                 "парольный файл даёт «нужен пароль», а не тупиковую ошибку");
                         }
                         PdfPasswords.Remember(secret, "qwerty");
@@ -1798,7 +1798,7 @@ namespace ExcelMerger.Tests
                         {
                             PdfReviewDocument doc = PdfReviewService.Load(secret, null, null,
                                 PdfReviewLimits.Default());
-                            AssertEqual(1, doc.Pages.Count, "с верным паролем файл читается");
+                            AssertEq(1, doc.Pages.Count, "с верным паролем файл читается");
                         }
                         finally { PdfPasswords.Remember(secret, null); }
                     }
@@ -1823,25 +1823,25 @@ namespace ExcelMerger.Tests
 
                 PdfReviewSourceResult resolved = PdfReviewInput.Resolve("  \"" + pdf + "\"  ");
                 AssertTrue(resolved.IsValid, "кавычки и внешние пробелы разрешены");
-                AssertEqual(Path.GetFullPath(pdf), resolved.Path,
+                AssertEq(Path.GetFullPath(pdf), resolved.Path,
                     "в поле возвращается канонический полный путь");
-                AssertEqual(PdfReviewSourceError.Empty, PdfReviewInput.Resolve("   ").Error,
+                AssertEq(PdfReviewSourceError.Empty, PdfReviewInput.Resolve("   ").Error,
                     "пустое поле отличимо");
-                AssertEqual(PdfReviewSourceError.InvalidPath, PdfReviewInput.Resolve("bad\0path.pdf").Error,
+                AssertEq(PdfReviewSourceError.InvalidPath, PdfReviewInput.Resolve("bad\0path.pdf").Error,
                     "синтаксически невозможный путь отличим");
-                AssertEqual(PdfReviewSourceError.Missing,
+                AssertEq(PdfReviewSourceError.Missing,
                     PdfReviewInput.Resolve(Path.Combine(dir, "missing.pdf")).Error,
                     "несуществующий PDF отличим");
-                AssertEqual(PdfReviewSourceError.NotPdf, PdfReviewInput.Resolve(text).Error,
+                AssertEq(PdfReviewSourceError.NotPdf, PdfReviewInput.Resolve(text).Error,
                     "существующий файл другого типа отвергнут");
 
                 PdfReviewSourceResult validProbe = PdfReviewInput.Probe(resolved);
                 AssertTrue(validProbe.IsValid, "обычный born-digital PDF проходит лёгкую пробу");
-                AssertEqual(resolved.Path, validProbe.Path, "проба не меняет выбранный путь");
-                AssertEqual(PdfReviewSourceError.Unreadable,
+                AssertEq(resolved.Path, validProbe.Path, "проба не меняет выбранный путь");
+                AssertEq(PdfReviewSourceError.Unreadable,
                     PdfReviewInput.Probe(PdfReviewInput.Resolve(junk)).Error,
                     "мусор с расширением PDF не становится источником");
-                AssertEqual(PdfReviewSourceError.InvalidPath, PdfReviewInput.Probe(null).Error,
+                AssertEq(PdfReviewSourceError.InvalidPath, PdfReviewInput.Probe(null).Error,
                     "null не роняет пробу");
             }
             finally { Directory.Delete(dir, true); }
@@ -1862,7 +1862,7 @@ namespace ExcelMerger.Tests
                 PdfReviewSourceResult probed = PdfReviewInput.Probe(resolved);
                 AssertTrue(probed.IsValid,
                     "password-required остаётся допустимым выбором для штатного запроса пароля");
-                AssertEqual(Path.GetFullPath(locked), probed.Path,
+                AssertEq(Path.GetFullPath(locked), probed.Path,
                     "путь защищённого источника не потерян");
             }
             finally
@@ -1913,9 +1913,9 @@ namespace ExcelMerger.Tests
             PdfReviewDropPlan actual, string context)
         {
             AssertTrue(actual != null, context + ": план создан");
-            AssertEqual(action, actual.Action, context + ": действие");
-            AssertEqual(left, actual.LeftPath, context + ": левая сторона");
-            AssertEqual(right, actual.RightPath, context + ": правая сторона");
+            AssertEq(action, actual.Action, context + ": действие");
+            AssertEq(left, actual.LeftPath, context + ": левая сторона");
+            AssertEq(right, actual.RightPath, context + ": правая сторона");
         }
 
         private static void TestReviewSourceLifecycleLive()
@@ -1953,7 +1953,7 @@ namespace ExcelMerger.Tests
                             return string.Equals(ReviewPrivateField<string>(form, "_leftFile"),
                                 Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
                         }), "Leave проверил и нормализовал вручную введённый левый путь");
-                        AssertEqual(Path.GetFullPath(first), left.Text,
+                        AssertEq(Path.GetFullPath(first), left.Text,
                             "после Leave поле показывает канонический путь");
 
                         right.Text = second;
@@ -1981,7 +1981,7 @@ namespace ExcelMerger.Tests
                                 Path.GetFullPath(first), StringComparison.OrdinalIgnoreCase);
                         }), "повторный Enter завершил проверку");
                         AssertTrue(!compare.Enabled, "один файл на обе стороны Compare не включает");
-                        AssertEqual(Loc.T("review.err.sameFile"),
+                        AssertEq(Loc.T("review.err.sameFile"),
                             ReviewPrivateField<Label>(form, "_summary").Text,
                             "same-file объяснён в строке состояния");
 
@@ -1991,10 +1991,10 @@ namespace ExcelMerger.Tests
                         AssertTrue(ReviewPrivateField<string>(form, "_leftFile") == null,
                             "ручная правка инвалидирует модель до потери фокуса");
                         InvokeReviewProcessCmdKey(form, Keys.Enter);
-                        AssertEqual(PdfReviewSourceError.Missing,
+                        AssertEq(PdfReviewSourceError.Missing,
                             ReviewPrivateField<PdfReviewSourceError>(form, "_leftSourceError"),
                             "несуществующий typed path остаётся видимым, но не становится источником");
-                        AssertEqual(missing, left.Text, "ошибочный ввод не стирается без ведома пользователя");
+                        AssertEq(missing, left.Text, "ошибочный ввод не стирается без ведома пользователя");
 
                         right.Focus();
                         right.Text = second;
@@ -2004,7 +2004,7 @@ namespace ExcelMerger.Tests
                             return string.Equals(ReviewPrivateField<string>(form, "_rightFile"),
                                 Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase);
                         }), "валидная правая проба завершилась рядом с ошибкой слева");
-                        AssertEqual(Loc.T("review.err.source.missing"),
+                        AssertEq(Loc.T("review.err.source.missing"),
                             ReviewPrivateField<Label>(form, "_summary").Text,
                             "успешный callback одной стороны не скрывает ошибку другой");
 
@@ -2023,9 +2023,9 @@ namespace ExcelMerger.Tests
                             "после исправления обеих сторон Compare снова доступна");
 
                         swap.PerformClick();
-                        AssertEqual(Path.GetFullPath(second), left.Text,
+                        AssertEq(Path.GetFullPath(second), left.Text,
                             "swap сразу меняет видимые поля");
-                        AssertEqual(Path.GetFullPath(first), right.Text,
+                        AssertEq(Path.GetFullPath(first), right.Text,
                             "swap сохраняет вторую сторону");
                         AssertTrue(WaitFor(delegate
                         {
@@ -2048,7 +2048,7 @@ namespace ExcelMerger.Tests
                             "закрытие инвалидирует уже поставленную в очередь пробу");
                         InvokeReviewCompleteSource(form, true, closedGeneration,
                             new PdfReviewSourceResult { Path = first });
-                        AssertEqual(sourceBeforeClose,
+                        AssertEq(sourceBeforeClose,
                             ReviewPrivateField<string>(form, "_leftFile"),
                             "callback не меняет модель закрытой формы даже с текущим generation");
                     }
@@ -2076,7 +2076,7 @@ namespace ExcelMerger.Tests
                         ReviewPrivateField<RoundedButton>(form,
                             "_sideModeButton").PerformClick();
                         Application.DoEvents();
-                        AssertEqual(ReviewControlTreeCount(form), form.DropWiredControlCount,
+                        AssertEq(ReviewControlTreeCount(form), form.DropWiredControlCount,
                             "каждый существующий дочерний control подписан на drop");
 
                         TextBox leftPath = ReviewPrivateField<TextBox>(form, "_leftPath");
@@ -2084,19 +2084,19 @@ namespace ExcelMerger.Tests
                         Button swap = ReviewPrivateField<Button>(form, "_swap");
                         PdfReviewPageView leftView = ReviewPrivateField<PdfReviewPageView>(form, "_leftSource");
                         PdfReviewPageView rightView = ReviewPrivateField<PdfReviewPageView>(form, "_rightSource");
-                        AssertEqual(PdfReviewDropTarget.Left,
+                        AssertEq(PdfReviewDropTarget.Left,
                             form.ReviewDropTargetAt(ReviewScreenCenter(leftPath)),
                             "поле левого пути — явная левая цель");
-                        AssertEqual(PdfReviewDropTarget.Right,
+                        AssertEq(PdfReviewDropTarget.Right,
                             form.ReviewDropTargetAt(ReviewScreenCenter(rightPick)),
                             "правая кнопка browse — явная правая цель");
-                        AssertEqual(PdfReviewDropTarget.Left,
+                        AssertEq(PdfReviewDropTarget.Left,
                             form.ReviewDropTargetAt(ReviewScreenCenter(leftView)),
                             "любой дочерний слой левого viewer маршрутизируется влево");
-                        AssertEqual(PdfReviewDropTarget.Right,
+                        AssertEq(PdfReviewDropTarget.Right,
                             form.ReviewDropTargetAt(ReviewScreenCenter(rightView)),
                             "любой дочерний слой правого viewer маршрутизируется вправо");
-                        AssertEqual(PdfReviewDropTarget.Neutral,
+                        AssertEq(PdfReviewDropTarget.Neutral,
                             form.ReviewDropTargetAt(ReviewScreenCenter(swap)),
                             "общая кнопка остаётся нейтральной поверхностью");
 
@@ -2107,47 +2107,47 @@ namespace ExcelMerger.Tests
                         leftView.Controls.Add(latePanel);
                         AssertTrue(latePanel.AllowDrop && lateChild.AllowDrop,
                             "поздно добавленная поверхность и её ребёнок тоже принимают drop");
-                        AssertEqual(before + 2, form.DropWiredControlCount,
+                        AssertEq(before + 2, form.DropWiredControlCount,
                             "ControlAdded рекурсивно подключил ровно два новых control");
 
                         form.SetDropCue(PdfReviewInput.PlanDrop(new[] { first },
                             PdfReviewDropTarget.Neutral, false, false));
-                        AssertEqual(PdfReviewPageViewState.DropTarget, leftView.ViewState,
+                        AssertEq(PdfReviewPageViewState.DropTarget, leftView.ViewState,
                             "neutral single-drop заранее подсвечивает первую пустую сторону");
-                        AssertEqual(PdfReviewPageViewState.Empty, rightView.ViewState,
+                        AssertEq(PdfReviewPageViewState.Empty, rightView.ViewState,
                             "neutral single-drop не обещает назначить обе стороны");
                         form.ClearDropCueOutside(ReviewScreenCenter(lateChild));
-                        AssertEqual(PdfReviewPageViewState.DropTarget, leftView.ViewState,
+                        AssertEq(PdfReviewPageViewState.DropTarget, leftView.ViewState,
                             "DragLeave вложенного слоя не мигает cue внутри окна");
                         form.ClearDropCueOutside(form.PointToScreen(new Point(
                             form.ClientSize.Width + 20, form.ClientSize.Height + 20)));
-                        AssertEqual(PdfReviewPageViewState.Empty, leftView.ViewState,
+                        AssertEq(PdfReviewPageViewState.Empty, leftView.ViewState,
                             "cue снимается после фактического ухода указателя с окна");
                         form.SetDropCue(PdfReviewInput.PlanDrop(new[] { second },
                             PdfReviewDropTarget.Neutral, true, false));
-                        AssertEqual(PdfReviewPageViewState.Empty, leftView.ViewState,
+                        AssertEq(PdfReviewPageViewState.Empty, leftView.ViewState,
                             "после заполнения левой cue с неё снят");
-                        AssertEqual(PdfReviewPageViewState.DropTarget, rightView.ViewState,
+                        AssertEq(PdfReviewPageViewState.DropTarget, rightView.ViewState,
                             "следующий neutral single-drop подсказывает правую сторону");
                         form.SetDropCue(PdfReviewInput.PlanDrop(new[] { first, second },
                             PdfReviewDropTarget.Left, true, true));
-                        AssertEqual(PdfReviewPageViewState.DropTarget, leftView.ViewState,
+                        AssertEq(PdfReviewPageViewState.DropTarget, leftView.ViewState,
                             "two-file drop подсвечивает левую сторону");
-                        AssertEqual(PdfReviewPageViewState.DropTarget, rightView.ViewState,
+                        AssertEq(PdfReviewPageViewState.DropTarget, rightView.ViewState,
                             "two-file drop одновременно подсвечивает правую сторону");
                         form.SetDropCue(PdfReviewInput.PlanDrop(new[] { first },
                             PdfReviewDropTarget.Neutral, true, true));
-                        AssertEqual(PdfReviewPageViewState.Empty, leftView.ViewState,
+                        AssertEq(PdfReviewPageViewState.Empty, leftView.ViewState,
                             "ambiguous neutral drop не показывает ложную замену слева");
-                        AssertEqual(PdfReviewPageViewState.Empty, rightView.ViewState,
+                        AssertEq(PdfReviewPageViewState.Empty, rightView.ViewState,
                             "ambiguous neutral drop не показывает ложную замену справа");
                         form.SetDropCue(null);
 
                         form.AcceptFiles(new[] { first });
-                        AssertEqual(first, leftPath.Text,
+                        AssertEq(first, leftPath.Text,
                             "первый neutral single-drop заполнил левую сторону");
                         form.AcceptFiles(new[] { second });
-                        AssertEqual(second, ReviewPrivateField<TextBox>(form, "_rightPath").Text,
+                        AssertEq(second, ReviewPrivateField<TextBox>(form, "_rightPath").Text,
                             "второй neutral single-drop заполнил правую сторону");
                         AssertTrue(WaitFor(delegate
                         {
@@ -2156,9 +2156,9 @@ namespace ExcelMerger.Tests
                         }), "оба dropped PDF прошли асинхронную пробу");
 
                         form.AcceptFiles(new[] { second, first });
-                        AssertEqual(second, leftPath.Text,
+                        AssertEq(second, leftPath.Text,
                             "two-file drop сохранил первый файл слева");
-                        AssertEqual(first, ReviewPrivateField<TextBox>(form, "_rightPath").Text,
+                        AssertEq(first, ReviewPrivateField<TextBox>(form, "_rightPath").Text,
                             "two-file drop сохранил второй файл справа");
                         AssertTrue(WaitFor(delegate
                         {
@@ -2263,9 +2263,9 @@ namespace ExcelMerger.Tests
                         AssertReviewCompactLegend(rightLegend,
                             ReviewPrivateField<TextBox>(form, "_rightPageInput"),
                             width, "правая");
-                        AssertEqual(Loc.T("review.legend.removed"), leftLegend.Text,
+                        AssertEq(Loc.T("review.legend.removed"), leftLegend.Text,
                             "левая легенда содержит только краткое значение цвета");
-                        AssertEqual(Loc.T("review.legend.added"), rightLegend.Text,
+                        AssertEq(Loc.T("review.legend.added"), rightLegend.Text,
                             "правая легенда содержит только краткое значение цвета");
                         form.Close();
                     }
@@ -2312,9 +2312,9 @@ namespace ExcelMerger.Tests
                     calls++;
                     return calls < 2 ? null : @"C:\fake\gswin64c.exe";
                 };
-                AssertEqual(null, Ghostscript.Exe, "первый поиск ничего не нашёл");
-                AssertEqual(@"C:\fake\gswin64c.exe", Ghostscript.Exe, "null не помешал повторному поиску");
-                AssertEqual(2, calls, "resolver вызван повторно после null");
+                AssertEq(null, Ghostscript.Exe, "первый поиск ничего не нашёл");
+                AssertEq(@"C:\fake\gswin64c.exe", Ghostscript.Exe, "null не помешал повторному поиску");
+                AssertEq(2, calls, "resolver вызван повторно после null");
             }
             finally { Ghostscript.ResetResolutionForTests(); }
         }
@@ -2334,7 +2334,7 @@ namespace ExcelMerger.Tests
                     AssertTrue(false, "merge поверх source должен быть отвергнут");
                 }
                 catch (MergeException) { }
-                AssertEqual(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "merge не тронул source");
+                AssertEq(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "merge не тронул source");
 
                 try
                 {
@@ -2342,7 +2342,7 @@ namespace ExcelMerger.Tests
                     AssertTrue(false, "extract поверх source должен быть отвергнут");
                 }
                 catch (MergeException) { }
-                AssertEqual(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "split не тронул source");
+                AssertEq(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "split не тронул source");
 
                 try
                 {
@@ -2350,7 +2350,7 @@ namespace ExcelMerger.Tests
                     AssertTrue(false, "text export поверх source должен быть отвергнут");
                 }
                 catch (MergeException) { }
-                AssertEqual(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "text export не тронул source");
+                AssertEq(Convert.ToBase64String(before), Convert.ToBase64String(File.ReadAllBytes(pdf)), "text export не тронул source");
             }
             finally { Directory.Delete(dir, true); }
         }
@@ -2399,11 +2399,11 @@ namespace ExcelMerger.Tests
 
         private static void TestReviewNormalize()
         {
-            AssertEqual("é a b\nrow\tcell", PdfReviewDiff.Normalize("é  a  b \r\nrow\tcell  "),
+            AssertEq("é a b\nrow\tcell", PdfReviewDiff.Normalize("é  a  b \r\nrow\tcell  "),
                 "NFC, пробелы, NBSP, CRLF и хвост строки");
             string smile = "A\U0001F642B";
             AssertTrue(PdfReviewDiff.Normalize(smile).Contains("\U0001F642"), "суррогатная пара не потеряна");
-            AssertEqual(PdfReviewDiff.Fingerprint("abc", 595, 842),
+            AssertEq(PdfReviewDiff.Fingerprint("abc", 595, 842),
                 PdfReviewDiff.Fingerprint("abc", 595, 842), "fingerprint детерминирован");
         }
 
@@ -2420,7 +2420,7 @@ namespace ExcelMerger.Tests
             PdfReviewDocument left = ReviewDocument("left.pdf", "alpha common", "beta common", "gamma common");
             PdfReviewDocument right = ReviewDocument("right.pdf", "alpha common", "inserted unique page", "beta common", "gamma common");
             List<PdfReviewPagePair> pairs = PdfReviewDiff.Align(left.Pages, right.Pages, PdfReviewLimits.Default());
-            AssertEqual("0:0:Unchanged|-1:1:RightOnly|1:2:Unchanged|2:3:Unchanged", PairSig(pairs),
+            AssertEq("0:0:Unchanged|-1:1:RightOnly|1:2:Unchanged|2:3:Unchanged", PairSig(pairs),
                 "вставка стала right-only, последующие страницы снова сопоставлены");
         }
 
@@ -2442,15 +2442,15 @@ namespace ExcelMerger.Tests
                     if (op.Kind == PdfReviewDiffKind.Insert) inserted++;
                 }
             }
-            AssertEqual("Старый текст и таблица 10", string.Join(" ", leftWords.ToArray()),
+            AssertEq("Старый текст и таблица 10", string.Join(" ", leftWords.ToArray()),
                 "left reconstruction");
-            AssertEqual("Новый текст и таблица 11", string.Join(" ", rightWords.ToArray()),
+            AssertEq("Новый текст и таблица 11", string.Join(" ", rightWords.ToArray()),
                 "right reconstruction");
-            AssertEqual(2, deleted, "удалено ровно два слова");
-            AssertEqual(2, inserted, "добавлено ровно два слова");
-            AssertEqual(2, result.Stats.DeletedWords, "счётчик удалённых слов из того же диффа");
-            AssertEqual(2, result.Stats.InsertedWords, "счётчик добавленных слов из того же диффа");
-            AssertEqual(2, result.Stats.Replacements, "замена посчитана");
+            AssertEq(2, deleted, "удалено ровно два слова");
+            AssertEq(2, inserted, "добавлено ровно два слова");
+            AssertEq(2, result.Stats.DeletedWords, "счётчик удалённых слов из того же диффа");
+            AssertEq(2, result.Stats.InsertedWords, "счётчик добавленных слов из того же диффа");
+            AssertEq(2, result.Stats.Replacements, "замена посчитана");
             AssertTrue(result.Stats.ChangedPercent > 0, "ненулевое изменение не округлено в 0%");
         }
 
@@ -2468,10 +2468,10 @@ namespace ExcelMerger.Tests
             PdfReviewResult result = PdfReviewDiff.Compare(
                 ReviewDocument("left.pdf", text), ReviewDocument("right.pdf", text),
                 PdfReviewLimits.Default());
-            AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
                 "идентичная большая страница — без изменений");
             foreach (PdfReviewWordOp op in result.Operations)
-                AssertEqual(PdfReviewDiffKind.Equal, op.Kind,
+                AssertEq(PdfReviewDiffKind.Equal, op.Kind,
                     "в идентичной паре нет операций удаления/вставки");
         }
 
@@ -2490,7 +2490,7 @@ namespace ExcelMerger.Tests
             PdfReviewResult result = PdfReviewDiff.Compare(
                 ReviewDocument("left.pdf", left), ReviewDocument("right.pdf", right),
                 PdfReviewLimits.Default());
-            AssertEqual(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
                 "одна правка видна как изменение");
             int deleted = 0, inserted = 0, equalWords = 0;
             foreach (PdfReviewWordOp op in result.Operations)
@@ -2499,9 +2499,9 @@ namespace ExcelMerger.Tests
                 else if (op.Kind == PdfReviewDiffKind.Insert) inserted += op.Words.Count;
                 else equalWords += op.Words.Count;
             }
-            AssertEqual(1, deleted, "удалено ровно одно слово, а не вся страница");
-            AssertEqual(1, inserted, "добавлено ровно одно слово, а не вся страница");
-            AssertEqual(599, equalWords, "остальные слова остались без изменений");
+            AssertEq(1, deleted, "удалено ровно одно слово, а не вся страница");
+            AssertEq(1, inserted, "добавлено ровно одно слово, а не вся страница");
+            AssertEq(599, equalWords, "остальные слова остались без изменений");
         }
 
         /// <summary>
@@ -2514,7 +2514,7 @@ namespace ExcelMerger.Tests
                 ReviewPage(0, "один два три"),
                 ReviewPage(0, "один два \nтри"),
                 PdfReviewLimits.Default());
-            AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, pair.Status,
                 "рефлоу без смысловых правок не создаёт изменений");
         }
 
@@ -2540,13 +2540,13 @@ namespace ExcelMerger.Tests
             AssertTrue(result.Operations.Count == 1 &&
                        result.Operations[0].Kind == PdfReviewDiffKind.Equal,
                 context + ": весь документ представлен одной Equal-операцией");
-            AssertEqual(result.Left.WordCount, result.Operations[0].Words.Count,
+            AssertEq(result.Left.WordCount, result.Operations[0].Words.Count,
                 context + ": Equal охватывает все слова документа");
-            AssertEqual(0, result.Stats.DeletedWords,
+            AssertEq(0, result.Stats.DeletedWords,
                 context + ": переносы страниц не создают Delete");
-            AssertEqual(0, result.Stats.InsertedWords,
+            AssertEq(0, result.Stats.InsertedWords,
                 context + ": переносы страниц не создают Insert");
-            AssertEqual(result.Pairs.Count,
+            AssertEq(result.Pairs.Count,
                 ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
                 context + ": все строки viewer проецируются как неизменённые");
 
@@ -2555,7 +2555,7 @@ namespace ExcelMerger.Tests
                 if (pair.LeftPageIndex < 0 || pair.RightPageIndex < 0)
                 {
                     oneSided++;
-                    AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+                    AssertEq(PdfReviewPairStatus.Unchanged, pair.Status,
                         context + ": непустая one-sided строка re-pagination не является правкой");
                 }
             AssertTrue(oneSided > 0,
@@ -2601,22 +2601,22 @@ namespace ExcelMerger.Tests
                 : "Equal:header,alpha,footer|Delete:header,inserted,footer|" +
                     "Equal:header,beta,footer,header,gamma,footer";
 
-            AssertEqual(expectedPairs, PairSig(result.Pairs),
+            AssertEq(expectedPairs, PairSig(result.Pairs),
                 context + ": физические страницы сопоставлены только для viewer");
-            AssertEqual(expectedOperations, ReviewOpsSig(result.Operations),
+            AssertEq(expectedOperations, ReviewOpsSig(result.Operations),
                 context + ": единственный global diff сохраняет страницу целым hunk");
-            AssertEqual(3, ReviewOperationWordCount(result.Operations, kind, 1),
+            AssertEq(3, ReviewOperationWordCount(result.Operations, kind, 1),
                 context + ": header, body и footer принадлежат вставленной странице");
-            AssertEqual(3, ReviewOperationWordCount(result.Operations, kind, -1),
+            AssertEq(3, ReviewOperationWordCount(result.Operations, kind, -1),
                 context + ": нет широкой ложной подсветки");
-            AssertEqual(0, ReviewOperationWordCount(result.Operations, absent, -1),
+            AssertEq(0, ReviewOperationWordCount(result.Operations, absent, -1),
                 context + ": нет зеркальных кандидатов");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
                 context + ": совпавшие физические пары не объявлены изменёнными");
-            AssertEqual(1, ReviewStatusCount(result, extraOnRight
+            AssertEq(1, ReviewStatusCount(result, extraOnRight
                 ? PdfReviewPairStatus.RightOnly : PdfReviewPairStatus.LeftOnly),
                 context + ": ровно одна структурная строка содержит изменение");
-            AssertEqual(0, result.Stats.Replacements,
+            AssertEq(0, result.Stats.Replacements,
                 context + ": чистая вставка/удаление страницы не является replacement");
 
             List<PdfReviewWord> leftWords = PdfReviewDiff.Flatten(result.Left);
@@ -2625,7 +2625,7 @@ namespace ExcelMerger.Tests
                 context + ": fixture имеет не менее двух разных максимальных LCS-сопоставлений");
             List<PdfReviewWordOp> unpreferred = PdfReviewDiff.DiffWords(
                 leftWords, rightWords, PdfReviewLimits.Default());
-            AssertEqual(ReviewOperationWordCount(unpreferred, PdfReviewDiffKind.Equal, -1),
+            AssertEq(ReviewOperationWordCount(unpreferred, PdfReviewDiffKind.Equal, -1),
                 ReviewOperationWordCount(result.Operations, PdfReviewDiffKind.Equal, -1),
                 context + ": page preference не сокращает глобальный LCS");
             int escapedPageCandidates = 0;
@@ -2694,36 +2694,36 @@ namespace ExcelMerger.Tests
 
             PdfReviewResult forward = PdfReviewDiff.Compare(baseline, revised,
                 PdfReviewLimits.Default());
-            AssertEqual(0, forward.Stats.DeletedWords,
+            AssertEq(0, forward.Stats.DeletedWords,
                 "ранняя вставка, прямо: нет ложных Delete");
-            AssertEqual(1, forward.Stats.InsertedWords,
+            AssertEq(1, forward.Stats.InsertedWords,
                 "ранняя вставка, прямо: найдено только добавленное слово");
-            AssertEqual("added", ReviewChangedWordsAcrossPairs(forward,
+            AssertEq("added", ReviewChangedWordsAcrossPairs(forward,
                 PdfReviewDiffKind.Insert),
                 "ранняя вставка, прямо: точный глобальный кандидат");
-            AssertEqual(12, ReviewOperationWordCount(forward.Operations,
+            AssertEq(12, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Equal, -1),
                 "ранняя вставка, прямо: весь общий хвост остался Equal");
-            AssertEqual(1, ReviewOperationWordCount(forward.Operations,
+            AssertEq(1, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Insert, 0),
                 "ранняя вставка принадлежит первой физической странице справа");
-            AssertEqual(1, ReviewStatusCount(forward, PdfReviewPairStatus.RightOnly),
+            AssertEq(1, ReviewStatusCount(forward, PdfReviewPairStatus.RightOnly),
                 "ранняя вставка, прямо: отдельная строка находится справа");
             AssertReviewSyntheticProjection(forward, "ранняя вставка, прямо");
 
             PdfReviewResult reverse = PdfReviewDiff.Compare(revised, baseline,
                 PdfReviewLimits.Default());
-            AssertEqual(1, reverse.Stats.DeletedWords,
+            AssertEq(1, reverse.Stats.DeletedWords,
                 "ранняя вставка, обратно: найден единственный Delete");
-            AssertEqual(0, reverse.Stats.InsertedWords,
+            AssertEq(0, reverse.Stats.InsertedWords,
                 "ранняя вставка, обратно: нет ложных Insert");
-            AssertEqual("added", ReviewChangedWordsAcrossPairs(reverse,
+            AssertEq("added", ReviewChangedWordsAcrossPairs(reverse,
                 PdfReviewDiffKind.Delete),
                 "ранняя вставка, обратно: точный глобальный кандидат");
-            AssertEqual(1, ReviewOperationWordCount(reverse.Operations,
+            AssertEq(1, ReviewOperationWordCount(reverse.Operations,
                 PdfReviewDiffKind.Delete, 0),
                 "обратный Delete принадлежит первой физической странице слева");
-            AssertEqual(1, ReviewStatusCount(reverse, PdfReviewPairStatus.LeftOnly),
+            AssertEq(1, ReviewStatusCount(reverse, PdfReviewPairStatus.LeftOnly),
                 "ранняя вставка, обратно: отдельная строка находится слева");
             AssertReviewSyntheticProjection(reverse, "ранняя вставка, обратно");
         }
@@ -2739,39 +2739,39 @@ namespace ExcelMerger.Tests
 
             PdfReviewResult forward = PdfReviewDiff.Compare(left, right,
                 PdfReviewLimits.Default());
-            AssertEqual("Equal:start|Delete:old|Insert:new|Equal:tail,finish",
+            AssertEq("Equal:start|Delete:old|Insert:new|Equal:tail,finish",
                 ReviewOpsSig(forward.Operations),
                 "замена через границу страниц имеет точный сквозной diff");
-            AssertEqual(1, ReviewOperationWordCount(forward.Operations,
+            AssertEq(1, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Delete, 0),
                 "старое слово принадлежит левой странице 0");
-            AssertEqual(0, ReviewOperationWordCount(forward.Operations,
+            AssertEq(0, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Delete, 1),
                 "Delete не проецируется на соседнюю левую страницу");
-            AssertEqual(0, ReviewOperationWordCount(forward.Operations,
+            AssertEq(0, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Insert, 0),
                 "Insert не проецируется на соседнюю правую страницу");
-            AssertEqual(1, ReviewOperationWordCount(forward.Operations,
+            AssertEq(1, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Insert, 1),
                 "новое слово принадлежит правой странице 1");
-            AssertEqual(2, forward.Stats.ChangedPages,
+            AssertEq(2, forward.Stats.ChangedPages,
                 "обе физические страницы-владельца отмечены в viewer");
-            AssertEqual(1, forward.Stats.Replacements,
+            AssertEq(1, forward.Stats.Replacements,
                 "межстраничная Delete/Insert-группа считается одной заменой");
             AssertReviewSyntheticProjection(forward, "замена через границу, прямо");
 
             PdfReviewResult reverse = PdfReviewDiff.Compare(right, left,
                 PdfReviewLimits.Default());
-            AssertEqual("Equal:start|Delete:new|Insert:old|Equal:tail,finish",
+            AssertEq("Equal:start|Delete:new|Insert:old|Equal:tail,finish",
                 ReviewOpsSig(reverse.Operations),
                 "замена через границу симметрична в обратном направлении");
-            AssertEqual(1, ReviewOperationWordCount(reverse.Operations,
+            AssertEq(1, ReviewOperationWordCount(reverse.Operations,
                 PdfReviewDiffKind.Delete, 1),
                 "обратный Delete остаётся на левой странице 1");
-            AssertEqual(1, ReviewOperationWordCount(reverse.Operations,
+            AssertEq(1, ReviewOperationWordCount(reverse.Operations,
                 PdfReviewDiffKind.Insert, 0),
                 "обратный Insert остаётся на правой странице 0");
-            AssertEqual(1, reverse.Stats.Replacements,
+            AssertEq(1, reverse.Stats.Replacements,
                 "обратная межстраничная группа — одна замена");
             AssertReviewSyntheticProjection(reverse, "замена через границу, обратно");
         }
@@ -2814,18 +2814,18 @@ namespace ExcelMerger.Tests
                 ? PdfReviewDiffKind.Insert : PdfReviewDiffKind.Delete;
             PdfReviewDiffKind absent = kind == PdfReviewDiffKind.Insert
                 ? PdfReviewDiffKind.Delete : PdfReviewDiffKind.Insert;
-            AssertEqual(1, ReviewStatusCount(result, extraStatus),
+            AssertEq(1, ReviewStatusCount(result, extraStatus),
                 context + ": ровно одна структурная строка");
-            AssertEqual(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+            AssertEq(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
                 context + ": соседние страницы не изменены");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
                 context + ": вставка страницы не стала правкой соседней пары");
-            AssertEqual("added|exhibit|unique",
+            AssertEq("added|exhibit|unique",
                 ReviewChangedWordsAcrossPairs(result, kind),
                 context + ": вся добавленная/удалённая страница принадлежит одной стороне");
-            AssertEqual(0, ReviewOperationWordCount(result.Operations, absent, -1),
+            AssertEq(0, ReviewOperationWordCount(result.Operations, absent, -1),
                 context + ": нет зеркальных ложных кандидатов");
-            AssertEqual(0, result.Stats.Replacements,
+            AssertEq(0, result.Stats.Replacements,
                 context + ": чистая страница не считается заменой");
             AssertReviewSyntheticProjection(result, context);
         }
@@ -2833,23 +2833,23 @@ namespace ExcelMerger.Tests
         private static void AssertReviewTextPageReorder(PdfReviewResult result,
             string expectedPairs, string expectedWords, string context)
         {
-            AssertEqual(expectedPairs, PairSig(result.Pairs),
+            AssertEq(expectedPairs, PairSig(result.Pairs),
                 context + ": детерминированное отображение перестановки");
-            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
+            AssertEq(1, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
                 context + ": прежняя позиция видна слева");
-            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
+            AssertEq(1, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
                 context + ": новая позиция видна справа");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
                 context + ": соседние пары не получили ложных правок");
-            AssertEqual(expectedWords, ReviewChangedWordsAcrossPairs(result,
+            AssertEq(expectedWords, ReviewChangedWordsAcrossPairs(result,
                 PdfReviewDiffKind.Delete), context + ": точный удалённый блок");
-            AssertEqual(expectedWords, ReviewChangedWordsAcrossPairs(result,
+            AssertEq(expectedWords, ReviewChangedWordsAcrossPairs(result,
                 PdfReviewDiffKind.Insert), context + ": точный вставленный блок");
-            AssertEqual(3, result.Stats.DeletedWords,
+            AssertEq(3, result.Stats.DeletedWords,
                 context + ": старая позиция содержит три слова");
-            AssertEqual(3, result.Stats.InsertedWords,
+            AssertEq(3, result.Stats.InsertedWords,
                 context + ": новая позиция содержит три слова");
-            AssertEqual(0, result.Stats.Replacements,
+            AssertEq(0, result.Stats.Replacements,
                 context + ": перестановка не считается заменой");
             AssertReviewSyntheticProjection(result, context);
         }
@@ -2878,13 +2878,13 @@ namespace ExcelMerger.Tests
             AssertTrue(result.Operations.Count == 1 &&
                        result.Operations[0].Kind == PdfReviewDiffKind.Equal,
                 context + ": текстовый поток полностью равен");
-            AssertEqual(0, result.Stats.DeletedWords,
+            AssertEq(0, result.Stats.DeletedWords,
                 context + ": у пустой страницы нет Delete-слов");
-            AssertEqual(0, result.Stats.InsertedWords,
+            AssertEq(0, result.Stats.InsertedWords,
                 context + ": у пустой страницы нет Insert-слов");
-            AssertEqual(1, ReviewStatusCount(result, expectedStatus),
+            AssertEq(1, ReviewStatusCount(result, expectedStatus),
                 context + ": структурная пустая страница сохранена в viewer");
-            AssertEqual(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+            AssertEq(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
                 context + ": непустые соседи остались неизменными");
 
             PdfReviewPagePair blank = null;
@@ -2892,9 +2892,9 @@ namespace ExcelMerger.Tests
                 if (pair.Status == expectedStatus)
                     blank = pair;
             AssertTrue(blank != null, context + ": строка пустой страницы найдена");
-            AssertEqual(0, PdfReviewForm.BuildHighlight(result, blank, true).Boxes.Count,
+            AssertEq(0, PdfReviewForm.BuildHighlight(result, blank, true).Boxes.Count,
                 context + ": слева нет выдуманной рамки");
-            AssertEqual(0, PdfReviewForm.BuildHighlight(result, blank, false).Boxes.Count,
+            AssertEq(0, PdfReviewForm.BuildHighlight(result, blank, false).Boxes.Count,
                 context + ": справа нет выдуманной рамки");
             AssertReviewSyntheticProjection(result, context);
         }
@@ -2923,32 +2923,32 @@ namespace ExcelMerger.Tests
             limits.MaxDiffCells = 4;
 
             PdfReviewResult forward = PdfReviewDiff.Compare(left, right, limits);
-            AssertEqual(wordCount - 1, ReviewOperationWordCount(forward.Operations,
+            AssertEq(wordCount - 1, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Equal, -1),
                 "Myers fallback сохранил все общие слова как Equal");
-            AssertEqual("w1000", ReviewChangedWordsAcrossPairs(forward,
+            AssertEq("w1000", ReviewChangedWordsAcrossPairs(forward,
                 PdfReviewDiffKind.Delete),
                 "Myers fallback удалил только заменённое слово");
-            AssertEqual("added|revised", ReviewChangedWordsAcrossPairs(forward,
+            AssertEq("added|revised", ReviewChangedWordsAcrossPairs(forward,
                 PdfReviewDiffKind.Insert),
                 "Myers fallback вставил только раннее и заменяющее слова");
-            AssertEqual(ReviewDocumentKeys(left), RebuildReviewSide(forward.Operations, true),
+            AssertEq(ReviewDocumentKeys(left), RebuildReviewSide(forward.Operations, true),
                 "Myers fallback точно восстанавливает длинную левую сторону");
-            AssertEqual(ReviewDocumentKeys(right), RebuildReviewSide(forward.Operations, false),
+            AssertEq(ReviewDocumentKeys(right), RebuildReviewSide(forward.Operations, false),
                 "Myers fallback точно восстанавливает длинную правую сторону");
-            AssertEqual(ReviewOpsSig(forward.Operations), ReviewOpsSig(
+            AssertEq(ReviewOpsSig(forward.Operations), ReviewOpsSig(
                 PdfReviewDiff.Compare(left, right, limits).Operations),
                 "Myers fallback детерминирован на длинном документе");
             AssertReviewSyntheticProjection(forward, "Myers fallback, прямо");
 
             PdfReviewResult reverse = PdfReviewDiff.Compare(right, left, limits);
-            AssertEqual(wordCount - 1, ReviewOperationWordCount(reverse.Operations,
+            AssertEq(wordCount - 1, ReviewOperationWordCount(reverse.Operations,
                 PdfReviewDiffKind.Equal, -1),
                 "обратный Myers fallback сохраняет общий поток");
-            AssertEqual("added|revised", ReviewChangedWordsAcrossPairs(reverse,
+            AssertEq("added|revised", ReviewChangedWordsAcrossPairs(reverse,
                 PdfReviewDiffKind.Delete),
                 "обратный Myers fallback удаляет только реальные кандидаты");
-            AssertEqual("w1000", ReviewChangedWordsAcrossPairs(reverse,
+            AssertEq("w1000", ReviewChangedWordsAcrossPairs(reverse,
                 PdfReviewDiffKind.Insert),
                 "обратный Myers fallback возвращает заменённое слово");
             AssertReviewSyntheticProjection(reverse, "Myers fallback, обратно");
@@ -2974,12 +2974,12 @@ namespace ExcelMerger.Tests
                 List<PdfReviewWordOp> exact = PdfReviewDiff.DiffWords(a, b, exactLimits);
                 List<PdfReviewWordOp> bounded = PdfReviewDiff.DiffWords(a, b, limits);
                 string caseName = "Myers sample " + sample;
-                AssertEqual(ReviewOperationWordCount(exact, PdfReviewDiffKind.Equal, -1),
+                AssertEq(ReviewOperationWordCount(exact, PdfReviewDiffKind.Equal, -1),
                     ReviewOperationWordCount(bounded, PdfReviewDiffKind.Equal, -1),
                     caseName + ": fallback сохраняет оптимальную длину LCS");
-                AssertEqual(ReviewWordKeys(a), RebuildReviewSide(bounded, true),
+                AssertEq(ReviewWordKeys(a), RebuildReviewSide(bounded, true),
                     caseName + ": fallback восстанавливает левую выборку");
-                AssertEqual(ReviewWordKeys(b), RebuildReviewSide(bounded, false),
+                AssertEq(ReviewWordKeys(b), RebuildReviewSide(bounded, false),
                     caseName + ": fallback восстанавливает правую выборку");
             }
         }
@@ -2992,9 +2992,9 @@ namespace ExcelMerger.Tests
             AssertTrue(PdfReviewDiff.TryGetMatrixSize(3, 3, 16,
                 out rows, out columns, out cells),
                 "допустимая matrix-размерность принимается");
-            AssertEqual(4, rows, "matrix rows считаются после безопасного widening");
-            AssertEqual(4, columns, "matrix columns считаются после безопасного widening");
-            AssertEqual(16L, cells, "matrix cells не теряют точное произведение");
+            AssertEq(4, rows, "matrix rows считаются после безопасного widening");
+            AssertEq(4, columns, "matrix columns считаются после безопасного widening");
+            AssertEq(16L, cells, "matrix cells не теряют точное произведение");
 
             AssertTrue(!PdfReviewDiff.TryGetMatrixSize(3, 3, 15,
                 out rows, out columns, out cells),
@@ -3005,11 +3005,11 @@ namespace ExcelMerger.Tests
             AssertTrue(PdfReviewDiff.TryGetMatrixSize(999999, 0, int.MaxValue,
                 out rows, out columns, out cells),
                 "ровно абсолютный matrix-потолок остаётся допустимым");
-            AssertEqual(1000000, rows,
+            AssertEq(1000000, rows,
                 "одномерная matrix достигает потолка без переполнения rows");
-            AssertEqual(1, columns,
+            AssertEq(1, columns,
                 "одномерная matrix сохраняет второй размер");
-            AssertEqual(1000000L, cells,
+            AssertEq(1000000L, cells,
                 "одномерная matrix сохраняет точное число cells");
 
             AssertTrue(!PdfReviewDiff.TryGetMatrixSize(int.MaxValue, 0,
@@ -3021,7 +3021,7 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfReviewDiff.TryGetMatrixSize(-1, 1, 16,
                 out rows, out columns, out cells),
                 "отрицательная размерность не принимается");
-            AssertEqual(0L, cells,
+            AssertEq(0L, cells,
                 "отклонённая matrix не оставляет частичный размер в out-параметре");
 
             Type contextType = typeof(PdfReviewDiff).GetNestedType("DiffContext",
@@ -3070,12 +3070,12 @@ namespace ExcelMerger.Tests
             matrixSuccessLimits.MaxDiffWork = 22;
             List<PdfReviewWordOp> matrixSuccess = PdfReviewDiff.DiffWords(left, right,
                 matrixSuccessLimits);
-            AssertEqual(1, ReviewOperationWordCount(matrixSuccess,
+            AssertEq(1, ReviewOperationWordCount(matrixSuccess,
                 PdfReviewDiffKind.Equal, -1),
                 "matrix при точном бюджете 16 cells + 6 слов доказывает общий b");
-            AssertEqual("a b c", RebuildReviewSide(matrixSuccess, true),
+            AssertEq("a b c", RebuildReviewSide(matrixSuccess, true),
                 "успешная matrix точно восстанавливает левую сторону");
-            AssertEqual("x b y", RebuildReviewSide(matrixSuccess, false),
+            AssertEq("x b y", RebuildReviewSide(matrixSuccess, false),
                 "успешная matrix точно восстанавливает правую сторону");
 
             var matrixExhaustedLimits = PdfReviewLimits.Default();
@@ -3083,16 +3083,16 @@ namespace ExcelMerger.Tests
             matrixExhaustedLimits.MaxDiffWork = 21;
             List<PdfReviewWordOp> matrixExhausted = PdfReviewDiff.DiffWords(left, right,
                 matrixExhaustedLimits);
-            AssertEqual(0, ReviewOperationWordCount(matrixExhausted,
+            AssertEq(0, ReviewOperationWordCount(matrixExhausted,
                 PdfReviewDiffKind.Equal, -1),
                 "на единицу ниже matrix-бюджета не публикуется частичный Equal");
-            AssertEqual("Delete:a,b,c|Insert:x,b,y", ReviewOpsSig(matrixExhausted),
+            AssertEq("Delete:a,b,c|Insert:x,b,y", ReviewOpsSig(matrixExhausted),
                 "непроверенная matrix-середина целиком остаётся Delete/Insert");
-            AssertEqual("a b c", RebuildReviewSide(matrixExhausted, true),
+            AssertEq("a b c", RebuildReviewSide(matrixExhausted, true),
                 "matrix exhaustion не теряет ни одного левого слова");
-            AssertEqual("x b y", RebuildReviewSide(matrixExhausted, false),
+            AssertEq("x b y", RebuildReviewSide(matrixExhausted, false),
                 "matrix exhaustion не теряет ни одного правого слова");
-            AssertEqual(ReviewOpsSig(matrixExhausted), ReviewOpsSig(
+            AssertEq(ReviewOpsSig(matrixExhausted), ReviewOpsSig(
                 PdfReviewDiff.DiffWords(left, right, matrixExhaustedLimits)),
                 "matrix exhaustion детерминирован при повторном запуске");
 
@@ -3100,7 +3100,7 @@ namespace ExcelMerger.Tests
             myersSuccessLimits.MaxDiffCells = 15;
             List<PdfReviewWordOp> myersSuccess = PdfReviewDiff.DiffWords(left, right,
                 myersSuccessLimits);
-            AssertEqual(1, ReviewOperationWordCount(myersSuccess,
+            AssertEq(1, ReviewOperationWordCount(myersSuccess,
                 PdfReviewDiffKind.Equal, -1),
                 "15 cells принудительно направляют тот же диапазон в Myers");
 
@@ -3109,14 +3109,14 @@ namespace ExcelMerger.Tests
             myersExhaustedLimits.MaxDiffWork = 6;
             List<PdfReviewWordOp> myersExhausted = PdfReviewDiff.DiffWords(left, right,
                 myersExhaustedLimits);
-            AssertEqual(0, ReviewOperationWordCount(myersExhausted,
+            AssertEq(0, ReviewOperationWordCount(myersExhausted,
                 PdfReviewDiffKind.Equal, -1),
                 "без семи единиц на Myers-вектор общий b не объявляется доказанным");
-            AssertEqual("Delete:a,b,c|Insert:x,b,y", ReviewOpsSig(myersExhausted),
+            AssertEq("Delete:a,b,c|Insert:x,b,y", ReviewOpsSig(myersExhausted),
                 "Myers exhaustion сохраняет консервативный исходный hunk");
-            AssertEqual("a b c", RebuildReviewSide(myersExhausted, true),
+            AssertEq("a b c", RebuildReviewSide(myersExhausted, true),
                 "Myers exhaustion восстанавливает левую сторону");
-            AssertEqual("x b y", RebuildReviewSide(myersExhausted, false),
+            AssertEq("x b y", RebuildReviewSide(myersExhausted, false),
                 "Myers exhaustion восстанавливает правую сторону");
 
             var fullLimits = PdfReviewLimits.Default();
@@ -3124,22 +3124,22 @@ namespace ExcelMerger.Tests
             PdfReviewResult full = PdfReviewDiff.Compare(
                 ReviewDocument("budget-left.pdf", "a b c"),
                 ReviewDocument("budget-right.pdf", "x b y"), fullLimits);
-            AssertEqual(0, ReviewOperationWordCount(full.Operations,
+            AssertEq(0, ReviewOperationWordCount(full.Operations,
                 PdfReviewDiffKind.Equal, -1),
                 "нулевой общий бюджет не выдумывает Equal после отказа alignment");
-            AssertEqual("a b c", RebuildReviewSide(full.Operations, true),
+            AssertEq("a b c", RebuildReviewSide(full.Operations, true),
                 "полный Compare при exhaustion сохраняет весь левый документ");
-            AssertEqual("x b y", RebuildReviewSide(full.Operations, false),
+            AssertEq("x b y", RebuildReviewSide(full.Operations, false),
                 "полный Compare при exhaustion сохраняет весь правый документ");
             AssertTrue(full.Stats != null,
                 "исчерпание не возвращает частичный result без статистики");
-            AssertEqual(3, full.Stats.DeletedWords,
+            AssertEq(3, full.Stats.DeletedWords,
                 "консервативная проекция считает все левые слова Delete");
-            AssertEqual(3, full.Stats.InsertedWords,
+            AssertEq(3, full.Stats.InsertedWords,
                 "консервативная проекция считает все правые слова Insert");
-            AssertEqual(full.Pairs.Count, full.Stats.PagePairs,
+            AssertEq(full.Pairs.Count, full.Stats.PagePairs,
                 "viewer-пары и статистика достроены даже после exhaustion");
-            AssertEqual(0, full.WhitespaceChanges.Count,
+            AssertEq(0, full.WhitespaceChanges.Count,
                 "исчерпание до whitespace ничего частично не публикует");
         }
 
@@ -3200,9 +3200,9 @@ namespace ExcelMerger.Tests
                 "отменённый Compare не возвращает частичный semantic result");
             for (int i = 0; i < left.Pages[0].Words.Count; i++)
             {
-                AssertEqual(-1000 - i, left.Pages[0].Words[i].PageIndex,
+                AssertEq(-1000 - i, left.Pages[0].Words[i].PageIndex,
                     "rollback вернул точный исходный left ownership " + i);
-                AssertEqual(1000 + i, right.Pages[0].Words[i].PageIndex,
+                AssertEq(1000 + i, right.Pages[0].Words[i].PageIndex,
                     "rollback вернул точный исходный right ownership " + i);
             }
             AssertTrue(ReferenceEquals(firstLeft, left.Pages[0].Words[0]) &&
@@ -3212,10 +3212,10 @@ namespace ExcelMerger.Tests
             PdfReviewResult expected = PdfReviewDiff.Compare(left, right,
                 PdfReviewLimits.Default());
             foreach (PdfReviewWord word in left.Pages[0].Words)
-                AssertEqual(17, word.PageIndex,
+                AssertEq(17, word.PageIndex,
                     "успешный Compare закрепляет физического left-владельца");
             foreach (PdfReviewWord word in right.Pages[0].Words)
-                AssertEqual(29, word.PageIndex,
+                AssertEq(29, word.PageIndex,
                     "успешный Compare закрепляет физического right-владельца");
             AssertTrue(expected.Operations.Count > 0 &&
                        ReferenceEquals(firstLeft, expected.Operations[0].LeftWords[0]) &&
@@ -3224,17 +3224,17 @@ namespace ExcelMerger.Tests
 
             PdfReviewResult retried = PdfReviewDiff.Compare(left, right,
                 PdfReviewLimits.Default());
-            AssertEqual(ReviewOrderMatchSig(expected), ReviewOrderMatchSig(retried),
+            AssertEq(ReviewOrderMatchSig(expected), ReviewOrderMatchSig(retried),
                 "после отмены чистый повтор строит те же операции и provenance");
-            AssertEqual(PairSig(expected.Pairs), PairSig(retried.Pairs),
+            AssertEq(PairSig(expected.Pairs), PairSig(retried.Pairs),
                 "после отмены чистый повтор строит те же viewer-пары");
-            AssertEqual(expected.Stats.DeletedWords, retried.Stats.DeletedWords,
+            AssertEq(expected.Stats.DeletedWords, retried.Stats.DeletedWords,
                 "повтор после отмены не теряет Delete-статистику");
-            AssertEqual(expected.Stats.InsertedWords, retried.Stats.InsertedWords,
+            AssertEq(expected.Stats.InsertedWords, retried.Stats.InsertedWords,
                 "повтор после отмены не теряет Insert-статистику");
-            AssertEqual(ReviewDocumentKeys(left), RebuildReviewSide(retried.Operations, true),
+            AssertEq(ReviewDocumentKeys(left), RebuildReviewSide(retried.Operations, true),
                 "повтор после отмены точно восстанавливает левый документ");
-            AssertEqual(ReviewDocumentKeys(right), RebuildReviewSide(retried.Operations, false),
+            AssertEq(ReviewDocumentKeys(right), RebuildReviewSide(retried.Operations, false),
                 "повтор после отмены точно восстанавливает правый документ");
 
             var shared = new PdfReviewWord
@@ -3265,7 +3265,7 @@ namespace ExcelMerger.Tests
             }
             AssertTrue(ambiguousRejected,
                 "один объект слова на двух физических страницах отклоняется");
-            AssertEqual(73, shared.PageIndex,
+            AssertEq(73, shared.PageIndex,
                 "ambiguous ownership отклонён до изменения caller-owned слова");
         }
 
@@ -3307,22 +3307,22 @@ namespace ExcelMerger.Tests
                 List<PdfReviewWordOp> forward = PdfReviewDiff.DiffWords(left, right, limits);
                 List<PdfReviewWordOp> reverse = PdfReviewDiff.DiffWords(right, left, limits);
 
-                AssertEqual(ReviewWordKeys(left), RebuildReviewSide(forward, true),
+                AssertEq(ReviewWordKeys(left), RebuildReviewSide(forward, true),
                     context + ": прямой diff сохраняет исходные объекты слева");
-                AssertEqual(ReviewWordKeys(right), RebuildReviewSide(forward, false),
+                AssertEq(ReviewWordKeys(right), RebuildReviewSide(forward, false),
                     context + ": прямой diff сохраняет исходные объекты справа");
-                AssertEqual(ReviewWordKeys(right), RebuildReviewSide(reverse, true),
+                AssertEq(ReviewWordKeys(right), RebuildReviewSide(reverse, true),
                     context + ": обратный diff сохраняет новую левую последовательность");
-                AssertEqual(ReviewWordKeys(left), RebuildReviewSide(reverse, false),
+                AssertEq(ReviewWordKeys(left), RebuildReviewSide(reverse, false),
                     context + ": обратный diff сохраняет новую правую последовательность");
 
                 string forwardPairs = ReviewObjectMatchSig(forward, left, right, false);
                 string reversePairs = ReviewObjectMatchSig(reverse, left, right, true);
                 AssertTrue(forwardPairs.Length > 0,
                     context + ": неоднозначные повторные ключи всё же имеют доказанные пары");
-                AssertEqual(forwardPairs, reversePairs,
+                AssertEq(forwardPairs, reversePairs,
                     context + ": A↔B выбирает те же фактические объекты с зеркальным ownership");
-                AssertEqual(forwardPairs, ReviewObjectMatchSig(
+                AssertEq(forwardPairs, ReviewObjectMatchSig(
                     PdfReviewDiff.DiffWords(left, right, limits), left, right, false),
                     context + ": повторный запуск сохраняет идентичность выбранных дублей");
             }
@@ -3352,10 +3352,10 @@ namespace ExcelMerger.Tests
                 int inserted = pair.RightPageIndex < 0 ? 0 :
                     ReviewOperationWordCount(result.Operations,
                         PdfReviewDiffKind.Insert, pair.RightPageIndex);
-                AssertEqual(deleted,
+                AssertEq(deleted,
                     PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
                     context + ": красные рамки принадлежат только показанной левой странице");
-                AssertEqual(inserted,
+                AssertEq(inserted,
                     PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
                     context + ": зелёные рамки принадлежат только показанной правой странице");
 
@@ -3377,13 +3377,13 @@ namespace ExcelMerger.Tests
                 }
                 else
                     expected = PdfReviewPairStatus.Unchanged;
-                AssertEqual(expected, pair.Status,
+                AssertEq(expected, pair.Status,
                     context + ": статус строки получен из глобальных операций");
             }
-            AssertEqual(ReviewOperationWordCount(result.Operations,
+            AssertEq(ReviewOperationWordCount(result.Operations,
                     PdfReviewDiffKind.Delete, -1), result.Stats.DeletedWords,
                 context + ": статистика Delete получена из глобальных операций");
-            AssertEqual(ReviewOperationWordCount(result.Operations,
+            AssertEq(ReviewOperationWordCount(result.Operations,
                     PdfReviewDiffKind.Insert, -1), result.Stats.InsertedWords,
                 context + ": статистика Insert получена из глобальных операций");
         }
@@ -3402,7 +3402,7 @@ namespace ExcelMerger.Tests
                 foreach (PdfReviewWord w in op.Words) words.Add(w.Key);
                 sig.Add(op.Kind + ":" + string.Join(",", words.ToArray()));
             }
-            AssertEqual("Equal:альфа|Delete:бета|Insert:икс|Equal:гамма|Delete:дельта",
+            AssertEq("Equal:альфа|Delete:бета|Insert:икс|Equal:гамма|Delete:дельта",
                 string.Join("|", sig.ToArray()), "операции идут в порядке чтения без склеек чужих видов");
         }
 
@@ -3485,8 +3485,8 @@ namespace ExcelMerger.Tests
                 W("caf", 10, 100, 15, 10),
                 W("é", 25.3, 100, 8, 10));
 
-            AssertEqual(1, fragmented.Words.Count, "три raw-фрагмента стали одним видимым словом");
-            AssertEqual(visible, fragmented.Words[0].Key,
+            AssertEq(1, fragmented.Words.Count, "три raw-фрагмента стали одним видимым словом");
+            AssertEq(visible, fragmented.Words[0].Key,
                 "NFC и supplementary Unicode сохранены после склейки");
             PdfReviewBox box = fragmented.Words[0].Box;
             AssertTrue(Math.Abs(box.Left - 10) < 0.001 && Math.Abs(box.Bottom - 100) < 0.001 &&
@@ -3494,9 +3494,9 @@ namespace ExcelMerger.Tests
                 "рамка канонического слова — точный union raw-рамок");
 
             PdfReviewPagePair pair = PdfReviewDiff.Pair(whole, fragmented, null);
-            AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, pair.Status,
                 "один raw-токен и три его фрагмента — одна видимая последовательность");
-            AssertEqual(1.0, pair.Similarity, "канонически равные страницы имеют similarity 1");
+            AssertEq(1.0, pair.Similarity, "канонически равные страницы имеют similarity 1");
             List<PdfReviewWordOp> operations = PdfReviewDiff.DiffWords(
                 whole.Words, fragmented.Words, null);
             AssertTrue(operations.Count == 1 && operations[0].LeftWords.Count == 1 &&
@@ -3518,9 +3518,9 @@ namespace ExcelMerger.Tests
             PdfWord firstOverlay = W("café", 10, 100, 25, 10);
             PdfWord secondOverlay = W("café", 10.2, 99.8, 25.4, 10.3);
             PdfReviewPage overlaid = ReviewPageFromWords(0, firstOverlay, secondOverlay);
-            AssertEqual(1, overlaid.Words.Count,
+            AssertEq(1, overlaid.Words.Count,
                 "два совпадающих raw-слова стали одним видимым экземпляром");
-            AssertEqual("café", overlaid.Words[0].Key,
+            AssertEq("café", overlaid.Words[0].Key,
                 "overlay-сравнение использует тот же NFC-ключ, что word-diff");
             PdfReviewBox union = overlaid.Words[0].Box;
             AssertTrue(Math.Abs(union.Left - 10) < 0.001 &&
@@ -3535,36 +3535,36 @@ namespace ExcelMerger.Tests
             PdfReviewPage reversedOverlay = ReviewPageFromWords(0,
                 W("café", 10.2, 99.8, 25.4, 10.3),
                 W("café", 10, 100, 25, 10));
-            AssertEqual(overlaid.Words[0].Key, reversedOverlay.Words[0].Key,
+            AssertEq(overlaid.Words[0].Key, reversedOverlay.Words[0].Key,
                 "результат overlay-канонизации не зависит от порядка content operations");
-            AssertEqual(BoxSig(overlaid.Words[0].Box), BoxSig(reversedOverlay.Words[0].Box),
+            AssertEq(BoxSig(overlaid.Words[0].Box), BoxSig(reversedOverlay.Words[0].Box),
                 "union-рамка не зависит от порядка content operations");
 
             PdfReviewPage repeated = ReviewPageFromWords(0,
                 W("echo", 10, 100, 20, 10),
                 W("echo", 40, 100, 20, 10));
-            AssertEqual(2, repeated.Words.Count,
+            AssertEq(2, repeated.Words.Count,
                 "одинаковый текст в разных видимых местах не схлопнут");
 
             PdfReviewPage different = ReviewPageFromWords(0,
                 W("north", 10, 100, 25, 10),
                 W("south", 10.1, 100, 25, 10));
-            AssertEqual(1, different.Words.Count,
+            AssertEq(1, different.Words.Count,
                 "перекрывающиеся фрагменты без пробела остаются одним видимым токеном");
-            AssertEqual("northsouth", different.Words[0].Key,
+            AssertEq("northsouth", different.Words[0].Key,
                 "разный текст в совпадающей области сохранён, а не принят за дубль");
 
             PdfReviewPage differentSize = ReviewPageFromWords(0,
                 W("echo", 10, 100, 20, 10),
                 W("echo", 5, 97.5, 30, 15));
-            AssertEqual("echoecho", differentSize.Words[0].Key,
+            AssertEq("echoecho", differentSize.Words[0].Key,
                 "одинаковый текст с заметно разными рамками не подавлен как overlay-дубль");
 
             PdfReviewPage drift = ReviewPageFromWords(0,
                 W("trail", 10, 100, 20, 10),
                 W("trail", 11.2, 100, 20, 10),
                 W("trail", 12.4, 100, 20, 10));
-            AssertEqual("trailtrail", drift.Words[0].Key,
+            AssertEq("trailtrail", drift.Words[0].Key,
                 "union не расширяет anchor и не схлопывает цепочку транзитивно");
 
             PdfReviewPage leftPage = ReviewPageFromWords(0,
@@ -3586,32 +3586,32 @@ namespace ExcelMerger.Tests
 
             PdfReviewResult forward = PdfReviewDiff.Compare(left, right, null);
             PdfReviewPagePair forwardPair = forward.Pairs[0];
-            AssertEqual("Equal:anchor|Delete:old|Insert:new|Equal:stable",
+            AssertEq("Equal:anchor|Delete:old|Insert:new|Equal:stable",
                 ReviewOpsSig(forward.Operations),
                 "overlay-замена даёт одну пару операций в прямом направлении");
-            AssertEqual(1, forward.Stats.DeletedWords,
+            AssertEq(1, forward.Stats.DeletedWords,
                 "overlay-замена считается одним удалением");
-            AssertEqual(1, forward.Stats.InsertedWords,
+            AssertEq(1, forward.Stats.InsertedWords,
                 "overlay-замена считается одной вставкой");
-            AssertEqual(1, forward.Stats.Replacements,
+            AssertEq(1, forward.Stats.Replacements,
                 "overlay-замена считается одной заменой");
-            AssertEqual(1, PdfReviewForm.BuildHighlight(forward, forwardPair, true).Boxes.Count,
+            AssertEq(1, PdfReviewForm.BuildHighlight(forward, forwardPair, true).Boxes.Count,
                 "слева построена одна красная рамка");
-            AssertEqual(1, PdfReviewForm.BuildHighlight(forward, forwardPair, false).Boxes.Count,
+            AssertEq(1, PdfReviewForm.BuildHighlight(forward, forwardPair, false).Boxes.Count,
                 "справа построена одна зелёная рамка");
 
             PdfReviewResult reverse = PdfReviewDiff.Compare(right, left, null);
             PdfReviewPagePair reversePair = reverse.Pairs[0];
-            AssertEqual("Equal:anchor|Delete:new|Insert:old|Equal:stable",
+            AssertEq("Equal:anchor|Delete:new|Insert:old|Equal:stable",
                 ReviewOpsSig(reverse.Operations),
                 "overlay-замена симметрична в обратном направлении");
-            AssertEqual(1, reverse.Stats.DeletedWords,
+            AssertEq(1, reverse.Stats.DeletedWords,
                 "обратная overlay-замена считает одно удаление");
-            AssertEqual(1, reverse.Stats.InsertedWords,
+            AssertEq(1, reverse.Stats.InsertedWords,
                 "обратная overlay-замена считает одну вставку");
-            AssertEqual(1, PdfReviewForm.BuildHighlight(reverse, reversePair, true).Boxes.Count,
+            AssertEq(1, PdfReviewForm.BuildHighlight(reverse, reversePair, true).Boxes.Count,
                 "обратное сравнение строит одну рамку слева");
-            AssertEqual(1, PdfReviewForm.BuildHighlight(reverse, reversePair, false).Boxes.Count,
+            AssertEq(1, PdfReviewForm.BuildHighlight(reverse, reversePair, false).Boxes.Count,
                 "обратное сравнение строит одну рамку справа");
         }
 
@@ -3630,25 +3630,25 @@ namespace ExcelMerger.Tests
                 W("ab", 0, 100, 10, 10));
             var keys = new List<string>();
             foreach (PdfReviewWord word in page.Words) keys.Add(word.Key);
-            AssertEqual("ab|c|one|two|tail", string.Join("|", keys.ToArray()),
+            AssertEq("ab|c|one|two|tail", string.Join("|", keys.ToArray()),
                 "пустой фрагмент, настоящий пробел и граница строки не склеены");
 
             PdfReviewPage belowThreshold = ReviewPageFromWords(0,
                 W("a", 0, 100, 5, 10), W("b", 5.79, 100, 5, 10));
             PdfReviewPage aboveThreshold = ReviewPageFromWords(0,
                 W("a", 0, 100, 5, 10), W("b", 5.81, 100, 5, 10));
-            AssertEqual(1, belowThreshold.Words.Count, "зазор 0.079em — артефакт сегментации");
-            AssertEqual(2, aboveThreshold.Words.Count, "зазор 0.081em — настоящий видимый пробел");
+            AssertEq(1, belowThreshold.Words.Count, "зазор 0.079em — артефакт сегментации");
+            AssertEq(2, aboveThreshold.Words.Count, "зазор 0.081em — настоящий видимый пробел");
 
             PdfReviewPage left = ReviewPageFromWords(0,
                 W("ab", 0, 100, 10, 10), W("c", 12, 100, 5, 10));
             PdfReviewPage right = ReviewPageFromWords(0,
                 W("a", 0, 100, 4, 10), W("bc", 6, 100, 9, 10));
-            AssertEqual("abc", left.Words[0].Key + left.Words[1].Key,
+            AssertEq("abc", left.Words[0].Key + left.Words[1].Key,
                 "контроль: separator-free поток слева");
-            AssertEqual("abc", right.Words[0].Key + right.Words[1].Key,
+            AssertEq("abc", right.Words[0].Key + right.Words[1].Key,
                 "контроль: separator-free поток справа");
-            AssertEqual(PdfReviewPairStatus.Changed,
+            AssertEq(PdfReviewPairStatus.Changed,
                 PdfReviewDiff.Pair(left, right, PdfReviewLimits.Default()).Status,
                 "разные видимые границы слов не маскируются общей строкой без разделителей");
         }
@@ -3750,9 +3750,9 @@ namespace ExcelMerger.Tests
                     null, true, 7, 7, 55);
                 PdfReviewWhitespaceEvidence evidence = ReviewInternalBoundary(page);
                 AssertTrue(evidence != null, "source boundary " + i + ": граница доказана");
-                AssertEqual(raw[i], evidence.RawText,
+                AssertEq(raw[i], evidence.RawText,
                     "source boundary " + i + ": raw whitespace сохранён точно");
-                AssertEqual(logical[i], evidence.LogicalText,
+                AssertEq(logical[i], evidence.LogicalText,
                     "source boundary " + i + ": логический перевод строки нормализован узко");
                 AssertTrue(ReferenceEquals(evidence.Before, page.Words[0]) &&
                            ReferenceEquals(evidence.After, page.Words[1]),
@@ -3761,9 +3761,9 @@ namespace ExcelMerger.Tests
 
             PdfReviewPage tight = ReviewPageFromSourceBoundary(0, null, " ", null,
                 true, 3, 3, 25.1);
-            AssertEqual(2, tight.Words.Count,
+            AssertEq(2, tight.Words.Count,
                 "явный source-space сохраняет границу при почти нулевом геометрическом зазоре");
-            AssertEqual(" ", ReviewInternalBoundary(tight).RawText,
+            AssertEq(" ", ReviewInternalBoundary(tight).RawText,
                 "тесная граница хранит литеральный source-space");
 
             PdfReviewPage edged = ReviewPageFromSourceBoundary(0, "  ", " ",
@@ -3772,9 +3772,9 @@ namespace ExcelMerger.Tests
             PdfReviewWhitespaceEvidence end = ReviewEdgeBoundary(edged, false);
             AssertTrue(start != null && end != null,
                 "source units до первого и после последнего слова дают доказанные края");
-            AssertEqual("  ", start.RawText, "leading whitespace сохранён буквально");
-            AssertEqual("\t\r\n", end.RawText, "trailing whitespace сохранён буквально");
-            AssertEqual("\t\n", end.LogicalText,
+            AssertEq("  ", start.RawText, "leading whitespace сохранён буквально");
+            AssertEq("\t\r\n", end.RawText, "trailing whitespace сохранён буквально");
+            AssertEq("\t\n", end.LogicalText,
                 "trailing CRLF представлен одним логическим переносом");
         }
 
@@ -3858,7 +3858,7 @@ namespace ExcelMerger.Tests
                        joined.Words[0].Key == "international" &&
                        !joined.Words[0].SourceTrusted,
                 "reconstructed Latin line-end join abstains from source whitespace semantics");
-            AssertEqual(0, joined.WhitespaceBoundaries.Count,
+            AssertEq(0, joined.WhitespaceBoundaries.Count,
                 "invalidated joined word cannot prove leading or trailing whitespace");
         }
 
@@ -3970,7 +3970,7 @@ namespace ExcelMerger.Tests
             var successfulLimits = PdfReviewLimits.Default();
             successfulLimits.MaxDiffWork = minimum;
             PdfReviewDiff.CompareWhitespace(successful, successfulLimits);
-            AssertEqual(3, successful.WhitespaceChanges.Count,
+            AssertEq(3, successful.WhitespaceChanges.Count,
                 "минимальный успешный бюджет публикует все три доказанные границы");
 
             PdfReviewResult exhausted = ReviewWhitespaceStageFixture();
@@ -3978,30 +3978,30 @@ namespace ExcelMerger.Tests
             var exhaustedLimits = PdfReviewLimits.Default();
             exhaustedLimits.MaxDiffWork = minimum - 1;
             PdfReviewDiff.CompareWhitespace(exhausted, exhaustedLimits);
-            AssertEqual(0, exhausted.WhitespaceChanges.Count,
+            AssertEq(0, exhausted.WhitespaceChanges.Count,
                 "на единицу ниже успеха не публикуется частичный whitespace diff");
-            AssertEqual(originalOperations, ReviewOrderMatchSig(exhausted),
+            AssertEq(originalOperations, ReviewOrderMatchSig(exhausted),
                 "whitespace exhaustion не меняет authoritative word operations");
 
             PdfReviewDiff.Project(exhausted);
             AssertTrue(exhausted.Stats != null,
                 "после abstention проекция всё равно строит полную статистику");
-            AssertEqual(0, exhausted.Stats.DeletedWords,
+            AssertEq(0, exhausted.Stats.DeletedWords,
                 "whitespace abstention не создаёт word Delete");
-            AssertEqual(0, exhausted.Stats.InsertedWords,
+            AssertEq(0, exhausted.Stats.InsertedWords,
                 "whitespace abstention не создаёт word Insert");
-            AssertEqual(0, exhausted.Stats.WhitespaceChanges,
+            AssertEq(0, exhausted.Stats.WhitespaceChanges,
                 "статистика не видит отброшенный частичный whitespace diff");
-            AssertEqual(PdfReviewPairStatus.Unchanged, exhausted.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, exhausted.Pairs[0].Status,
                 "без полностью доказанной пробельной правки page-pair консервативно unchanged");
 
             PdfReviewDiff.CompareWhitespace(exhausted, successfulLimits);
             PdfReviewDiff.Project(exhausted);
-            AssertEqual(3, exhausted.WhitespaceChanges.Count,
+            AssertEq(3, exhausted.WhitespaceChanges.Count,
                 "тот же result допускает чистый полный повтор после exhaustion");
-            AssertEqual(3, exhausted.Stats.WhitespaceChanges,
+            AssertEq(3, exhausted.Stats.WhitespaceChanges,
                 "повтор после exhaustion проецирует все три границы, без накопления");
-            AssertEqual(PdfReviewPairStatus.Changed, exhausted.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Changed, exhausted.Pairs[0].Status,
                 "полный повтор возвращает whitespace-only pair в Changed");
         }
 
@@ -4071,7 +4071,7 @@ namespace ExcelMerger.Tests
             var proofOnlyLimits = PdfReviewLimits.Default();
             proofOnlyLimits.MaxDiffWork = minimum - 2;
             PdfReviewDiff.CompareWhitespace(beforePublication, proofOnlyLimits);
-            AssertEqual(1, beforePublication.WhitespaceChanges.Count,
+            AssertEq(1, beforePublication.WhitespaceChanges.Count,
                 "нулевой остаток перед двухединичным commit не очищает прежний результат");
             AssertTrue(ReferenceEquals(published,
                     beforePublication.WhitespaceChanges[0]),
@@ -4082,7 +4082,7 @@ namespace ExcelMerger.Tests
             var successfulLimits = PdfReviewLimits.Default();
             successfulLimits.MaxDiffWork = minimum;
             PdfReviewDiff.CompareWhitespace(successful, successfulLimits);
-            AssertEqual(0, successful.WhitespaceChanges.Count,
+            AssertEq(0, successful.WhitespaceChanges.Count,
                 "полный бюджет атомарно заменяет прежнюю публикацию новым пустым результатом");
 
             PdfReviewResult cancelled = ReviewExactIndexStageFixture(
@@ -4109,7 +4109,7 @@ namespace ExcelMerger.Tests
                 "отмена Exact-индекса сохраняет прежнюю пробельную публикацию");
 
             PdfReviewDiff.CompareWhitespace(cancelled, successfulLimits);
-            AssertEqual(0, cancelled.WhitespaceChanges.Count,
+            AssertEq(0, cancelled.WhitespaceChanges.Count,
                 "после отмены тот же result допускает чистую атомарную замену");
         }
 
@@ -4155,7 +4155,7 @@ namespace ExcelMerger.Tests
                     probeChecks++;
                     return false;
                 });
-            AssertEqual(0, probe.WhitespaceChanges.Count,
+            AssertEq(0, probe.WhitespaceChanges.Count,
                 "равные длинные atom-последовательности полностью заменяют sentinel");
             AssertTrue(probeChecks > 10,
                 "fixture проходит несколько periodic checkpoints в atom-proof");
@@ -4184,7 +4184,7 @@ namespace ExcelMerger.Tests
                        ReferenceEquals(published,
                            scanCancelled.WhitespaceChanges[0]),
                 "отмена raw atom scan не очищает прежнюю публикацию");
-            AssertEqual(originalOperations, ReviewOrderMatchSig(scanCancelled),
+            AssertEq(originalOperations, ReviewOrderMatchSig(scanCancelled),
                 "отмена raw atom scan не меняет authoritative word operations");
 
             PdfReviewResult sequenceCancelled = ReviewLongWhitespaceStageFixture(
@@ -4214,7 +4214,7 @@ namespace ExcelMerger.Tests
 
             PdfReviewDiff.CompareWhitespace(sequenceCancelled,
                 PdfReviewLimits.Default());
-            AssertEqual(0, sequenceCancelled.WhitespaceChanges.Count,
+            AssertEq(0, sequenceCancelled.WhitespaceChanges.Count,
                 "чистый повтор после поздней отмены завершает atom-proof без накопления");
         }
 
@@ -4244,72 +4244,72 @@ namespace ExcelMerger.Tests
         private static void TestReviewLiteralWhitespaceComparison()
         {
             PdfReviewResult added = ReviewWhitespaceComparison("", " ");
-            AssertEqual(1, added.WhitespaceChanges.Count,
+            AssertEq(1, added.WhitespaceChanges.Count,
                 "trusted empty boundary and one U+0020 form one whitespace change");
             PdfReviewWhitespaceChange change = added.WhitespaceChanges[0];
-            AssertEqual(0, change.DeletedAtoms.Count,
+            AssertEq(0, change.DeletedAtoms.Count,
                 "empty → space has no fabricated deleted atom");
-            AssertEqual(1, change.InsertedAtoms.Count,
+            AssertEq(1, change.InsertedAtoms.Count,
                 "empty → space inserts exactly one atom");
-            AssertEqual(PdfReviewWhitespaceAtomKind.Space,
+            AssertEq(PdfReviewWhitespaceAtomKind.Space,
                 change.InsertedAtoms[0].Kind, "ordinary space has its own atom kind");
-            AssertEqual(" ", change.InsertedAtoms[0].RawText,
+            AssertEq(" ", change.InsertedAtoms[0].RawText,
                 "ordinary-space raw form is retained");
-            AssertEqual("", change.Left.RawText,
+            AssertEq("", change.Left.RawText,
                 "left empty evidence remains positive evidence, not missing data");
-            AssertEqual(" ", change.Right.RawText,
+            AssertEq(" ", change.Right.RawText,
                 "right evidence retains the complete source run");
 
             PdfReviewResult removed = ReviewWhitespaceComparison(" ", "");
-            AssertEqual(1, removed.WhitespaceChanges.Count,
+            AssertEq(1, removed.WhitespaceChanges.Count,
                 "reverse comparison retains the same boundary");
-            AssertEqual(1, removed.WhitespaceChanges[0].DeletedAtoms.Count,
+            AssertEq(1, removed.WhitespaceChanges[0].DeletedAtoms.Count,
                 "reverse comparison owns removed space on the earlier/left side");
-            AssertEqual(0, removed.WhitespaceChanges[0].InsertedAtoms.Count,
+            AssertEq(0, removed.WhitespaceChanges[0].InsertedAtoms.Count,
                 "reverse comparison does not create a right-side atom");
 
             PdfReviewResult multiple = ReviewWhitespaceComparison(" ", "  ");
-            AssertEqual(1, multiple.WhitespaceChanges.Count,
+            AssertEq(1, multiple.WhitespaceChanges.Count,
                 "one and two ordinary spaces differ");
-            AssertEqual(0, multiple.WhitespaceChanges[0].DeletedAtoms.Count,
+            AssertEq(0, multiple.WhitespaceChanges[0].DeletedAtoms.Count,
                 "shared ordinary space is not highlighted as deleted");
-            AssertEqual(1, multiple.WhitespaceChanges[0].InsertedAtoms.Count,
+            AssertEq(1, multiple.WhitespaceChanges[0].InsertedAtoms.Count,
                 "only the additional ordinary space is highlighted");
 
             PdfReviewResult nbsp = ReviewWhitespaceComparison(" ", " ");
-            AssertEqual(1, nbsp.WhitespaceChanges.Count,
+            AssertEq(1, nbsp.WhitespaceChanges.Count,
                 "NBSP is not compatibility-folded to an ordinary space");
-            AssertEqual(PdfReviewWhitespaceAtomKind.Space,
+            AssertEq(PdfReviewWhitespaceAtomKind.Space,
                 nbsp.WhitespaceChanges[0].DeletedAtoms[0].Kind,
                 "ordinary space is the deleted side of space → NBSP");
-            AssertEqual(PdfReviewWhitespaceAtomKind.NoBreakSpace,
+            AssertEq(PdfReviewWhitespaceAtomKind.NoBreakSpace,
                 nbsp.WhitespaceChanges[0].InsertedAtoms[0].Kind,
                 "NBSP is the inserted side of space → NBSP");
 
             PdfReviewResult tab = ReviewWhitespaceComparison("\t", "");
-            AssertEqual(PdfReviewWhitespaceAtomKind.Tab,
+            AssertEq(PdfReviewWhitespaceAtomKind.Tab,
                 tab.WhitespaceChanges[0].DeletedAtoms[0].Kind,
                 "tab removal is literal and separately typed");
 
-            AssertEqual(0, ReviewWhitespaceComparison("\r\n", "\n")
+            AssertEq(0, ReviewWhitespaceComparison("\r\n", "\n")
                 .WhitespaceChanges.Count,
                 "CRLF and LF are the deliberately narrow logical equivalent");
-            AssertEqual(0, ReviewWhitespaceComparison("\r", "\r\n")
+            AssertEq(0, ReviewWhitespaceComparison("\r", "\r\n")
                 .WhitespaceChanges.Count,
                 "CR and CRLF both represent one logical line break");
 
             PdfReviewResult lineBreak = ReviewWhitespaceComparison("", "\r\n");
-            AssertEqual(PdfReviewWhitespaceAtomKind.LineBreak,
+            AssertEq(PdfReviewWhitespaceAtomKind.LineBreak,
                 lineBreak.WhitespaceChanges[0].InsertedAtoms[0].Kind,
                 "explicit decoded CRLF is one inserted line-break atom");
-            AssertEqual("\r\n", lineBreak.WhitespaceChanges[0].InsertedAtoms[0].RawText,
+            AssertEq("\r\n", lineBreak.WhitespaceChanges[0].InsertedAtoms[0].RawText,
                 "line-break atom preserves its raw source form");
 
             PdfReviewResult other = ReviewWhitespaceComparison("", " ");
-            AssertEqual(PdfReviewWhitespaceAtomKind.Other,
+            AssertEq(PdfReviewWhitespaceAtomKind.Other,
                 other.WhitespaceChanges[0].InsertedAtoms[0].Kind,
                 "other Unicode whitespace remains distinct and literal");
-            AssertEqual(" ", other.WhitespaceChanges[0].InsertedAtoms[0].RawText,
+            AssertEq(" ", other.WhitespaceChanges[0].InsertedAtoms[0].RawText,
                 "other Unicode whitespace preserves its code point");
         }
 
@@ -4321,14 +4321,14 @@ namespace ExcelMerger.Tests
             PdfReviewResult geometryOnly = PdfReviewDiff.Compare(geometryDocument,
                 ReviewWhitespaceDocument("source.pdf", null, " ", null, true),
                 PdfReviewLimits.Default());
-            AssertEqual(0, geometryOnly.WhitespaceChanges.Count,
+            AssertEq(0, geometryOnly.WhitespaceChanges.Count,
                 "a box gap on either side cannot substitute for decoded source evidence");
 
             PdfReviewResult untrusted = PdfReviewDiff.Compare(
                 ReviewWhitespaceDocument("left.pdf", null, "", null, true),
                 ReviewWhitespaceDocument("right.pdf", null, " ", null, false),
                 PdfReviewLimits.Default());
-            AssertEqual(0, untrusted.WhitespaceChanges.Count,
+            AssertEq(0, untrusted.WhitespaceChanges.Count,
                 "an untrusted source unit causes abstention rather than inferred whitespace");
 
             PdfReviewDocument changedAnchorLeft = ReviewWhitespaceDocument(
@@ -4341,7 +4341,7 @@ namespace ExcelMerger.Tests
             changedAnchor.SourceText = "gamma";
             PdfReviewResult nonExact = PdfReviewDiff.Compare(changedAnchorLeft,
                 changedAnchorRight, PdfReviewLimits.Default());
-            AssertEqual(0, nonExact.WhitespaceChanges.Count,
+            AssertEq(0, nonExact.WhitespaceChanges.Count,
                 "a boundary beside a changed word has no two-sided Exact anchor");
 
             PdfReviewDocument malformedLeft = ReviewWhitespaceDocument(
@@ -4354,7 +4354,7 @@ namespace ExcelMerger.Tests
             malformed.LogicalText = "X";
             PdfReviewResult invalidSource = PdfReviewDiff.Compare(malformedLeft,
                 malformedRight, PdfReviewLimits.Default());
-            AssertEqual(0, invalidSource.WhitespaceChanges.Count,
+            AssertEq(0, invalidSource.WhitespaceChanges.Count,
                 "non-whitespace content cannot enter a whitespace atom stream");
 
             PdfReviewDocument duplicateLeft = ReviewWhitespaceDocument(
@@ -4366,7 +4366,7 @@ namespace ExcelMerger.Tests
             duplicateRight.Pages[0].WhitespaceBoundaries.Add(duplicated);
             PdfReviewResult ambiguous = PdfReviewDiff.Compare(duplicateLeft,
                 duplicateRight, PdfReviewLimits.Default());
-            AssertEqual(0, ambiguous.WhitespaceChanges.Count,
+            AssertEq(0, ambiguous.WhitespaceChanges.Count,
                 "duplicate evidence for one boundary is rejected as ambiguous");
 
             PdfReviewDocument reconciledLeft = ReviewWhitespaceDocument(
@@ -4388,14 +4388,14 @@ namespace ExcelMerger.Tests
                     reconciledLeft.Pages[0].Words[i], reconciledRight.Pages[0].Words[i],
                     PdfReviewMatchKind.ReconciledOrder);
             PdfReviewDiff.CompareWhitespace(reconciled, PdfReviewLimits.Default());
-            AssertEqual(0, reconciled.WhitespaceChanges.Count,
+            AssertEq(0, reconciled.WhitespaceChanges.Count,
                 "geometry-reconciled correspondence is deliberately not a whitespace anchor");
 
             PdfReviewResult pageBreaks = PdfReviewDiff.Compare(
                 ReviewDocument("left.pdf", "alpha", "beta"),
                 ReviewDocument("right.pdf", "alpha", "beta"),
                 PdfReviewLimits.Default());
-            AssertEqual(0, pageBreaks.WhitespaceChanges.Count,
+            AssertEq(0, pageBreaks.WhitespaceChanges.Count,
                 "physical page transitions never synthesize line-break evidence");
         }
 
@@ -4408,29 +4408,29 @@ namespace ExcelMerger.Tests
             PdfReviewResult result = PdfReviewDiff.Compare(left, right,
                 PdfReviewLimits.Default());
 
-            AssertEqual(2, result.WhitespaceChanges.Count,
+            AssertEq(2, result.WhitespaceChanges.Count,
                 "document-leading tab and trailing CRLF are separate proven runs");
-            AssertEqual(2, result.Stats.WhitespaceChanges,
+            AssertEq(2, result.Stats.WhitespaceChanges,
                 "statistics count semantic whitespace runs separately from words");
-            AssertEqual(0, result.Stats.DeletedWhitespaceAtoms,
+            AssertEq(0, result.Stats.DeletedWhitespaceAtoms,
                 "leading/trailing additions do not create deleted atoms");
-            AssertEqual(2, result.Stats.InsertedWhitespaceAtoms,
+            AssertEq(2, result.Stats.InsertedWhitespaceAtoms,
                 "tab and logical line break are two inserted atoms");
-            AssertEqual(0, result.Stats.DeletedWords,
+            AssertEq(0, result.Stats.DeletedWords,
                 "whitespace changes do not alter deleted-word statistics");
-            AssertEqual(0, result.Stats.InsertedWords,
+            AssertEq(0, result.Stats.InsertedWords,
                 "whitespace changes do not alter inserted-word statistics");
-            AssertEqual(0, result.Stats.Replacements,
+            AssertEq(0, result.Stats.Replacements,
                 "whitespace changes do not masquerade as word replacements");
-            AssertEqual(0, result.Stats.ChangedPercent,
+            AssertEq(0, result.Stats.ChangedPercent,
                 "word-based changed percentage remains zero for whitespace-only edits");
-            AssertEqual(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
                 "a whitespace-only page pair is visibly changed");
             AssertTrue(!result.DeletedWhitespaceByPage.ContainsKey(0),
                 "no left marker exists when no whitespace atom was removed");
             AssertTrue(result.InsertedWhitespaceByPage.ContainsKey(0),
                 "right page owns inserted whitespace markers");
-            AssertEqual(2, result.InsertedWhitespaceByPage[0].Count,
+            AssertEq(2, result.InsertedWhitespaceByPage[0].Count,
                 "each proven changed boundary projects one marker");
             AssertTrue(result.InsertedWhitespaceByPage[0][0].Text.StartsWith("+ ") &&
                        result.InsertedWhitespaceByPage[0][1].Text.StartsWith("+ "),
@@ -4441,20 +4441,20 @@ namespace ExcelMerger.Tests
 
             PdfReviewDiff.Project(result);
             PdfReviewDiff.Project(result);
-            AssertEqual(2, result.InsertedWhitespaceByPage[0].Count,
+            AssertEq(2, result.InsertedWhitespaceByPage[0].Count,
                 "repeated projection rebuilds markers instead of accumulating them");
-            AssertEqual(2, result.Stats.WhitespaceChanges,
+            AssertEq(2, result.Stats.WhitespaceChanges,
                 "repeated projection leaves authoritative statistics stable");
-            AssertEqual(1, result.Stats.ChangedPages,
+            AssertEq(1, result.Stats.ChangedPages,
                 "repeated projection leaves page status stable");
 
             PdfReviewResult reverse = PdfReviewDiff.Compare(right, left,
                 PdfReviewLimits.Default());
-            AssertEqual(2, reverse.Stats.DeletedWhitespaceAtoms,
+            AssertEq(2, reverse.Stats.DeletedWhitespaceAtoms,
                 "reverse comparison swaps whitespace atom ownership");
-            AssertEqual(0, reverse.Stats.InsertedWhitespaceAtoms,
+            AssertEq(0, reverse.Stats.InsertedWhitespaceAtoms,
                 "reverse comparison has no spurious inserted atoms");
-            AssertEqual(2, reverse.DeletedWhitespaceByPage[0].Count,
+            AssertEq(2, reverse.DeletedWhitespaceByPage[0].Count,
                 "reverse markers live only on the earlier/left page");
             AssertTrue(!reverse.InsertedWhitespaceByPage.ContainsKey(0),
                 "reverse right page has no addition marker");
@@ -4595,15 +4595,15 @@ namespace ExcelMerger.Tests
                 "вложенные списки прежней проекции также сохраняют identity");
             AssertTrue(ReferenceEquals(oldStats, result.Stats),
                 "отмена сохраняет целый прежний объект статистики");
-            AssertEqual(oldStatus, result.Pairs[0].Status,
+            AssertEq(oldStatus, result.Pairs[0].Status,
                 "отмена не меняет status физической пары");
-            AssertEqual(WordCount, oldDeletedPageWords.Count,
+            AssertEq(WordCount, oldDeletedPageWords.Count,
                 "прежний word-индекс не очищен и не усечён");
-            AssertEqual(1, oldDeletedMarkers.Count,
+            AssertEq(1, oldDeletedMarkers.Count,
                 "прежний whitespace-marker не потерян");
-            AssertEqual(WordCount, result.Stats.DeletedWords,
+            AssertEq(WordCount, result.Stats.DeletedWords,
                 "прежние word-счётчики остаются согласованы с индексом");
-            AssertEqual(1, result.Stats.DeletedWhitespaceAtoms,
+            AssertEq(1, result.Stats.DeletedWhitespaceAtoms,
                 "прежний whitespace-счётчик остаётся согласован с marker");
             AssertTrue(!ReferenceEquals(replacement, result.Operations) &&
                        !ReferenceEquals(replacementWhitespace,
@@ -4641,7 +4641,7 @@ namespace ExcelMerger.Tests
                            result.InsertedWhitespaceByPage) &&
                        ReferenceEquals(oldStats, result.Stats),
                 "ошибка проекции сохраняет весь ранее опубликованный snapshot");
-            AssertEqual(oldStatus, result.Pairs[0].Status,
+            AssertEq(oldStatus, result.Pairs[0].Status,
                 "ошибка проекции не меняет status физической пары");
 
             PdfReviewDiff.PublishProjection(result, replacement,
@@ -4659,17 +4659,17 @@ namespace ExcelMerger.Tests
                 "все четыре derived index заменены готовыми snapshot-ссылками");
             AssertTrue(!ReferenceEquals(oldStats, result.Stats),
                 "статистика заменена тем же единым commit");
-            AssertEqual(0, result.DeletedWordsByPage.Count,
+            AssertEq(0, result.DeletedWordsByPage.Count,
                 "Exact candidate не оставляет старых Delete в новой проекции");
-            AssertEqual(0, result.InsertedWordsByPage.Count,
+            AssertEq(0, result.InsertedWordsByPage.Count,
                 "Exact candidate не создаёт Insert в новой проекции");
-            AssertEqual(0, result.DeletedWhitespaceByPage.Count,
+            AssertEq(0, result.DeletedWhitespaceByPage.Count,
                 "пустой whitespace candidate снимает старые маркеры");
-            AssertEqual(0, result.Stats.DeletedWords,
+            AssertEq(0, result.Stats.DeletedWords,
                 "новая статистика соответствует Exact candidate");
-            AssertEqual(0, result.Stats.WhitespaceChanges,
+            AssertEq(0, result.Stats.WhitespaceChanges,
                 "новая статистика соответствует пустому whitespace candidate");
-            AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
                 "status пары меняется вместе с новой проекцией");
             AssertTrue(oldOperations.Count == 1 &&
                        oldOperations[0].LeftWords.Count == WordCount &&
@@ -4717,7 +4717,7 @@ namespace ExcelMerger.Tests
                            result.InsertedWhitespaceByPage) &&
                        ReferenceEquals(publishedStats, result.Stats),
                 "отмена re-projection сохраняет весь успешно опубликованный snapshot");
-            AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
                 "отмена re-projection не трогает опубликованный status пары");
         }
 
@@ -4843,7 +4843,7 @@ namespace ExcelMerger.Tests
                        ReviewOperationWordCount(result.Operations,
                            PdfReviewDiffKind.Insert, -1) > 0,
                 message + ": исходные word Delete/Insert сохранены");
-            AssertEqual(0, result.WhitespaceChanges.Count,
+            AssertEq(0, result.WhitespaceChanges.Count,
                 message + ": пробельная семантика не выдумана");
         }
 
@@ -4865,14 +4865,14 @@ namespace ExcelMerger.Tests
             PdfReviewWordOp operation = ReviewSplitJoinOperation(removed);
             AssertTrue(operation != null,
                 "доказанный foo bar → foobar классифицирован как один SplitJoin");
-            AssertEqual(2, operation.LeftWords.Count,
+            AssertEq(2, operation.LeftWords.Count,
                 "split-сторона сохраняет оба физических левых слова");
-            AssertEqual(1, operation.RightWords.Count,
+            AssertEq(1, operation.RightWords.Count,
                 "joined-сторона сохраняет одно физическое правое слово");
-            AssertEqual("before-anchor alpha beta after-anchor",
+            AssertEq("before-anchor alpha beta after-anchor",
                 RebuildReviewSide(removed.Operations, true),
                 "SplitJoin не меняет документный порядок ранней стороны");
-            AssertEqual("before-anchor alphabeta after-anchor",
+            AssertEq("before-anchor alphabeta after-anchor",
                 RebuildReviewSide(removed.Operations, false),
                 "SplitJoin не подменяет физическое joined-слово");
             AssertTrue(operation.SplitJoinLeftBoundary != null &&
@@ -4884,26 +4884,26 @@ namespace ExcelMerger.Tests
                        operation.SplitJoinRightBoundary.TextOffset == 5 &&
                        operation.SplitJoinRightBoundary.RawText == "",
                 "правая граница доказывает пустое соседство внутри joined-source");
-            AssertEqual(1, removed.WhitespaceChanges.Count,
+            AssertEq(1, removed.WhitespaceChanges.Count,
                 "SplitJoin создаёт ровно одно отдельное whitespace-изменение");
-            AssertEqual(1, removed.WhitespaceChanges[0].DeletedAtoms.Count,
+            AssertEq(1, removed.WhitespaceChanges[0].DeletedAtoms.Count,
                 "foo bar → foobar удаляет один пробел только слева");
-            AssertEqual(0, removed.WhitespaceChanges[0].InsertedAtoms.Count,
+            AssertEq(0, removed.WhitespaceChanges[0].InsertedAtoms.Count,
                 "удаление границы не создаёт правый пробельный атом");
-            AssertEqual(PdfReviewWhitespaceAtomKind.Space,
+            AssertEq(PdfReviewWhitespaceAtomKind.Space,
                 removed.WhitespaceChanges[0].DeletedAtoms[0].Kind,
                 "удалённый split-separator остаётся обычным U+0020");
-            AssertEqual(0, removed.Stats.DeletedWords,
+            AssertEq(0, removed.Stats.DeletedWords,
                 "доказанный split/join не считается удалёнными словами");
-            AssertEqual(0, removed.Stats.InsertedWords,
+            AssertEq(0, removed.Stats.InsertedWords,
                 "доказанный split/join не считается вставленными словами");
-            AssertEqual(0, removed.Stats.Replacements,
+            AssertEq(0, removed.Stats.Replacements,
                 "доказанный split/join не считается word replacement");
-            AssertEqual(0, removed.Stats.ChangedPercent,
+            AssertEq(0, removed.Stats.ChangedPercent,
                 "пробельная правка не меняет word-based процент");
-            AssertEqual(PdfReviewPairStatus.Changed, removed.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Changed, removed.Pairs[0].Status,
                 "split/join whitespace делает page-pair изменённой");
-            AssertEqual(1, removed.DeletedWhitespaceByPage[0].Count,
+            AssertEq(1, removed.DeletedWhitespaceByPage[0].Count,
                 "маркер удаления принадлежит только ранней левой странице");
             AssertTrue(!removed.InsertedWhitespaceByPage.ContainsKey(0),
                 "на joined-правой стороне нет ложного addition-маркера");
@@ -4913,14 +4913,14 @@ namespace ExcelMerger.Tests
             AssertTrue(reverseOperation != null && reverseOperation.LeftWords.Count == 1 &&
                        reverseOperation.RightWords.Count == 2,
                 "обратное сравнение зеркально сохраняет 1→2 ownership");
-            AssertEqual(0, inserted.WhitespaceChanges[0].DeletedAtoms.Count,
+            AssertEq(0, inserted.WhitespaceChanges[0].DeletedAtoms.Count,
                 "foobar → foo bar не создаёт удалённый atom");
-            AssertEqual(1, inserted.WhitespaceChanges[0].InsertedAtoms.Count,
+            AssertEq(1, inserted.WhitespaceChanges[0].InsertedAtoms.Count,
                 "foobar → foo bar добавляет пробел только справа");
             AssertTrue(!inserted.DeletedWhitespaceByPage.ContainsKey(0) &&
                        inserted.InsertedWhitespaceByPage[0].Count == 1,
                 "обратный whitespace-marker принадлежит поздней правой странице");
-            AssertEqual(ReviewOrderMatchSig(inserted),
+            AssertEq(ReviewOrderMatchSig(inserted),
                 ReviewOrderMatchSig(ReviewSplitJoinPositive(true)),
                 "повторный запуск SplitJoin детерминирован");
         }
@@ -5027,9 +5027,9 @@ namespace ExcelMerger.Tests
             secondPage.Fingerprint = PdfReviewDiff.Fingerprint(secondPage.NormalizedText,
                 secondPage.WidthPt, secondPage.HeightPt);
             crossPage.Pages.Add(secondPage);
-            AssertEqual(2, firstPage.Words.Count,
+            AssertEq(2, firstPage.Words.Count,
                 "cross-page fixture оставляет before/alpha на первой странице");
-            AssertEqual(2, secondPage.Words.Count,
+            AssertEq(2, secondPage.Words.Count,
                 "cross-page fixture переносит beta/after на вторую страницу");
             AssertSplitJoinAbstained(PdfReviewDiff.Compare(crossPage, regularJoined,
                 PdfReviewLimits.Default()), "candidate пересекает физическую страницу");
@@ -5124,30 +5124,30 @@ namespace ExcelMerger.Tests
 
             AssertTrue(ReviewSplitJoinOperation(exhausted) == null,
                 "на единицу ниже успеха частичный SplitJoin Equal не публикуется");
-            AssertEqual(originalOperations, ReviewOrderMatchSig(exhausted),
+            AssertEq(originalOperations, ReviewOrderMatchSig(exhausted),
                 "split/join exhaustion оставляет исходные операции побайтно по provenance");
-            AssertEqual(originalDeletes, ReviewOperationWordCount(exhausted.Operations,
+            AssertEq(originalDeletes, ReviewOperationWordCount(exhausted.Operations,
                 PdfReviewDiffKind.Delete, -1),
                 "split/join exhaustion сохраняет все исходные Delete");
-            AssertEqual(originalInserts, ReviewOperationWordCount(exhausted.Operations,
+            AssertEq(originalInserts, ReviewOperationWordCount(exhausted.Operations,
                 PdfReviewDiffKind.Insert, -1),
                 "split/join exhaustion сохраняет все исходные Insert");
 
             PdfReviewDiff.Project(exhausted);
-            AssertEqual(originalDeletes, exhausted.Stats.DeletedWords,
+            AssertEq(originalDeletes, exhausted.Stats.DeletedWords,
                 "после exhaustion проекция полностью считает консервативные Delete");
-            AssertEqual(originalInserts, exhausted.Stats.InsertedWords,
+            AssertEq(originalInserts, exhausted.Stats.InsertedWords,
                 "после exhaustion проекция полностью считает консервативные Insert");
-            AssertEqual(PdfReviewPairStatus.Changed, exhausted.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Changed, exhausted.Pairs[0].Status,
                 "непроверенный split/join остаётся видимой word-правкой");
 
             PdfReviewDiff.ClassifySplitJoin(exhausted, successfulLimits, null);
             AssertTrue(ReviewSplitJoinOperation(exhausted) != null,
                 "тот же result допускает чистый повтор после split/join exhaustion");
-            AssertEqual("before-anchor alpha beta after-anchor",
+            AssertEq("before-anchor alpha beta after-anchor",
                 RebuildReviewSide(exhausted.Operations, true),
                 "повтор не теряет физические слова split-стороны");
-            AssertEqual("before-anchor alphabeta after-anchor",
+            AssertEq("before-anchor alphabeta after-anchor",
                 RebuildReviewSide(exhausted.Operations, false),
                 "повтор не подменяет joined-слово");
         }
@@ -5206,7 +5206,7 @@ namespace ExcelMerger.Tests
             AssertTrue(operation != null && operation.LeftWords.Count == 2 &&
                        operation.RightWords.Count == 1,
                 "минимальный полный бюджет публикует длинный доказанный SplitJoin");
-            AssertEqual(PartLength * 2, operation.RightWords[0].Text.Length,
+            AssertEq(PartLength * 2, operation.RightWords[0].Text.Length,
                 "длинный joined-source не сокращён и не нормализован с потерями");
 
             PdfReviewResult exhausted = ReviewLongSplitJoinStageFixture(PartLength);
@@ -5216,7 +5216,7 @@ namespace ExcelMerger.Tests
             PdfReviewDiff.ClassifySplitJoin(exhausted, exhaustedLimits, null);
             AssertTrue(ReviewSplitJoinOperation(exhausted) == null,
                 "на единицу ниже полного proof длинный Equal не публикуется");
-            AssertEqual(originalOperations, ReviewOrderMatchSig(exhausted),
+            AssertEq(originalOperations, ReviewOrderMatchSig(exhausted),
                 "исчерпание длинного proof сохраняет исходные Delete/Insert с provenance");
 
             PdfReviewResult scanCancelled = ReviewLongSplitJoinStageFixture(PartLength);
@@ -5238,7 +5238,7 @@ namespace ExcelMerger.Tests
             }
             AssertTrue(scanThrown && scanChecks == 2,
                 "periodic-отмена срабатывает внутри длинного Unicode/source proof");
-            AssertEqual(scanOriginal, ReviewOrderMatchSig(scanCancelled),
+            AssertEq(scanOriginal, ReviewOrderMatchSig(scanCancelled),
                 "отмена внутри длинного proof не публикует частичный Equal");
 
             PdfReviewResult probe = ReviewLongSplitJoinStageFixture(PartLength);
@@ -5272,7 +5272,7 @@ namespace ExcelMerger.Tests
             }
             AssertTrue(commitThrown && commitChecks == probeChecks,
                 "последняя отмена достигает guard непосредственно перед Operations commit");
-            AssertEqual(commitOriginal, ReviewOrderMatchSig(commitCancelled),
+            AssertEq(commitOriginal, ReviewOrderMatchSig(commitCancelled),
                 "предcommit-отмена оставляет authoritative Operations без мутации");
 
             PdfReviewDiff.ClassifySplitJoin(commitCancelled, successfulLimits, null);
@@ -5471,7 +5471,7 @@ namespace ExcelMerger.Tests
             var successfulLimits = PdfReviewLimits.Default();
             successfulLimits.MaxDiffWork = minimum;
             PdfReviewDiff.ReconcileOrderArtifacts(successful, successfulLimits, null);
-            AssertEqual(1, ReviewMatchCount(successful,
+            AssertEq(1, ReviewMatchCount(successful,
                 PdfReviewMatchKind.ReconciledOrder),
                 "минимальный успешный бюджет публикует весь geometry matching");
 
@@ -5484,15 +5484,15 @@ namespace ExcelMerger.Tests
             var exhaustedLimits = PdfReviewLimits.Default();
             exhaustedLimits.MaxDiffWork = minimum - 1;
             PdfReviewDiff.ReconcileOrderArtifacts(exhausted, exhaustedLimits, null);
-            AssertEqual(originalOperations, ReviewOrderMatchSig(exhausted),
+            AssertEq(originalOperations, ReviewOrderMatchSig(exhausted),
                 "на единицу ниже успеха reconciliation не коммитит partial rebuild");
-            AssertEqual(0, ReviewMatchCount(exhausted,
+            AssertEq(0, ReviewMatchCount(exhausted,
                 PdfReviewMatchKind.ReconciledOrder),
                 "при exhaustion не публикуется ни одного частичного geometry Equal");
-            AssertEqual(originalDeletes, ReviewOperationWordCount(exhausted.Operations,
+            AssertEq(originalDeletes, ReviewOperationWordCount(exhausted.Operations,
                 PdfReviewDiffKind.Delete, -1),
                 "reconciliation exhaustion сохраняет исходные Delete");
-            AssertEqual(originalInserts, ReviewOperationWordCount(exhausted.Operations,
+            AssertEq(originalInserts, ReviewOperationWordCount(exhausted.Operations,
                 PdfReviewDiffKind.Insert, -1),
                 "reconciliation exhaustion сохраняет исходные Insert");
 
@@ -5504,7 +5504,7 @@ namespace ExcelMerger.Tests
                     probeChecks++;
                     return false;
                 });
-            AssertEqual(19, ReviewMatchCount(probe,
+            AssertEq(19, ReviewMatchCount(probe,
                 PdfReviewMatchKind.ReconciledOrder),
                 "максимальный двадцатисловный fixture полностью reconciled");
             AssertTrue(probeChecks > 1,
@@ -5529,17 +5529,17 @@ namespace ExcelMerger.Tests
             }
             AssertTrue(thrown,
                 "отмена на последнем достигнутом checkpoint бросает OperationCanceledException");
-            AssertEqual(probeChecks, cancellationChecks,
+            AssertEq(probeChecks, cancellationChecks,
                 "отмена сработала в поздней части фактического successful path");
-            AssertEqual(cancelledOriginal, ReviewOrderMatchSig(cancelled),
+            AssertEq(cancelledOriginal, ReviewOrderMatchSig(cancelled),
                 "поздняя отмена оставляет authoritative operations полностью неизменными");
-            AssertEqual(0, ReviewMatchCount(cancelled,
+            AssertEq(0, ReviewMatchCount(cancelled,
                 PdfReviewMatchKind.ReconciledOrder),
                 "отмена не пропускает частичный ReconciledOrder через transactional boundary");
 
             PdfReviewDiff.ReconcileOrderArtifacts(cancelled,
                 PdfReviewLimits.Default(), null);
-            AssertEqual(19, ReviewMatchCount(cancelled,
+            AssertEq(19, ReviewMatchCount(cancelled,
                 PdfReviewMatchKind.ReconciledOrder),
                 "тот же result допускает чистый повтор после поздней отмены");
             var expectedLeft = new StringBuilder("large-before");
@@ -5547,7 +5547,7 @@ namespace ExcelMerger.Tests
                 expectedLeft.Append(' ').Append("cell-").Append(i.ToString("D2",
                     System.Globalization.CultureInfo.InvariantCulture));
             expectedLeft.Append(" large-after");
-            AssertEqual(expectedLeft.ToString(),
+            AssertEq(expectedLeft.ToString(),
                 RebuildReviewSide(cancelled.Operations, true),
                 "повтор после отмены сохраняет весь левый порядок");
         }
@@ -5613,15 +5613,15 @@ namespace ExcelMerger.Tests
                     distantChecks++;
                     return false;
                 });
-            AssertEqual(original, ReviewOrderMatchSig(distant),
+            AssertEq(original, ReviewOrderMatchSig(distant),
                 "matching Insert в 49 items от Delete не входит в 48-item seed window");
-            AssertEqual(0, ReviewMatchCount(distant,
+            AssertEq(0, ReviewMatchCount(distant,
                 PdfReviewMatchKind.ReconciledOrder),
                 "дальний одинаковый ключ не превращается в geometry Equal");
-            AssertEqual(1, ReviewOperationWordCount(distant.Operations,
+            AssertEq(1, ReviewOperationWordCount(distant.Operations,
                 PdfReviewDiffKind.Delete, -1),
                 "дальний seed сохраняет исходный Delete");
-            AssertEqual(49, ReviewOperationWordCount(distant.Operations,
+            AssertEq(49, ReviewOperationWordCount(distant.Operations,
                 PdfReviewDiffKind.Insert, -1),
                 "дальний seed сохраняет target и все foreign Insert");
 
@@ -5633,9 +5633,9 @@ namespace ExcelMerger.Tests
                     controlChecks++;
                     return false;
                 });
-            AssertEqual(controlChecks, distantChecks,
+            AssertEq(controlChecks, distantChecks,
                 "ключ за seed-window не добавляет ни одного cancellation work checkpoint");
-            AssertEqual("seed-before distant-target seed-after",
+            AssertEq("seed-before distant-target seed-after",
                 RebuildReviewSide(distant.Operations, true),
                 "bounded scan не теряет левую сторону");
             AssertTrue(RebuildReviewSide(distant.Operations, false).EndsWith(
@@ -5660,16 +5660,16 @@ namespace ExcelMerger.Tests
         private static void TestReviewOrderArtifactReconciliation()
         {
             PdfReviewResult forward = ReviewOrderPermutation(false);
-            AssertEqual(0, ReviewOperationWordCount(forward.Operations,
+            AssertEq(0, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Delete, -1),
                 "геометрически неизменная перестановка не остаётся Delete");
-            AssertEqual(0, ReviewOperationWordCount(forward.Operations,
+            AssertEq(0, ReviewOperationWordCount(forward.Operations,
                 PdfReviewDiffKind.Insert, -1),
                 "геометрически неизменная перестановка не остаётся Insert");
-            AssertEqual(1, ReviewMatchCount(forward,
+            AssertEq(1, ReviewMatchCount(forward,
                 PdfReviewMatchKind.ReconciledOrder),
                 "только снятый LCS-артефакт получает geometry provenance");
-            AssertEqual(4, ReviewMatchCount(forward, PdfReviewMatchKind.Exact),
+            AssertEq(4, ReviewMatchCount(forward, PdfReviewMatchKind.Exact),
                 "исходные точные пары не теряют Exact provenance при перестройке цикла");
             PdfReviewWordOp mixed = null;
             foreach (PdfReviewWordOp operation in forward.Operations)
@@ -5677,30 +5677,30 @@ namespace ExcelMerger.Tests
                     mixed = operation;
             AssertTrue(mixed != null && mixed.Matches.Count == 3,
                 "цикл с Exact и ReconciledOrder представлен отдельным MixedOrder-контейнером");
-            AssertEqual("before-anchor alpha beta gamma after-anchor",
+            AssertEq("before-anchor alpha beta gamma after-anchor",
                 RebuildReviewSide(forward.Operations, true),
                 "reconciliation сохраняет документный порядок левой стороны");
-            AssertEqual("before-anchor gamma alpha beta after-anchor",
+            AssertEq("before-anchor gamma alpha beta after-anchor",
                 RebuildReviewSide(forward.Operations, false),
                 "reconciliation сохраняет документный порядок правой стороны");
-            AssertEqual(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
+            AssertEq(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
                 ReviewOrderPermutation(false)),
                 "повторный запуск выбирает те же окна и связи");
 
             PdfReviewResult reverse = ReviewOrderPermutation(true);
-            AssertEqual(0, ReviewOperationWordCount(reverse.Operations,
+            AssertEq(0, ReviewOperationWordCount(reverse.Operations,
                 PdfReviewDiffKind.Delete, -1) + ReviewOperationWordCount(
                     reverse.Operations, PdfReviewDiffKind.Insert, -1),
                 "обратное сравнение снимает ту же перестановку");
-            AssertEqual(1, ReviewMatchCount(reverse,
+            AssertEq(1, ReviewMatchCount(reverse,
                 PdfReviewMatchKind.ReconciledOrder),
                 "обратное сравнение хранит одну зеркальную geometry-связь");
-            AssertEqual(4, ReviewMatchCount(reverse, PdfReviewMatchKind.Exact),
+            AssertEq(4, ReviewMatchCount(reverse, PdfReviewMatchKind.Exact),
                 "обратная перестройка также сохраняет Exact provenance");
-            AssertEqual("before-anchor gamma alpha beta after-anchor",
+            AssertEq("before-anchor gamma alpha beta after-anchor",
                 RebuildReviewSide(reverse.Operations, true),
                 "обратный результат точно восстанавливает новую левую сторону");
-            AssertEqual("before-anchor alpha beta gamma after-anchor",
+            AssertEq("before-anchor alpha beta gamma after-anchor",
                 RebuildReviewSide(reverse.Operations, false),
                 "обратный результат точно восстанавливает новую правую сторону");
         }
@@ -5729,13 +5729,13 @@ namespace ExcelMerger.Tests
                 ReviewGeometryDocument("ambiguous-left.pdf", ambiguousLeft),
                 ReviewGeometryDocument("ambiguous-right.pdf", ambiguousRight),
                 PdfReviewLimits.Default());
-            AssertEqual(0, ReviewMatchCount(ambiguous,
+            AssertEq(0, ReviewMatchCount(ambiguous,
                 PdfReviewMatchKind.ReconciledOrder),
                 "два perfect matching для повторов требуют abstention");
-            AssertEqual(1, ReviewOperationWordCount(ambiguous.Operations,
+            AssertEq(1, ReviewOperationWordCount(ambiguous.Operations,
                 PdfReviewDiffKind.Delete, -1),
                 "неоднозначная перестановка остаётся видимым Delete-кандидатом");
-            AssertEqual(1, ReviewOperationWordCount(ambiguous.Operations,
+            AssertEq(1, ReviewOperationWordCount(ambiguous.Operations,
                 PdfReviewDiffKind.Insert, -1),
                 "неоднозначная перестановка остаётся видимым Insert-кандидатом");
 
@@ -5755,12 +5755,12 @@ namespace ExcelMerger.Tests
                 ReviewGeometryDocument("moved-left.pdf", movedLeft),
                 ReviewGeometryDocument("moved-right.pdf", movedRight),
                 PdfReviewLimits.Default());
-            AssertEqual(0, ReviewMatchCount(moved,
+            AssertEq(0, ReviewMatchCount(moved,
                 PdfReviewMatchKind.ReconciledOrder),
                 "настоящее физическое перемещение не маскируется");
-            AssertEqual(1, ReviewOperationWordCount(moved.Operations,
+            AssertEq(1, ReviewOperationWordCount(moved.Operations,
                 PdfReviewDiffKind.Delete, -1), "старая позиция движения остаётся Delete");
-            AssertEqual(1, ReviewOperationWordCount(moved.Operations,
+            AssertEq(1, ReviewOperationWordCount(moved.Operations,
                 PdfReviewDiffKind.Insert, -1), "новая позиция движения остаётся Insert");
         }
 
@@ -5788,10 +5788,10 @@ namespace ExcelMerger.Tests
             PdfReviewResult incompatibleReverse = PdfReviewDiff.Compare(
                 incompatibleRightDocument, incompatibleLeftDocument,
                 PdfReviewLimits.Default());
-            AssertEqual(0, ReviewMatchCount(incompatible,
+            AssertEq(0, ReviewMatchCount(incompatible,
                 PdfReviewMatchKind.ReconciledOrder),
                 "один local block не может соответствовать двум foreign blocks");
-            AssertEqual(0, ReviewMatchCount(incompatibleReverse,
+            AssertEq(0, ReviewMatchCount(incompatibleReverse,
                 PdfReviewMatchKind.ReconciledOrder),
                 "block-partition gate симметричен при обратном сравнении");
             AssertTrue(ReviewOperationWordCount(incompatible.Operations,
@@ -5817,7 +5817,7 @@ namespace ExcelMerger.Tests
                 ReviewGeometryDocument("invalid-left.pdf", invalidLeft),
                 ReviewGeometryDocument("invalid-right.pdf", invalidRight),
                 PdfReviewLimits.Default());
-            AssertEqual(0, ReviewMatchCount(invalid,
+            AssertEq(0, ReviewMatchCount(invalid,
                 PdfReviewMatchKind.ReconciledOrder),
                 "неположительная box запрещает reconciliation");
 
@@ -5837,7 +5837,7 @@ namespace ExcelMerger.Tests
                 ReviewGeometryDocument("registration-left.pdf", registrationLeft),
                 ReviewGeometryDocument("registration-right.pdf", registrationRight),
                 PdfReviewLimits.Default());
-            AssertEqual(0, ReviewMatchCount(noRegistration,
+            AssertEq(0, ReviewMatchCount(noRegistration,
                 PdfReviewMatchKind.ReconciledOrder),
                 "несогласованные два anchor не дают локальную регистрацию");
 
@@ -5870,7 +5870,7 @@ namespace ExcelMerger.Tests
                     manyLeft.ToArray())),
                 ReviewGeometryDocument("many-right.pdf", ReviewGeometryPage(0,
                     manyRight.ToArray())), PdfReviewLimits.Default());
-            AssertEqual(0, ReviewMatchCount(oversized,
+            AssertEq(0, ReviewMatchCount(oversized,
                 PdfReviewMatchKind.ReconciledOrder),
                 "участок больше двадцати слов не reconciled");
 
@@ -5892,7 +5892,7 @@ namespace ExcelMerger.Tests
                 ReviewGeometryDocument("cross-left.pdf", crossLeftZero, crossLeftOne),
                 ReviewGeometryDocument("cross-right.pdf", crossRightZero, crossRightOne),
                 PdfReviewLimits.Default());
-            AssertEqual(0, ReviewMatchCount(crossPage,
+            AssertEq(0, ReviewMatchCount(crossPage,
                 PdfReviewMatchKind.ReconciledOrder),
                 "кандидат через физическую границу страницы не reconciled");
             AssertTrue(ReviewOperationWordCount(crossPage.Operations,
@@ -5953,13 +5953,13 @@ namespace ExcelMerger.Tests
             AssertReviewAdjacentCrossPairResult(forward, false,
                 "прямое сравнение");
             PdfReviewResult repeat = ReviewOrderAdjacentCrossPair(false);
-            AssertEqual(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(repeat),
+            AssertEq(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(repeat),
                 "окно рядом с cross-pair границей выбирается детерминированно");
 
             PdfReviewResult reverse = ReviewOrderAdjacentCrossPair(true);
             AssertReviewAdjacentCrossPairResult(reverse, true,
                 "обратное сравнение");
-            AssertEqual(ReviewMatchCount(forward,
+            AssertEq(ReviewMatchCount(forward,
                     PdfReviewMatchKind.ReconciledOrder),
                 ReviewMatchCount(reverse, PdfReviewMatchKind.ReconciledOrder),
                 "зеркальные направления снимают одинаковое число LCS-артефактов");
@@ -5974,16 +5974,16 @@ namespace ExcelMerger.Tests
                        result.Pairs[1].LeftPageIndex == 1 &&
                        result.Pairs[1].RightPageIndex == 1,
                 context + ": viewer сохранил физические пары 0↔0 и 1↔1");
-            AssertEqual(0, ReviewChangedKeyCount(result, "cell-a") +
+            AssertEq(0, ReviewChangedKeyCount(result, "cell-a") +
                            ReviewChangedKeyCount(result, "cell-b"),
                 context + ": локальные ячейки не остаются ложными Delete/Insert");
-            AssertEqual(2, ReviewMatchCount(result,
+            AssertEq(2, ReviewMatchCount(result,
                 PdfReviewMatchKind.ReconciledOrder),
                 context + ": две переставленные ячейки имеют geometry provenance");
-            AssertEqual(1, ReviewChangedKeyCount(result,
+            AssertEq(1, ReviewChangedKeyCount(result,
                 reverse ? "new-value" : "old-value"),
                 context + ": настоящее удаление рядом с границей сохранено");
-            AssertEqual(1, ReviewChangedKeyCount(result,
+            AssertEq(1, ReviewChangedKeyCount(result,
                 reverse ? "old-value" : "new-value"),
                 context + ": настоящее добавление рядом с границей сохранено");
 
@@ -6000,7 +6000,7 @@ namespace ExcelMerger.Tests
                                    match.Right.PageIndex == (reverse ? 0 : 1),
                             context + ": foreign Exact остался отдельной физической связью");
                     }
-            AssertEqual(1, crossMatches,
+            AssertEq(1, crossMatches,
                 context + ": cross-page свидетельство не потеряно и не продублировано");
             AssertReviewReconcilePagePairInvariant(result, context);
         }
@@ -6059,13 +6059,13 @@ namespace ExcelMerger.Tests
         {
             PdfReviewResult forward = ReviewOrderInternalBlockCluster(false);
             AssertReviewInternalBlockCluster(forward, false, "прямое сравнение");
-            AssertEqual(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
+            AssertEq(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
                 ReviewOrderInternalBlockCluster(false)),
                 "локальный block-cluster выбирается детерминированно");
 
             PdfReviewResult reverse = ReviewOrderInternalBlockCluster(true);
             AssertReviewInternalBlockCluster(reverse, true, "обратное сравнение");
-            AssertEqual(ReviewMatchCount(forward,
+            AssertEq(ReviewMatchCount(forward,
                     PdfReviewMatchKind.ReconciledOrder),
                 ReviewMatchCount(reverse, PdfReviewMatchKind.ReconciledOrder),
                 "trusted block-cluster симметричен при перестановке документов");
@@ -6084,7 +6084,7 @@ namespace ExcelMerger.Tests
                 "row-anchor-a", "row-anchor-b", "row-anchor-c", "row-anchor-d",
                 "row-anchor-e" })
             {
-                AssertEqual(0, ReviewChangedKeyCount(result, key),
+                AssertEq(0, ReviewChangedKeyCount(result, key),
                     context + ": «" + key + "» не остаётся ложной правкой");
                 int matches = 0;
                 PdfReviewMatchKind kind = PdfReviewMatchKind.None;
@@ -6096,18 +6096,18 @@ namespace ExcelMerger.Tests
                             matches++;
                             kind = match.Kind;
                         }
-                AssertEqual(1, matches, context + ": «" + key +
+                AssertEq(1, matches, context + ": «" + key +
                     "» имеет одну явную двустороннюю связь");
                 AssertTrue(kind == PdfReviewMatchKind.Exact ||
                            kind == PdfReviewMatchKind.ReconciledOrder,
                     context + ": «" + key + "» сохраняет доказанную provenance");
             }
-            AssertEqual(3, ReviewMatchCount(result,
+            AssertEq(3, ReviewMatchCount(result,
                 PdfReviewMatchKind.ReconciledOrder),
                 context + ": только три LCS-артефакта получают geometry provenance");
-            AssertEqual(1, ReviewChangedKeyCount(result, "old-value"),
+            AssertEq(1, ReviewChangedKeyCount(result, "old-value"),
                 context + ": старое значение осталось видимой правкой");
-            AssertEqual(1, ReviewChangedKeyCount(result, "new-value"),
+            AssertEq(1, ReviewChangedKeyCount(result, "new-value"),
                 context + ": новое значение осталось видимой правкой");
 
             int crossMatches = 0;
@@ -6123,7 +6123,7 @@ namespace ExcelMerger.Tests
                                    match.Right.PageIndex == (reverse ? 1 : 0),
                             context + ": foreign Exact не перепривязан к локальному блоку");
                     }
-            AssertEqual(1, crossMatches,
+            AssertEq(1, crossMatches,
                 context + ": foreign Exact сохранён ровно один раз");
             AssertReviewReconcilePagePairInvariant(result, context);
         }
@@ -6175,18 +6175,18 @@ namespace ExcelMerger.Tests
             AssertReviewFixtureChange(forward, PdfReviewDiffKind.Delete,
                 "dup-anchor", 0, 150, 150,
                 "прямое сравнение сохраняет реально удалённую копию");
-            AssertEqual(1, ReviewChangedKeyCount(forward, "dup-anchor"),
+            AssertEq(1, ReviewChangedKeyCount(forward, "dup-anchor"),
                 "прямое сравнение меняет только физически удалённую копию");
-            AssertEqual(1, ReviewMatchCount(forward,
+            AssertEq(1, ReviewMatchCount(forward,
                 PdfReviewMatchKind.ReconciledOrder),
                 "перепривязанный заголовок явно хранит geometry provenance");
-            AssertEqual(1, ReviewChangedKeyCount(forward, "old-only"),
+            AssertEq(1, ReviewChangedKeyCount(forward, "old-only"),
                 "старое содержимое рядом с повтором остаётся удалением");
-            AssertEqual(1, ReviewChangedKeyCount(forward, "old-tail"),
+            AssertEq(1, ReviewChangedKeyCount(forward, "old-tail"),
                 "старый хвост рядом с повтором остаётся удалением");
-            AssertEqual(1, ReviewChangedKeyCount(forward, "new-tail"),
+            AssertEq(1, ReviewChangedKeyCount(forward, "new-tail"),
                 "настоящее добавление рядом с повтором остаётся видимым");
-            AssertEqual(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
+            AssertEq(ReviewOrderMatchSig(forward), ReviewOrderMatchSig(
                 ReviewRepeatedExactAnchor(false, true)),
                 "перепривязка повторного ключа детерминирована");
 
@@ -6196,7 +6196,7 @@ namespace ExcelMerger.Tests
             AssertReviewFixtureChange(reverse, PdfReviewDiffKind.Insert,
                 "dup-anchor", 0, 150, 150,
                 "обратное сравнение зеркально сохраняет удалённую раннюю копию");
-            AssertEqual(ReviewFixturePhysicalMatchSig(forward, false),
+            AssertEq(ReviewFixturePhysicalMatchSig(forward, false),
                 ReviewFixturePhysicalMatchSig(reverse, true),
                 "оба направления строят одну физическую карту после перепривязки");
 
@@ -6206,7 +6206,7 @@ namespace ExcelMerger.Tests
             AssertReviewFixtureChange(weak, PdfReviewDiffKind.Delete,
                 "dup-anchor", 0, 20, 100,
                 "без минимального кластера сомнительная копия остаётся Delete");
-            AssertEqual(0, ReviewMatchCount(weak,
+            AssertEq(0, ReviewMatchCount(weak,
                 PdfReviewMatchKind.ReconciledOrder),
                 "неполный trusted block-кластер требует abstention");
         }
@@ -6338,15 +6338,15 @@ namespace ExcelMerger.Tests
 
             PdfReviewDiff.ReconcileOrderArtifacts(result);
 
-            AssertEqual(before, ReviewOrderMatchSig(result),
+            AssertEq(before, ReviewOrderMatchSig(result),
                 "небезопасный SCC целиком оставлен исходным word-diff");
-            AssertEqual(0, ReviewMatchCount(result,
+            AssertEq(0, ReviewMatchCount(result,
                 PdfReviewMatchKind.ReconciledOrder),
                 "номер 3 не спрятан за geometry-связью через другую page-pair");
-            AssertEqual(2, ReviewOperationWordCount(result.Operations,
+            AssertEq(2, ReviewOperationWordCount(result.Operations,
                 PdfReviewDiffKind.Delete, -1),
                 "левые кандидаты остаются видимыми удалениями");
-            AssertEqual(2, ReviewOperationWordCount(result.Operations,
+            AssertEq(2, ReviewOperationWordCount(result.Operations,
                 PdfReviewDiffKind.Insert, -1),
                 "правые кандидаты остаются видимыми добавлениями");
             AssertTrue(result.Operations[1].Matches.Count == 2 &&
@@ -6383,9 +6383,9 @@ namespace ExcelMerger.Tests
 
             PdfReviewDiff.ReconcileOrderArtifacts(reverse);
 
-            AssertEqual(reverseBefore, ReviewOrderMatchSig(reverse),
+            AssertEq(reverseBefore, ReviewOrderMatchSig(reverse),
                 "зеркальный cross-pair SCC также оставлен без reconciliation");
-            AssertEqual(0, ReviewMatchCount(reverse,
+            AssertEq(0, ReviewMatchCount(reverse,
                 PdfReviewMatchKind.ReconciledOrder),
                 "страничный барьер одинаково действует в обоих направлениях");
         }
@@ -6398,11 +6398,11 @@ namespace ExcelMerger.Tests
             PdfReviewPage split = ReviewPageFromWords(0,
                 W("inter-", 10, 100, 30, 10),
                 W("national", 5, 80, 40, 10));
-            AssertEqual(1, split.Words.Count,
+            AssertEq(1, split.Words.Count,
                 "латинский line-end перенос стал одним каноническим словом");
-            AssertEqual("international", split.Words[0].Key,
+            AssertEq("international", split.Words[0].Key,
                 "видимый переносный дефис снят, буквы не потеряны");
-            AssertEqual(0, split.Words[0].PageIndex,
+            AssertEq(0, split.Words[0].PageIndex,
                 "объединённое слово осталось у своей физической страницы");
             PdfReviewBox union = split.Words[0].Box;
             AssertTrue(Math.Abs(union.Left - 5) < 0.001 &&
@@ -6424,31 +6424,31 @@ namespace ExcelMerger.Tests
                 PdfReviewLimits.Default());
             PdfReviewResult reverse = PdfReviewDiff.Compare(wholeDocument, splitDocument,
                 PdfReviewLimits.Default());
-            AssertEqual("Equal:international", ReviewOpsSig(forward.Operations),
+            AssertEq("Equal:international", ReviewOpsSig(forward.Operations),
                 "перенос не создаёт Delete/Insert в прямом сравнении");
-            AssertEqual("Equal:international", ReviewOpsSig(reverse.Operations),
+            AssertEq("Equal:international", ReviewOpsSig(reverse.Operations),
                 "перенос не создаёт Delete/Insert в обратном сравнении");
-            AssertEqual(0, forward.Stats.DeletedWords + forward.Stats.InsertedWords,
+            AssertEq(0, forward.Stats.DeletedWords + forward.Stats.InsertedWords,
                 "прямое сравнение не считает перенос правкой");
-            AssertEqual(0, reverse.Stats.DeletedWords + reverse.Stats.InsertedWords,
+            AssertEq(0, reverse.Stats.DeletedWords + reverse.Stats.InsertedWords,
                 "обратное сравнение не считает перенос правкой");
 
             PdfReviewPage softHyphen = ReviewPageFromWords(0,
                 W("frag\x00AD", 10, 100, 20, 10),
                 W("ment", 10, 80, 20, 10));
-            AssertEqual("fragment", softHyphen.Words[0].Key,
+            AssertEq("fragment", softHyphen.Words[0].Key,
                 "soft hyphen на конце строки обрабатывается как перенос");
 
             PdfReviewPage otherColumn = ReviewPageFromWords(0,
                 W("inter-", 10, 100, 30, 10),
                 W("national", 120, 80, 40, 10));
-            AssertEqual("inter- national", ReviewWordKeys(otherColumn.Words),
+            AssertEq("inter- national", ReviewWordKeys(otherColumn.Words),
                 "соседство разных колонок не выдаётся за line-end перенос");
 
             PdfReviewPage distantBlock = ReviewPageFromWords(0,
                 W("inter-", 10, 100, 30, 10),
                 W("national", 10, 40, 40, 10));
-            AssertEqual("inter- national", ReviewWordKeys(distantBlock.Words),
+            AssertEq("inter- national", ReviewWordKeys(distantBlock.Words),
                 "большой вертикальный разрыв не выдаётся за соседние строки");
 
             PdfWord taggedLeft = W("inter-", 10, 100, 30, 10);
@@ -6457,42 +6457,42 @@ namespace ExcelMerger.Tests
             taggedRight.BlockId = 2;
             PdfReviewPage differentTaggedBlocks = ReviewPageFromWords(0,
                 taggedLeft, taggedRight);
-            AssertEqual("inter- national", ReviewWordKeys(differentTaggedBlocks.Words),
+            AssertEq("inter- national", ReviewWordKeys(differentTaggedBlocks.Words),
                 "разные размеченные блоки не склеиваются");
 
             PdfReviewPage emptyBoundary = ReviewPageFromWords(0,
                 W("inter-", 10, 100, 30, 10),
                 W("", 10, 80, 10, 10),
                 W("national", 10, 60, 40, 10));
-            AssertEqual("inter- national", ReviewWordKeys(emptyBoundary.Words),
+            AssertEq("inter- national", ReviewWordKeys(emptyBoundary.Words),
                 "пустой extraction-фрагмент сохраняет границу между строками");
 
             PdfReviewPage cyrillic = ReviewPageFromWords(0,
                 W("информационно-", 10, 100, 55, 10),
                 W("коммуникационный", 10, 80, 70, 10));
-            AssertEqual("информационно- коммуникационный", ReviewWordKeys(cyrillic.Words),
+            AssertEq("информационно- коммуникационный", ReviewWordKeys(cyrillic.Words),
                 "кириллический дефис на границе строки сохранён");
 
             PdfReviewPage identifier = ReviewPageFromWords(0,
                 W("ISO-", 10, 100, 20, 10),
                 W("9001", 10, 80, 20, 10));
-            AssertEqual("ISO- 9001", ReviewWordKeys(identifier.Words),
+            AssertEq("ISO- 9001", ReviewWordKeys(identifier.Words),
                 "буквенно-цифровой идентификатор не склеен");
 
             PdfReviewPage ordinaryBoundary = ReviewPageFromWords(0,
                 W("alpha", 10, 100, 25, 10),
                 W("beta", 10, 80, 20, 10));
-            AssertEqual("alpha beta", ReviewWordKeys(ordinaryBoundary.Words),
+            AssertEq("alpha beta", ReviewWordKeys(ordinaryBoundary.Words),
                 "обычная новая строка остаётся видимой границей слов");
 
             PdfReviewPage sameLine = ReviewPageFromWords(0,
                 W("well-known", 10, 100, 45, 10));
-            AssertEqual("well-known", sameLine.Words[0].Key,
+            AssertEq("well-known", sameLine.Words[0].Key,
                 "дефис внутри строки не меняется");
 
             PdfReviewPage joinedBoundary = ReviewPageFromWords(0,
                 W("alphabeta", 10, 100, 45, 10));
-            AssertEqual(PdfReviewPairStatus.Changed,
+            AssertEq(PdfReviewPairStatus.Changed,
                 PdfReviewDiff.Pair(ordinaryBoundary, joinedBoundary,
                     PdfReviewLimits.Default()).Status,
                 "настоящая граница слов по-прежнему является содержательной разницей");
@@ -6503,7 +6503,7 @@ namespace ExcelMerger.Tests
             List<PdfReviewWord> left = ReviewWords("old-a", "old-b", "tail");
             List<PdfReviewWord> right = ReviewWords("new", "tail");
             List<PdfReviewWordOp> forward = PdfReviewDiff.DiffWords(left, right, null);
-            AssertEqual("Delete:old-a,old-b|Insert:new|Equal:tail", ReviewOpsSig(forward),
+            AssertEq("Delete:old-a,old-b|Insert:new|Equal:tail", ReviewOpsSig(forward),
                 "неравная длина с общим суффиксом диффится без выхода за границы");
             AssertTrue(ReferenceEquals(forward[2].LeftWords[0], left[2]) &&
                        ReferenceEquals(forward[2].RightWords[0], right[1]) &&
@@ -6513,14 +6513,14 @@ namespace ExcelMerger.Tests
 
             List<PdfReviewWordOp> reverse = PdfReviewDiff.DiffWords(right, left,
                 PdfReviewLimits.Default());
-            AssertEqual("Delete:new|Insert:old-a,old-b|Equal:tail", ReviewOpsSig(reverse),
+            AssertEq("Delete:new|Insert:old-a,old-b|Equal:tail", ReviewOpsSig(reverse),
                 "зеркальный случай неравной длины также устойчив");
 
             List<PdfReviewWord> middleLeft = ReviewWords("before", "same", "after");
             List<PdfReviewWord> middleRight = ReviewWords("same");
             List<PdfReviewWordOp> middle = PdfReviewDiff.DiffWords(middleLeft, middleRight,
                 PdfReviewLimits.Default());
-            AssertEqual("Delete:before|Equal:same|Delete:after", ReviewOpsSig(middle),
+            AssertEq("Delete:before|Equal:same|Delete:after", ReviewOpsSig(middle),
                 "single-item ветка находит совпадение внутри длинной стороны");
             AssertTrue(ReferenceEquals(middle[1].LeftWords[0], middleLeft[1]) &&
                        ReferenceEquals(middle[1].RightWords[0], middleRight[0]),
@@ -6532,7 +6532,7 @@ namespace ExcelMerger.Tests
             List<PdfReviewWordOp> changed = PdfReviewDiff.DiffWords(
                 ReviewPage(0, "before ab after").Words,
                 ReviewPage(0, "before axb after").Words, null);
-            AssertEqual("Equal:before|Delete:ab|Insert:axb|Equal:after",
+            AssertEq("Equal:before|Delete:ab|Insert:axb|Equal:after",
                 ReviewOpsSig(changed),
                 "внутрисловная вставка подсвечивает целые слова без частичного Equal");
 
@@ -6554,11 +6554,11 @@ namespace ExcelMerger.Tests
             var limits = PdfReviewLimits.Default();
             limits.MaxDiffCells = 4;
             List<PdfReviewWordOp> fallback = PdfReviewDiff.DiffWords(fallbackLeft, fallbackRight, limits);
-            AssertEqual("a b c d e f g h", RebuildReviewSide(fallback, true),
+            AssertEq("a b c d e f g h", RebuildReviewSide(fallback, true),
                 "bounded fallback восстанавливает левую сторону");
-            AssertEqual("a b x c d f y g h", RebuildReviewSide(fallback, false),
+            AssertEq("a b x c d f y g h", RebuildReviewSide(fallback, false),
                 "bounded fallback восстанавливает правую сторону");
-            AssertEqual(ReviewOpsSig(fallback),
+            AssertEq(ReviewOpsSig(fallback),
                 ReviewOpsSig(PdfReviewDiff.DiffWords(fallbackLeft, fallbackRight, limits)),
                 "bounded fallback детерминирован");
         }
@@ -6576,9 +6576,9 @@ namespace ExcelMerger.Tests
             var right = new List<PdfReviewPage> { rightFirst, inserted, rightLast };
 
             List<PdfReviewPagePair> pairs = PdfReviewDiff.Align(left, right, null);
-            AssertEqual("0:0:Unchanged|-1:1:RightOnly|1:2:Unchanged", PairSig(pairs),
+            AssertEq("0:0:Unchanged|-1:1:RightOnly|1:2:Unchanged", PairSig(pairs),
                 "фрагментация не сдвигает pairing после вставленной страницы");
-            AssertEqual(1.0, pairs[0].Similarity,
+            AssertEq(1.0, pairs[0].Similarity,
                 "alignment использует те же канонические keys, что и final diff");
         }
 
@@ -6597,41 +6597,41 @@ namespace ExcelMerger.Tests
             PdfReviewResult result = PdfReviewDiff.Compare(left, right, PdfReviewLimits.Default());
             PdfReviewPagePair pair = result.Pairs[0];
 
-            AssertEqual("Delete:old|Insert:new|Equal:stable", ReviewOpsSig(result.Operations),
+            AssertEq("Delete:old|Insert:new|Equal:stable", ReviewOpsSig(result.Operations),
                 "операции состоят из канонических слов");
-            AssertEqual(1, result.Stats.DeletedWords, "статистика считает один Delete");
-            AssertEqual(1, result.Stats.InsertedWords, "статистика считает один Insert");
-            AssertEqual(1, result.Stats.Replacements, "пара Delete/Insert — одна замена");
+            AssertEq(1, result.Stats.DeletedWords, "статистика считает один Delete");
+            AssertEq(1, result.Stats.InsertedWords, "статистика считает один Insert");
+            AssertEq(1, result.Stats.Replacements, "пара Delete/Insert — одна замена");
 
             PdfReviewHighlight removed = PdfReviewForm.BuildHighlight(result, pair, true);
             PdfReviewHighlight added = PdfReviewForm.BuildHighlight(result, pair, false);
-            AssertEqual(Theme.ReviewDeleteFill, removed.Color,
+            AssertEq(Theme.ReviewDeleteFill, removed.Color,
                 "Delete использует точный красный Word-подобный фон");
-            AssertEqual(Theme.ReviewInsertFill, added.Color,
+            AssertEq(Theme.ReviewInsertFill, added.Color,
                 "Insert использует точный зелёный Word-подобный фон");
-            AssertEqual(Theme.ReviewDeleteMarker, removed.EdgeColor,
+            AssertEq(Theme.ReviewDeleteMarker, removed.EdgeColor,
                 "удаление имеет отдельный контрастный marker-цвет");
-            AssertEqual(Theme.ReviewInsertMarker, added.EdgeColor,
+            AssertEq(Theme.ReviewInsertMarker, added.EdgeColor,
                 "добавление имеет отдельный контрастный marker-цвет");
-            AssertEqual(PdfReviewHighlightStyle.Removed, removed.Style,
+            AssertEq(PdfReviewHighlightStyle.Removed, removed.Style,
                 "Delete явно передаёт solid/− семантику");
-            AssertEqual(PdfReviewHighlightStyle.Added, added.Style,
+            AssertEq(PdfReviewHighlightStyle.Added, added.Style,
                 "Insert явно передаёт dashed/+ семантику");
-            AssertEqual(PdfReviewChangeBarSide.Left, removed.ChangeBarSide,
+            AssertEq(PdfReviewChangeBarSide.Left, removed.ChangeBarSide,
                 "Delete change bar находится во внешнем левом поле левой панели");
-            AssertEqual(PdfReviewChangeBarSide.Right, added.ChangeBarSide,
+            AssertEq(PdfReviewChangeBarSide.Right, added.ChangeBarSide,
                 "Insert change bar находится во внешнем правом поле правой панели");
-            AssertEqual(1, removed.Boxes.Count, "Delete даёт одну union-рамку слева");
-            AssertEqual(1, added.Boxes.Count, "Insert даёт одну union-рамку справа");
-            AssertEqual(BoxSig(leftPage.Words[0].Box), BoxSig(removed.Boxes[0]),
+            AssertEq(1, removed.Boxes.Count, "Delete даёт одну union-рамку слева");
+            AssertEq(1, added.Boxes.Count, "Insert даёт одну union-рамку справа");
+            AssertEq(BoxSig(leftPage.Words[0].Box), BoxSig(removed.Boxes[0]),
                 "левая рамка взята из того же Delete");
-            AssertEqual(BoxSig(rightPage.Words[0].Box), BoxSig(added.Boxes[0]),
+            AssertEq(BoxSig(rightPage.Words[0].Box), BoxSig(added.Boxes[0]),
                 "правая рамка взята из того же Insert");
             AssertTrue(BoxSig(removed.Boxes[0]) != BoxSig(leftPage.Words[1].Box) &&
                        BoxSig(added.Boxes[0]) != BoxSig(rightPage.Words[1].Box),
                 "Equal-рамка не попала в подсветку");
-            AssertEqual(leftPage.ViewWidthPt, removed.ViewWidthPt, "размер левой страницы передан UI");
-            AssertEqual(rightPage.ViewHeightPt, added.ViewHeightPt, "размер правой страницы передан UI");
+            AssertEq(leftPage.ViewWidthPt, removed.ViewWidthPt, "размер левой страницы передан UI");
+            AssertEq(rightPage.ViewHeightPt, added.ViewHeightPt, "размер правой страницы передан UI");
 
             var removedMarker = new PdfReviewWhitespaceMarker
             {
@@ -6651,9 +6651,9 @@ namespace ExcelMerger.Tests
                 new List<PdfReviewWhitespaceMarker> { addedMarker };
             removed = PdfReviewForm.BuildHighlight(result, pair, true);
             added = PdfReviewForm.BuildHighlight(result, pair, false);
-            AssertEqual(1, removed.WhitespaceMarkers.Count,
+            AssertEq(1, removed.WhitespaceMarkers.Count,
                 "левая UI-модель получает только authoritative removed-whitespace marker");
-            AssertEqual(1, added.WhitespaceMarkers.Count,
+            AssertEq(1, added.WhitespaceMarkers.Count,
                 "правая UI-модель получает только authoritative added-whitespace marker");
             AssertTrue(object.ReferenceEquals(removedMarker, removed.WhitespaceMarkers[0]) &&
                        object.ReferenceEquals(addedMarker, added.WhitespaceMarkers[0]),
@@ -6675,7 +6675,7 @@ namespace ExcelMerger.Tests
             lineHighlight.Boxes.Add(new PdfReviewBox
                 { Left = 20, Bottom = 90, Right = 55, Top = 100 });
             List<RectangleF> bands = PdfReviewPageView.ChangeLineBands(lineHighlight, 200, 200);
-            AssertEqual(2, bands.Count,
+            AssertEq(2, bands.Count,
                 "несколько кандидатов одной строки дают одну high-contrast change bar");
 
             var source = new Bitmap(200, 200);
@@ -6688,15 +6688,15 @@ namespace ExcelMerger.Tests
             }
             using (Bitmap marked = PdfReviewPageView.DrawHighlight(source, lineHighlight, false))
             {
-                AssertEqual(Theme.ReviewDeleteFill.ToArgb(), marked.GetPixel(22, 41).ToArgb(),
+                AssertEq(Theme.ReviewDeleteFill.ToArgb(), marked.GetPixel(22, 41).ToArgb(),
                     "normal mode превращает белую бумагу word-box в точный красный фон");
-                AssertEqual(Color.FromArgb(31, 43, 57).ToArgb(), marked.GetPixel(26, 43).ToArgb(),
+                AssertEq(Color.FromArgb(31, 43, 57).ToArgb(), marked.GetPixel(26, 43).ToArgb(),
                     "Word-подобный фон сохраняет тёмный PDF ink");
-                AssertEqual(Color.FromArgb(92, 105, 119).ToArgb(), marked.GetPixel(31, 44).ToArgb(),
+                AssertEq(Color.FromArgb(92, 105, 119).ToArgb(), marked.GetPixel(31, 44).ToArgb(),
                     "Word-подобный фон сохраняет тёмный нейтральный glyph");
-                AssertEqual(Color.White.ToArgb(), marked.GetPixel(60, 45).ToArgb(),
+                AssertEq(Color.White.ToArgb(), marked.GetPixel(60, 45).ToArgb(),
                     "normal mode не заполняет стабильный промежуток между word-box");
-                AssertEqual(Color.White.ToArgb(), marked.GetPixel(7, 45).ToArgb(),
+                AssertEq(Color.White.ToArgb(), marked.GetPixel(7, 45).ToArgb(),
                     "normal mode не рисует устаревшую внешнюю change bar");
             }
             AssertThrowsExactly<ArgumentException>("успешная композиция освобождает исходный bitmap",
@@ -6711,9 +6711,9 @@ namespace ExcelMerger.Tests
                 graphics.Clear(Color.White);
             using (Bitmap marked = PdfReviewPageView.DrawHighlight(source, lineHighlight, false))
             {
-                AssertEqual(Theme.ReviewInsertFill.ToArgb(), marked.GetPixel(22, 41).ToArgb(),
+                AssertEq(Theme.ReviewInsertFill.ToArgb(), marked.GetPixel(22, 41).ToArgb(),
                     "Insert получает точный зелёный Word-подобный фон");
-                AssertEqual(Color.White.ToArgb(), marked.GetPixel(60, 45).ToArgb(),
+                AssertEq(Color.White.ToArgb(), marked.GetPixel(60, 45).ToArgb(),
                     "зелёная заливка не мостит промежуток до соседнего слова");
             }
 
@@ -6726,7 +6726,7 @@ namespace ExcelMerger.Tests
                 graphics.Clear(Color.White);
             using (Bitmap marked = PdfReviewPageView.DrawHighlight(source, lineHighlight, true))
             {
-                AssertEqual(Color.White.ToArgb(), marked.GetPixel(30, 45).ToArgb(),
+                AssertEq(Color.White.ToArgb(), marked.GetPixel(30, 45).ToArgb(),
                     "high contrast сохраняет бумагу внутри слова вместо custom fill");
                 AssertTrue(ReviewHasColoredPixel(marked, 0, 24, 34, 55),
                     "high contrast сохраняет solid/− change bar удаления слева");
@@ -6752,42 +6752,42 @@ namespace ExcelMerger.Tests
         {
             Color removed = Theme.ReviewDeleteFill;
             Color added = Theme.ReviewInsertFill;
-            AssertEqual(Color.FromArgb(236, 8, 8).ToArgb(), removed.ToArgb(),
+            AssertEq(Color.FromArgb(236, 8, 8).ToArgb(), removed.ToArgb(),
                 "removed palette совпадает с чистым #EC0808 из reference");
-            AssertEqual(Color.FromArgb(27, 233, 26).ToArgb(), added.ToArgb(),
+            AssertEq(Color.FromArgb(27, 233, 26).ToArgb(), added.ToArgb(),
                 "added palette совпадает с чистым #1BE91A из reference");
 
-            AssertEqual(removed.ToArgb(),
+            AssertEq(removed.ToArgb(),
                 PdfReviewHighlightRenderer.ComposePixel(Color.White, removed).ToArgb(),
                 "белая бумага становится точным semantic fill");
-            AssertEqual(added.ToArgb(),
+            AssertEq(added.ToArgb(),
                 PdfReviewHighlightRenderer.ComposePixel(Color.FromArgb(238, 238, 238),
                     added).ToArgb(),
                 "граница PaperMinimum тоже становится точным fill");
 
             Color black = Color.FromArgb(255, 0, 0, 0);
             Color dark = Color.FromArgb(255, 150, 148, 149);
-            AssertEqual(black.ToArgb(),
+            AssertEq(black.ToArgb(),
                 PdfReviewHighlightRenderer.ComposePixel(black, removed).ToArgb(),
                 "чёрный PDF ink остаётся чёрным");
-            AssertEqual(dark.ToArgb(),
+            AssertEq(dark.ToArgb(),
                 PdfReviewHighlightRenderer.ComposePixel(dark, removed).ToArgb(),
                 "порог тёмного glyph сохраняется без recolor");
 
             Color edge = Color.FromArgb(255, 200, 200, 200);
             Color composed = PdfReviewHighlightRenderer.ComposePixel(edge, removed);
-            AssertEqual(Color.FromArgb(255, 185, 6, 6).ToArgb(), composed.ToArgb(),
+            AssertEq(Color.FromArgb(255, 185, 6, 6).ToArgb(), composed.ToArgb(),
                 "нейтральный anti-aliased edge умножается на фон один раз");
             AssertTrue(composed.ToArgb() != edge.ToArgb() &&
                        composed.ToArgb() != removed.ToArgb(),
                 "edge не оставляет белый ореол и не стирается сплошной заливкой");
 
             Color chromatic = Color.FromArgb(255, 245, 200, 245);
-            AssertEqual(chromatic.ToArgb(),
+            AssertEq(chromatic.ToArgb(),
                 PdfReviewHighlightRenderer.ComposePixel(chromatic, added).ToArgb(),
                 "chromatic source ink не классифицируется как бумага");
             Color translucent = Color.FromArgb(254, 250, 250, 250);
-            AssertEqual(translucent.ToArgb(),
+            AssertEq(translucent.ToArgb(),
                 PdfReviewHighlightRenderer.ComposePixel(translucent, removed).ToArgb(),
                 "непрозрачность исходного пикселя не изменяется и не выдумывается");
         }
@@ -6820,25 +6820,25 @@ namespace ExcelMerger.Tests
                 };
                 PdfReviewHighlightRenderer.ApplyWordFills(bitmap, rectangles, fill);
 
-                AssertEqual(once.ToArgb(), bitmap.GetPixel(3, 1).ToArgb(),
+                AssertEq(once.ToArgb(), bitmap.GetPixel(3, 1).ToArgb(),
                     "overlap не затемняется повторной композицией");
-                AssertEqual(once.ToArgb(), bitmap.GetPixel(6, 2).ToArgb(),
+                AssertEq(once.ToArgb(), bitmap.GetPixel(6, 2).ToArgb(),
                     "floor/ceiling включает весь fractional word-box");
-                AssertEqual(paper.ToArgb(), bitmap.GetPixel(7, 2).ToArgb(),
+                AssertEq(paper.ToArgb(), bitmap.GetPixel(7, 2).ToArgb(),
                     "за правой ceiling-границей исходный пиксель не меняется");
-                AssertEqual(once.ToArgb(), bitmap.GetPixel(0, 0).ToArgb(),
+                AssertEq(once.ToArgb(), bitmap.GetPixel(0, 0).ToArgb(),
                     "отрицательная область корректно clipped к bitmap");
-                AssertEqual(paper.ToArgb(), bitmap.GetPixel(1, 0).ToArgb(),
+                AssertEq(paper.ToArgb(), bitmap.GetPixel(1, 0).ToArgb(),
                     "clipping не расширяет прямоугольник за его правую границу");
-                AssertEqual(once.ToArgb(), bitmap.GetPixel(2, 4).ToArgb(),
+                AssertEq(once.ToArgb(), bitmap.GetPixel(2, 4).ToArgb(),
                     "первая отдельная область заполнена");
-                AssertEqual(paper.ToArgb(), bitmap.GetPixel(3, 4).ToArgb(),
+                AssertEq(paper.ToArgb(), bitmap.GetPixel(3, 4).ToArgb(),
                     "union не мостит реальный промежуток между semantic boxes");
-                AssertEqual(once.ToArgb(), bitmap.GetPixel(4, 4).ToArgb(),
+                AssertEq(once.ToArgb(), bitmap.GetPixel(4, 4).ToArgb(),
                     "вторая отдельная область заполнена независимо");
-                AssertEqual(paper.ToArgb(), bitmap.GetPixel(9, 3).ToArgb(),
+                AssertEq(paper.ToArgb(), bitmap.GetPixel(9, 3).ToArgb(),
                     "NaN/zero/huge-outside области игнорируются без broad fill");
-                AssertEqual(paper.ToArgb(), bitmap.GetPixel(0, 5).ToArgb(),
+                AssertEq(paper.ToArgb(), bitmap.GetPixel(0, 5).ToArgb(),
                     "строки вне authoritative rectangles не сканируются семантически");
             }
 
@@ -6850,9 +6850,9 @@ namespace ExcelMerger.Tests
                 PdfReviewHighlightRenderer.ApplyWordFills(bitmap,
                     new[] { new RectangleF(-1.0e20f, 0f, 2.0e20f, 1f) }, fill);
                 for (int x = 0; x < bitmap.Width; x++)
-                    AssertEqual(fill.ToArgb(), bitmap.GetPixel(x, 0).ToArgb(),
+                    AssertEq(fill.ToArgb(), bitmap.GetPixel(x, 0).ToArgb(),
                         "конечный spanning rectangle clipped без integer overflow");
-                AssertEqual(Color.White.ToArgb(), bitmap.GetPixel(0, 1).ToArgb(),
+                AssertEq(Color.White.ToArgb(), bitmap.GetPixel(0, 1).ToArgb(),
                     "spanning rectangle не выходит на соседнюю scanline");
             }
         }
@@ -6864,7 +6864,7 @@ namespace ExcelMerger.Tests
             Bitmap unchanged = PdfReviewPageView.DrawHighlight(source, null, false);
             AssertTrue(ReferenceEquals(source, unchanged),
                 "null projection возвращает исходный bitmap без копии");
-            AssertEqual(Color.Blue.ToArgb(), source.GetPixel(0, 0).ToArgb(),
+            AssertEq(Color.Blue.ToArgb(), source.GetPixel(0, 0).ToArgb(),
                 "пустой путь не освобождает bitmap, которым продолжает владеть caller");
             source.Dispose();
 
@@ -6894,9 +6894,9 @@ namespace ExcelMerger.Tests
             {
                 AssertTrue(!ReferenceEquals(source, rendered),
                     "готовая projection публикует отдельный bitmap");
-                AssertEqual(System.Drawing.Imaging.PixelFormat.Format32bppArgb,
+                AssertEq(System.Drawing.Imaging.PixelFormat.Format32bppArgb,
                     rendered.PixelFormat, "опубликованный compositor raster нормализован в 32bpp");
-                AssertEqual(Theme.ReviewInsertFill.ToArgb(), rendered.GetPixel(3, 3).ToArgb(),
+                AssertEq(Theme.ReviewInsertFill.ToArgb(), rendered.GetPixel(3, 3).ToArgb(),
                     "готовая копия содержит fill в преобразованной PDF-рамке");
                 AssertThrowsExactly<ArgumentException>("после commit исходный bitmap освобождён ровно владельцем renderer",
                     delegate { source.GetPixel(0, 0); });
@@ -6925,7 +6925,7 @@ namespace ExcelMerger.Tests
             {
                 AssertTrue(!ReferenceEquals(source, rendered),
                     "отдельный whitespace layer также публикуется транзакционной копией");
-                AssertEqual(0, whitespaceOnly.Boxes.Count,
+                AssertEq(0, whitespaceOnly.Boxes.Count,
                     "рисование whitespace token не превращает его в word-box");
                 AssertThrowsExactly<ArgumentException>("whitespace commit освобождает прежний raster",
                     delegate { source.GetPixel(0, 0); });
@@ -6966,10 +6966,10 @@ namespace ExcelMerger.Tests
             foreach (PdfReviewWord word in invalid)
                 filteredPage.Words.Add(word);
             var filtered = new PdfReviewTextSelection(filteredPage);
-            AssertEqual(1, filtered.Count,
+            AssertEq(1, filtered.Count,
                 "immutable selectable list фильтрует все недоверенные объекты");
             filtered.SelectAll();
-            AssertEqual("valid", filtered.BuildCopyText().Text,
+            AssertEq("valid", filtered.BuildCopyText().Text,
                 "недоверенный source не попадает в clipboard output");
 
             PdfReviewPage page = ReviewTrustedPage(3,
@@ -6982,34 +6982,34 @@ namespace ExcelMerger.Tests
                 "индексы вне selectable list отвергаются без мутации");
             AssertTrue(selection.Select(3, false) && selection.ExtendTo(1),
                 "reverse drag сохраняет anchor и двигает focus");
-            AssertEqual(1, selection.SelectionStart, "reverse range нормализует начало");
-            AssertEqual(3, selection.SelectionEnd, "reverse range нормализует конец");
-            AssertEqual("b c d", selection.BuildCopyText().Text,
+            AssertEq(1, selection.SelectionStart, "reverse range нормализует начало");
+            AssertEq(3, selection.SelectionEnd, "reverse range нормализует конец");
+            AssertEq("b c d", selection.BuildCopyText().Text,
                 "reverse range копируется в canonical reading order");
             AssertTrue(selection.Select(2, true),
                 "Shift-like extension сохраняет исходный anchor");
-            AssertEqual(3, selection.Anchor, "extend не меняет anchor");
-            AssertEqual(2, selection.Focus, "extend меняет только focus");
-            AssertEqual("c d", selection.BuildCopyText().Text,
+            AssertEq(3, selection.Anchor, "extend не меняет anchor");
+            AssertEq(2, selection.Focus, "extend меняет только focus");
+            AssertEq("c d", selection.BuildCopyText().Text,
                 "сокращённый reverse range остаётся в document order");
             AssertTrue(selection.SelectAll() && selection.SelectedCount == 4,
                 "SelectAll выбирает все и только trusted слова текущей страницы");
             AssertTrue(selection.Clear() && !selection.HasSelection && !selection.Clear(),
                 "Clear идемпотентен и не оставляет скрытого anchor");
 
-            AssertEqual(0, selection.HitTest(new PointF(18, 25), new Size(200, 100)),
+            AssertEq(0, selection.HitTest(new PointF(18, 25), new Size(200, 100)),
                 "hit-test использует общий PDF→pixel transform");
-            AssertEqual(-1, selection.HitTest(new PointF(190, 90), new Size(200, 100)),
+            AssertEq(-1, selection.HitTest(new PointF(190, 90), new Size(200, 100)),
                 "blank paper не выбирает ближайшее слово при обычном click");
-            AssertEqual(0, selection.HitTestNearest(new PointF(27, 25),
+            AssertEq(0, selection.HitTestNearest(new PointF(27, 25),
                 new Size(200, 100), 2f),
                 "drag может продолжиться до ближайшей bounded рамки");
-            AssertEqual(-1, selection.HitTestNearest(new PointF(190, 90),
+            AssertEq(-1, selection.HitTestNearest(new PointF(190, 90),
                 new Size(200, 100), 4f),
                 "далёкая геометрия не расширяет диапазон");
             selection.Select(0, false);
             List<RectangleF> mapped = selection.SelectedRectangles(new Size(200, 100));
-            AssertEqual(1, mapped.Count, "selection overlay получает одну рамку на слово");
+            AssertEq(1, mapped.Count, "selection overlay получает одну рамку на слово");
             AssertTrue(Math.Abs(mapped[0].Left - 10f) < 0.001f &&
                        Math.Abs(mapped[0].Top - 20f) < 0.001f,
                 "selection overlay и hit-test разделяют один transform без OCR");
@@ -7023,16 +7023,16 @@ namespace ExcelMerger.Tests
             var selection = new PdfReviewTextSelection(page);
             selection.SelectAll();
             PdfReviewCopyText copy = selection.BuildCopyText();
-            AssertEqual("AB C  D E\tF\r\nG\nH", copy.Text,
+            AssertEq("AB C  D E\tF\r\nG\nH", copy.Text,
                 "exact boundary сохраняет empty/space/repeated/NBSP/tab/CRLF/LF буквально");
-            AssertEqual(8, copy.WordCount, "word count отделён от пробельных atom");
+            AssertEq(8, copy.WordCount, "word count отделён от пробельных atom");
             AssertTrue(!copy.UsedFallbackSeparator,
                 "полный decoded source proof не помечается fallback");
 
             selection.Select(6, false);
             selection.ExtendTo(2);
             copy = selection.BuildCopyText();
-            AssertEqual("C  D E\tF\r\nG", copy.Text,
+            AssertEq("C  D E\tF\r\nG", copy.Text,
                 "поддиапазон использует только внутренние source-boundary");
             AssertTrue(!copy.Text.StartsWith(separators[1], StringComparison.Ordinal) &&
                        !copy.Text.EndsWith(separators[6], StringComparison.Ordinal),
@@ -7046,7 +7046,7 @@ namespace ExcelMerger.Tests
             selection.Select(0, false);
             selection.ExtendTo(1);
             copy = selection.BuildCopyText();
-            AssertEqual("AB", copy.Text,
+            AssertEq("AB", copy.Text,
                 "огромный visual gap и перенос geometry не выдумывают разделитель");
             AssertTrue(!copy.UsedFallbackSeparator,
                 "доказанная пустая source-boundary сильнее геометрии");
@@ -7060,11 +7060,11 @@ namespace ExcelMerger.Tests
             var selection = new PdfReviewTextSelection(page);
             selection.SelectAll();
             PdfReviewCopyText copy = selection.BuildCopyText();
-            AssertEqual("a b\tc", copy.Text,
+            AssertEq("a b\tc", copy.Text,
                 "missing proof получает один U+0020, остальные exact boundary сохраняются");
             AssertTrue(copy.UsedFallbackSeparator,
                 "readability fallback явно сообщается вызывающему коду");
-            AssertEqual(1, page.WhitespaceBoundaries.Count,
+            AssertEq(1, page.WhitespaceBoundaries.Count,
                 "copy builder не публикует fallback как semantic whitespace evidence");
 
             page = ReviewTrustedPage(8, new[] { "x", "y" }, new[] { "  " });
@@ -7073,7 +7073,7 @@ namespace ExcelMerger.Tests
             selection = new PdfReviewTextSelection(page);
             selection.SelectAll();
             copy = selection.BuildCopyText();
-            AssertEqual("x y", copy.Text,
+            AssertEq("x y", copy.Text,
                 "даже одинаковый duplicate proof считается неоднозначным");
             AssertTrue(copy.UsedFallbackSeparator,
                 "duplicate boundary не выбирается произвольно");
@@ -7082,7 +7082,7 @@ namespace ExcelMerger.Tests
             page.WhitespaceBoundaries[0].PageIndex = 9;
             selection = new PdfReviewTextSelection(page);
             selection.SelectAll();
-            AssertEqual("x y", selection.BuildCopyText().Text,
+            AssertEq("x y", selection.BuildCopyText().Text,
                 "evidence другой физической страницы отвергается");
 
             page = ReviewTrustedPage(8, new[] { "x", "y" }, new[] { "" });
@@ -7090,7 +7090,7 @@ namespace ExcelMerger.Tests
             selection = new PdfReviewTextSelection(page);
             selection.SelectAll();
             copy = selection.BuildCopyText();
-            AssertEqual("x y", copy.Text,
+            AssertEq("x y", copy.Text,
                 "не-whitespace raw payload не внедряется в clipboard");
             AssertTrue(copy.UsedFallbackSeparator,
                 "невалидный raw payload приводит к безопасному flagged fallback");
@@ -7099,23 +7099,23 @@ namespace ExcelMerger.Tests
                 new[] { "first", "hidden", "last" }, new[] { "", "" });
             page.Words[1].SourceTrusted = false;
             selection = new PdfReviewTextSelection(page);
-            AssertEqual(2, selection.Count, "untrusted middle word отсутствует в диапазоне");
+            AssertEq(2, selection.Count, "untrusted middle word отсутствует в диапазоне");
             selection.SelectAll();
             copy = selection.BuildCopyText();
-            AssertEqual("first last", copy.Text,
+            AssertEq("first last", copy.Text,
                 "через canonical gap нельзя склеить source text без разделителя");
             AssertTrue(copy.UsedFallbackSeparator,
                 "canonical gap раскрыт как fallback, а не доказанная семантика");
 
             selection.Clear();
             copy = selection.BuildCopyText();
-            AssertEqual("", copy.Text, "пустой range не создаёт clipboard text");
-            AssertEqual(0, copy.WordCount, "у пустого range ноль выбранных слов");
+            AssertEq("", copy.Text, "пустой range не создаёт clipboard text");
+            AssertEq(0, copy.WordCount, "у пустого range ноль выбранных слов");
             AssertTrue(!copy.UsedFallbackSeparator,
                 "без диапазона нет и реконструированного separator");
             selection.Select(0, false);
             copy = selection.BuildCopyText();
-            AssertEqual("first", copy.Text, "одно слово не получает leading/trailing fallback");
+            AssertEq("first", copy.Text, "одно слово не получает leading/trailing fallback");
             AssertTrue(!copy.UsedFallbackSeparator,
                 "одиночное слово не заявляет несуществующую неоднозначность");
         }
@@ -7126,17 +7126,17 @@ namespace ExcelMerger.Tests
             DataObject data = PdfReviewClipboardWriter.CreateDataObject(value);
             AssertTrue(data.GetDataPresent(DataFormats.UnicodeText, true),
                 "DataObject публикует стандартный UnicodeText format");
-            AssertEqual(value, data.GetData(DataFormats.UnicodeText, true) as string,
+            AssertEq(value, data.GetData(DataFormats.UnicodeText, true) as string,
                 "Unicode clipboard payload сохраняет UTF-16, NBSP, tab, CRLF и surrogate pair");
-            AssertEqual(5, PdfReviewClipboardWriter.RetryCount,
+            AssertEq(5, PdfReviewClipboardWriter.RetryCount,
                 "clipboard lock retries имеют конечный явный предел");
-            AssertEqual(100, PdfReviewClipboardWriter.RetryDelayMilliseconds,
+            AssertEq(100, PdfReviewClipboardWriter.RetryDelayMilliseconds,
                 "между retries задан конечный delay без busy loop");
 
             DataObject empty = PdfReviewClipboardWriter.CreateDataObject(null);
             AssertTrue(empty.GetDataPresent(DataFormats.UnicodeText, true),
                 "даже pure helper детерминированно задаёт UnicodeText format");
-            AssertEqual("", empty.GetData(DataFormats.UnicodeText, true) as string,
+            AssertEq("", empty.GetData(DataFormats.UnicodeText, true) as string,
                 "null helper payload нормализуется в пустую строку");
         }
 
@@ -7179,29 +7179,29 @@ namespace ExcelMerger.Tests
                         new[] { "один", "два" }, new[] { " " }));
                     AssertTrue(surface.TabStop && surface.HasSelectableText,
                         "ready trusted page входит в tab order как read-only document");
-                    AssertEqual(AccessibleRole.Document, surface.AccessibleRole,
+                    AssertEq(AccessibleRole.Document, surface.AccessibleRole,
                         "surface честно сообщает document role без fake TextPattern");
-                    AssertEqual(2, surface.ContextMenuStrip.Items.Count,
+                    AssertEq(2, surface.ContextMenuStrip.Items.Count,
                         "контекстное меню содержит только Copy и Select all");
-                    AssertEqual(Loc.T("common.copy"),
+                    AssertEq(Loc.T("common.copy"),
                         surface.ContextMenuStrip.Items[0].Text,
                         "Copy в контекстном меню локализован");
-                    AssertEqual(Loc.T("review.selection.selectAll"),
+                    AssertEq(Loc.T("review.selection.selectAll"),
                         surface.ContextMenuStrip.Items[1].Text,
                         "Select all в контекстном меню локализован");
 
                     AssertTrue(InvokeReviewSurfaceCmdKey(surface, Keys.Control | Keys.A),
                         "Ctrl+A обрабатывается только focused selection surface");
-                    AssertEqual(2, surface.SelectedWordCount,
+                    AssertEq(2, surface.SelectedWordCount,
                         "Ctrl+A выбирает trusted слова текущей страницы");
                     AssertTrue(surface.InteractionStatus.Contains("2"),
                         "status/accessibility сообщает число выбранных слов");
                     AssertTrue(InvokeReviewSurfaceCmdKey(surface, Keys.Control | Keys.C),
                         "Ctrl+C публикует выбранный trusted text");
-                    AssertEqual(1, clipboard.Calls, "clipboard writer вызван ровно один раз");
-                    AssertEqual("один два", clipboard.Text,
+                    AssertEq(1, clipboard.Calls, "clipboard writer вызван ровно один раз");
+                    AssertEq("один два", clipboard.Text,
                         "surface передаёт fake writer точный source-backed Unicode text");
-                    AssertEqual(Loc.T("review.selection.copied"), surface.InteractionStatus,
+                    AssertEq(Loc.T("review.selection.copied"), surface.InteractionStatus,
                         "успешное exact-копирование даёт non-modal feedback");
 
                     AssertTrue(InvokeReviewSurfaceCmdKey(surface, Keys.Escape),
@@ -7210,14 +7210,14 @@ namespace ExcelMerger.Tests
                         "после Escape selection overlay/state отсутствует");
                     AssertTrue(InvokeReviewSurfaceCmdKey(surface, Keys.Control | Keys.C),
                         "Ctrl+C без range остаётся локальной read-only командой");
-                    AssertEqual(1, clipboard.Calls,
+                    AssertEq(1, clipboard.Calls,
                         "пустой диапазон никогда не касается clipboard");
 
                     surface.SelectAllWords();
                     clipboard.Result = PdfReviewClipboardResult.Unavailable;
                     AssertTrue(!surface.CopySelection(),
                         "занятый clipboard не превращается в ложный success");
-                    AssertEqual(Loc.T("review.selection.clipboardUnavailable"),
+                    AssertEq(Loc.T("review.selection.clipboardUnavailable"),
                         surface.InteractionStatus,
                         "clipboard failure виден пользователю без падения окна");
 
@@ -7271,9 +7271,9 @@ namespace ExcelMerger.Tests
 
                     InvokeReviewSurfaceMouse(surface, "OnMouseDown",
                         new MouseEventArgs(MouseButtons.Left, 1, 2, 25, 0));
-                    AssertEqual(3, surface.SelectedWordCount,
+                    AssertEq(3, surface.SelectedWordCount,
                         "click по change bar выбирает соответствующий полный фрагмент строки");
-                    AssertEqual("one two three", surface.SelectionModel.BuildCopyText().Text,
+                    AssertEq("one two three", surface.SelectionModel.BuildCopyText().Text,
                         "change bar выбирает trusted слова в document order");
                     InvokeReviewSurfaceMouse(surface, "OnMouseUp",
                         new MouseEventArgs(MouseButtons.Left, 1, 2, 25, 0));
@@ -7285,7 +7285,7 @@ namespace ExcelMerger.Tests
                         new MouseEventArgs(MouseButtons.Left, 0, 53, 34, 0));
                     InvokeReviewSurfaceMouse(surface, "OnMouseUp",
                         new MouseEventArgs(MouseButtons.Left, 1, 53, 34, 0));
-                    AssertEqual(3, surface.SelectedWordCount,
+                    AssertEq(3, surface.SelectedWordCount,
                         "drag через белые промежутки рядом с текстом не имеет слепых зон");
                     surface.ClearSelection();
 
@@ -7295,7 +7295,7 @@ namespace ExcelMerger.Tests
                         new MouseEventArgs(MouseButtons.Left, 0, 58, 25, 0));
                     InvokeReviewSurfaceMouse(surface, "OnMouseUp",
                         new MouseEventArgs(MouseButtons.Left, 1, 58, 25, 0));
-                    AssertEqual(3, surface.SelectedWordCount,
+                    AssertEq(3, surface.SelectedWordCount,
                         "forward mouse drag выбирает contiguous canonical range");
                     AssertTrue(!ReviewPrivateField<bool>(surface, "_dragging") &&
                                !ReviewPrivateField<Timer>(surface,
@@ -7308,9 +7308,9 @@ namespace ExcelMerger.Tests
                         new MouseEventArgs(MouseButtons.Left, 0, 18, 25, 0));
                     InvokeReviewSurfaceMouse(surface, "OnMouseUp",
                         new MouseEventArgs(MouseButtons.Left, 1, 18, 25, 0));
-                    AssertEqual(3, surface.SelectedWordCount,
+                    AssertEq(3, surface.SelectedWordCount,
                         "reverse mouse drag даёт тот же document-ordered range");
-                    AssertEqual("one two three",
+                    AssertEq("one two three",
                         surface.SelectionModel.BuildCopyText().Text,
                         "reverse drag не меняет порядок clipboard text");
 
@@ -7341,7 +7341,7 @@ namespace ExcelMerger.Tests
                     int doubleClicks = 0;
                     surface.DoubleClick += delegate { doubleClicks++; };
                     InvokeReviewSurfaceEvent(surface, "OnDoubleClick", EventArgs.Empty);
-                    AssertEqual(1, doubleClicks,
+                    AssertEq(1, doubleClicks,
                         "custom selection surface сохраняет PictureBox double-click contract");
                     host.Close();
                 }
@@ -7384,13 +7384,13 @@ namespace ExcelMerger.Tests
                         "каждая pane хранит собственный range одновременно");
                     left.CopySelection();
                     right.CopySelection();
-                    AssertEqual("removed left", leftClipboard.Text,
+                    AssertEq("removed left", leftClipboard.Text,
                         "левая pane копирует только свой source layer");
-                    AssertEqual("added\tright", rightClipboard.Text,
+                    AssertEq("added\tright", rightClipboard.Text,
                         "правая pane копирует только свой source layer");
-                    AssertEqual(1, leftClipboard.Calls,
+                    AssertEq(1, leftClipboard.Calls,
                         "правое копирование не вызывает левый clipboard adapter");
-                    AssertEqual(1, rightClipboard.Calls,
+                    AssertEq(1, rightClipboard.Calls,
                         "левое копирование не вызывает правый clipboard adapter");
 
                     left.AttachPage(ReviewTrustedPage(1,
@@ -7771,9 +7771,9 @@ namespace ExcelMerger.Tests
                 cancellationChecks++;
                 return true;
             });
-            AssertEqual(0, cancellationChecks,
+            AssertEq(0, cancellationChecks,
                 context + ": renderer и cancellation path не запущены");
-            AssertEqual(before, ReviewOpsSig(result.Operations),
+            AssertEq(before, ReviewOpsSig(result.Operations),
                 context + ": текстовый кандидат сохранён fail-safe");
         }
 
@@ -7785,12 +7785,12 @@ namespace ExcelMerger.Tests
         private static void TestReviewVisualRefineSafetyGates()
         {
             PdfReviewResult pureDelete = ReviewVisualCandidateResult("old", null);
-            AssertEqual("Delete:old", ReviewOpsSig(pureDelete.Operations),
+            AssertEq("Delete:old", ReviewOpsSig(pureDelete.Operations),
                 "контроль: pure-delete fixture");
             AssertReviewVisualUnsafeHunk(pureDelete, "pure Delete");
 
             PdfReviewResult pureInsert = ReviewVisualCandidateResult(null, "new");
-            AssertEqual("Insert:new", ReviewOpsSig(pureInsert.Operations),
+            AssertEq("Insert:new", ReviewOpsSig(pureInsert.Operations),
                 "контроль: pure-insert fixture");
             AssertReviewVisualUnsafeHunk(pureInsert, "pure Insert");
 
@@ -7830,7 +7830,7 @@ namespace ExcelMerger.Tests
             });
             AssertTrue(failureChecks > 0,
                 "безопасная hunk дошла до cooperative cancellation gate");
-            AssertEqual(beforeFailure, ReviewOpsSig(rendererFailure.Operations),
+            AssertEq(beforeFailure, ReviewOpsSig(rendererFailure.Operations),
                 "ошибка renderer сохраняет исходный Delete/Insert");
 
             PdfReviewResult limited = ReviewVisualCandidateResult("old", "new");
@@ -7847,7 +7847,7 @@ namespace ExcelMerger.Tests
             });
             AssertTrue(limitChecks > 0,
                 "безопасная hunk проверена до оценки raster-лимита");
-            AssertEqual(beforeLimit, ReviewOpsSig(limited.Operations),
+            AssertEq(beforeLimit, ReviewOpsSig(limited.Operations),
                 "недостаточный raster-лимит сохраняет исходный Delete/Insert");
 
             var leftCandidates = new PdfReviewWord[257];
@@ -7888,7 +7888,7 @@ namespace ExcelMerger.Tests
             }
             AssertTrue(longNoOpCancelled,
                 "длинный no-op обход visual-кандидатов кооперативно отменён");
-            AssertEqual(1, longNoOpChecks,
+            AssertEq(1, longNoOpChecks,
                 "длинный no-op проверяет отмену периодически, а не на каждом элементе");
             AssertTrue(ReferenceEquals(longNoOpOperations, longNoOp.Operations) &&
                        longNoOp.Operations.Count == 5000,
@@ -7955,9 +7955,9 @@ namespace ExcelMerger.Tests
             }
             AssertTrue(cancellationThrown,
                 "отмена безопасного production-refinement не маскируется fail-safe catch");
-            AssertEqual(1, cancellationCalls,
+            AssertEq(1, cancellationCalls,
                 "поднятый флаг отмены проверен до renderer");
-            AssertEqual("Delete:old|Insert:new", ReviewOpsSig(cancelled.Operations),
+            AssertEq("Delete:old|Insert:new", ReviewOpsSig(cancelled.Operations),
                 "отмена не мутирует глобальные операции");
         }
 
@@ -7984,7 +7984,7 @@ namespace ExcelMerger.Tests
                     return bitmap;
                 });
 
-            AssertEqual(2, renderCalls,
+            AssertEq(2, renderCalls,
                 "одна физическая пара растеризована ровно один раз с каждой стороны");
             AssertReviewVisualBitmapsDisposed(rendered,
                 "успешный injected-renderer path");
@@ -8001,27 +8001,27 @@ namespace ExcelMerger.Tests
                     rasterLeft += op.LeftWords.Count;
                     rasterRight += op.RightWords.Count;
                 }
-            AssertEqual(4, rasterLeft,
+            AssertEq(4, rasterLeft,
                 "четыре ранние hunk подтверждены до общего sample-потолка");
-            AssertEqual(4, rasterRight,
+            AssertEq(4, rasterRight,
                 "растровые Equal сохраняют четыре фактические правые стороны");
-            AssertEqual(PdfReviewDiffKind.Delete,
+            AssertEq(PdfReviewDiffKind.Delete,
                 ReviewVisualOperationForWord(result.Operations, lastLeft).Kind,
                 "поздний левый кандидат сохранён после исчерпания общего бюджета");
-            AssertEqual(PdfReviewDiffKind.Insert,
+            AssertEq(PdfReviewDiffKind.Insert,
                 ReviewVisualOperationForWord(result.Operations, lastRight).Kind,
                 "поздний правый кандидат сохранён после исчерпания общего бюджета");
-            AssertEqual(result.Left.Pages[0].Text,
+            AssertEq(result.Left.Pages[0].Text,
                 RebuildReviewSide(result.Operations, true),
                 "частичный proof не меняет порядок и полноту левой последовательности");
-            AssertEqual(result.Right.Pages[0].Text,
+            AssertEq(result.Right.Pages[0].Text,
                 RebuildReviewSide(result.Operations, false),
                 "частичный proof не меняет порядок и полноту правой последовательности");
-            AssertEqual(1, result.Stats.DeletedWords,
+            AssertEq(1, result.Stats.DeletedWords,
                 "после общего потолка остался ровно один Delete");
-            AssertEqual(1, result.Stats.InsertedWords,
+            AssertEq(1, result.Stats.InsertedWords,
                 "после общего потолка остался ровно один Insert");
-            AssertEqual(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Changed, result.Pairs[0].Status,
                 "непроверенная поздняя hunk оставляет страницу изменённой");
         }
 
@@ -8074,10 +8074,10 @@ namespace ExcelMerger.Tests
                 "relation-budget ceiling");
             AssertTrue(ReferenceEquals(cappedSource, capped.Operations),
                 "исчерпание без доказанных hunks не создаёт новый snapshot");
-            AssertEqual(PdfReviewDiffKind.Delete,
+            AssertEq(PdfReviewDiffKind.Delete,
                 ReviewVisualOperationForWord(capped.Operations, cappedLeft).Kind,
                 "левый кандидат за точным relation-потолком не скрыт");
-            AssertEqual(PdfReviewDiffKind.Insert,
+            AssertEq(PdfReviewDiffKind.Insert,
                 ReviewVisualOperationForWord(capped.Operations, cappedRight).Kind,
                 "правый кандидат за точным relation-потолком не скрыт");
         }
@@ -8164,7 +8164,7 @@ namespace ExcelMerger.Tests
 
             AssertTrue(cancellationThrown && cancellationChecks > 0,
                 "отмена второй пары распространяется после работы над первой");
-            AssertEqual(4, rendered.Count,
+            AssertEq(4, rendered.Count,
                 "до отмены получены обе стороны первой и второй физических пар");
             AssertReviewVisualBitmapsDisposed(rendered,
                 "отменённый injected-renderer path");
@@ -8184,13 +8184,13 @@ namespace ExcelMerger.Tests
                            result.InsertedWordsByPage[0]) &&
                        ReferenceEquals(oldStats, result.Stats),
                 "вложенные индексы и статистика остаются прежним snapshot");
-            AssertEqual(oldSignature, ReviewOpsSig(result.Operations),
+            AssertEq(oldSignature, ReviewOpsSig(result.Operations),
                 "раннее растровое совпадение не опубликовано частично");
-            AssertEqual(oldFirstStatus, result.Pairs[0].Status,
+            AssertEq(oldFirstStatus, result.Pairs[0].Status,
                 "статус первой пары не изменён частичной работой");
-            AssertEqual(oldSecondStatus, result.Pairs[1].Status,
+            AssertEq(oldSecondStatus, result.Pairs[1].Status,
                 "статус второй пары не изменён отменой");
-            AssertEqual(PdfReviewDiffKind.Delete,
+            AssertEq(PdfReviewDiffKind.Delete,
                 ReviewVisualOperationForWord(result.Operations, firstLeft).Kind,
                 "первый семантический кандидат сохранён после отмены");
 
@@ -8204,13 +8204,13 @@ namespace ExcelMerger.Tests
                 });
             AssertReviewVisualBitmapsDisposed(retryBitmaps,
                 "чистый повтор injected-renderer path");
-            AssertEqual(PdfReviewDiffKind.Equal,
+            AssertEq(PdfReviewDiffKind.Equal,
                 ReviewVisualOperationForWord(result.Operations, firstLeft).Kind,
                 "на чистом повторе ранняя hunk действительно подтверждается");
-            AssertEqual(PdfReviewDiffKind.Equal,
+            AssertEq(PdfReviewDiffKind.Equal,
                 ReviewVisualOperationForWord(result.Operations, secondLeft).Kind,
                 "на чистом повторе подтверждается и поздняя hunk");
-            AssertEqual(0, result.Stats.ChangedPages,
+            AssertEq(0, result.Stats.ChangedPages,
                 "чистый повтор атомарно публикует обе доказанные пары");
         }
 
@@ -8227,7 +8227,7 @@ namespace ExcelMerger.Tests
             PdfReviewPage rightPage = ReviewVisualPage(0,
                 ReviewVisualWord("layout-right", 20, 30, 80, 70),
                 ReviewVisualWord("tail", 150, 20, 180, 35));
-            AssertEqual("Delete:layout-left|Insert:layout-right|Equal:tail",
+            AssertEq("Delete:layout-left|Insert:layout-right|Equal:tail",
                 ReviewOpsSig(ReviewVisualOperations(leftPage, rightPage)),
                 "контроль: текстовый слой дал кандидата замены");
 
@@ -8247,9 +8247,9 @@ namespace ExcelMerger.Tests
             AssertTrue(refined, "однопиксельный сдвиг признан визуально равным кандидатом");
 
             PdfReviewPagePair pair = result.Pairs[0];
-            AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, pair.Status,
                 "после снятия единственного кандидата страница неизменна");
-            AssertEqual("Equal:layout-left|Equal:tail", ReviewOpsSig(result.Operations),
+            AssertEq("Equal:layout-left|Equal:tail", ReviewOpsSig(result.Operations),
                 "растровый Equal отделён от точного и сохраняет левую последовательность");
             AssertTrue(result.Operations[0].MatchKind == PdfReviewMatchKind.RasterEquivalent &&
                        result.Operations[0].Matches.Count == 1 &&
@@ -8259,12 +8259,12 @@ namespace ExcelMerger.Tests
                        ReferenceEquals(result.Operations[0].LeftWords[0], leftPage.Words[0]) &&
                        ReferenceEquals(result.Operations[0].RightWords[0], rightPage.Words[0]),
                 "однозначное растровое снятие сохраняет фактическую one-to-one связь");
-            AssertEqual(0, result.Stats.ChangedPages, "статистика пересчитана из очищенных операций");
-            AssertEqual(0, result.Stats.DeletedWords, "ложного Delete нет в статистике");
-            AssertEqual(0, result.Stats.InsertedWords, "ложного Insert нет в статистике");
-            AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+            AssertEq(0, result.Stats.ChangedPages, "статистика пересчитана из очищенных операций");
+            AssertEq(0, result.Stats.DeletedWords, "ложного Delete нет в статистике");
+            AssertEq(0, result.Stats.InsertedWords, "ложного Insert нет в статистике");
+            AssertEq(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
                 "ложной красной рамки нет");
-            AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+            AssertEq(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
                 "ложной зелёной рамки нет");
         }
 
@@ -8297,7 +8297,7 @@ namespace ExcelMerger.Tests
             }
             AssertTrue(smallRefined,
                 "четырёхпиксельное округление снято локальной регистрацией");
-            AssertEqual(PdfReviewPairStatus.Unchanged, smallResult.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, smallResult.Pairs[0].Status,
                 "малый сдвиг не создаёт ложную правку");
 
             List<PdfReviewWordOp> operations = ReviewVisualOperations(leftPage, rightPage);
@@ -8319,7 +8319,7 @@ namespace ExcelMerger.Tests
                     out largeRefined);
             }
             AssertTrue(!largeRefined, "заметный сдвиг за ограниченным радиусом не скрыт");
-            AssertEqual(before, ReviewOpsSig(largeResult.Operations),
+            AssertEq(before, ReviewOpsSig(largeResult.Operations),
                 "ограниченная регистрация сохранила обе операции настоящей правки");
         }
 
@@ -8352,7 +8352,7 @@ namespace ExcelMerger.Tests
             }
             AssertTrue(!refined,
                 "добавленный видимый штрих не признан артефактом регистрации");
-            AssertEqual(before, ReviewOpsSig(result.Operations),
+            AssertEq(before, ReviewOpsSig(result.Operations),
                 "Delete и Insert сохранены при частичном визуальном совпадении");
         }
 
@@ -8378,14 +8378,14 @@ namespace ExcelMerger.Tests
             AssertTrue(!refined, "разный рисунок не имеет права снять текстовую правку");
 
             PdfReviewPagePair pair = result.Pairs[0];
-            AssertEqual(PdfReviewPairStatus.Changed, pair.Status, "настоящая правка сохранена");
-            AssertEqual("Delete:old|Insert:new", ReviewOpsSig(result.Operations),
+            AssertEq(PdfReviewPairStatus.Changed, pair.Status, "настоящая правка сохранена");
+            AssertEq("Delete:old|Insert:new", ReviewOpsSig(result.Operations),
                 "Delete слева и Insert справа сохранены вместе");
-            AssertEqual(1, result.Stats.DeletedWords, "настоящий Delete посчитан");
-            AssertEqual(1, result.Stats.InsertedWords, "настоящий Insert посчитан");
-            AssertEqual(1, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+            AssertEq(1, result.Stats.DeletedWords, "настоящий Delete посчитан");
+            AssertEq(1, result.Stats.InsertedWords, "настоящий Insert посчитан");
+            AssertEq(1, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
                 "настоящая правка имеет красную рамку слева");
-            AssertEqual(1, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+            AssertEq(1, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
                 "настоящая правка имеет зелёную рамку справа");
         }
 
@@ -8417,19 +8417,19 @@ namespace ExcelMerger.Tests
             AssertTrue(refined, "из смешанной пары снят визуально равный кандидат");
 
             PdfReviewPagePair pair = result.Pairs[0];
-            AssertEqual(PdfReviewPairStatus.Changed, pair.Status,
+            AssertEq(PdfReviewPairStatus.Changed, pair.Status,
                 "реальная часть смешанной пары оставляет страницу изменённой");
-            AssertEqual("Equal:layout-left|Delete:old|Insert:new|Equal:tail",
+            AssertEq("Equal:layout-left|Delete:old|Insert:new|Equal:tail",
                 ReviewOpsSig(result.Operations), "снят только артефакт text layer");
-            AssertEqual(1, result.Stats.DeletedWords, "после refinement остался один Delete");
-            AssertEqual(1, result.Stats.InsertedWords, "после refinement остался один Insert");
+            AssertEq(1, result.Stats.DeletedWords, "после refinement остался один Delete");
+            AssertEq(1, result.Stats.InsertedWords, "после refinement остался один Insert");
             PdfReviewHighlight red = PdfReviewForm.BuildHighlight(result, pair, true);
             PdfReviewHighlight green = PdfReviewForm.BuildHighlight(result, pair, false);
-            AssertEqual(1, red.Boxes.Count, "слева осталась только настоящая рамка");
-            AssertEqual(1, green.Boxes.Count, "справа осталась только настоящая рамка");
-            AssertEqual(BoxSig(leftPage.Words[1].Box), BoxSig(red.Boxes[0]),
+            AssertEq(1, red.Boxes.Count, "слева осталась только настоящая рамка");
+            AssertEq(1, green.Boxes.Count, "справа осталась только настоящая рамка");
+            AssertEq(BoxSig(leftPage.Words[1].Box), BoxSig(red.Boxes[0]),
                 "красная рамка принадлежит настоящему Delete");
-            AssertEqual(BoxSig(rightPage.Words[1].Box), BoxSig(green.Boxes[0]),
+            AssertEq(BoxSig(rightPage.Words[1].Box), BoxSig(green.Boxes[0]),
                 "зелёная рамка принадлежит настоящему Insert");
         }
 
@@ -8449,7 +8449,7 @@ namespace ExcelMerger.Tests
                 ReviewVisualWord("anchor", 130, 20, 145, 30),
                 ReviewVisualWord("new", 70, 30, 110, 70),
                 ReviewVisualWord("tail", 160, 20, 180, 30));
-            AssertEqual("Delete:artifact-left|Insert:artifact-right|Equal:anchor|" +
+            AssertEq("Delete:artifact-left|Insert:artifact-right|Equal:anchor|" +
                 "Delete:old|Insert:new|Equal:tail",
                 ReviewOpsSig(ReviewVisualOperations(leftPage, rightPage)),
                 "контроль: Equal разделил две текстовые группы изменений");
@@ -8472,14 +8472,14 @@ namespace ExcelMerger.Tests
             AssertTrue(refined, "снят только визуально равный кандидат до Equal");
 
             PdfReviewPagePair pair = result.Pairs[0];
-            AssertEqual("Equal:artifact-left|Equal:anchor|Delete:old|Insert:new|Equal:tail",
+            AssertEq("Equal:artifact-left|Equal:anchor|Delete:old|Insert:new|Equal:tail",
                 ReviewOpsSig(result.Operations),
                 "соседняя настоящая замена не вернула артефакт транзитивной связью");
-            AssertEqual(1, result.Stats.DeletedWords, "после разделения групп остался Delete");
-            AssertEqual(1, result.Stats.InsertedWords, "после разделения групп остался Insert");
-            AssertEqual(1, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+            AssertEq(1, result.Stats.DeletedWords, "после разделения групп остался Delete");
+            AssertEq(1, result.Stats.InsertedWords, "после разделения групп остался Insert");
+            AssertEq(1, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
                 "после разделения групп осталась одна красная рамка");
-            AssertEqual(1, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+            AssertEq(1, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
                 "после разделения групп осталась одна зелёная рамка");
         }
 
@@ -8496,7 +8496,7 @@ namespace ExcelMerger.Tests
             PdfReviewPage rightPage = ReviewVisualPage(0,
                 ReviewVisualWord("combined", 20, 30, 62, 70),
                 ReviewVisualWord("tail", 100, 10, 130, 20));
-            AssertEqual("Delete:part-a,part-b|Insert:combined|Equal:tail",
+            AssertEq("Delete:part-a,part-b|Insert:combined|Equal:tail",
                 ReviewOpsSig(ReviewVisualOperations(leftPage, rightPage)),
                 "контроль: текстовый diff создал связанную фрагментированную замену");
             PdfReviewResult result;
@@ -8515,9 +8515,9 @@ namespace ExcelMerger.Tests
                 result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
             }
             AssertTrue(refined, "визуально равная связная замена снята целиком");
-            AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+            AssertEq(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
                 "после снятия связной замены страница неизменна");
-            AssertEqual("Equal:part-a,part-b|Equal:tail", ReviewOpsSig(result.Operations),
+            AssertEq("Equal:part-a,part-b|Equal:tail", ReviewOpsSig(result.Operations),
                 "растровый Equal хранит полные последовательности обеих сторон");
             AssertTrue(result.Operations[0].MatchKind == PdfReviewMatchKind.RasterEquivalent &&
                        result.Operations[0].LeftWords.Count == 2 &&
@@ -8557,9 +8557,9 @@ namespace ExcelMerger.Tests
                 result = RefineVisualResult(leftPage, rightPage, left, right, out refined);
             }
             AssertTrue(!refined, "частично изменённая связная замена не снята наполовину");
-            AssertEqual("Delete:part-a,part-b|Insert:combined|Equal:tail", before,
+            AssertEq("Delete:part-a,part-b|Insert:combined|Equal:tail", before,
                 "контроль: fixture создала связанную замену из трёх кандидатов");
-            AssertEqual(before, ReviewOpsSig(result.Operations),
+            AssertEq(before, ReviewOpsSig(result.Operations),
                 "все операции связной замены сохранены атомарно");
         }
 
@@ -8585,25 +8585,25 @@ namespace ExcelMerger.Tests
                     PdfReviewLimits.Default());
                 PdfReviewDocument cyrillic = PdfReviewService.Load(cyrillicPath, null, null,
                     PdfReviewLimits.Default());
-                AssertEqual(1, latin.Pages.Count, "контрольный PDF прочитан одной страницей");
-                AssertEqual(1, cyrillic.Pages.Count, "PDF с альтернативным Unicode прочитан одной страницей");
+                AssertEq(1, latin.Pages.Count, "контрольный PDF прочитан одной страницей");
+                AssertEq(1, cyrillic.Pages.Count, "PDF с альтернативным Unicode прочитан одной страницей");
                 AssertTrue(latin.Pages[0].Words.Count > 0 && cyrillic.Pages[0].Words.Count > 0,
                     "оба видимых глифа дошли до review-слов");
                 AssertTrue(!PdfReviewDiff.WordsEqual(latin.Pages[0].Words, cyrillic.Pages[0].Words),
                     "fixture действительно создаёт текстовый кандидат после PdfTextExtract");
                 List<PdfReviewWordOp> textual = PdfReviewDiff.DiffWords(
                     latin.Pages[0].Words, cyrillic.Pages[0].Words, PdfReviewLimits.Default());
-                AssertEqual("Equal:stable|Delete:A|Insert:А|Equal:anchor",
+                AssertEq("Equal:stable|Delete:A|Insert:А|Equal:anchor",
                     ReviewOpsSig(textual),
                     "текстовый кандидат владеет словом каждой стороны");
 
                 PdfReviewResult direct = PdfReviewDiff.Compare(latin, cyrillic,
                     PdfReviewLimits.Default());
-                AssertEqual("Equal:stable|Delete:A|Insert:А|Equal:anchor",
+                AssertEq("Equal:stable|Delete:A|Insert:А|Equal:anchor",
                     ReviewOpsSig(direct.Operations),
                     "production-facing Refine получает безопасную same-page hunk");
                 PdfReviewVisualDiff.Refine(direct, PdfReviewLimits.Default(), null);
-                AssertEqual("Equal:stable|Equal:A|Equal:anchor", ReviewOpsSig(direct.Operations),
+                AssertEq("Equal:stable|Equal:A|Equal:anchor", ReviewOpsSig(direct.Operations),
                     "top-level Refine сохраняет provenance-границы растрового совпадения");
                 AssertTrue(direct.Operations[1].MatchKind == PdfReviewMatchKind.RasterEquivalent &&
                            ReferenceEquals(direct.Operations[1].LeftWords[0], latin.Pages[0].Words[1]) &&
@@ -8611,18 +8611,18 @@ namespace ExcelMerger.Tests
                     "top-level rebuild сохраняет оба фактических Unicode-объекта");
 
                 PdfReviewResult result = PdfReviewService.Compare(latinPath, cyrillicPath);
-                AssertEqual(1, result.Pairs.Count, "production Compare сопоставил страницы");
-                AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+                AssertEq(1, result.Pairs.Count, "production Compare сопоставил страницы");
+                AssertEq(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
                     "одинаковый видимый глиф не считается изменением документа");
-                AssertEqual("Equal:stable|Equal:A|Equal:anchor", ReviewOpsSig(result.Operations),
+                AssertEq("Equal:stable|Equal:A|Equal:anchor", ReviewOpsSig(result.Operations),
                     "растровое подтверждение сохранило обе стороны и границы provenance");
-                AssertEqual(0, result.Stats.ChangedPages,
+                AssertEq(0, result.Stats.ChangedPages,
                     "альтернативная Unicode-карта не меняет страницы в статистике");
-                AssertEqual(0, result.Stats.DeletedWords, "визуальный артефакт не создаёт Delete");
-                AssertEqual(0, result.Stats.InsertedWords, "визуальный артефакт не создаёт Insert");
-                AssertEqual(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], true).Boxes.Count,
+                AssertEq(0, result.Stats.DeletedWords, "визуальный артефакт не создаёт Delete");
+                AssertEq(0, result.Stats.InsertedWords, "визуальный артефакт не создаёт Insert");
+                AssertEq(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], true).Boxes.Count,
                     "визуальный артефакт не создаёт красную рамку");
-                AssertEqual(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], false).Boxes.Count,
+                AssertEq(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], false).Boxes.Count,
                     "визуальный артефакт не создаёт зелёную рамку");
             }
             finally
@@ -8665,21 +8665,21 @@ namespace ExcelMerger.Tests
 
                 List<PdfPageText> wholeRaw = PdfTextExtract.Extract(wholePath);
                 List<PdfPageText> fragmentedRaw = PdfTextExtract.Extract(fragmentedPath);
-                AssertEqual(1, wholeRaw.Count, "контрольный PDF прочитан одной страницей");
-                AssertEqual(1, fragmentedRaw.Count, "фрагментированный PDF прочитан одной страницей");
+                AssertEq(1, wholeRaw.Count, "контрольный PDF прочитан одной страницей");
+                AssertEq(1, fragmentedRaw.Count, "фрагментированный PDF прочитан одной страницей");
                 AssertTrue(wholeRaw[0].Words.Count != fragmentedRaw[0].Words.Count,
                     "fixture действительно воспроизводит разную raw-сегментацию PdfPig");
 
                 PdfReviewResult result = PdfReviewService.Compare(wholePath, fragmentedPath);
-                AssertEqual(1, result.Pairs.Count, "production Compare сопоставил одну пару страниц");
-                AssertEqual(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
+                AssertEq(1, result.Pairs.Count, "production Compare сопоставил одну пару страниц");
+                AssertEq(PdfReviewPairStatus.Unchanged, result.Pairs[0].Status,
                     "одинаковый видимый текст без ложной правки от PDF operations");
-                AssertEqual(1.0, result.Pairs[0].Similarity, "live canonical similarity равна 1");
-                AssertEqual(0, result.Stats.DeletedWords, "live fixture не создаёт Delete");
-                AssertEqual(0, result.Stats.InsertedWords, "live fixture не создаёт Insert");
-                AssertEqual(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], true).Boxes.Count,
+                AssertEq(1.0, result.Pairs[0].Similarity, "live canonical similarity равна 1");
+                AssertEq(0, result.Stats.DeletedWords, "live fixture не создаёт Delete");
+                AssertEq(0, result.Stats.InsertedWords, "live fixture не создаёт Insert");
+                AssertEq(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], true).Boxes.Count,
                     "слева нет ложной красной подсветки");
-                AssertEqual(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], false).Boxes.Count,
+                AssertEq(0, PdfReviewForm.BuildHighlight(result, result.Pairs[0], false).Boxes.Count,
                     "справа нет ложной зелёной подсветки");
             }
             finally
@@ -8735,11 +8735,11 @@ namespace ExcelMerger.Tests
             // верх рамки (50 пт от низа при Y вверх) становится ординатой 842 − 50 при Y вниз.
             var flat = new PdfReviewBox { Left = 10, Bottom = 30, Right = 60, Top = 50 };
             System.Drawing.RectangleF px = PdfReviewGeometry.ToPixelRect(flat, 595, 842, 595, 842);
-            AssertEqual(10, (int)px.Left, "X слева");
-            AssertEqual(842 - 50, (int)px.Top, "Y перевёрнут: верх рамки ближе к верху растра");
-            AssertEqual(50, (int)px.Width, "ширина рамки");
-            AssertEqual(20, (int)px.Height, "высота рамки");
-            AssertEqual(System.Drawing.RectangleF.Empty, PdfReviewGeometry.ToPixelRect(flat, 0, 0, 100, 100),
+            AssertEq(10, (int)px.Left, "X слева");
+            AssertEq(842 - 50, (int)px.Top, "Y перевёрнут: верх рамки ближе к верху растра");
+            AssertEq(50, (int)px.Width, "ширина рамки");
+            AssertEq(20, (int)px.Height, "высота рамки");
+            AssertEq(System.Drawing.RectangleF.Empty, PdfReviewGeometry.ToPixelRect(flat, 0, 0, 100, 100),
                 "вырожденный вход — пустой результат, а не падение");
         }
 
@@ -8762,8 +8762,8 @@ namespace ExcelMerger.Tests
                 if (pair.LeftPageIndex == 0) leftUses++;
                 if (pair.RightPageIndex == 1) rightUses++;
             }
-            AssertEqual(1, leftUses, "левая страница ровно в одной паре");
-            AssertEqual(1, rightUses, "правая страница ровно в одной паре");
+            AssertEq(1, leftUses, "левая страница ровно в одной паре");
+            AssertEq(1, rightUses, "правая страница ровно в одной паре");
         }
 
         /// <summary>
@@ -8811,35 +8811,35 @@ namespace ExcelMerger.Tests
         private static void AssertReviewAllUnchanged(PdfReviewResult result, int expectedPairs,
             string context)
         {
-            AssertEqual(expectedPairs, result.Pairs.Count, context + ": все страницы сопоставлены");
+            AssertEq(expectedPairs, result.Pairs.Count, context + ": все страницы сопоставлены");
             foreach (PdfReviewPagePair pair in result.Pairs)
             {
-                AssertEqual(PdfReviewPairStatus.Unchanged, pair.Status,
+                AssertEq(PdfReviewPairStatus.Unchanged, pair.Status,
                     context + ": нет ложной изменённой страницы");
-                AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+                AssertEq(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
                     context + ": нет ложной красной рамки");
-                AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+                AssertEq(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
                     context + ": нет ложной зелёной рамки");
             }
-            AssertEqual(0, result.Stats.ChangedPages, context + ": ноль изменённых страниц");
-            AssertEqual(0, result.Stats.DeletedWords, context + ": ноль удалённых слов");
-            AssertEqual(0, result.Stats.InsertedWords, context + ": ноль добавленных слов");
+            AssertEq(0, result.Stats.ChangedPages, context + ": ноль изменённых страниц");
+            AssertEq(0, result.Stats.DeletedWords, context + ": ноль удалённых слов");
+            AssertEq(0, result.Stats.InsertedWords, context + ": ноль добавленных слов");
         }
 
         private static void AssertGeneratedReviewChanges(PdfReviewResult result,
             PdfReviewPairStatus extraStatus, string expectedDeletes, string expectedInserts,
             string context)
         {
-            AssertEqual(4, result.Pairs.Count, context + ": вставка дала отдельную пару");
-            AssertEqual(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+            AssertEq(4, result.Pairs.Count, context + ": вставка дала отдельную пару");
+            AssertEq(2, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
                 context + ": две страницы остались неизменными");
-            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+            AssertEq(1, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
                 context + ": изменилась ровно одна парная страница");
-            AssertEqual(1, ReviewStatusCount(result, extraStatus),
+            AssertEq(1, ReviewStatusCount(result, extraStatus),
                 context + ": вставленная страница имеет правильную сторону");
             PdfReviewPairStatus opposite = extraStatus == PdfReviewPairStatus.RightOnly
                 ? PdfReviewPairStatus.LeftOnly : PdfReviewPairStatus.RightOnly;
-            AssertEqual(0, ReviewStatusCount(result, opposite),
+            AssertEq(0, ReviewStatusCount(result, opposite),
                 context + ": на противоположной стороне нет потерянных страниц");
 
             PdfReviewPagePair changed = null;
@@ -8849,24 +8849,24 @@ namespace ExcelMerger.Tests
                     changed = pair;
                 else if (pair.Status == PdfReviewPairStatus.Unchanged)
                 {
-                    AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
+                    AssertEq(0, PdfReviewForm.BuildHighlight(result, pair, true).Boxes.Count,
                         context + ": неизменная страница без красных рамок");
-                    AssertEqual(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
+                    AssertEq(0, PdfReviewForm.BuildHighlight(result, pair, false).Boxes.Count,
                         context + ": неизменная страница без зелёных рамок");
                 }
             }
             AssertTrue(changed != null, context + ": парная изменённая страница найдена");
-            AssertEqual(expectedDeletes, ReviewChangedWords(result, changed, PdfReviewDiffKind.Delete),
+            AssertEq(expectedDeletes, ReviewChangedWords(result, changed, PdfReviewDiffKind.Delete),
                 context + ": Delete содержит только смысловые правки");
-            AssertEqual(expectedInserts, ReviewChangedWords(result, changed, PdfReviewDiffKind.Insert),
+            AssertEq(expectedInserts, ReviewChangedWords(result, changed, PdfReviewDiffKind.Insert),
                 context + ": Insert содержит только смысловые правки");
-            AssertEqual(2, PdfReviewForm.BuildHighlight(result, changed, true).Boxes.Count,
+            AssertEq(2, PdfReviewForm.BuildHighlight(result, changed, true).Boxes.Count,
                 context + ": две красные рамки из Delete");
-            AssertEqual(2, PdfReviewForm.BuildHighlight(result, changed, false).Boxes.Count,
+            AssertEq(2, PdfReviewForm.BuildHighlight(result, changed, false).Boxes.Count,
                 context + ": две зелёные рамки из Insert");
-            AssertEqual(1, result.Stats.ChangedPages,
+            AssertEq(1, result.Stats.ChangedPages,
                 context + ": статистика видит одну изменённую парную страницу");
-            AssertEqual(2, result.Stats.Replacements,
+            AssertEq(2, result.Stats.Replacements,
                 context + ": статистика видит две замены");
         }
 
@@ -9066,7 +9066,7 @@ namespace ExcelMerger.Tests
         private static void AssertSemanticFixtureShape(PdfReviewDocument document,
             bool revised, string context)
         {
-            AssertEqual(5, document.Pages.Count, context + ": пять страниц загружены");
+            AssertEq(5, document.Pages.Count, context + ": пять страниц загружены");
             var dimensions = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < document.Pages.Count; i++)
             {
@@ -9084,7 +9084,7 @@ namespace ExcelMerger.Tests
                 AssertTrue(page.Words.Count >= 40,
                     context + ": таблица страницы не выродилась в пустой fixture: " + i);
             }
-            AssertEqual(5, dimensions.Count,
+            AssertEq(5, dimensions.Count,
                 context + ": все пять размеров/ориентаций страниц различаются");
             AssertTrue(ReviewPageKeys(document.Pages[0]).Contains(revised
                     ? "Boundary a bc Anchor Stable" : "Boundary ab c Anchor Stable"),
@@ -9106,34 +9106,34 @@ namespace ExcelMerger.Tests
         private static void AssertSemanticReviewChanges(PdfReviewResult result,
             string[] expectedDeletes, string[] expectedInserts, string context)
         {
-            AssertEqual(5, result.Pairs.Count, context + ": страницы сопоставлены 1:1");
-            AssertEqual(4, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+            AssertEq(5, result.Pairs.Count, context + ": страницы сопоставлены 1:1");
+            AssertEq(4, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
                 context + ": изменены ровно четыре смысловые страницы");
-            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+            AssertEq(1, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
                 context + ": контрольная страница неизменна");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
                 context + ": нет ложной удалённой страницы");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
                 context + ": нет ложной добавленной страницы");
             for (int i = 0; i < result.Pairs.Count; i++)
             {
                 PdfReviewPagePair pair = result.Pairs[i];
-                AssertEqual(i, pair.LeftPageIndex, context + ": точная левая страница " + i);
-                AssertEqual(i, pair.RightPageIndex, context + ": точная правая страница " + i);
-                AssertEqual(expectedDeletes[i],
+                AssertEq(i, pair.LeftPageIndex, context + ": точная левая страница " + i);
+                AssertEq(i, pair.RightPageIndex, context + ": точная правая страница " + i);
+                AssertEq(expectedDeletes[i],
                     ReviewChangedWords(result, pair, PdfReviewDiffKind.Delete),
                     context + ": точные Delete страницы " + i);
-                AssertEqual(expectedInserts[i],
+                AssertEq(expectedInserts[i],
                     ReviewChangedWords(result, pair, PdfReviewDiffKind.Insert),
                     context + ": точные Insert страницы " + i);
             }
-            AssertEqual(4, result.Stats.ChangedPages,
+            AssertEq(4, result.Stats.ChangedPages,
                 context + ": статистика видит четыре изменённые страницы");
-            AssertEqual(4, result.Stats.DeletedWords,
+            AssertEq(4, result.Stats.DeletedWords,
                 context + ": граница, удаление и замена дали четыре Delete");
-            AssertEqual(4, result.Stats.InsertedWords,
+            AssertEq(4, result.Stats.InsertedWords,
                 context + ": граница, вставка и замена дали четыре Insert");
-            AssertEqual(3, result.Stats.Replacements,
+            AssertEq(3, result.Stats.Replacements,
                 context + ": чистые вставка/удаление не стали заменами");
             AssertReviewOperationOwnership(result, context);
             AssertReviewPairReconstruction(result, context);
@@ -9143,13 +9143,13 @@ namespace ExcelMerger.Tests
         private static void AssertSemanticInsertedPage(PdfReviewResult result,
             string expectedPairs, PdfReviewPairStatus extraStatus, string context)
         {
-            AssertEqual(expectedPairs, PairSig(result.Pairs),
+            AssertEq(expectedPairs, PairSig(result.Pairs),
                 context + ": точное последовательное сопоставление страниц");
-            AssertEqual(5, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+            AssertEq(5, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
                 context + ": пять исходных страниц не изменены");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
                 context + ": вставка не превратила соседей в Changed");
-            AssertEqual(1, ReviewStatusCount(result, extraStatus),
+            AssertEq(1, ReviewStatusCount(result, extraStatus),
                 context + ": отдельная страница находится на ожидаемой стороне");
             PdfReviewPagePair extra = null;
             foreach (PdfReviewPagePair pair in result.Pairs)
@@ -9160,15 +9160,15 @@ namespace ExcelMerger.Tests
                 : result.Right.Pages[extra.RightPageIndex];
             AssertTrue(ReviewPageKeys(page).Contains("InsertedExhibit"),
                 context + ": page-only пара принадлежит вставленному exhibit");
-            AssertEqual(extraStatus == PdfReviewPairStatus.LeftOnly ? 1 : 0,
+            AssertEq(extraStatus == PdfReviewPairStatus.LeftOnly ? 1 : 0,
                 result.Stats.LeftOnlyPages, context + ": статистика left-only точна");
-            AssertEqual(extraStatus == PdfReviewPairStatus.RightOnly ? 1 : 0,
+            AssertEq(extraStatus == PdfReviewPairStatus.RightOnly ? 1 : 0,
                 result.Stats.RightOnlyPages, context + ": статистика right-only точна");
-            AssertEqual(extraStatus == PdfReviewPairStatus.LeftOnly ? page.Words.Count : 0,
+            AssertEq(extraStatus == PdfReviewPairStatus.LeftOnly ? page.Words.Count : 0,
                 result.Stats.DeletedWords, context + ": вся удалённая страница посчитана");
-            AssertEqual(extraStatus == PdfReviewPairStatus.RightOnly ? page.Words.Count : 0,
+            AssertEq(extraStatus == PdfReviewPairStatus.RightOnly ? page.Words.Count : 0,
                 result.Stats.InsertedWords, context + ": вся добавленная страница посчитана");
-            AssertEqual(0, result.Stats.Replacements,
+            AssertEq(0, result.Stats.Replacements,
                 context + ": отдельная страница не считается заменой");
             AssertReviewEqualOwnership(result, context);
             AssertReviewPairReconstruction(result, context);
@@ -9178,15 +9178,15 @@ namespace ExcelMerger.Tests
         private static void AssertSemanticReorder(PdfReviewResult result,
             string expectedPairs, string movedMarker, string context)
         {
-            AssertEqual(expectedPairs, PairSig(result.Pairs),
+            AssertEq(expectedPairs, PairSig(result.Pairs),
                 context + ": перестановка имеет детерминированные пары");
-            AssertEqual(4, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+            AssertEq(4, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
                 context + ": четыре страницы сопоставлены без ложных правок");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
                 context + ": перестановка не маскируется как редактирование текста");
-            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
+            AssertEq(1, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
                 context + ": прежняя позиция страницы видна слева");
-            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
+            AssertEq(1, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
                 context + ": новая позиция страницы видна справа");
             PdfReviewPage leftMoved = null, rightMoved = null;
             foreach (PdfReviewPagePair pair in result.Pairs)
@@ -9201,15 +9201,15 @@ namespace ExcelMerger.Tests
             AssertTrue(ReviewPageKeys(leftMoved).Contains(movedMarker) &&
                 ReviewPageKeys(rightMoved).Contains(movedMarker),
                 context + ": page-only пары относятся к одному видимому листу");
-            AssertEqual(ReviewPageKeys(leftMoved), ReviewPageKeys(rightMoved),
+            AssertEq(ReviewPageKeys(leftMoved), ReviewPageKeys(rightMoved),
                 context + ": переставлен именно неизменённый лист");
-            AssertEqual(leftMoved.Words.Count, result.Stats.DeletedWords,
+            AssertEq(leftMoved.Words.Count, result.Stats.DeletedWords,
                 context + ": старая позиция целиком посчитана как удаление");
-            AssertEqual(rightMoved.Words.Count, result.Stats.InsertedWords,
+            AssertEq(rightMoved.Words.Count, result.Stats.InsertedWords,
                 context + ": новая позиция целиком посчитана как вставка");
-            AssertEqual(0, result.Stats.ChangedPages,
+            AssertEq(0, result.Stats.ChangedPages,
                 context + ": нет парных текстовых правок");
-            AssertEqual(0, result.Stats.Replacements,
+            AssertEq(0, result.Stats.Replacements,
                 context + ": перестановка не считается заменой слов");
             AssertReviewEqualOwnership(result, context);
             AssertReviewPairReconstruction(result, context);
@@ -9230,10 +9230,10 @@ namespace ExcelMerger.Tests
 
         private static void AssertReviewPairReconstruction(PdfReviewResult result, string context)
         {
-            AssertEqual(ReviewDocumentKeys(result.Left),
+            AssertEq(ReviewDocumentKeys(result.Left),
                 RebuildReviewSide(result.Operations, true),
                 context + ": operations восстанавливают весь левый документ");
-            AssertEqual(ReviewDocumentKeys(result.Right),
+            AssertEq(ReviewDocumentKeys(result.Right),
                 RebuildReviewSide(result.Operations, false),
                 context + ": operations восстанавливают весь правый документ");
         }
@@ -9524,7 +9524,7 @@ namespace ExcelMerger.Tests
                 WriteRepresentationMatrixPdf(baselinePath, ReviewRepresentationVariant.None, false);
 
                 ReviewRepresentationVariant[] variants = ReviewRepresentationVariants();
-                AssertEqual(23, variants.Length,
+                AssertEq(23, variants.Length,
                     "матрица содержит baseline, шесть одиночных, пятнадцать парных и общий профиль");
                 string baselineRaw = ReviewPdfPigSignature(baselinePath);
 
@@ -9535,7 +9535,7 @@ namespace ExcelMerger.Tests
                     WriteRepresentationMatrixPdf(equivalentPath, variants[i], false);
                     string equivalentRaw = ReviewPdfPigSignature(equivalentPath);
                     if (variants[i] == ReviewRepresentationVariant.None)
-                        AssertEqual(baselineRaw, equivalentRaw,
+                        AssertEq(baselineRaw, equivalentRaw,
                             "независимый baseline воспроизводит тот же raw PDF-текст");
                     else
                         AssertTrue(!string.Equals(baselineRaw, equivalentRaw,
@@ -9648,28 +9648,28 @@ namespace ExcelMerger.Tests
         private static void AssertRepresentationMatrixChanges(PdfReviewResult result,
             string expectedDeletes, string expectedInserts, string context)
         {
-            AssertEqual(4, result.Pairs.Count, context + ": страницы сопоставлены 1:1");
-            AssertEqual(3, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
+            AssertEq(4, result.Pairs.Count, context + ": страницы сопоставлены 1:1");
+            AssertEq(3, ReviewStatusCount(result, PdfReviewPairStatus.Changed),
                 context + ": изменены три страницы с настоящими правками");
-            AssertEqual(1, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
+            AssertEq(1, ReviewStatusCount(result, PdfReviewPairStatus.Unchanged),
                 context + ": контрольная страница осталась неизменной");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.LeftOnly),
                 context + ": нет ложной удалённой страницы");
-            AssertEqual(0, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
+            AssertEq(0, ReviewStatusCount(result, PdfReviewPairStatus.RightOnly),
                 context + ": нет ложной добавленной страницы");
-            AssertEqual(expectedDeletes,
+            AssertEq(expectedDeletes,
                 ReviewChangedWordsAcrossPairs(result, PdfReviewDiffKind.Delete),
                 context + ": Delete содержит только видимые правки");
-            AssertEqual(expectedInserts,
+            AssertEq(expectedInserts,
                 ReviewChangedWordsAcrossPairs(result, PdfReviewDiffKind.Insert),
                 context + ": Insert содержит только видимые правки");
-            AssertEqual(3, result.Stats.ChangedPages,
+            AssertEq(3, result.Stats.ChangedPages,
                 context + ": статистика страниц строится из refined operations");
-            AssertEqual(3, result.Stats.DeletedWords,
+            AssertEq(3, result.Stats.DeletedWords,
                 context + ": статистика удалений согласована с operations");
-            AssertEqual(3, result.Stats.InsertedWords,
+            AssertEq(3, result.Stats.InsertedWords,
                 context + ": статистика вставок согласована с operations");
-            AssertEqual(2, result.Stats.Replacements,
+            AssertEq(2, result.Stats.Replacements,
                 context + ": отдельная вставка не превращена в замену");
             AssertReviewEqualOwnership(result, context);
             AssertReviewProjectionMatchesOperations(result, context);
@@ -9727,16 +9727,16 @@ namespace ExcelMerger.Tests
 
                 PdfReviewHighlight red = PdfReviewForm.BuildHighlight(result, pair, true);
                 PdfReviewHighlight green = PdfReviewForm.BuildHighlight(result, pair, false);
-                AssertEqual(pairDeleted, red.Boxes.Count,
+                AssertEq(pairDeleted, red.Boxes.Count,
                     context + ": красные рамки проецируются только из глобальных Delete");
-                AssertEqual(pairInserted, green.Boxes.Count,
+                AssertEq(pairInserted, green.Boxes.Count,
                     context + ": зелёные рамки проецируются только из глобальных Insert");
                 AssertReviewBoxesValid(red, context + ": красная геометрия корректна");
                 AssertReviewBoxesValid(green, context + ": зелёная геометрия корректна");
             }
-            AssertEqual(deleted, result.Stats.DeletedWords,
+            AssertEq(deleted, result.Stats.DeletedWords,
                 context + ": общий Delete согласован со статистикой");
-            AssertEqual(inserted, result.Stats.InsertedWords,
+            AssertEq(inserted, result.Stats.InsertedWords,
                 context + ": общий Insert согласован со статистикой");
         }
 
@@ -9918,8 +9918,8 @@ namespace ExcelMerger.Tests
                 WriteReviewPdf(leftPath, new[] { "Общий текст", "Старая редакция", "Последняя общая" });
                 WriteReviewPdf(rightPath, new[] { "Общий текст", "Вставленная страница", "Новая редакция", "Последняя общая" });
                 PdfReviewResult result = PdfReviewService.Compare(leftPath, rightPath);
-                AssertEqual(leftPath, result.Left.Path, "левую сторону выбрал пользователь");
-                AssertEqual(rightPath, result.Right.Path, "правую сторону выбрал пользователь");
+                AssertEq(leftPath, result.Left.Path, "левую сторону выбрал пользователь");
+                AssertEq(rightPath, result.Right.Path, "правую сторону выбрал пользователь");
                 AssertTrue(result.Pairs.Count >= 4, "вставленная страница видна отдельной парой");
                 AssertTrue(result.Stats.ChangedPages > 0 || result.Stats.RightOnlyPages > 0,
                     "изменения найдены");
@@ -9978,24 +9978,24 @@ namespace ExcelMerger.Tests
                 limits);
             string forwardBeforeRaster = ReviewOrderMatchSig(textualForward);
             PdfReviewVisualDiff.Refine(textualForward, limits, null);
-            AssertEqual(forwardBeforeRaster, ReviewOrderMatchSig(textualForward),
+            AssertEq(forwardBeforeRaster, ReviewOrderMatchSig(textualForward),
                 "1→2: word-only растр не скрывает доказанные реальные правки");
 
             PdfReviewResult textualReverse = PdfReviewDiff.Compare(late, early,
                 limits);
             string reverseBeforeRaster = ReviewOrderMatchSig(textualReverse);
             PdfReviewVisualDiff.Refine(textualReverse, limits, null);
-            AssertEqual(reverseBeforeRaster, ReviewOrderMatchSig(textualReverse),
+            AssertEq(reverseBeforeRaster, ReviewOrderMatchSig(textualReverse),
                 "2→1: word-only растр не скрывает доказанные реальные правки");
 
             PdfReviewResult forward = PdfReviewService.Compare(earlyPath, latePath,
                 null, null, limits);
             PdfReviewResult reverse = PdfReviewService.Compare(latePath, earlyPath,
                 null, null, limits);
-            AssertEqual(ReviewOrderMatchSig(textualForward),
+            AssertEq(ReviewOrderMatchSig(textualForward),
                 ReviewOrderMatchSig(forward),
                 "1→2: публичный production-путь совпадает с проверенной семантикой");
-            AssertEqual(ReviewOrderMatchSig(textualReverse),
+            AssertEq(ReviewOrderMatchSig(textualReverse),
                 ReviewOrderMatchSig(reverse),
                 "2→1: публичный production-путь совпадает с проверенной семантикой");
 
@@ -10003,24 +10003,24 @@ namespace ExcelMerger.Tests
                 limits);
             PdfReviewResult reverseRepeat = PdfReviewDiff.Compare(late, early,
                 limits);
-            AssertEqual(forwardBeforeRaster,
+            AssertEq(forwardBeforeRaster,
                 ReviewOrderMatchSig(forwardRepeat),
                 "1→2: результат детерминирован при повторном global diff");
-            AssertEqual(reverseBeforeRaster,
+            AssertEq(reverseBeforeRaster,
                 ReviewOrderMatchSig(reverseRepeat),
                 "2→1: результат детерминирован при повторном global diff");
 
             AssertReviewRootFixtureResult(forward, false, "1→2");
             AssertReviewRootFixtureResult(reverse, true, "2→1");
-            AssertEqual(forward.Stats.DeletedWords, reverse.Stats.InsertedWords,
+            AssertEq(forward.Stats.DeletedWords, reverse.Stats.InsertedWords,
                 "зеркальный запуск меняет местами число удалений/добавлений");
-            AssertEqual(forward.Stats.InsertedWords, reverse.Stats.DeletedWords,
+            AssertEq(forward.Stats.InsertedWords, reverse.Stats.DeletedWords,
                 "зеркальный запуск меняет местами число добавлений/удалений");
             // Exact provenance принадлежит выбранному global-LCS и при равных
             // подпоследовательностях может приходиться на разные слова. Симметрия
             // semantic cleanup — это одна и та же физическая карта связей после
             // перестановки сторон, а не одинаковый размер provenance-категорий.
-            AssertEqual(ReviewFixturePhysicalMatchSig(forward, false),
+            AssertEq(ReviewFixturePhysicalMatchSig(forward, false),
                 ReviewFixturePhysicalMatchSig(reverse, true),
                 "оба направления строят одинаковые физические word-связи");
         }
@@ -10058,14 +10058,14 @@ namespace ExcelMerger.Tests
         private static void AssertReviewRootFixtureResult(PdfReviewResult result,
             bool reverse, string context)
         {
-            AssertEqual("0:0:Changed|1:1:Changed|2:2:Changed",
+            AssertEq("0:0:Changed|1:1:Changed|2:2:Changed",
                 PairSig(result.Pairs),
                 context + ": viewer сохранил пары физических страниц 0↔0, 1↔1, 2↔2");
-            AssertEqual(3, result.Stats.PagePairs,
+            AssertEq(3, result.Stats.PagePairs,
                 context + ": три page-pair в статистике");
-            AssertEqual(3, result.Stats.ChangedPages,
+            AssertEq(3, result.Stats.ChangedPages,
                 context + ": правки сохранены на трёх страницах");
-            AssertEqual(0, result.Stats.LeftOnlyPages +
+            AssertEq(0, result.Stats.LeftOnlyPages +
                            result.Stats.RightOnlyPages,
                 context + ": нет ложных односторонних страниц");
 
@@ -10074,15 +10074,15 @@ namespace ExcelMerger.Tests
             AssertReviewRootStableMatches(result, reverse, context);
             AssertReviewRootGenuineChanges(result, reverse, context);
 
-            AssertEqual(reverse ? 3 : 51, result.Stats.DeletedWords,
+            AssertEq(reverse ? 3 : 51, result.Stats.DeletedWords,
                 context + ": удалены только реальные слова и консервативные номера страниц");
-            AssertEqual(reverse ? 51 : 3, result.Stats.InsertedWords,
+            AssertEq(reverse ? 51 : 3, result.Stats.InsertedWords,
                 context + ": добавлены только реальные слова и консервативные номера страниц");
-            AssertEqual(1, result.Stats.Replacements,
+            AssertEq(1, result.Stats.Replacements,
                 context + ": единственная смысловая замена — описание услуги");
-            AssertEqual(0, result.WhitespaceChanges.Count,
+            AssertEq(0, result.WhitespaceChanges.Count,
                 context + ": образцы не содержат доказанного литерального изменения пробелов");
-            AssertEqual(0, result.Stats.WhitespaceChanges +
+            AssertEq(0, result.Stats.WhitespaceChanges +
                            result.Stats.DeletedWhitespaceAtoms +
                            result.Stats.InsertedWhitespaceAtoms,
                 context + ": пробельная статистика не выводится из геометрии формы");
@@ -10151,7 +10151,7 @@ namespace ExcelMerger.Tests
                         kind = match.Kind;
                     }
                 }
-            AssertEqual(1, count, context + ": физический экземпляр «" + key +
+            AssertEq(1, count, context + ": физический экземпляр «" + key +
                 "» сопоставлен ровно один раз; changes=" +
                 ReviewFixtureChangedSig(result) + "; words=" +
                 ReviewFixtureWordSig(result, key) + "; matches=" +
@@ -10214,7 +10214,7 @@ namespace ExcelMerger.Tests
                     if (ReviewFixtureWordAt(word, key, pageIndex, left, bottom))
                         count++;
             }
-            AssertEqual(1, count, message + "; changes=" +
+            AssertEq(1, count, message + "; changes=" +
                 ReviewFixtureChangedSig(result));
         }
 
@@ -10381,31 +10381,31 @@ namespace ExcelMerger.Tests
                     PictureBox picture = ReviewPrivateField<PictureBox>(view, "_picture");
                     Label message = ReviewPrivateField<Label>(view, "_message");
                     Label status = ReviewPrivateField<Label>(view, "_status");
-                    AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.Empty, view.ViewState,
                         "первый кадр — настоящий Empty, не missing-page");
                     AssertReviewNoCanvas(view, "первый кадр");
                     AssertTrue(message.Visible, "на сером фоне первого кадра видна подсказка");
 
                     view.ShowEmpty("Левая сторона");
-                    AssertEqual(PdfReviewPageViewState.Empty, view.ViewState, "явный Empty");
-                    AssertEqual("Левая сторона", status.Text, "Empty сохраняет caption стороны");
+                    AssertEq(PdfReviewPageViewState.Empty, view.ViewState, "явный Empty");
+                    AssertEq("Левая сторона", status.Text, "Empty сохраняет caption стороны");
                     AssertReviewNoCanvas(view, "явный Empty");
 
                     view.SetDropTarget(true);
-                    AssertEqual(PdfReviewPageViewState.DropTarget, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.DropTarget, view.ViewState,
                         "drag cue имеет отдельное наблюдаемое состояние");
-                    AssertEqual(Loc.T("review.source.dropHere"), message.Text,
+                    AssertEq(Loc.T("review.source.dropHere"), message.Text,
                         "drag cue объясняет действие");
                     AssertReviewNoCanvas(view, "DropTarget над пустой стороной");
                     view.SetDropTarget(false);
-                    AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.Empty, view.ViewState,
                         "снятие drag cue возвращает предыдущее Empty");
-                    AssertEqual("Левая сторона", status.Text,
+                    AssertEq("Левая сторона", status.Text,
                         "временный drag cue не стирает caption");
 
                     InvokeReviewBeginState(view, "Левая загрузка", PdfReviewPageViewState.Loading);
-                    AssertEqual(PdfReviewPageViewState.Loading, view.ViewState, "явный Loading");
-                    AssertEqual(Loc.T("preview.loading"), message.Text, "Loading подписан");
+                    AssertEq(PdfReviewPageViewState.Loading, view.ViewState, "явный Loading");
+                    AssertEq(Loc.T("preview.loading"), message.Text, "Loading подписан");
                     AssertTrue(status.Text.Contains("Левая загрузка"),
                         "Loading сохраняет caption");
                     AssertReviewNoCanvas(view, "Loading");
@@ -10413,29 +10413,29 @@ namespace ExcelMerger.Tests
                     var page = new PdfPageRef { SourcePath = "synthetic.pdf", PageIndex = 2 };
                     InvokeReviewApplyRendered(view, ReviewPrivateField<int>(view, "_generation"),
                         page, new Bitmap(1200, 1800), "Левый документ");
-                    AssertEqual(PdfReviewPageViewState.Ready, view.ViewState, "готовый bitmap даёт Ready");
+                    AssertEq(PdfReviewPageViewState.Ready, view.ViewState, "готовый bitmap даёт Ready");
                     AssertTrue(view.HasVisiblePage, "Ready сообщает о видимой странице");
                     AssertTrue(picture.Visible && picture.Image != null &&
                         picture.Width > 0 && picture.Height > 0,
                         "белое полотно появляется только вместе с готовым bitmap");
-                    AssertEqual(string.Format(Loc.T("review.source.ready"), "Левый документ", 3,
+                    AssertEq(string.Format(Loc.T("review.source.ready"), "Левый документ", 3,
                             PreviewZoom.Percent(view.ZoomScale)), status.Text,
                         "Ready сохраняет сторону, номер именно запрошенной страницы и масштаб");
 
                     view.SetDropTarget(true);
-                    AssertEqual(PdfReviewPageViewState.DropTarget, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.DropTarget, view.ViewState,
                         "drag cue временно перекрывает Ready");
                     AssertTrue(message.Visible, "подсказка drop поднята над готовой страницей");
                     view.SetDropTarget(false);
-                    AssertEqual(PdfReviewPageViewState.Ready, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.Ready, view.ViewState,
                         "после drag готовая страница не потеряна");
                     AssertTrue(view.HasVisiblePage && status.Text.Contains("Левый документ"),
                         "после drag восстановлены bitmap и caption");
 
                     view.ShowPage(null, "Нет пары", null);
-                    AssertEqual(PdfReviewPageViewState.MissingCounterpart, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.MissingCounterpart, view.ViewState,
                         "только null-пара означает MissingCounterpart");
-                    AssertEqual(Loc.T("review.source.missing"), message.Text,
+                    AssertEq(Loc.T("review.source.missing"), message.Text,
                         "отсутствующая парная страница объяснена");
                     AssertReviewNoCanvas(view, "MissingCounterpart");
 
@@ -10443,16 +10443,16 @@ namespace ExcelMerger.Tests
                     InvokeReviewApplyRendered(view, ReviewPrivateField<int>(view, "_generation"),
                         new PdfPageRef { SourcePath = "broken.pdf", PageIndex = 0 }, null,
                         "Не рендерится");
-                    AssertEqual(PdfReviewPageViewState.Unavailable, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.Unavailable, view.ViewState,
                         "null raster даёт Unavailable, не Empty");
-                    AssertEqual(Loc.T("preview.unavailable"), message.Text,
+                    AssertEq(Loc.T("preview.unavailable"), message.Text,
                         "Unavailable имеет понятную подпись");
                     AssertTrue(status.Text.Contains("Не рендерится"),
                         "Unavailable не стирает caption");
                     AssertReviewNoCanvas(view, "Unavailable");
 
                     view.ShowEmpty("Снова пусто");
-                    AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.Empty, view.ViewState,
                         "очистка после ошибки возвращает Empty");
                     AssertReviewNoCanvas(view, "Empty после ошибки");
                     host.Close();
@@ -10486,7 +10486,7 @@ namespace ExcelMerger.Tests
                         InvokeReviewApplyRendered(view, staleGeneration,
                             new PdfPageRef { SourcePath = pdf, PageIndex = 0 }, stale,
                             "Старый запрос");
-                        AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                        AssertEq(PdfReviewPageViewState.Empty, view.ViewState,
                             "старое завершение не возвращает отменённую страницу");
                         AssertTrue(!view.HasVisiblePage, "после stale completion страницы нет");
                         AssertThrowsExactly<ArgumentException>("отброшенный stale bitmap освобождён",
@@ -10519,9 +10519,9 @@ namespace ExcelMerger.Tests
                             return !ReviewPrivateField<bool>(view, "_renderWorker");
                         }), "реальный фоновый renderer завершился после отмены");
                         Application.DoEvents();
-                        AssertEqual(PdfReviewPageViewState.Empty, view.ViewState,
+                        AssertEq(PdfReviewPageViewState.Empty, view.ViewState,
                             "late worker callback не переоткрыл отменённую страницу");
-                        AssertEqual("Отменено", ReviewPrivateField<Label>(view, "_status").Text,
+                        AssertEq("Отменено", ReviewPrivateField<Label>(view, "_status").Text,
                             "late worker callback не стёр новый caption");
                         AssertReviewNoCanvas(view, "после реального late worker");
                         host.Close();
@@ -10560,7 +10560,7 @@ namespace ExcelMerger.Tests
 
                     PdfReviewPageSurface surface =
                         ReviewPrivateField<PdfReviewPageSurface>(view, "_picture");
-                    AssertEqual(PdfReviewPageViewState.Ready, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.Ready, view.ViewState,
                         "matching generation/revision принимает raster и trusted layer вместе");
                     AssertTrue(ReferenceEquals(firstRaster,
                         ReviewPrivateField<Bitmap>(view, "_bitmap")) &&
@@ -10573,7 +10573,7 @@ namespace ExcelMerger.Tests
                                !view.IsShowing(physical, 40L),
                         "IsShowing различает semantic publication одной физической страницы");
                     surface.SelectAllWords();
-                    AssertEqual("first publication",
+                    AssertEq("first publication",
                         surface.SelectionModel.BuildCopyText().Text,
                         "selection использует модель принятой publication");
 
@@ -10587,7 +10587,7 @@ namespace ExcelMerger.Tests
                                ReferenceEquals(firstPage,
                                    ReviewPrivateField<PdfReviewPage>(view, "_reviewPage")),
                         "same-generation completion старой revision не смешивает слои");
-                    AssertEqual("first publication",
+                    AssertEq("first publication",
                         surface.SelectionModel.BuildCopyText().Text,
                         "stale completion не восстанавливает старый selectable source");
                     AssertThrowsExactly<ArgumentException>("stale-revision bitmap освобождён",
@@ -10596,7 +10596,7 @@ namespace ExcelMerger.Tests
                     PdfReviewPage secondPage = ReviewTrustedPage(1,
                         new[] { "second" }, new string[0]);
                     view.ShowPage(null, secondPage, 42L, "Вторая", null);
-                    AssertEqual(PdfReviewPageViewState.MissingCounterpart, view.ViewState,
+                    AssertEq(PdfReviewPageViewState.MissingCounterpart, view.ViewState,
                         "новый request сразу убирает canvas до atomic commit");
                     AssertTrue(!surface.HasSelectableText && !surface.HasSelection,
                         "новая revision сразу снимает старый text/selection layer");
@@ -10644,45 +10644,45 @@ namespace ExcelMerger.Tests
                     Panel viewport = ReviewPrivateField<Panel>(view, "_viewport");
                     Point center = new Point(viewport.ClientSize.Width / 2,
                         viewport.ClientSize.Height / 2);
-                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                    AssertEq(PdfReviewWheelResult.NotHandled,
                         view.HandleWheelAt(center, -120, false),
                         "без страницы обычное колесо не поглощается");
-                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                    AssertEq(PdfReviewWheelResult.NotHandled,
                         view.HandleWheelAt(center, 120, true),
                         "без страницы Ctrl+wheel не поглощается");
 
                     ReviewShowSyntheticPage(view, 2000, 2400, "Wheel page", 0);
                     center = new Point(viewport.ClientSize.Width / 2,
                         viewport.ClientSize.Height / 2);
-                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                    AssertEq(PdfReviewWheelResult.NotHandled,
                         view.HandleWheelAt(new Point(-1, center.Y), -120, false),
                         "точка вне viewport не действует");
-                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                    AssertEq(PdfReviewWheelResult.NotHandled,
                         view.HandleWheelAt(center, 0, false),
                         "нулевой delta не поглощается");
-                    AssertEqual(PdfReviewWheelResult.AtPreviousBoundary,
+                    AssertEq(PdfReviewWheelResult.AtPreviousBoundary,
                         view.HandleWheelAt(center, 120, false),
                         "на верхней границе колесо сообщает предыдущую строку");
 
                     double fit = view.ZoomScale;
-                    AssertEqual(PdfReviewWheelResult.Zoomed,
+                    AssertEq(PdfReviewWheelResult.Zoomed,
                         view.HandleWheelAt(center, 120, true),
                         "Ctrl+wheel увеличивает готовую страницу");
                     AssertTrue(view.ZoomScale > fit, "масштаб действительно вырос");
                     while (view.ZoomScale < 0.50 - 0.000001)
-                        AssertEqual(PdfReviewWheelResult.Zoomed,
+                        AssertEq(PdfReviewWheelResult.Zoomed,
                             view.HandleWheelAt(center, 120, true),
                             "последовательный Ctrl+wheel идёт по шкале масштабов");
 
                     Point beforeScroll = view.ScrollOffset;
                     double scaleBeforeScroll = view.ZoomScale;
-                    AssertEqual(PdfReviewWheelResult.Scrolled,
+                    AssertEq(PdfReviewWheelResult.Scrolled,
                         view.HandleWheelAt(center, -120, false),
                         "обычное колесо прокручивает увеличенную страницу вниз");
                     Point afterScroll = view.ScrollOffset;
                     AssertTrue(afterScroll.Y > beforeScroll.Y,
                         "изменился вертикальный offset, а не номер пары или масштаб");
-                    AssertEqual(scaleBeforeScroll, view.ZoomScale,
+                    AssertEq(scaleBeforeScroll, view.ZoomScale,
                         "обычная прокрутка не меняет масштаб");
 
                     view.HandleWheelAt(center, -120, false);
@@ -10692,7 +10692,7 @@ namespace ExcelMerger.Tests
                     double oldScale = view.ZoomScale;
                     double oldContentX = (oldScroll.X + anchor.X) / oldScale;
                     double oldContentY = (oldScroll.Y + anchor.Y) / oldScale;
-                    AssertEqual(PdfReviewWheelResult.Zoomed,
+                    AssertEq(PdfReviewWheelResult.Zoomed,
                         view.HandleWheelAt(anchor, 120, true),
                         "Ctrl+wheel у произвольной точки применён");
                     Point newScroll = view.ScrollOffset;
@@ -10705,7 +10705,7 @@ namespace ExcelMerger.Tests
 
                     while (view.ZoomScale < PreviewZoom.Max - 0.000001)
                         view.HandleWheelAt(center, 120, true);
-                    AssertEqual(PdfReviewWheelResult.NotHandled,
+                    AssertEq(PdfReviewWheelResult.NotHandled,
                         view.HandleWheelAt(center, 120, true),
                         "на максимальной ступени Ctrl+wheel не поглощается");
                     host.Close();
@@ -10724,19 +10724,19 @@ namespace ExcelMerger.Tests
                 new PdfReviewPagePair { LeftPageIndex = 2, RightPageIndex = 2 },
                 new PdfReviewPagePair { LeftPageIndex = 2, RightPageIndex = 3 }
             };
-            AssertEqual(0, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+            AssertEq(0, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
                 true, 0), "левая физическая страница найдена в готовой строке");
-            AssertEqual(3, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+            AssertEq(3, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
                 true, 1), "поиск слева пропускает right-only и null строки");
-            AssertEqual(1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+            AssertEq(1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
                 false, 1), "правая физическая страница найдена независимо");
-            AssertEqual(4, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+            AssertEq(4, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
                 true, 2), "при дубликате выбирается первая существующая строка");
-            AssertEqual(-1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+            AssertEq(-1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
                 false, 4), "непредставленная физическая страница не создаёт строку");
-            AssertEqual(-1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
+            AssertEq(-1, PdfReviewForm.FindViewerRowForPhysicalPage(lookupRows,
                 true, -1), "отрицательный физический индекс отвергнут");
-            AssertEqual(-1, PdfReviewForm.FindViewerRowForPhysicalPage(null,
+            AssertEq(-1, PdfReviewForm.FindViewerRowForPhysicalPage(null,
                 true, 0), "без готового alignment поиск ничего не создаёт");
 
             string dir = Path.Combine(Path.GetTempPath(),
@@ -10823,40 +10823,40 @@ namespace ExcelMerger.Tests
                         AssertTrue(!ReferenceEquals(leftInput, rightInput) &&
                             !ReferenceEquals(leftInput.Parent, rightInput.Parent),
                             "у каждой стороны собственное поле и собственный host");
-                        AssertEqual(Loc.T("review.page.left.accessible"),
+                        AssertEq(Loc.T("review.page.left.accessible"),
                             leftInput.AccessibleName, "левое поле имеет локализованное имя");
-                        AssertEqual(Loc.T("review.page.right.accessible"),
+                        AssertEq(Loc.T("review.page.right.accessible"),
                             rightInput.AccessibleName, "правое поле имеет локализованное имя");
-                        AssertEqual(Loc.T("review.page.description"),
+                        AssertEq(Loc.T("review.page.description"),
                             leftInput.AccessibleDescription,
                             "поле объясняет независимый переход");
-                        AssertEqual(string.Format(Loc.T("review.page.of"), 4),
+                        AssertEq(string.Format(Loc.T("review.page.of"), 4),
                             leftRange.Text, "левая граница использует собственный page count");
-                        AssertEqual(string.Format(Loc.T("review.page.of"), 4),
+                        AssertEq(string.Format(Loc.T("review.page.of"), 4),
                             rightRange.Text, "правая граница использует собственный page count");
-                        AssertEqual("1", leftInput.Text,
+                        AssertEq("1", leftInput.Text,
                             "исходное левое поле one-based");
-                        AssertEqual("1", rightInput.Text,
+                        AssertEq("1", rightInput.Text,
                             "исходное правое поле one-based");
 
                         leftInput.Text = "not-a-page";
                         AssertTrue(!form.NavigateToPhysicalPage(true),
                             "нецелое значение не запускает навигацию");
-                        AssertEqual(Loc.T("review.page.err.number"), summary.Text,
+                        AssertEq(Loc.T("review.page.err.number"), summary.Text,
                             "нецелое значение объяснено в общей строке состояния");
                         leftInput.Text = "0";
                         AssertTrue(!form.NavigateToPhysicalPage(true),
                             "нулевая one-based страница отвергнута");
-                        AssertEqual(string.Format(Loc.T("review.page.err.range"), 4),
+                        AssertEq(string.Format(Loc.T("review.page.err.range"), 4),
                             summary.Text, "ошибка сообщает диапазон выбранной стороны");
                         leftInput.Text = "4";
                         AssertTrue(!form.NavigateToPhysicalPage(true),
                             "валидный номер без alignment-row не создаёт ручную пару");
-                        AssertEqual(Loc.T("review.page.err.unavailable"), summary.Text,
+                        AssertEq(Loc.T("review.page.err.unavailable"), summary.Text,
                             "отсутствующая готовая строка объяснена");
-                        AssertEqual(0, pairList.SelectedIndex,
+                        AssertEq(0, pairList.SelectedIndex,
                             "ошибочный ввод не меняет выбранную строку");
-                        AssertEqual(semanticBefore, ReviewNavigationSemanticSig(result),
+                        AssertEq(semanticBefore, ReviewNavigationSemanticSig(result),
                             "валидация поля не меняет semantic result");
 
                         Point rightPoint = ReviewScreenCenter(rightViewport);
@@ -10881,7 +10881,7 @@ namespace ExcelMerger.Tests
                             "левое поле физической страницы получает клавиатурный фокус");
                         AssertTrue(InvokeReviewProcessCmdKey(form, Keys.Enter),
                             "Enter в левом page field перехвачен до AcceptButton");
-                        AssertEqual(0, compareClicks,
+                        AssertEq(0, compareClicks,
                             "Enter физической страницы не запускает Compare");
                         AssertTrue(WaitFor(delegate
                         {
@@ -10890,15 +10890,15 @@ namespace ExcelMerger.Tests
                                 page != null && page.PageIndex == 1 &&
                                 !ReviewPrivateField<bool>(left, "_renderWorker");
                         }), "левое поле открыло вторую физическую страницу");
-                        AssertEqual(2, pairList.SelectedIndex,
+                        AssertEq(2, pairList.SelectedIndex,
                             "выбрана существующая left-only alignment-row");
-                        AssertEqual(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
                             "левая сторона хранит строку введённой страницы");
-                        AssertEqual(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
                             "правая сторона сохранила свою строку");
-                        AssertEqual("2", leftInput.Text,
+                        AssertEq("2", leftInput.Text,
                             "успешный переход канонизировал левый one-based ввод");
-                        AssertEqual("1", rightInput.Text,
+                        AssertEq("1", rightInput.Text,
                             "успешный левый переход не изменил правое поле");
                         AssertTrue(ReferenceEquals(rightPageBefore,
                             ReviewPrivateField<PdfPageRef>(right, "_page")),
@@ -10906,15 +10906,15 @@ namespace ExcelMerger.Tests
                         AssertTrue(ReferenceEquals(rightBitmapBefore,
                             ReviewPrivateField<Bitmap>(right, "_bitmap")),
                             "левое поле не перерендерило bitmap справа");
-                        AssertEqual(rightScaleBefore, right.ZoomScale,
+                        AssertEq(rightScaleBefore, right.ZoomScale,
                             "левое поле сохранило правый zoom");
-                        AssertEqual(rightOffsetBefore, right.ScrollOffset,
+                        AssertEq(rightOffsetBefore, right.ScrollOffset,
                             "левое поле сохранило правый offset");
-                        AssertEqual(restingStatus, summary.Text,
+                        AssertEq(restingStatus, summary.Text,
                             "успешный переход восстановил статистический статус");
                         AssertTrue(ReferenceEquals(statsBefore, result.Stats),
                             "переход не запускал Project и не заменял Stats");
-                        AssertEqual(semanticBefore, ReviewNavigationSemanticSig(result),
+                        AssertEq(semanticBefore, ReviewNavigationSemanticSig(result),
                             "левый переход не изменил операции, индексы, статистику или рамки");
 
                         Point leftPoint = ReviewScreenCenter(leftViewport);
@@ -10940,15 +10940,15 @@ namespace ExcelMerger.Tests
                                 page != null && page.PageIndex == 1 &&
                                 !ReviewPrivateField<bool>(right, "_renderWorker");
                         }), "Leave правого поля открыл вторую физическую страницу");
-                        AssertEqual(1, pairList.SelectedIndex,
+                        AssertEq(1, pairList.SelectedIndex,
                             "правое поле выбрало существующую right-only строку");
-                        AssertEqual(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
                             "правое поле не изменило левую viewer-строку");
-                        AssertEqual(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
                             "правая сторона хранит свою viewer-строку");
-                        AssertEqual("2", leftInput.Text,
+                        AssertEq("2", leftInput.Text,
                             "правый переход сохранил левую физическую страницу");
-                        AssertEqual("2", rightInput.Text,
+                        AssertEq("2", rightInput.Text,
                             "правый переход канонизировал своё поле");
                         AssertTrue(ReferenceEquals(leftPageBefore,
                             ReviewPrivateField<PdfPageRef>(left, "_page")),
@@ -10956,11 +10956,11 @@ namespace ExcelMerger.Tests
                         AssertTrue(ReferenceEquals(leftBitmapBefore,
                             ReviewPrivateField<Bitmap>(left, "_bitmap")),
                             "правое поле не перерендерило bitmap слева");
-                        AssertEqual(leftScaleBefore, left.ZoomScale,
+                        AssertEq(leftScaleBefore, left.ZoomScale,
                             "правое поле сохранило левый zoom");
-                        AssertEqual(leftOffsetBefore, left.ScrollOffset,
+                        AssertEq(leftOffsetBefore, left.ScrollOffset,
                             "правое поле сохранило левый offset");
-                        AssertEqual(semanticBefore, ReviewNavigationSemanticSig(result),
+                        AssertEq(semanticBefore, ReviewNavigationSemanticSig(result),
                             "правый переход также оставил semantic result неизменным");
 
                         MethodInfo mouseClick = typeof(Control).GetMethod("OnMouseClick",
@@ -10970,15 +10970,15 @@ namespace ExcelMerger.Tests
                             new MouseEventArgs(MouseButtons.Left, 1, 4, 4, 0)
                         });
                         Application.DoEvents();
-                        AssertEqual(1, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(1, ReviewPrivateField<int>(form, "_leftRowIndex"),
                             "повторный клик выбранной строки синхронизировал левую сторону");
-                        AssertEqual(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
                             "повторный клик сохранил правую сторону на выбранной строке");
-                        AssertEqual(PdfReviewPageViewState.MissingCounterpart, left.ViewState,
+                        AssertEq(PdfReviewPageViewState.MissingCounterpart, left.ViewState,
                             "явная right-only строка показывает отсутствие слева");
-                        AssertEqual("", leftInput.Text,
+                        AssertEq("", leftInput.Text,
                             "у синхронизированной missing-стороны поле пусто");
-                        AssertEqual("2", rightInput.Text,
+                        AssertEq("2", rightInput.Text,
                             "явная строка показывает правую физическую страницу");
 
                         pairList.SelectedIndex = 3;
@@ -10993,23 +10993,23 @@ namespace ExcelMerger.Tests
                                 !ReviewPrivateField<bool>(left, "_renderWorker") &&
                                 !ReviewPrivateField<bool>(right, "_renderWorker");
                         }), "обычный выбор alignment-row синхронизировал обе стороны");
-                        AssertEqual(3, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(3, ReviewPrivateField<int>(form, "_leftRowIndex"),
                             "обычная selection хранится слева");
-                        AssertEqual(3, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(3, ReviewPrivateField<int>(form, "_rightRowIndex"),
                             "обычная selection хранится справа");
-                        AssertEqual("3", leftInput.Text,
+                        AssertEq("3", leftInput.Text,
                             "после синхронизации левое поле показывает страницу 3");
-                        AssertEqual("3", rightInput.Text,
+                        AssertEq("3", rightInput.Text,
                             "после синхронизации правое поле показывает страницу 3");
-                        AssertEqual(0, ReviewPrivateField<int>(form, "_navigationSide"),
+                        AssertEq(0, ReviewPrivateField<int>(form, "_navigationSide"),
                             "side-local request сброшен после всех переходов");
-                        AssertEqual(PdfReviewPagePosition.Default,
+                        AssertEq(PdfReviewPagePosition.Default,
                             ReviewPrivateField<PdfReviewPagePosition>(form,
                                 "_navigationPosition"),
                             "page-position request не протекает между переходами");
                         AssertTrue(ReferenceEquals(statsBefore, result.Stats),
                             "обычная навигация также не перепроецировала результат");
-                        AssertEqual(semanticBefore, ReviewNavigationSemanticSig(result),
+                        AssertEq(semanticBefore, ReviewNavigationSemanticSig(result),
                             "все UI-переходы оставили canonical result неизменным");
                         form.Close();
                     }
@@ -11107,21 +11107,21 @@ namespace ExcelMerger.Tests
                 null,
                 new PdfReviewPagePair { LeftPageIndex = 2, RightPageIndex = 2 }
             };
-            AssertEqual(2, PdfReviewForm.FindViewerRow(lookupRows, 0, true, 1),
+            AssertEq(2, PdfReviewForm.FindViewerRow(lookupRows, 0, true, 1),
                 "левая сторона пропускает ближайшую right-only строку");
-            AssertEqual(1, PdfReviewForm.FindViewerRow(lookupRows, 0, false, 1),
+            AssertEq(1, PdfReviewForm.FindViewerRow(lookupRows, 0, false, 1),
                 "правая сторона выбирает ближайшую страницу справа");
-            AssertEqual(2, PdfReviewForm.FindViewerRow(lookupRows, 4, true, -1),
+            AssertEq(2, PdfReviewForm.FindViewerRow(lookupRows, 4, true, -1),
                 "поиск вверх пропускает null и строку без левой страницы");
-            AssertEqual(1, PdfReviewForm.FindViewerRow(lookupRows, 4, false, -1),
+            AssertEq(1, PdfReviewForm.FindViewerRow(lookupRows, 4, false, -1),
                 "поиск вверх пропускает null и строку без правой страницы");
-            AssertEqual(-1, PdfReviewForm.FindViewerRow(lookupRows, 4, true, 1),
+            AssertEq(-1, PdfReviewForm.FindViewerRow(lookupRows, 4, true, 1),
                 "после последней левой страницы нет wrap");
-            AssertEqual(-1, PdfReviewForm.FindViewerRow(lookupRows, 0, false, -1),
+            AssertEq(-1, PdfReviewForm.FindViewerRow(lookupRows, 0, false, -1),
                 "перед первой правой страницей нет wrap");
-            AssertEqual(-1, PdfReviewForm.FindViewerRow(lookupRows, 0, true, 0),
+            AssertEq(-1, PdfReviewForm.FindViewerRow(lookupRows, 0, true, 0),
                 "нулевое направление не ищет строку");
-            AssertEqual(-1, PdfReviewForm.FindViewerRow(null, 0, true, 1),
+            AssertEq(-1, PdfReviewForm.FindViewerRow(null, 0, true, 1),
                 "отсутствующий результат не ищет строку");
 
             string dir = Path.Combine(Path.GetTempPath(),
@@ -11182,11 +11182,11 @@ namespace ExcelMerger.Tests
                                 !ReviewPrivateField<bool>(left, "_renderWorker") &&
                                 !ReviewPrivateField<bool>(right, "_renderWorker");
                         }), "первая viewer-строка отрендерена с обеих сторон");
-                        AssertEqual(0, pairList.SelectedIndex,
+                        AssertEq(0, pairList.SelectedIndex,
                             "после применения результата выбрана первая строка");
-                        AssertEqual("1", leftPageInput.Text,
+                        AssertEq("1", leftPageInput.Text,
                             "левое поле показывает one-based физическую страницу");
-                        AssertEqual("1", rightPageInput.Text,
+                        AssertEq("1", rightPageInput.Text,
                             "правое поле показывает свою физическую страницу");
 
                         Point leftPoint = ReviewScreenCenter(leftViewport);
@@ -11201,15 +11201,15 @@ namespace ExcelMerger.Tests
                             "Ctrl+wheel над левой областью маршрутизирован");
                         AssertTrue(left.ZoomScale > leftBefore,
                             "масштаб изменила левая область");
-                        AssertEqual(rightBefore, right.ZoomScale,
+                        AssertEq(rightBefore, right.ZoomScale,
                             "правая область от левого Ctrl+wheel не изменилась");
-                        AssertEqual(rowBeforeZoom, pairList.SelectedIndex,
+                        AssertEq(rowBeforeZoom, pairList.SelectedIndex,
                             "Ctrl+wheel слева не меняет viewer-строку");
                         while (left.ZoomScale < 0.75 - 0.000001)
                         {
                             AssertTrue(form.RouteWheel(leftPoint, 120, true),
                                 "левая страница увеличивается до прокручиваемого масштаба");
-                            AssertEqual(rowBeforeZoom, pairList.SelectedIndex,
+                            AssertEq(rowBeforeZoom, pairList.SelectedIndex,
                                 "последовательный Ctrl+wheel не листает строки");
                         }
 
@@ -11224,34 +11224,34 @@ namespace ExcelMerger.Tests
                             "wheel над левой областью сначала прокручивает текущую страницу");
                         AssertTrue(left.ScrollOffset.Y > leftScrollBefore.Y,
                             "прокрутился только левый pane");
-                        AssertEqual(rightScrollBefore, right.ScrollOffset,
+                        AssertEq(rightScrollBefore, right.ScrollOffset,
                             "offset правого pane остался прежним");
-                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                        AssertEq(PdfReviewWheelResult.AtNextBoundary,
                             ReviewScrollToBoundary(left, leftLocal, -120),
                             "левая страница достигает нижней границы");
 
                         AssertTrue(form.RouteWheel(leftPoint, -120, false),
                             "нижняя граница продолжает чтение по левой стороне");
-                        AssertEqual(2, pairList.SelectedIndex,
+                        AssertEq(2, pairList.SelectedIndex,
                             "left wheel пропустил строку без левой страницы");
                         AssertTrue(WaitFor(delegate
                         {
                             return left.ViewState == PdfReviewPageViewState.Ready &&
                                 !ReviewPrivateField<bool>(left, "_renderWorker");
                         }), "следующая левая физическая страница отрендерена");
-                        AssertEqual(1, ReviewPrivateField<PdfPageRef>(left, "_page").PageIndex,
+                        AssertEq(1, ReviewPrivateField<PdfPageRef>(left, "_page").PageIndex,
                             "открыта именно следующая физическая страница слева");
-                        AssertEqual(0, left.ScrollOffset.Y,
+                        AssertEq(0, left.ScrollOffset.Y,
                             "движение вниз открывает следующую страницу сверху");
-                        AssertEqual(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(2, ReviewPrivateField<int>(form, "_leftRowIndex"),
                             "активная левая сторона хранит новую viewer-строку");
-                        AssertEqual(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
                             "неактивная правая сторона остаётся на прежней viewer-строке");
-                        AssertEqual("2", leftPageInput.Text,
+                        AssertEq("2", leftPageInput.Text,
                             "левое поле следует за активной физической страницей");
-                        AssertEqual("1", rightPageInput.Text,
+                        AssertEq("1", rightPageInput.Text,
                             "правое поле не переписывается левой навигацией");
-                        AssertEqual(PdfReviewPageViewState.Ready, right.ViewState,
+                        AssertEq(PdfReviewPageViewState.Ready, right.ViewState,
                             "right pane не превращается в Missing из-за left-only выбранной строки");
                         AssertTrue(ReferenceEquals(rightPageBeforeLeftNavigation,
                             ReviewPrivateField<PdfPageRef>(right, "_page")),
@@ -11259,23 +11259,23 @@ namespace ExcelMerger.Tests
                         AssertTrue(ReferenceEquals(rightBitmapBeforeLeftNavigation,
                             ReviewPrivateField<Bitmap>(right, "_bitmap")),
                             "left wheel не перерендеривает raster справа");
-                        AssertEqual(rightScaleBeforeLeftNavigation, right.ZoomScale,
+                        AssertEq(rightScaleBeforeLeftNavigation, right.ZoomScale,
                             "left wheel сохраняет масштаб справа");
-                        AssertEqual(rightScrollBefore, right.ScrollOffset,
+                        AssertEq(rightScrollBefore, right.ScrollOffset,
                             "left wheel сохраняет offset справа");
 
                         AssertTrue(form.RouteWheel(ReviewScreenCenter(leftViewport), 120, false),
                             "верхняя граница продолжает чтение назад по левой стороне");
-                        AssertEqual(0, pairList.SelectedIndex,
+                        AssertEq(0, pairList.SelectedIndex,
                             "left wheel вверх пропустил строку без левой страницы");
                         AssertTrue(WaitFor(delegate
                         {
                             return left.ViewState == PdfReviewPageViewState.Ready &&
                                 !ReviewPrivateField<bool>(left, "_renderWorker");
                         }), "предыдущая левая viewer-страница снова отрендерена");
-                        AssertEqual(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
                             "левая сторона вернулась на первую строку");
-                        AssertEqual(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(0, ReviewPrivateField<int>(form, "_rightRowIndex"),
                             "правая сторона всё время оставалась на первой строке");
                         AssertTrue(ReferenceEquals(rightBitmapBeforeLeftNavigation,
                             ReviewPrivateField<Bitmap>(right, "_bitmap")),
@@ -11285,7 +11285,7 @@ namespace ExcelMerger.Tests
                             leftPicture.Height - leftViewport.ClientSize.Height);
                         AssertTrue(expectedBottom > 0,
                             "увеличенная предыдущая страница действительно прокручиваема");
-                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                        AssertEq(PdfReviewWheelResult.AtNextBoundary,
                             left.HandleWheelAt(leftViewport.PointToClient(
                                 ReviewScreenCenter(leftViewport)), -120, false),
                             "движение вверх открывает предыдущую страницу снизу");
@@ -11298,14 +11298,14 @@ namespace ExcelMerger.Tests
                             "Ctrl+wheel над правой областью маршрутизирован");
                         AssertTrue(right.ZoomScale > rightBefore,
                             "масштаб изменила правая область");
-                        AssertEqual(leftScaleBeforeRight, left.ZoomScale,
+                        AssertEq(leftScaleBeforeRight, left.ZoomScale,
                             "левая область от правого Ctrl+wheel не изменилась");
-                        AssertEqual(rowBeforeZoom, pairList.SelectedIndex,
+                        AssertEq(rowBeforeZoom, pairList.SelectedIndex,
                             "Ctrl+wheel справа не меняет viewer-строку");
                         while (right.ZoomScale < 0.75 - 0.000001)
                             AssertTrue(form.RouteWheel(rightPoint, 120, true),
                                 "правая страница увеличивается до прокручиваемого масштаба");
-                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                        AssertEq(PdfReviewWheelResult.AtNextBoundary,
                             ReviewScrollToBoundary(right, rightLocal, -120),
                             "правая страница достигает нижней границы");
                         PdfPageRef leftPageBeforeRightNavigation =
@@ -11317,24 +11317,24 @@ namespace ExcelMerger.Tests
 
                         AssertTrue(form.RouteWheel(rightPoint, -120, false),
                             "right wheel переходит к ближайшей правой странице");
-                        AssertEqual(1, pairList.SelectedIndex,
+                        AssertEq(1, pairList.SelectedIndex,
                             "выбрана right-only строка, не сосед слева");
                         AssertTrue(WaitFor(delegate
                         {
                             return right.ViewState == PdfReviewPageViewState.Ready &&
                                 !ReviewPrivateField<bool>(right, "_renderWorker");
                         }), "right-only страница отрендерена");
-                        AssertEqual(0, right.ScrollOffset.Y,
+                        AssertEq(0, right.ScrollOffset.Y,
                             "right wheel вниз открывает страницу сверху");
-                        AssertEqual(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
                             "right wheel не меняет строку левой стороны");
-                        AssertEqual(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(1, ReviewPrivateField<int>(form, "_rightRowIndex"),
                             "активная правая сторона хранит right-only строку");
-                        AssertEqual("1", leftPageInput.Text,
+                        AssertEq("1", leftPageInput.Text,
                             "левое поле не переписывается правой навигацией");
-                        AssertEqual("2", rightPageInput.Text,
+                        AssertEq("2", rightPageInput.Text,
                             "правое поле показывает вторую физическую страницу");
-                        AssertEqual(PdfReviewPageViewState.Ready, left.ViewState,
+                        AssertEq(PdfReviewPageViewState.Ready, left.ViewState,
                             "left pane не превращается в Missing из-за right-only выбранной строки");
                         AssertTrue(ReferenceEquals(leftPageBeforeRightNavigation,
                             ReviewPrivateField<PdfPageRef>(left, "_page")),
@@ -11342,48 +11342,48 @@ namespace ExcelMerger.Tests
                         AssertTrue(ReferenceEquals(leftBitmapBeforeRightNavigation,
                             ReviewPrivateField<Bitmap>(left, "_bitmap")),
                             "right wheel не перерендеривает raster слева");
-                        AssertEqual(leftScaleBeforeRightNavigation, left.ZoomScale,
+                        AssertEq(leftScaleBeforeRightNavigation, left.ZoomScale,
                             "right wheel сохраняет масштаб слева");
-                        AssertEqual(leftOffsetBeforeRightNavigation, left.ScrollOffset,
+                        AssertEq(leftOffsetBeforeRightNavigation, left.ScrollOffset,
                             "right wheel сохраняет offset слева");
-                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                        AssertEq(PdfReviewWheelResult.AtNextBoundary,
                             ReviewScrollToBoundary(right,
                                 rightViewport.PointToClient(ReviewScreenCenter(rightViewport)), -120),
                             "right-only страница достигает нижней границы");
 
                         AssertTrue(form.RouteWheel(ReviewScreenCenter(rightViewport), -120, false),
                             "right wheel пропускает строку без правой страницы");
-                        AssertEqual(3, pairList.SelectedIndex,
+                        AssertEq(3, pairList.SelectedIndex,
                             "после right-only выбрана следующая строка с правой страницей");
                         AssertTrue(WaitFor(delegate
                         {
                             return right.ViewState == PdfReviewPageViewState.Ready &&
                                 !ReviewPrivateField<bool>(right, "_renderWorker");
                         }), "последняя правая физическая страница отрендерена");
-                        AssertEqual(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
+                        AssertEq(0, ReviewPrivateField<int>(form, "_leftRowIndex"),
                             "переход справа через missing-row оставил левую строку");
-                        AssertEqual(3, ReviewPrivateField<int>(form, "_rightRowIndex"),
+                        AssertEq(3, ReviewPrivateField<int>(form, "_rightRowIndex"),
                             "правая сторона дошла до последней строки");
-                        AssertEqual("1", leftPageInput.Text,
+                        AssertEq("1", leftPageInput.Text,
                             "левая физическая страница по-прежнему независима");
-                        AssertEqual("3", rightPageInput.Text,
+                        AssertEq("3", rightPageInput.Text,
                             "правое поле дошло до третьей физической страницы");
                         AssertTrue(ReferenceEquals(leftBitmapBeforeRightNavigation,
                             ReviewPrivateField<Bitmap>(left, "_bitmap")),
                             "последующий right wheel также не перерендерил left pane");
-                        AssertEqual(0, right.ScrollOffset.Y,
+                        AssertEq(0, right.ScrollOffset.Y,
                             "после пропуска отсутствующей стороны новая страница открыта сверху");
-                        AssertEqual(PdfReviewWheelResult.AtNextBoundary,
+                        AssertEq(PdfReviewWheelResult.AtNextBoundary,
                             ReviewScrollToBoundary(right,
                                 rightViewport.PointToClient(ReviewScreenCenter(rightViewport)), -120),
                             "последняя правая страница достигает нижней границы");
                         AssertTrue(!form.RouteWheel(ReviewScreenCenter(rightViewport), -120, false),
                             "нижняя граница последней страницы не поглощается и не оборачивается");
-                        AssertEqual(3, pairList.SelectedIndex,
+                        AssertEq(3, pairList.SelectedIndex,
                             "на нижней границе выбранная строка не изменилась");
-                        AssertEqual(0, ReviewPrivateField<int>(form, "_navigationSide"),
+                        AssertEq(0, ReviewPrivateField<int>(form, "_navigationSide"),
                             "неуспешный переход не оставляет отложенную сторону");
-                        AssertEqual(PdfReviewPagePosition.Default,
+                        AssertEq(PdfReviewPagePosition.Default,
                             ReviewPrivateField<PdfReviewPagePosition>(form, "_navigationPosition"),
                             "неуспешный переход не оставляет Top/Bottom intent");
 
@@ -11410,7 +11410,7 @@ namespace ExcelMerger.Tests
         {
             PictureBox picture = ReviewPrivateField<PictureBox>(view, "_picture");
             AssertTrue(!picture.Visible, context + ": белый PictureBox скрыт");
-            AssertEqual(Size.Empty, picture.Size, context + ": у белого PictureBox нулевой размер");
+            AssertEq(Size.Empty, picture.Size, context + ": у белого PictureBox нулевой размер");
             AssertTrue(picture.Image == null, context + ": raster отсутствует");
             AssertTrue(!view.HasVisiblePage, context + ": viewer не заявляет готовую страницу");
         }
@@ -11501,14 +11501,14 @@ namespace ExcelMerger.Tests
             List<PdfPageRef> working = TestWorkingPages(1, 2, 4, 0);
             working[1].Rotation = 90;
             List<PdfPageRef> selected = PdfSplitPlan.Selected(working, new[] { 0, 2, 2, 99 });
-            AssertEqual("1,4", PageIndexSig(selected), "grid-позиции разрешены через рабочий порядок");
-            AssertEqual(0, selected[0].Rotation, "поворот первой страницы");
-            AssertEqual(2, selected.Count, "дубль grid-позиции не дублирует страницу");
+            AssertEq("1,4", PageIndexSig(selected), "grid-позиции разрешены через рабочий порядок");
+            AssertEq(0, selected[0].Rotation, "поворот первой страницы");
+            AssertEq(2, selected.Count, "дубль grid-позиции не дублирует страницу");
 
             selected = PdfSplitPlan.Selected(working, new[] { 1 });
-            AssertEqual(90, selected[0].Rotation, "поворот путешествует с PdfPageRef");
+            AssertEq(90, selected[0].Rotation, "поворот путешествует с PdfPageRef");
             selected[0].Rotation = 180;
-            AssertEqual(90, working[1].Rotation, "план держит независимый снимок");
+            AssertEq(90, working[1].Rotation, "план держит независимый снимок");
         }
 
         private static void TestSplitPlanRanges()
@@ -11516,20 +11516,20 @@ namespace ExcelMerger.Tests
             List<PdfPageRef> working = TestWorkingPages(4, 1, 3, 0, 6);
             var ranges = new List<PageRange> { new PageRange(0, 3), new PageRange(5, 5) };
             List<PdfSplitPart> parts = PdfSplitPlan.ByRanges(working, ranges);
-            AssertEqual(1, parts.Count, "пустой диапазон не создаёт пустой файл");
-            AssertEqual("1,3,0", PageIndexSig(parts[0].Pages),
+            AssertEq(1, parts.Count, "пустой диапазон не создаёт пустой файл");
+            AssertEq("1,3,0", PageIndexSig(parts[0].Pages),
                 "диапазон выбирает исходные номера, порядок берёт рабочий");
-            AssertEqual("1-4", parts[0].Label, "метка сохраняет исходный диапазон");
+            AssertEq("1-4", parts[0].Label, "метка сохраняет исходный диапазон");
         }
 
         private static void TestSplitPlanEveryN()
         {
             List<PdfPageRef> working = TestWorkingPages(5, 1, 8, 2, 0);
             List<PdfSplitPart> parts = PdfSplitPlan.EveryN(working, 2);
-            AssertEqual(3, parts.Count, "пять страниц по две дают три части");
-            AssertEqual("5,1", PageIndexSig(parts[0].Pages), "первая часть — рабочий порядок");
-            AssertEqual("8,2", PageIndexSig(parts[1].Pages), "вторая часть — рабочий порядок");
-            AssertEqual("0", PageIndexSig(parts[2].Pages), "хвост");
+            AssertEq(3, parts.Count, "пять страниц по две дают три части");
+            AssertEq("5,1", PageIndexSig(parts[0].Pages), "первая часть — рабочий порядок");
+            AssertEq("8,2", PageIndexSig(parts[1].Pages), "вторая часть — рабочий порядок");
+            AssertEq("0", PageIndexSig(parts[2].Pages), "хвост");
         }
 
         private static void TestSplitPlanBookmarks()
@@ -11542,16 +11542,16 @@ namespace ExcelMerger.Tests
                 new PdfSplitBookmark { PageIndex = 7, Title = "C" }
             };
             List<PdfSplitPart> parts = PdfSplitPlan.ByBookmarks(working, marks, 10);
-            AssertEqual(3, parts.Count, "три непустые главы");
-            AssertEqual("1,2,0", PageIndexSig(parts[0].Pages), "глава A в рабочем порядке");
-            AssertEqual("6", PageIndexSig(parts[1].Pages), "глава B без удалённых страниц");
-            AssertEqual("8", PageIndexSig(parts[2].Pages), "глава C");
+            AssertEq(3, parts.Count, "три непустые главы");
+            AssertEq("1,2,0", PageIndexSig(parts[0].Pages), "глава A в рабочем порядке");
+            AssertEq("6", PageIndexSig(parts[1].Pages), "глава B без удалённых страниц");
+            AssertEq("8", PageIndexSig(parts[2].Pages), "глава C");
 
             working = TestWorkingPages(0, 1, 8);
             parts = PdfSplitPlan.ByBookmarks(working, marks, 10);
-            AssertEqual(2, parts.Count, "пустая средняя глава пропущена");
-            AssertEqual("A", parts[0].BookmarkTitle, "первая живая глава");
-            AssertEqual("C", parts[1].BookmarkTitle, "следующая живая глава");
+            AssertEq(2, parts.Count, "пустая средняя глава пропущена");
+            AssertEq("A", parts[0].BookmarkTitle, "первая живая глава");
+            AssertEq("C", parts[1].BookmarkTitle, "следующая живая глава");
         }
 
         private static void TestReviewUnifiedContent()
@@ -11569,13 +11569,13 @@ namespace ExcelMerger.Tests
                 pair, 42);
             AssertTrue(content != null && content.BasePage != null,
                 "общий canvas построен");
-            AssertEqual("right.pdf", content.BasePage.SourcePath,
+            AssertEq("right.pdf", content.BasePage.SourcePath,
                 "обычная пара использует позднюю версию как основу");
-            AssertEqual(PdfReviewHighlightStyle.Added, content.BaseHighlight.Style,
+            AssertEq(PdfReviewHighlightStyle.Added, content.BaseHighlight.Style,
                 "зелёная семантика принадлежит поздней основе");
             AssertTrue(content.OverlayHighlight.Style == PdfReviewHighlightStyle.Removed,
                 "удаление передаётся как красная геометрия без старых глифов поверх поздней страницы");
-            AssertEqual(42L, content.Revision, "revision переносится в единый canvas");
+            AssertEq(42L, content.Revision, "revision переносится в единый canvas");
             AssertTrue(content.IsComposite,
                 "красная deletion-геометрия остаётся частью единого content без второго raster");
 
@@ -11587,9 +11587,9 @@ namespace ExcelMerger.Tests
             };
             PdfReviewViewContent removedPage = PdfReviewForm.BuildUnifiedContent(result,
                 leftOnly, 43);
-            AssertEqual("left.pdf", removedPage.BasePage.SourcePath,
+            AssertEq("left.pdf", removedPage.BasePage.SourcePath,
                 "left-only страница остаётся видимой как красная удалённая");
-            AssertEqual(PdfReviewHighlightStyle.Removed,
+            AssertEq(PdfReviewHighlightStyle.Removed,
                 removedPage.BaseHighlight.Style, "left-only основа красная");
             AssertTrue(!removedPage.IsComposite,
                 "left-only не рендерит несуществующую позднюю страницу");
@@ -11613,7 +11613,7 @@ namespace ExcelMerger.Tests
                 using (Graphics graphics = Graphics.FromImage(target))
                     graphics.Clear(Color.White);
                 PdfReviewUnifiedRenderer.DrawDeletedMarkers(target, highlight);
-                AssertEqual(Color.White.ToArgb(), target.GetPixel(45, 60).ToArgb(),
+                AssertEq(Color.White.ToArgb(), target.GetPixel(45, 60).ToArgb(),
                     "единый режим не переносит старые глифы и фон поверх поздней строки");
                 AssertTrue(ReviewHasColoredPixel(target, 16, 74, 42, 84),
                     "красная deletion-рамка и перечёркивание остаются видимыми");
@@ -11673,7 +11673,7 @@ namespace ExcelMerger.Tests
                 pair, 73L);
             AssertTrue(content != null && content.BaseHighlight != null,
                 "единый content построен на поздней странице");
-            AssertEqual(2, content.BaseHighlight.WhitespaceMarkers.Count,
+            AssertEq(2, content.BaseHighlight.WhitespaceMarkers.Count,
                 "единый холст получает оба направления пробельного diff");
             PdfReviewWhitespaceMarker movedRemoval = content.BaseHighlight.WhitespaceMarkers[1];
             AssertTrue(object.ReferenceEquals(added,
@@ -11684,10 +11684,10 @@ namespace ExcelMerger.Tests
             AssertTrue(movedRemoval.Box.Left == laterBoundary.Left &&
                        movedRemoval.Box.Top == laterBoundary.Top,
                 "удаление пробела нарисовано на границе поздней страницы");
-            AssertEqual(PdfReviewHighlightStyle.Added,
+            AssertEq(PdfReviewHighlightStyle.Added,
                 content.BaseHighlight.WhitespaceMarkers[0].Style,
                 "зелёный marker остаётся добавлением");
-            AssertEqual(PdfReviewHighlightStyle.Removed,
+            AssertEq(PdfReviewHighlightStyle.Removed,
                 content.BaseHighlight.WhitespaceMarkers[1].Style,
                 "красный marker остаётся удалением");
             AssertTrue(content.OverlayHighlight == null,
@@ -11715,7 +11715,7 @@ namespace ExcelMerger.Tests
                         PdfReviewPageView unifiedView = ReviewPrivateField<PdfReviewPageView>(
                             form, "_unifiedSource");
 
-                        AssertEqual(PdfReviewViewMode.Unified,
+                        AssertEq(PdfReviewViewMode.Unified,
                             ReviewPrivateField<PdfReviewViewMode>(form, "_viewMode"),
                             "общий redline — режим по умолчанию");
                         Panel unifiedLegend = ReviewPrivateField<Panel>(form,
@@ -11738,7 +11738,7 @@ namespace ExcelMerger.Tests
                             "единый холст остаётся рабочим при дефолтном размере окна");
                         sideButton.PerformClick();
                         Application.DoEvents();
-                        AssertEqual(PdfReviewViewMode.SideBySide,
+                        AssertEq(PdfReviewViewMode.SideBySide,
                             ReviewPrivateField<PdfReviewViewMode>(form, "_viewMode"),
                             "бок о бок остаётся доступен");
                         AssertTrue(side.Visible && !unified.Visible && sideButton.Selected &&
@@ -11747,7 +11747,7 @@ namespace ExcelMerger.Tests
                         unifiedButton.PerformClick();
                         AssertTrue(unifiedView.AllowFullScreen,
                             "единый canvas разрешает полноэкранный просмотр с тем же content");
-                        AssertEqual(2000, PdfReviewPageView.RenderWidthFor(1000, 2400),
+                        AssertEq(2000, PdfReviewPageView.RenderWidthFor(1000, 2400),
                             "полноэкранный canvas получает честный повышенный raster width");
                     }
                 });
@@ -11797,7 +11797,7 @@ namespace ExcelMerger.Tests
                             "_supportLink");
                         AccentCheckBox option = ReviewPrivateField<AccentCheckBox>(form,
                             "_dontShow");
-                        AssertEqual(0, -scroll.AutoScrollPosition.Y,
+                        AssertEq(0, -scroll.AutoScrollPosition.Y,
                             "первое открытие начинается с первого пункта без пустого поля");
                         Rectangle work = Screen.FromControl(form).WorkingArea;
                         Point formCenter = new Point(form.Left + form.Width / 2,
@@ -11811,7 +11811,7 @@ namespace ExcelMerger.Tests
                             "ручное окно отражает отключённый автопоказ");
 
                         // Ссылка поддержки — в футере, слева, на уровне кнопки «Закрыть».
-                        AssertEqual(24, supportLink.Left,
+                        AssertEq(24, supportLink.Left,
                             "ссылка поддержки у левого края");
                         AssertTrue(Math.Abs(supportLink.Top +
                             (supportLink.Height - 36) / 2 -
@@ -11849,27 +11849,27 @@ namespace ExcelMerger.Tests
 
                         // Начальный масштаб — 100% (или из настроек).
                         int initial = form.TextPercent;
-                        AssertEqual(100, initial, "масштаб по умолчанию — 100%");
+                        AssertEq(100, initial, "масштаб по умолчанию — 100%");
 
                         // Увеличение на один шаг.
                         form.SetTextPercent(initial + 10);
-                        AssertEqual(110, form.TextPercent, "шаг вверх — +10%");
+                        AssertEq(110, form.TextPercent, "шаг вверх — +10%");
 
                         // Уменьшение на один шаг.
                         form.SetTextPercent(form.TextPercent - 10);
-                        AssertEqual(100, form.TextPercent, "шаг вниз — -10%");
+                        AssertEq(100, form.TextPercent, "шаг вниз — -10%");
 
                         // Кламп сверху: не выше 160%.
                         form.SetTextPercent(500);
-                        AssertEqual(160, form.TextPercent, "верхний предел — 160%");
+                        AssertEq(160, form.TextPercent, "верхний предел — 160%");
 
                         // Кламп снизу: не ниже 80%.
                         form.SetTextPercent(-500);
-                        AssertEqual(80, form.TextPercent, "нижний предел — 80%");
+                        AssertEq(80, form.TextPercent, "нижний предел — 80%");
 
                         // Нулевой шаг не меняет состояние (и не трогает layout).
                         form.SetTextPercent(form.TextPercent);
-                        AssertEqual(80, form.TextPercent, "повторное значение не меняет масштаб");
+                        AssertEq(80, form.TextPercent, "повторное значение не меняет масштаб");
 
                         // При 160% в маленьком окне текст НЕ должен вылезать за пределы.
                         form.ClientSize = new Size(520, 400); // MinimumSize
@@ -11892,7 +11892,7 @@ namespace ExcelMerger.Tests
                     {
                         form2.Show();
                         Application.DoEvents();
-                        AssertEqual(100, form2.TextPercent, "новое окно — чистый масштаб");
+                        AssertEq(100, form2.TextPercent, "новое окно — чистый масштаб");
                         form2.Close();
                         Application.DoEvents();
                     }
@@ -11926,15 +11926,15 @@ namespace ExcelMerger.Tests
                 PdfSplitService.ExtractPlanned(src, working, extracted);
                 using (PdfDocument result = PdfReader.Open(extracted, PdfDocumentOpenMode.Import))
                 {
-                    AssertEqual(3, result.PageCount, "страниц рабочего набора");
-                    AssertEqual(503, (int)Math.Round(result.Pages[0].Width.Point), "первая — исходная 4");
-                    AssertEqual(90, result.Pages[1].Rotate, "поворот второй retained page");
-                    AssertEqual(504, (int)Math.Round(result.Pages[2].Width.Point), "последняя — исходная 5");
+                    AssertEq(3, result.PageCount, "страниц рабочего набора");
+                    AssertEq(503, (int)Math.Round(result.Pages[0].Width.Point), "первая — исходная 4");
+                    AssertEq(90, result.Pages[1].Rotate, "поворот второй retained page");
+                    AssertEq(504, (int)Math.Round(result.Pages[2].Width.Point), "последняя — исходная 5");
                 }
 
                 List<PdfSplitPart> parts = PdfSplitPlan.EveryN(working, 2);
                 List<string> files = PdfSplitService.SplitPlanned(src, parts, dir, "part");
-                AssertEqual("2,1", PageCounts(files), "части по рабочему порядку");
+                AssertEq("2,1", PageCounts(files), "части по рабочему порядку");
             }
             finally
             {
@@ -11962,23 +11962,23 @@ namespace ExcelMerger.Tests
                 // Извлечь выбранные [0,2,4] → один файл, 3 страницы
                 string extract = Path.Combine(dir, "выбранные.pdf");
                 PdfSplitService.Extract(src, new List<int> { 0, 2, 4 }, extract);
-                AssertEqual(3, PdfPageCount(extract), "извлечено 3 страницы");
+                AssertEq(3, PdfPageCount(extract), "извлечено 3 страницы");
 
                 // По диапазонам 1-3,5,8- → 3 файла (3,1,3)
                 List<string> ranges = PdfSplitService.SplitByRanges(src, PageRanges.Parse("1-3,5,8-", 10), dir, "диап");
-                AssertEqual(3, ranges.Count, "диапазонов — 3 файла");
-                AssertEqual("3,1,3", PageCounts(ranges), "страниц по диапазонам");
-                AssertEqual("диап_1-3.pdf", Path.GetFileName(ranges[0]), "имя первого диапазона");
+                AssertEq(3, ranges.Count, "диапазонов — 3 файла");
+                AssertEq("3,1,3", PageCounts(ranges), "страниц по диапазонам");
+                AssertEq("диап_1-3.pdf", Path.GetFileName(ranges[0]), "имя первого диапазона");
 
                 // Каждые 3 страницы → 4 файла (3,3,3,1)
                 List<string> everyN = PdfSplitService.SplitEveryN(src, 3, dir, "часть");
-                AssertEqual(4, everyN.Count, "каждые 3 — 4 файла");
-                AssertEqual("3,3,3,1", PageCounts(everyN), "страниц по частям");
+                AssertEq(4, everyN.Count, "каждые 3 — 4 файла");
+                AssertEq("3,3,3,1", PageCounts(everyN), "страниц по частям");
 
                 // По закладкам → 3 файла (4,3,3), имена с заголовками
                 List<string> byMark = PdfSplitService.SplitByBookmarks(src, dir, "закл");
-                AssertEqual(3, byMark.Count, "закладок — 3 файла");
-                AssertEqual("4,3,3", PageCounts(byMark), "страниц по закладкам");
+                AssertEq(3, byMark.Count, "закладок — 3 файла");
+                AssertEq("4,3,3", PageCounts(byMark), "страниц по закладкам");
                 AssertTrue(Path.GetFileName(byMark[0]).Contains("Раздел А"), "имя по закладке: " + Path.GetFileName(byMark[0]));
             }
             finally
@@ -12008,14 +12008,14 @@ namespace ExcelMerger.Tests
                     AssertTrue(after < before, "размер уменьшился: " + before + " -> " + after);
                     AssertTrue(PdfCompression.LooksLikePdf(src), "результат — валидный PDF");
                     // Страницы сохранены (это НЕ растр всего документа, а downsampling — структура цела).
-                    AssertEqual(pagesBefore, PdfPageCount(src), "число страниц сохранено");
+                    AssertEq(pagesBefore, PdfPageCount(src), "число страниц сохранено");
                 }
                 else
                 {
                     // Без Ghostscript сжатие — безопасный no-op: файл не тронут.
                     bool applied = PdfCompression.Compress(src, CompressionLevel.Small);
                     AssertTrue(!applied, "без Ghostscript — без изменений");
-                    AssertEqual(before, new FileInfo(src).Length, "файл не тронут без GS");
+                    AssertEq(before, new FileInfo(src).Length, "файл не тронут без GS");
                 }
             }
             finally
@@ -12087,7 +12087,7 @@ namespace ExcelMerger.Tests
 
         private static void TestDonationRequisites()
         {
-            AssertEqual(20, AboutForm.DonationAccount.Length, "счёт — 20 цифр");
+            AssertEq(20, AboutForm.DonationAccount.Length, "счёт — 20 цифр");
             foreach (char c in AboutForm.DonationAccount)
                 AssertTrue(c >= '0' && c <= '9', "в счёте только цифры");
             AssertTrue(AboutForm.DonationBank.Length > 0, "банк не пуст");
@@ -12287,38 +12287,38 @@ namespace ExcelMerger.Tests
             // ёмкостью проверяет «Аудит GR-1»).
             int lo, hi;
             PdfPageGrid.PrefetchWindow(0, 10, 100, 16, 512, out lo, out hi);
-            AssertEqual("0,26", lo + "," + hi, "у начала — не ниже 0");
+            AssertEq("0,26", lo + "," + hi, "у начала — не ниже 0");
             PdfPageGrid.PrefetchWindow(50, 60, 100, 16, 512, out lo, out hi);
-            AssertEqual("34,76", lo + "," + hi, "в середине — буфер с обеих сторон");
+            AssertEq("34,76", lo + "," + hi, "в середине — буфер с обеих сторон");
             PdfPageGrid.PrefetchWindow(90, 99, 100, 16, 512, out lo, out hi);
-            AssertEqual("74,99", lo + "," + hi, "у конца — не выше count-1");
+            AssertEq("74,99", lo + "," + hi, "у конца — не выше count-1");
             PdfPageGrid.PrefetchWindow(0, 5, 6, 16, 512, out lo, out hi);
-            AssertEqual("0,5", lo + "," + hi, "мало элементов — весь список");
+            AssertEq("0,5", lo + "," + hi, "мало элементов — весь список");
         }
 
         private static void TestThemeToBgr()
         {
-            AssertEqual(12413967, Theme.ToBgr(System.Drawing.Color.FromArgb(15, 108, 189)), "HubBlue #0F6CBD");
-            AssertEqual(4291600, Theme.ToBgr(System.Drawing.Color.FromArgb(16, 124, 65)), "Accent #107C41");
-            AssertEqual(16777215, Theme.ToBgr(System.Drawing.Color.White), "белый");
-            AssertEqual(255, Theme.ToBgr(System.Drawing.Color.FromArgb(255, 0, 0)), "красный — младший байт");
+            AssertEq(12413967, Theme.ToBgr(System.Drawing.Color.FromArgb(15, 108, 189)), "HubBlue #0F6CBD");
+            AssertEq(4291600, Theme.ToBgr(System.Drawing.Color.FromArgb(16, 124, 65)), "Accent #107C41");
+            AssertEq(16777215, Theme.ToBgr(System.Drawing.Color.White), "белый");
+            AssertEq(255, Theme.ToBgr(System.Drawing.Color.FromArgb(255, 0, 0)), "красный — младший байт");
         }
 
         private static void TestSheetRef()
         {
-            AssertEqual("'Отчет'!A1", TocBuilder.SheetRef("Отчет"), "обычное имя");
-            AssertEqual("'it''s'!A1", TocBuilder.SheetRef("it's"), "апостроф удваивается");
-            AssertEqual("''!A1", TocBuilder.SheetRef(null), "null — пустое имя");
+            AssertEq("'Отчет'!A1", TocBuilder.SheetRef("Отчет"), "обычное имя");
+            AssertEq("'it''s'!A1", TocBuilder.SheetRef("it's"), "апостроф удваивается");
+            AssertEq("''!A1", TocBuilder.SheetRef(null), "null — пустое имя");
         }
 
         private static void TestWindowChromeColorRef()
         {
             // COLORREF кладёт R в младший байт, B в старший (0x00BBGGRR).
             int packed = WindowChrome.ColorRef(System.Drawing.Color.FromArgb(16, 124, 65));
-            AssertEqual(0x00417C10, packed, "упаковка акцентного цвета");
-            AssertEqual(0x00FFFFFF, WindowChrome.ColorRef(System.Drawing.Color.White), "белый");
-            AssertEqual(0x00000000, WindowChrome.ColorRef(System.Drawing.Color.Black), "чёрный");
-            AssertEqual(0x000000FF, WindowChrome.ColorRef(System.Drawing.Color.FromArgb(255, 0, 0)), "красный -> младший байт");
+            AssertEq(0x00417C10, packed, "упаковка акцентного цвета");
+            AssertEq(0x00FFFFFF, WindowChrome.ColorRef(System.Drawing.Color.White), "белый");
+            AssertEq(0x00000000, WindowChrome.ColorRef(System.Drawing.Color.Black), "чёрный");
+            AssertEq(0x000000FF, WindowChrome.ColorRef(System.Drawing.Color.FromArgb(255, 0, 0)), "красный -> младший байт");
         }
 
         private static void TestHeaderBand()
@@ -12328,7 +12328,7 @@ namespace ExcelMerger.Tests
                 AssertTrue(band is System.Windows.Forms.Control, "это контрол");
                 band.Width = 400;
                 band.Height = 80;
-                AssertEqual(400, band.Width, "ширина применяется");
+                AssertEq(400, band.Width, "ширина применяется");
                 // Пустая подпись не должна ронять отрисовку логики (конструктор допускает null).
                 using (var noSub = new HeaderBand("Только заголовок", null, Theme.PdfRed, Theme.PdfRedDark))
                     AssertTrue(noSub != null, "подпись null допустима");
@@ -12356,36 +12356,36 @@ namespace ExcelMerger.Tests
         private static void TestPdfOrderMoves()
         {
             PdfPageOrder order = MakeOrder();
-            AssertEqual("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "исходный порядок");
+            AssertEq("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "исходный порядок");
 
-            AssertEqual(0, order.MoveUp(0), "MoveUp с верхней строки — на месте");
-            AssertEqual(2, order.MoveDown(2), "MoveDown с нижней строки — на месте");
+            AssertEq(0, order.MoveUp(0), "MoveUp с верхней строки — на месте");
+            AssertEq(2, order.MoveDown(2), "MoveDown с нижней строки — на месте");
 
-            AssertEqual(1, order.MoveUp(2), "MoveUp возвращает новый индекс");
-            AssertEqual("А.pdf:1|Б.pdf:1|А.pdf:2", OrderSignature(order), "после MoveUp");
-            AssertEqual(2, order.MoveDown(1), "MoveDown возвращает новый индекс");
-            AssertEqual("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "MoveDown вернул порядок");
+            AssertEq(1, order.MoveUp(2), "MoveUp возвращает новый индекс");
+            AssertEq("А.pdf:1|Б.pdf:1|А.pdf:2", OrderSignature(order), "после MoveUp");
+            AssertEq(2, order.MoveDown(1), "MoveDown возвращает новый индекс");
+            AssertEq("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "MoveDown вернул порядок");
         }
 
         private static void TestPdfOrderDragMove()
         {
             PdfPageOrder order = MakeOrder();
             order.Move(2, 0); // Б:1 в начало
-            AssertEqual("Б.pdf:1|А.pdf:1|А.pdf:2", OrderSignature(order), "перенос вверх");
+            AssertEq("Б.pdf:1|А.pdf:1|А.pdf:2", OrderSignature(order), "перенос вверх");
             order.Move(0, 3); // Б:1 в конец (вставка перед позицией 3)
-            AssertEqual("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "перенос вниз");
+            AssertEq("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "перенос вниз");
             order.Move(1, 1); // на себя — без изменений
-            AssertEqual("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "перенос на себя");
+            AssertEq("А.pdf:1|А.pdf:2|Б.pdf:1", OrderSignature(order), "перенос на себя");
         }
 
         private static void TestPdfOrderRemove()
         {
             PdfPageOrder order = MakeOrder();
             order.RemoveAt(new[] { 2, 0 }); // произвольный порядок индексов
-            AssertEqual("А.pdf:2", OrderSignature(order), "удаление набора");
-            AssertEqual(1, order.Count, "осталась одна строка");
+            AssertEq("А.pdf:2", OrderSignature(order), "удаление набора");
+            AssertEq(1, order.Count, "осталась одна строка");
             order.Clear();
-            AssertEqual(0, order.Count, "Clear очищает список");
+            AssertEq(0, order.Count, "Clear очищает список");
         }
 
         private static void TestAssemble()
@@ -12403,7 +12403,7 @@ namespace ExcelMerger.Tests
                 new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0 }
             };
             List<PdfPageText> r = PdfPageExtraction.Assemble(bysource, order);
-            AssertEqual(3, r.Count, "собраны все 3 страницы из двух файлов");
+            AssertEq(3, r.Count, "собраны все 3 страницы из двух файлов");
             AssertTrue(ReferenceEquals(r[0], bysource["B.pdf"][0]), "первая — стр.0 из B");
             AssertTrue(ReferenceEquals(r[1], bysource["A.pdf"][1]), "вторая — стр.1 из A");
             AssertTrue(ReferenceEquals(r[2], bysource["A.pdf"][0]), "третья — стр.0 из A");
@@ -12416,7 +12416,7 @@ namespace ExcelMerger.Tests
                 new PdfPageRef { SourcePath = "A.pdf", PageIndex = 0 }
             };
             List<PdfPageText> rb = PdfPageExtraction.Assemble(bysource, bad);
-            AssertEqual(1, rb.Count, "остаётся только валидная ссылка");
+            AssertEq(1, rb.Count, "остаётся только валидная ссылка");
             AssertTrue(ReferenceEquals(rb[0], bysource["A.pdf"][0]), "валидная — A стр.0");
         }
 
@@ -12430,7 +12430,7 @@ namespace ExcelMerger.Tests
             NoteContent note = NoteText.Build(res, @"C:\in", options,
                 new DateTime(2026, 7, 16, 14, 5, 0));
 
-            AssertEqual("СПРАВКА", note.Title, "заголовок");
+            AssertEq("СПРАВКА", note.Title, "заголовок");
             string all = string.Join("|", note.Body.ToArray()) + "|" + string.Join("|", note.Tail.ToArray());
             AssertTrue(all.Contains("16 июля 2026 г.") && all.Contains("14:05"), "период: " + note.Body[0]);
             AssertTrue(all.Contains("Обработано файлов: 3"), "всего");
@@ -12447,10 +12447,10 @@ namespace ExcelMerger.Tests
             NoteContent note = NoteText.Build(res, @"C:\in", new MergeOptions(), DateTime.MinValue);
 
             AssertTrue(note.SkippedIntro != null, "есть вводная к таблице");
-            AssertEqual(2, note.SkippedRows.Count, "строк в таблице");
-            AssertEqual("1", note.SkippedRows[0][0], "нумерация");
-            AssertEqual("Б.xlsx", note.SkippedRows[0][1], "имя файла");
-            AssertEqual("битый", note.SkippedRows[0][2], "причина");
+            AssertEq(2, note.SkippedRows.Count, "строк в таблице");
+            AssertEq("1", note.SkippedRows[0][0], "нумерация");
+            AssertEq("Б.xlsx", note.SkippedRows[0][1], "имя файла");
+            AssertEq("битый", note.SkippedRows[0][2], "причина");
         }
 
         private static void TestNoteClean()
@@ -12462,7 +12462,7 @@ namespace ExcelMerger.Tests
             NoteContent note = NoteText.Build(res, @"C:\in", new MergeOptions(), DateTime.MinValue);
 
             AssertTrue(note.SkippedIntro == null, "таблица не нужна");
-            AssertEqual(0, note.SkippedRows.Count, "нет строк");
+            AssertEq(0, note.SkippedRows.Count, "нет строк");
             string all = string.Join("|", note.Body.ToArray());
             AssertTrue(all.Contains("Замечания отсутствуют"), "формулировка чистого итога");
         }
@@ -12495,8 +12495,8 @@ namespace ExcelMerger.Tests
 
         private static void TestSheetBaseName()
         {
-            AssertEqual("Отчет", MergeService.SheetBaseName("Отчет", "Лист1", false), "только первый — имя файла");
-            AssertEqual("Отчет · Лист1", MergeService.SheetBaseName("Отчет", "Лист1", true), "все листы — файл · лист");
+            AssertEq("Отчет", MergeService.SheetBaseName("Отчет", "Лист1", false), "только первый — имя файла");
+            AssertEq("Отчет · Лист1", MergeService.SheetBaseName("Отчет", "Лист1", true), "все листы — файл · лист");
         }
 
         private static void TestFileCount()
@@ -12505,8 +12505,8 @@ namespace ExcelMerger.Tests
             res.Files.Add(MakeResult(@"C:\in\А.xlsx", true, null)); // два листа из одного файла
             res.Files.Add(MakeResult(@"C:\in\А.xlsx", true, null));
             res.Files.Add(MakeResult(@"C:\in\Б.xlsx", true, null));
-            AssertEqual(3, res.Files.Count, "листов (строк) — три");
-            AssertEqual(2, res.FileCount, "файлов — два");
+            AssertEq(3, res.Files.Count, "листов (строк) — три");
+            AssertEq(2, res.FileCount, "файлов — два");
         }
 
         private static void TestCombineRetryMultiSheet()
@@ -12524,10 +12524,10 @@ namespace ExcelMerger.Tests
             var b2 = MakeResult(@"C:\in\Б.xlsx", true, null);
             var combined = MergeRetry.Combine(prev, new List<FileResult> { b1, b2 });
 
-            AssertEqual(3, combined.Files.Count, "А + два листа Б");
-            AssertEqual(3, combined.OkCount, "все перенесены");
-            AssertEqual(0, combined.SkipCount, "пропущенных нет");
-            AssertEqual(2, combined.FileCount, "файлов — два (А и Б)");
+            AssertEq(3, combined.Files.Count, "А + два листа Б");
+            AssertEq(3, combined.OkCount, "все перенесены");
+            AssertEq(0, combined.SkipCount, "пропущенных нет");
+            AssertEq(2, combined.FileCount, "файлов — два (А и Б)");
         }
 
         private static void TestCombineRetryReplaces()
@@ -12536,11 +12536,11 @@ namespace ExcelMerger.Tests
             var attempts = new List<FileResult> { MakeResult(@"C:\in\Б.xlsx", true, null) };
             MergeResult combined = MergeRetry.Combine(prev, attempts);
 
-            AssertEqual(3, combined.Files.Count, "число записей");
-            AssertEqual(2, combined.OkCount, "перенесено после повтора");
-            AssertEqual(1, combined.SkipCount, "осталось пропущенных");
+            AssertEq(3, combined.Files.Count, "число записей");
+            AssertEq(2, combined.OkCount, "перенесено после повтора");
+            AssertEq(1, combined.SkipCount, "осталось пропущенных");
             AssertTrue(combined.Files[1].Ok, "Б теперь перенесён");
-            AssertEqual(prev.OutputPath, combined.OutputPath, "путь свода");
+            AssertEq(prev.OutputPath, combined.OutputPath, "путь свода");
         }
 
         private static void TestCombineRetryKeepsFailed()
@@ -12549,9 +12549,9 @@ namespace ExcelMerger.Tests
             var attempts = new List<FileResult> { MakeResult(@"C:\in\Б.xlsx", false, "снова битый") };
             MergeResult combined = MergeRetry.Combine(prev, attempts);
 
-            AssertEqual(1, combined.OkCount, "перенесено не изменилось");
-            AssertEqual(2, combined.SkipCount, "пропущенных столько же");
-            AssertEqual("снова битый", combined.Files[1].Note, "причина обновлена");
+            AssertEq(1, combined.OkCount, "перенесено не изменилось");
+            AssertEq(2, combined.SkipCount, "пропущенных столько же");
+            AssertEq("снова битый", combined.Files[1].Note, "причина обновлена");
         }
 
         private static void TestCombineRetryOrder()
@@ -12564,11 +12564,11 @@ namespace ExcelMerger.Tests
             };
             MergeResult combined = MergeRetry.Combine(prev, attempts);
 
-            AssertEqual("А.xlsx|Б.xlsx|В.xlsx",
+            AssertEq("А.xlsx|Б.xlsx|В.xlsx",
                 combined.Files[0].FileName + "|" + combined.Files[1].FileName + "|" + combined.Files[2].FileName,
                 "порядок исходного прогона сохранён");
-            AssertEqual(3, combined.OkCount, "все перенесены");
-            AssertEqual(0, combined.SkipCount, "пропущенных не осталось");
+            AssertEq(3, combined.OkCount, "все перенесены");
+            AssertEq(0, combined.SkipCount, "пропущенных не осталось");
             AssertTrue(!ReferenceEquals(prev.Files[0], null) && combined.Files[0].Ok, "успешная запись не тронута");
         }
 
@@ -12576,20 +12576,20 @@ namespace ExcelMerger.Tests
 
         private static void TestOutputFormatCodes()
         {
-            AssertEqual(51, OutputFormats.FileFormatFor(@"C:\a\Свод.xlsx"), "xlsx");
-            AssertEqual(52, OutputFormats.FileFormatFor("Свод.xlsm"), "xlsm");
-            AssertEqual(50, OutputFormats.FileFormatFor("Свод.XLSB"), "xlsb в верхнем регистре");
-            AssertEqual(56, OutputFormats.FileFormatFor("Свод.xls"), "xls");
-            AssertEqual(0, OutputFormats.FileFormatFor("Свод.pdf"), "чужое расширение");
-            AssertEqual(0, OutputFormats.FileFormatFor("Свод"), "без расширения");
+            AssertEq(51, OutputFormats.FileFormatFor(@"C:\a\Свод.xlsx"), "xlsx");
+            AssertEq(52, OutputFormats.FileFormatFor("Свод.xlsm"), "xlsm");
+            AssertEq(50, OutputFormats.FileFormatFor("Свод.XLSB"), "xlsb в верхнем регистре");
+            AssertEq(56, OutputFormats.FileFormatFor("Свод.xls"), "xls");
+            AssertEq(0, OutputFormats.FileFormatFor("Свод.pdf"), "чужое расширение");
+            AssertEq(0, OutputFormats.FileFormatFor("Свод"), "без расширения");
         }
 
         private static void TestStripExtension()
         {
-            AssertEqual("Свод", OutputFormats.StripKnownExtension("Свод.xlsx"), "xlsx");
-            AssertEqual("Свод", OutputFormats.StripKnownExtension("Свод.XLS"), "xls в верхнем регистре");
-            AssertEqual("Свод.pdf", OutputFormats.StripKnownExtension("Свод.pdf"), "чужое расширение не трогаем");
-            AssertEqual("Свод", OutputFormats.StripKnownExtension("Свод"), "без расширения");
+            AssertEq("Свод", OutputFormats.StripKnownExtension("Свод.xlsx"), "xlsx");
+            AssertEq("Свод", OutputFormats.StripKnownExtension("Свод.XLS"), "xls в верхнем регистре");
+            AssertEq("Свод.pdf", OutputFormats.StripKnownExtension("Свод.pdf"), "чужое расширение не трогаем");
+            AssertEq("Свод", OutputFormats.StripKnownExtension("Свод"), "без расширения");
         }
 
         // ---------- CrashReport / классификация ошибок ----------
@@ -12640,14 +12640,14 @@ namespace ExcelMerger.Tests
             string path = Path.Combine(Path.GetTempPath(), "ExcelMergerTests_" + Guid.NewGuid().ToString("N") + ".xlsx");
 
             // Несуществующий файл: проверка не должна оставлять след
-            AssertEqual(null, MergeService.CheckOutputWritable(path), "новый файл");
+            AssertEq(null, MergeService.CheckOutputWritable(path), "новый файл");
             AssertTrue(!File.Exists(path), "пробный файл удалён");
 
             // Существующий свободный файл
             File.WriteAllText(path, "x");
             try
             {
-                AssertEqual(null, MergeService.CheckOutputWritable(path), "свободный файл");
+                AssertEq(null, MergeService.CheckOutputWritable(path), "свободный файл");
             }
             finally
             {
@@ -12667,10 +12667,10 @@ namespace ExcelMerger.Tests
 
         private static void TestCompressionPreset()
         {
-            AssertEqual("/ebook", PdfCompression.Preset(CompressionLevel.Good), "Хорошо -> /ebook");
-            AssertEqual("/screen", PdfCompression.Preset(CompressionLevel.Small), "Нормально -> /screen");
-            AssertEqual("/default", PdfCompression.Preset(CompressionLevel.VeryGood), "Очень хорошо -> /default");
-            AssertEqual(null, PdfCompression.Preset(CompressionLevel.None), "Отлично -> без пресета");
+            AssertEq("/ebook", PdfCompression.Preset(CompressionLevel.Good), "Хорошо -> /ebook");
+            AssertEq("/screen", PdfCompression.Preset(CompressionLevel.Small), "Нормально -> /screen");
+            AssertEq("/default", PdfCompression.Preset(CompressionLevel.VeryGood), "Очень хорошо -> /default");
+            AssertEq(null, PdfCompression.Preset(CompressionLevel.None), "Отлично -> без пресета");
         }
 
         /// <summary>
@@ -12680,30 +12680,30 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestCompressionLevelOrder()
         {
-            AssertEqual(0, (int)CompressionLevel.None, "«Отлично» = 0 навсегда");
-            AssertEqual(1, (int)CompressionLevel.Good, "«Хорошо» = 1 навсегда");
-            AssertEqual(2, (int)CompressionLevel.Small, "«Нормально» = 2 навсегда");
-            AssertEqual(3, (int)CompressionLevel.VeryGood, "новый уровень добавлен в КОНЕЦ, а не в середину");
+            AssertEq(0, (int)CompressionLevel.None, "«Отлично» = 0 навсегда");
+            AssertEq(1, (int)CompressionLevel.Good, "«Хорошо» = 1 навсегда");
+            AssertEq(2, (int)CompressionLevel.Small, "«Нормально» = 2 навсегда");
+            AssertEq(3, (int)CompressionLevel.VeryGood, "новый уровень добавлен в КОНЕЦ, а не в середину");
 
             // Показываем по возрастанию силы сжатия, а не по значению перечисления.
-            AssertEqual(4, PdfCompression.LevelLabels().Length, "уровней четыре");
-            AssertEqual(CompressionLevel.None, PdfCompression.LevelAt(0), "первым — «без сжатия»");
-            AssertEqual(CompressionLevel.VeryGood, PdfCompression.LevelAt(1), "затем «очень хорошо»");
-            AssertEqual(CompressionLevel.Good, PdfCompression.LevelAt(2), "затем «хорошо»");
-            AssertEqual(CompressionLevel.Small, PdfCompression.LevelAt(3), "последним — самый сильный");
+            AssertEq(4, PdfCompression.LevelLabels().Length, "уровней четыре");
+            AssertEq(CompressionLevel.None, PdfCompression.LevelAt(0), "первым — «без сжатия»");
+            AssertEq(CompressionLevel.VeryGood, PdfCompression.LevelAt(1), "затем «очень хорошо»");
+            AssertEq(CompressionLevel.Good, PdfCompression.LevelAt(2), "затем «хорошо»");
+            AssertEq(CompressionLevel.Small, PdfCompression.LevelAt(3), "последним — самый сильный");
 
             // Перевод «позиция ↔ уровень» обратим и не падает за границами.
             for (int i = 0; i < PdfCompression.LevelLabels().Length; i++)
-                AssertEqual(i, PdfCompression.IndexOf(PdfCompression.LevelAt(i)),
+                AssertEq(i, PdfCompression.IndexOf(PdfCompression.LevelAt(i)),
                     "позиция и обратно даёт ту же позицию: " + i);
-            AssertEqual(CompressionLevel.None, PdfCompression.LevelAt(-1), "позиция левее списка — без сжатия");
-            AssertEqual(CompressionLevel.None, PdfCompression.LevelAt(99), "позиция правее списка — без сжатия");
-            AssertEqual(0, PdfCompression.IndexOf((CompressionLevel)77), "неизвестный уровень — позиция «без сжатия»");
+            AssertEq(CompressionLevel.None, PdfCompression.LevelAt(-1), "позиция левее списка — без сжатия");
+            AssertEq(CompressionLevel.None, PdfCompression.LevelAt(99), "позиция правее списка — без сжатия");
+            AssertEq(0, PdfCompression.IndexOf((CompressionLevel)77), "неизвестный уровень — позиция «без сжатия»");
 
             // Каждый уровень перечисления обязан иметь своё место в списке — иначе новый
             // уровень появился бы в настройках, но не в окне.
             foreach (CompressionLevel level in Enum.GetValues(typeof(CompressionLevel)))
-                AssertEqual(level, PdfCompression.LevelAt(PdfCompression.IndexOf(level)),
+                AssertEq(level, PdfCompression.LevelAt(PdfCompression.IndexOf(level)),
                     "уровень показывается в списке: " + level);
         }
 
@@ -12722,17 +12722,17 @@ namespace ExcelMerger.Tests
             {
                 new UserSettings().SaveView(300, (int)CompressionLevel.VeryGood);
                 int stored = UserSettings.Load().CompressionLevel;
-                AssertEqual(3, stored, "на диск ушло число уровня, а не его позиция в списке");
-                AssertEqual(CompressionLevel.VeryGood, (CompressionLevel)stored, "число вернулось тем же уровнем");
-                AssertEqual(1, PdfCompression.IndexOf((CompressionLevel)stored),
+                AssertEq(3, stored, "на диск ушло число уровня, а не его позиция в списке");
+                AssertEq(CompressionLevel.VeryGood, (CompressionLevel)stored, "число вернулось тем же уровнем");
+                AssertEq(1, PdfCompression.IndexOf((CompressionLevel)stored),
                     "а показывается он вторым по счёту — позиция с числом не совпадает намеренно");
 
                 // Настройка прежних версий: 1 — это «Хорошо», 2 — «Нормально», и так навсегда.
                 new UserSettings().SaveView(300, 1);
-                AssertEqual(CompressionLevel.Good, (CompressionLevel)UserSettings.Load().CompressionLevel,
+                AssertEq(CompressionLevel.Good, (CompressionLevel)UserSettings.Load().CompressionLevel,
                     "«1» из настроек прежней версии по-прежнему «Хорошо»");
                 new UserSettings().SaveView(300, 2);
-                AssertEqual(CompressionLevel.Small, (CompressionLevel)UserSettings.Load().CompressionLevel,
+                AssertEq(CompressionLevel.Small, (CompressionLevel)UserSettings.Load().CompressionLevel,
                     "«2» из настроек прежней версии по-прежнему «Нормально»");
             }
             finally
@@ -12804,12 +12804,12 @@ namespace ExcelMerger.Tests
             var candidates = new List<string> { null, "", @"C:\нет\gs.exe", @"C:\есть\gs.exe", @"C:\тоже\gs.exe" };
             string picked = Ghostscript.PickFirstExisting(candidates,
                 delegate(string p) { return p == @"C:\есть\gs.exe" || p == @"C:\тоже\gs.exe"; });
-            AssertEqual(@"C:\есть\gs.exe", picked, "первый существующий, пустые пропущены");
-            AssertEqual(null, Ghostscript.PickFirstExisting(candidates, delegate { return false; }), "ни одного — null");
+            AssertEq(@"C:\есть\gs.exe", picked, "первый существующий, пустые пропущены");
+            AssertEq(null, Ghostscript.PickFirstExisting(candidates, delegate { return false; }), "ни одного — null");
             // Бросающий предикат не должен ронять выбор.
             string safe = Ghostscript.PickFirstExisting(new[] { @"C:\a", @"C:\b" },
                 delegate(string p) { if (p == @"C:\a") throw new Exception("bad"); return true; });
-            AssertEqual(@"C:\b", safe, "исключение в предикате -> пропуск кандидата");
+            AssertEq(@"C:\b", safe, "исключение в предикате -> пропуск кандидата");
         }
 
         // ---------- мини-раннер ----------
@@ -12822,11 +12822,11 @@ namespace ExcelMerger.Tests
             var cache = new LruCache<string>(2, delegate(string v) { evicted.Add(v); });
             cache.Add("a", "a");
             cache.Add("b", "b");
-            AssertEqual(2, cache.Count, "две записи в пределах ёмкости");
+            AssertEq(2, cache.Count, "две записи в пределах ёмкости");
             cache.Add("c", "c"); // переполнение: вытесняется самый несвежий — «a»
-            AssertEqual(2, cache.Count, "ёмкость соблюдена");
-            AssertEqual(1, evicted.Count, "ровно одно вытеснение");
-            AssertEqual("a", evicted[0], "вытеснен наименее недавно использованный");
+            AssertEq(2, cache.Count, "ёмкость соблюдена");
+            AssertEq(1, evicted.Count, "ровно одно вытеснение");
+            AssertEq("a", evicted[0], "вытеснен наименее недавно использованный");
             string val;
             AssertTrue(!cache.TryGet("a", out val), "a вытеснен");
             AssertTrue(cache.TryGet("b", out val) && val == "b", "b остался");
@@ -12842,7 +12842,7 @@ namespace ExcelMerger.Tests
             string val;
             AssertTrue(cache.TryGet("a", out val), "обращение к a делает его свежим");
             cache.Add("c", "c"); // теперь несвежий — «b»
-            AssertEqual("b", evicted[0], "touch через TryGet сместил вытеснение на b");
+            AssertEq("b", evicted[0], "touch через TryGet сместил вытеснение на b");
             AssertTrue(cache.TryGet("a", out val), "a сохранён");
         }
 
@@ -12852,8 +12852,8 @@ namespace ExcelMerger.Tests
             var cache = new LruCache<string>(2, delegate(string v) { evicted.Add(v); });
             cache.Add("x", "x1");
             cache.Add("x", "x2"); // тот же ключ — замена, не рост
-            AssertEqual(1, cache.Count, "замена ключа не увеличивает размер");
-            AssertEqual(0, evicted.Count, "замена ничего не вытесняет");
+            AssertEq(1, cache.Count, "замена ключа не увеличивает размер");
+            AssertEq(0, evicted.Count, "замена ничего не вытесняет");
             string val;
             AssertTrue(cache.TryGet("x", out val) && val == "x2", "значение обновлено");
         }
@@ -12864,7 +12864,7 @@ namespace ExcelMerger.Tests
             cache.Add(@"C:\A.pdf", "doc");
             string val;
             AssertTrue(cache.TryGet(@"c:\a.pdf", out val) && val == "doc", "ключи-пути сравниваются без регистра");
-            AssertEqual(1, cache.Count, "разный регистр — тот же ключ");
+            AssertEq(1, cache.Count, "разный регистр — тот же ключ");
         }
 
         private static void TestLruClear()
@@ -12874,8 +12874,8 @@ namespace ExcelMerger.Tests
             cache.Add("a", "a");
             cache.Add("b", "b");
             cache.Clear();
-            AssertEqual(0, cache.Count, "после Clear пусто");
-            AssertEqual(2, evicted.Count, "Clear освобождает все оставшиеся элементы");
+            AssertEq(0, cache.Count, "после Clear пусто");
+            AssertEq(2, evicted.Count, "Clear освобождает все оставшиеся элементы");
         }
 
         private static void TestLruCapacityGuard()
@@ -12897,9 +12897,9 @@ namespace ExcelMerger.Tests
                 new PdfPageRef { SourcePath = @"C:\a.pdf", PageIndex = 0 }, // дубль
             };
             HashSet<string> keys = PdfPageGrid.BuildKeySet(pages);
-            AssertEqual(2, keys.Count, "дубли схлопываются");
+            AssertEq(2, keys.Count, "дубли схлопываются");
             AssertTrue(keys.Contains(PdfPageGrid.ThumbKey(pages[0])), "ключ страницы 0 присутствует");
-            AssertEqual(0, PdfPageGrid.BuildKeySet(null).Count, "null -> пустой набор");
+            AssertEq(0, PdfPageGrid.BuildKeySet(null).Count, "null -> пустой набор");
         }
 
         private static void TestGridStaleKeys()
@@ -12907,21 +12907,21 @@ namespace ExcelMerger.Tests
             var cached = new List<string> { "a|0", "a|1", "b|0" };
             var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a|0", "b|0", "c|0" };
             List<string> stale = PdfPageGrid.StaleKeys(cached, keep);
-            AssertEqual(1, stale.Count, "один устаревший ключ");
-            AssertEqual("a|1", stale[0], "вытесняется отсутствующий в keep");
+            AssertEq(1, stale.Count, "один устаревший ключ");
+            AssertEq("a|1", stale[0], "вытесняется отсутствующий в keep");
 
             // Тот же набор -> ничего не устаревает (переупорядочивание не роняет кэш).
             var same = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a|0", "a|1", "b|0" };
-            AssertEqual(0, PdfPageGrid.StaleKeys(cached, same).Count, "полное совпадение — без вытеснения");
+            AssertEq(0, PdfPageGrid.StaleKeys(cached, same).Count, "полное совпадение — без вытеснения");
         }
 
         private static void TestLowerBound()
         {
-            AssertEqual(3, PdfPageGrid.LowerBound(5, delegate(int i) { return i >= 3; }), "первый индекс >= 3");
-            AssertEqual(0, PdfPageGrid.LowerBound(5, delegate(int i) { return true; }), "все истинны -> 0");
-            AssertEqual(5, PdfPageGrid.LowerBound(5, delegate(int i) { return false; }), "все ложны -> count");
-            AssertEqual(0, PdfPageGrid.LowerBound(0, delegate(int i) { return true; }), "пустой -> 0");
-            AssertEqual(1, PdfPageGrid.LowerBound(4, delegate(int i) { return i >= 1; }), "граница у начала");
+            AssertEq(3, PdfPageGrid.LowerBound(5, delegate(int i) { return i >= 3; }), "первый индекс >= 3");
+            AssertEq(0, PdfPageGrid.LowerBound(5, delegate(int i) { return true; }), "все истинны -> 0");
+            AssertEq(5, PdfPageGrid.LowerBound(5, delegate(int i) { return false; }), "все ложны -> count");
+            AssertEq(0, PdfPageGrid.LowerBound(0, delegate(int i) { return true; }), "пустой -> 0");
+            AssertEq(1, PdfPageGrid.LowerBound(4, delegate(int i) { return i >= 1; }), "граница у начала");
         }
 
         private static void TestVisibleRange()
@@ -12932,8 +12932,8 @@ namespace ExcelMerger.Tests
             Func<int, int> bottomOf = delegate(int i) { return i * 10 - 25 + 10; };
             int first, last;
             PdfPageGrid.VisibleRange(8, topOf, bottomOf, 30, out first, out last);
-            AssertEqual(2, first, "первый видимый (Bottom >= 0)");
-            AssertEqual(5, last, "последний видимый (Top <= 30)");
+            AssertEq(2, first, "первый видимый (Bottom >= 0)");
+            AssertEq(5, last, "последний видимый (Top <= 30)");
 
             // Всё выше вьюпорта -> ничего целиком не видно (first > last).
             Func<int, int> topHi = delegate(int i) { return i * 10 - 1000; };
@@ -12982,8 +12982,8 @@ namespace ExcelMerger.Tests
                 W("second", 0, 70, 30, 10)
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(1, p.Count, "две близкие строки -> один абзац");
-            AssertEqual("Hello world second line", p[0], "порядок чтения");
+            AssertEq(1, p.Count, "две близкие строки -> один абзац");
+            AssertEq("Hello world second line", p[0], "порядок чтения");
         }
 
         private static void TestOcrParagraphs()
@@ -12997,9 +12997,9 @@ namespace ExcelMerger.Tests
                 W("Ddd", 0, 50, 20, 10)   // midY 55  (зазор 26 -> новый абзац)
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(2, p.Count, "разрыв абзаца по большому зазору");
-            AssertEqual("Aaa Bbb Ccc", p[0], "первый абзац");
-            AssertEqual("Ddd", p[1], "второй абзац");
+            AssertEq(2, p.Count, "разрыв абзаца по большому зазору");
+            AssertEq("Aaa Bbb Ccc", p[0], "первый абзац");
+            AssertEq("Ddd", p[1], "второй абзац");
         }
 
         private static void TestOcrParagraphsIndent()
@@ -13017,9 +13017,9 @@ namespace ExcelMerger.Tests
                 W("B2", 0, 128, 30, 10)    // короткая последняя строка
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(2, p.Count, "красная строка + короткая строка делят абзацы без зазора");
-            AssertEqual("A1a A2 A3", p[0], "первый абзац");
-            AssertEqual("B1 B2", p[1], "второй абзац");
+            AssertEq(2, p.Count, "красная строка + короткая строка делят абзацы без зазора");
+            AssertEq("A1a A2 A3", p[0], "первый абзац");
+            AssertEq("B1 B2", p[1], "второй абзац");
         }
 
         private static void TestOcrIndentDetected()
@@ -13035,8 +13035,8 @@ namespace ExcelMerger.Tests
                 W("B2", 0, 128, 30, 10)
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-            AssertEqual(2, layout.Paragraphs.Count, "два абзаца");
-            AssertEqual(15.0, layout.FirstLineIndentPt, "измерен отступ красной строки (медиана 15 pt)");
+            AssertEq(2, layout.Paragraphs.Count, "два абзаца");
+            AssertEq(15.0, layout.FirstLineIndentPt, "измерен отступ красной строки (медиана 15 pt)");
         }
 
         private static void TestOcrNoIndentReported()
@@ -13050,20 +13050,20 @@ namespace ExcelMerger.Tests
                 W("Ddd", 0, 50, 20, 10)
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-            AssertEqual(0.0, layout.FirstLineIndentPt, "без отступов -> 0 (не портим документ)");
+            AssertEq(0.0, layout.FirstLineIndentPt, "без отступов -> 0 (не портим документ)");
         }
 
         private static void TestFontNames()
         {
-            AssertEqual("Times New Roman", FontNames.Clean("UBWKNX+Times New Roman,Italic"), "subset + курсив-суффикс");
-            AssertEqual("Arial", FontNames.Clean("ABCDEF+Arial-BoldMT"), "subset + -BoldMT");
-            AssertEqual("Times New Roman", FontNames.Clean("TimesNewRomanPSMT"), "PSMT + слитное имя");
-            AssertEqual("Times New Roman", FontNames.Clean("TimesNewRomanPS-BoldMT"), "PS + -BoldMT");
-            AssertEqual("Courier New", FontNames.Clean("CourierNewPS-BoldMT"), "Courier New");
-            AssertEqual("Arial", FontNames.Clean("ArialMT"), "ArialMT");
-            AssertEqual("Calibri", FontNames.Clean("Calibri"), "уже чистое");
-            AssertEqual("PT Astra Serif", FontNames.Clean("BBHOZJ+PTAstraSerif-Regular"), "PT Astra Serif: префикс-аббревиатура + слитное");
-            AssertEqual("MS Gothic", FontNames.Clean("MSGothic"), "MS Gothic: аббревиатура-префикс");
+            AssertEq("Times New Roman", FontNames.Clean("UBWKNX+Times New Roman,Italic"), "subset + курсив-суффикс");
+            AssertEq("Arial", FontNames.Clean("ABCDEF+Arial-BoldMT"), "subset + -BoldMT");
+            AssertEq("Times New Roman", FontNames.Clean("TimesNewRomanPSMT"), "PSMT + слитное имя");
+            AssertEq("Times New Roman", FontNames.Clean("TimesNewRomanPS-BoldMT"), "PS + -BoldMT");
+            AssertEq("Courier New", FontNames.Clean("CourierNewPS-BoldMT"), "Courier New");
+            AssertEq("Arial", FontNames.Clean("ArialMT"), "ArialMT");
+            AssertEq("Calibri", FontNames.Clean("Calibri"), "уже чистое");
+            AssertEq("PT Astra Serif", FontNames.Clean("BBHOZJ+PTAstraSerif-Regular"), "PT Astra Serif: префикс-аббревиатура + слитное");
+            AssertEq("MS Gothic", FontNames.Clean("MSGothic"), "MS Gothic: аббревиатура-префикс");
             AssertTrue(FontNames.Clean(null) == null, "null -> null");
             AssertTrue(FontNames.Clean("  ") == null, "пусто -> null");
         }
@@ -13075,31 +13075,31 @@ namespace ExcelMerger.Tests
                 "Times New Roman", "Calibri Light", "Liberation Serif"
             };
             // Установленный шрифт — оставить как есть (в т.ч. без учёта регистра) для латиницы.
-            AssertEqual("Calibri Light", FontResolver.ResolveFontName("Calibri Light", "text", installed, "Times New Roman"), "установленный сохранён");
-            AssertEqual("times new roman", FontResolver.ResolveFontName("times new roman", "текст", installed, "Times New Roman"), "регистр при поиске не важен");
+            AssertEq("Calibri Light", FontResolver.ResolveFontName("Calibri Light", "text", installed, "Times New Roman"), "установленный сохранён");
+            AssertEq("times new roman", FontResolver.ResolveFontName("times new roman", "текст", installed, "Times New Roman"), "регистр при поиске не важен");
             // НЕустановленный (напр. PT Astra Serif) -> fallback, иначе Word уводит кириллицу в eastAsia -> разрядка.
-            AssertEqual("Times New Roman", FontResolver.ResolveFontName("PT Astra Serif", "текст", installed, "Times New Roman"), "неустановленный -> fallback");
+            AssertEq("Times New Roman", FontResolver.ResolveFontName("PT Astra Serif", "текст", installed, "Times New Roman"), "неустановленный -> fallback");
             // УСТАНОВЛЕННЫЙ, но не Word-родной (Liberation Serif): кириллице — fallback (Word
             // ставит hint=eastAsia и разжижает буквы CJK-выключкой), латинице — оставить.
-            AssertEqual("Times New Roman", FontResolver.ResolveFontName("Liberation Serif", "Пример", installed, "Times New Roman"), "кириллица вне сейф-листа -> fallback");
-            AssertEqual("Liberation Serif", FontResolver.ResolveFontName("Liberation Serif", "latin only", installed, "Times New Roman"), "латиница может остаться");
-            AssertEqual("Calibri Light", FontResolver.ResolveFontName("Calibri Light", "кириллица", installed, "Times New Roman"), "сейф-лист держит кириллицу");
-            AssertEqual("Times New Roman", FontResolver.ResolveFontName(null, "т", installed, "Times New Roman"), "null -> fallback");
-            AssertEqual("Times New Roman", FontResolver.ResolveFontName("X", "т", null, "Times New Roman"), "нет списка -> fallback");
+            AssertEq("Times New Roman", FontResolver.ResolveFontName("Liberation Serif", "Пример", installed, "Times New Roman"), "кириллица вне сейф-листа -> fallback");
+            AssertEq("Liberation Serif", FontResolver.ResolveFontName("Liberation Serif", "latin only", installed, "Times New Roman"), "латиница может остаться");
+            AssertEq("Calibri Light", FontResolver.ResolveFontName("Calibri Light", "кириллица", installed, "Times New Roman"), "сейф-лист держит кириллицу");
+            AssertEq("Times New Roman", FontResolver.ResolveFontName(null, "т", installed, "Times New Roman"), "null -> fallback");
+            AssertEq("Times New Roman", FontResolver.ResolveFontName("X", "т", null, "Times New Roman"), "нет списка -> fallback");
         }
 
         private static void TestProgressPercent()
         {
-            AssertEqual(0, PdfToolFormBase.ProgressPercent(0, 0), "0/0 -> 0 (без деления на ноль)");
-            AssertEqual(0, PdfToolFormBase.ProgressPercent(0, 10), "0/10 -> 0");
-            AssertEqual(50, PdfToolFormBase.ProgressPercent(5, 10), "5/10 -> 50");
-            AssertEqual(100, PdfToolFormBase.ProgressPercent(10, 10), "10/10 -> 100");
-            AssertEqual(100, PdfToolFormBase.ProgressPercent(11, 10), "11/10 -> 100 (кламп сверху)");
-            AssertEqual(0, PdfToolFormBase.ProgressPercent(-1, 10), "отрицательное сделано -> 0");
-            AssertEqual(0, PdfToolFormBase.ProgressPercent(5, -1), "отрицательное всего -> 0");
-            AssertEqual(33, PdfToolFormBase.ProgressPercent(1, 3), "1/3 -> 33 (округление вниз)");
-            AssertEqual(66, PdfToolFormBase.ProgressPercent(2, 3), "2/3 -> 66");
-            AssertEqual(50, PdfToolFormBase.ProgressPercent(1000000, 2000000), "большие числа без переполнения");
+            AssertEq(0, PdfToolFormBase.ProgressPercent(0, 0), "0/0 -> 0 (без деления на ноль)");
+            AssertEq(0, PdfToolFormBase.ProgressPercent(0, 10), "0/10 -> 0");
+            AssertEq(50, PdfToolFormBase.ProgressPercent(5, 10), "5/10 -> 50");
+            AssertEq(100, PdfToolFormBase.ProgressPercent(10, 10), "10/10 -> 100");
+            AssertEq(100, PdfToolFormBase.ProgressPercent(11, 10), "11/10 -> 100 (кламп сверху)");
+            AssertEq(0, PdfToolFormBase.ProgressPercent(-1, 10), "отрицательное сделано -> 0");
+            AssertEq(0, PdfToolFormBase.ProgressPercent(5, -1), "отрицательное всего -> 0");
+            AssertEq(33, PdfToolFormBase.ProgressPercent(1, 3), "1/3 -> 33 (округление вниз)");
+            AssertEq(66, PdfToolFormBase.ProgressPercent(2, 3), "2/3 -> 66");
+            AssertEq(50, PdfToolFormBase.ProgressPercent(1000000, 2000000), "большие числа без переполнения");
         }
 
         private static void TestOcrRunsFontFamily()
@@ -13111,9 +13111,9 @@ namespace ExcelMerger.Tests
                 new PdfWord { Text = "Таймс", Left = 45, Right = 85, Bottom = 0, Top = 8, FontSizePt = 12, FontName = "Times New Roman" }
             };
             List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
-            AssertEqual(2, runs.Count, "смена шрифта -> новый ран");
-            AssertEqual("Arial", runs[0].FontName, "первый ран — Arial");
-            AssertEqual("Times New Roman", runs[1].FontName, "второй ран — Times New Roman");
+            AssertEq(2, runs.Count, "смена шрифта -> новый ран");
+            AssertEq("Arial", runs[0].FontName, "первый ран — Arial");
+            AssertEq("Times New Roman", runs[1].FontName, "второй ран — Times New Roman");
         }
 
         private static void TestOcrParagraphStyle()
@@ -13125,13 +13125,13 @@ namespace ExcelMerger.Tests
                 new PdfWord { Text = "_dmarc", Left = 35, Right = 90, Bottom = 0, Top = 8, FontSizePt = 14, Italic = true }
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-            AssertEqual(1, layout.Paragraphs.Count, "один абзац");
-            AssertEqual(1, layout.Paragraphs[0].Runs.Count, "единый формат -> один ран");
+            AssertEq(1, layout.Paragraphs.Count, "один абзац");
+            AssertEq(1, layout.Paragraphs[0].Runs.Count, "единый формат -> один ран");
             OcrRun r = layout.Paragraphs[0].Runs[0];
-            AssertEqual(14.0, r.FontSizePt, "кегль рана");
+            AssertEq(14.0, r.FontSizePt, "кегль рана");
             AssertTrue(r.Italic, "ран курсивный");
             AssertTrue(!r.Bold, "не полужирный");
-            AssertEqual("Имя: _dmarc", r.Text, "текст рана");
+            AssertEq("Имя: _dmarc", r.Text, "текст рана");
         }
 
         private static void TestOcrRunsMixedFormat()
@@ -13144,11 +13144,11 @@ namespace ExcelMerger.Tests
                 new PdfWord { Text = "снова", Left = 90, Right = 130, Bottom = 0, Top = 8, FontSizePt = 12 }
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-            AssertEqual(1, layout.Paragraphs.Count, "один абзац");
+            AssertEq(1, layout.Paragraphs.Count, "один абзац");
             List<OcrRun> runs = layout.Paragraphs[0].Runs;
-            AssertEqual(3, runs.Count, "три рана: обычный / жирный / обычный");
+            AssertEq(3, runs.Count, "три рана: обычный / жирный / обычный");
             AssertTrue(!runs[0].Bold && runs[1].Bold && !runs[2].Bold, "жирный только средний ран");
-            AssertEqual("обычное жирное снова", layout.Paragraphs[0].Text, "склейка текста");
+            AssertEq("обычное жирное снова", layout.Paragraphs[0].Text, "склейка текста");
         }
 
         private static void TestOcrSuperscript()
@@ -13161,9 +13161,9 @@ namespace ExcelMerger.Tests
                 W("2", 24, 4, 6, 4)     // мельче (4) и приподнято (база 4) -> надстрочный
             };
             List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
-            AssertEqual(2, runs.Count, "надстрочный — отдельный ран");
+            AssertEq(2, runs.Count, "надстрочный — отдельный ран");
             AssertTrue(runs[1].Super && !runs[1].Sub, "'2' надстрочный");
-            AssertEqual("2", runs[1].Text, "текст надстрочного рана");
+            AssertEq("2", runs[1].Text, "текст надстрочного рана");
         }
 
         private static void TestOcrHyperlinkRun()
@@ -13174,8 +13174,8 @@ namespace ExcelMerger.Tests
                 new PdfWord { Text = "обычный", Left = 45, Right = 90, Bottom = 0, Top = 8, FontSizePt = 12 }
             };
             List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
-            AssertEqual(2, runs.Count, "ссылка — отдельный ран");
-            AssertEqual("https://example.com", runs[0].Uri, "URI рана сохранён");
+            AssertEq(2, runs.Count, "ссылка — отдельный ран");
+            AssertEq("https://example.com", runs[0].Uri, "URI рана сохранён");
             AssertTrue(runs[1].Uri == null, "обычный ран без ссылки");
         }
 
@@ -13186,8 +13186,8 @@ namespace ExcelMerger.Tests
                 new PdfWord { Text = "красный", Left = 0, Right = 40, Bottom = 0, Top = 8, FontSizePt = 12, ColorArgb = 0xFF0000 }
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-            AssertEqual(1, layout.Paragraphs[0].Runs.Count, "один ран");
-            AssertEqual(0xFF0000, layout.Paragraphs[0].Runs[0].ColorArgb, "цвет рана сохранён");
+            AssertEq(1, layout.Paragraphs[0].Runs.Count, "один ран");
+            AssertEq(0xFF0000, layout.Paragraphs[0].Runs[0].ColorArgb, "цвет рана сохранён");
         }
 
         private static void TestOcrLeftAligned()
@@ -13201,8 +13201,8 @@ namespace ExcelMerger.Tests
                 W("cccc", 0, 50, 100, 8)    // абзац 2: полная строка Right 100 (задаёт поле)
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-            AssertEqual(2, layout.Paragraphs.Count, "два абзаца");
-            AssertEqual(OcrAlignment.Left, layout.Paragraphs[0].Alignment, "рваный абзац — по левому краю");
+            AssertEq(2, layout.Paragraphs.Count, "два абзаца");
+            AssertEq(OcrAlignment.Left, layout.Paragraphs[0].Alignment, "рваный абзац — по левому краю");
         }
 
         private static void TestOcrCentered()
@@ -13215,9 +13215,9 @@ namespace ExcelMerger.Tests
                 W("строка", 0, 138, 100, 8)
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-            AssertEqual(2, layout.Paragraphs.Count, "два абзаца");
-            AssertEqual(OcrAlignment.Center, layout.Paragraphs[0].Alignment, "номер страницы по центру");
-            AssertEqual(OcrAlignment.Justify, layout.Paragraphs[1].Alignment, "тело по ширине");
+            AssertEq(2, layout.Paragraphs.Count, "два абзаца");
+            AssertEq(OcrAlignment.Center, layout.Paragraphs[0].Alignment, "номер страницы по центру");
+            AssertEq(OcrAlignment.Justify, layout.Paragraphs[1].Alignment, "тело по ширине");
         }
 
         private static void TestIsCenteredPredicate()
@@ -13260,12 +13260,12 @@ namespace ExcelMerger.Tests
                 W("Bodythree", 2, 126, 96, 8)
             };
             List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
-            AssertEqual(4, paras.Count, "3 центрированные строки титула (каждая своим абзацем) + тело");
-            AssertEqual(OcrAlignment.Center, paras[0].Alignment, "широкая строка титула — по центру (по общей оси)");
-            AssertEqual(OcrAlignment.Center, paras[1].Alignment, "вторая широкая строка титула — по центру");
-            AssertEqual(OcrAlignment.Center, paras[2].Alignment, "короткий хвост — по центру");
-            AssertEqual("Wideoneaa", paras[0].Text, "исходная строка сохранена отдельным абзацем (не слита)");
-            AssertEqual(OcrAlignment.Justify, paras[3].Alignment, "тело — выключка, не центр (нет короткой центрированной строки)");
+            AssertEq(4, paras.Count, "3 центрированные строки титула (каждая своим абзацем) + тело");
+            AssertEq(OcrAlignment.Center, paras[0].Alignment, "широкая строка титула — по центру (по общей оси)");
+            AssertEq(OcrAlignment.Center, paras[1].Alignment, "вторая широкая строка титула — по центру");
+            AssertEq(OcrAlignment.Center, paras[2].Alignment, "короткий хвост — по центру");
+            AssertEq("Wideoneaa", paras[0].Text, "исходная строка сохранена отдельным абзацем (не слита)");
+            AssertEq(OcrAlignment.Justify, paras[3].Alignment, "тело — выключка, не центр (нет короткой центрированной строки)");
         }
 
         private static void TestOcrGlueFragments()
@@ -13280,8 +13280,8 @@ namespace ExcelMerger.Tests
                 W("тут", 30, 0, 20, 10)   // зазор 5 (0.5 кегля) -> пробел      => «мир тут»
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(1, p.Count, "одна строка — один абзац");
-            AssertEqual("мир тут", p[0], "фрагменты склеены, между словами пробел");
+            AssertEq(1, p.Count, "одна строка — один абзац");
+            AssertEq("мир тут", p[0], "фрагменты склеены, между словами пробел");
         }
 
         private static void TestOcrNarrowSpaceKept()
@@ -13295,8 +13295,8 @@ namespace ExcelMerger.Tests
                 W("ТЕКСТ", 62.4, 0, 40, 16)        // зазор 2.4 = 0.15 кегля -> пробел
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(1, p.Count, "одна строка — один абзац");
-            AssertEqual("СЛОВО ТЕКСТ", p[0], "узкий настоящий пробел сохранён (не склейка)");
+            AssertEq(1, p.Count, "одна строка — один абзац");
+            AssertEq("СЛОВО ТЕКСТ", p[0], "узкий настоящий пробел сохранён (не склейка)");
         }
 
         private static void TestOcrThinDashStaysOnLine()
@@ -13310,8 +13310,8 @@ namespace ExcelMerger.Tests
                 W("добавляет", 70, 0, 50, 8)     // [0..8], центр 4
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(1, p.Count, "тире не отрывается — одна строка, один абзац");
-            AssertEqual("quarantine — добавляет", p[0], "тире осталось между словами");
+            AssertEq(1, p.Count, "тире не отрывается — одна строка, один абзац");
+            AssertEq("quarantine — добавляет", p[0], "тире осталось между словами");
         }
 
         private static void TestOcrHyphenation()
@@ -13324,8 +13324,8 @@ namespace ExcelMerger.Tests
                 W("rld", 0, 75, 20, 10)
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(1, p.Count, "один абзац");
-            AssertEqual("hello world", p[0], "дефис-перенос склеен");
+            AssertEq(1, p.Count, "один абзац");
+            AssertEq("hello world", p[0], "дефис-перенос склеен");
         }
 
         private static void TestOcrHyphenCyrillicKept()
@@ -13340,8 +13340,8 @@ namespace ExcelMerger.Tests
                 W("коммуникационных", 0, 75, 95, 10)
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(1, p.Count, "один абзац");
-            AssertEqual("шёл информационно-коммуникационных", p[0], "кириллический дефис сохранён");
+            AssertEq(1, p.Count, "один абзац");
+            AssertEq("шёл информационно-коммуникационных", p[0], "кириллический дефис сохранён");
         }
 
         private static void TestOcrHardLineBreak()
@@ -13356,9 +13356,9 @@ namespace ExcelMerger.Tests
                 W("отдела", 0, 75, 50, 10)            // влезло бы: 80 + 50 + 7.5 <= 200
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(3, p.Count, "полная строка и две строки подписи — три абзаца");
-            AssertEqual("Заместитель руководитель", p[1], "первая строка подписи своим абзацем");
-            AssertEqual("отдела", p[2], "вторая строка подписи своим абзацем");
+            AssertEq(3, p.Count, "полная строка и две строки подписи — три абзаца");
+            AssertEq("Заместитель руководитель", p[1], "первая строка подписи своим абзацем");
+            AssertEq("отдела", p[2], "вторая строка подписи своим абзацем");
         }
 
         private static void TestOcrSignatureHardBreak()
@@ -13373,10 +13373,10 @@ namespace ExcelMerger.Tests
                 W("Иванов", 300, 75, 60, 10)
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(3, p.Count, "две строки подписи и Ф.И.О. — три абзаца");
-            AssertEqual("Руководитель проектной группы", p[0], "первая строка подписи");
-            AssertEqual("испытательного отдела", p[1], "вторая строка подписи");
-            AssertEqual("Иванов", p[2], "правая колонка после левой");
+            AssertEq(3, p.Count, "две строки подписи и Ф.И.О. — три абзаца");
+            AssertEq("Руководитель проектной группы", p[0], "первая строка подписи");
+            AssertEq("испытательного отдела", p[1], "вторая строка подписи");
+            AssertEq("Иванов", p[2], "правая колонка после левой");
         }
 
         private static void TestOcrFootnoteDigitSuper()
@@ -13399,9 +13399,9 @@ namespace ExcelMerger.Tests
                 Sized("сн", 100, 0, 8, 6, 8)     // мелкое буквенное на базовой — НЕ скрипт
             };
             List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
-            AssertEqual(4, runs.Count, "цифра и мелкое слово — отдельные раны (кегль различен)");
+            AssertEq(4, runs.Count, "цифра и мелкое слово — отдельные раны (кегль различен)");
             AssertTrue(runs[1].Super && !runs[1].Sub, "«2» — надстрочный маркер сноски");
-            AssertEqual("2", runs[1].Text.Trim(), "текст маркера (межсловный пробел уходит в ран)");
+            AssertEq("2", runs[1].Text.Trim(), "текст маркера (межсловный пробел уходит в ран)");
             AssertTrue(!runs[3].Super && !runs[3].Sub, "мелкое буквенное слово — не скрипт");
         }
 
@@ -13444,12 +13444,12 @@ namespace ExcelMerger.Tests
                 new PageBlocks.PageItem { Top = 63, Bottom = 50 },   // зазор 7
                 new PageBlocks.PageItem { Top = 20, Bottom = 10 }    // зазор 30
             };
-            AssertEqual(7.0, PageBlocks.TypicalItemGap(items), "типичный зазор — медиана {7,7,30}");
-            AssertEqual(0.0, PageBlocks.ExtraGapPt(10, 7), "лишек 3 меньше порога — без интервала");
-            AssertEqual(23.0, PageBlocks.ExtraGapPt(30, 7), "лишек 23 — интервал 23 pt");
+            AssertEq(7.0, PageBlocks.TypicalItemGap(items), "типичный зазор — медиана {7,7,30}");
+            AssertEq(0.0, PageBlocks.ExtraGapPt(10, 7), "лишек 3 меньше порога — без интервала");
+            AssertEq(23.0, PageBlocks.ExtraGapPt(30, 7), "лишек 23 — интервал 23 pt");
             // Кап 400: пропускает нижний блок у нижнего края почти пустой страницы,
             // а от переливов страхует демпфер FitSpacingToPages.
-            AssertEqual(400.0, PageBlocks.ExtraGapPt(900, 7), "кап 400 pt");
+            AssertEq(400.0, PageBlocks.ExtraGapPt(900, 7), "кап 400 pt");
         }
 
         private static void TestWindowBoundsRoundTrip()
@@ -13457,7 +13457,7 @@ namespace ExcelMerger.Tests
             var r = new System.Drawing.Rectangle(120, -40, 800, 660); // отрицательный Y — левый монитор
             System.Drawing.Rectangle back; bool max;
             AssertTrue(WindowPlacement.TryParse(WindowPlacement.Format(r, false), out back, out max), "разбор своей сериализации");
-            AssertEqual(r, back, "round-trip прямоугольника");
+            AssertEq(r, back, "round-trip прямоугольника");
             AssertTrue(!max, "флаг развёрнуто = false");
             AssertTrue(WindowPlacement.TryParse(WindowPlacement.Format(r, true), out back, out max) && max, "флаг развёрнуто = true");
             System.Drawing.Rectangle junk; bool jm;
@@ -13473,10 +13473,10 @@ namespace ExcelMerger.Tests
             var one = new[] { screen };
             var min = new System.Drawing.Size(700, 560);
             var inside = new System.Drawing.Rectangle(100, 100, 800, 600);
-            AssertEqual(inside, WindowPlacement.ClampToWorkingArea(inside, one, min), "внутри экрана — без изменений");
+            AssertEq(inside, WindowPlacement.ClampToWorkingArea(inside, one, min), "внутри экрана — без изменений");
             var offRB = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(1900, 1000, 800, 600), one, min);
             AssertTrue(offRB.Right <= screen.Right && offRB.Bottom <= screen.Bottom, "не за правым/нижним краем");
-            AssertEqual(800, offRB.Width, "ширина сохранена при сдвиге внутрь");
+            AssertEq(800, offRB.Width, "ширина сохранена при сдвиге внутрь");
             var offAll = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(-5000, -5000, 800, 600), one, min);
             AssertTrue(offAll.X >= screen.Left && offAll.Y >= screen.Top, "ушедшее целиком за экран возвращается");
             var tiny = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(0, 0, 100, 100), one, min);
@@ -13485,7 +13485,7 @@ namespace ExcelMerger.Tests
             AssertTrue(huge.Width <= screen.Width && huge.Height <= screen.Height, "не больше экрана");
             var two = new[] { screen, new System.Drawing.Rectangle(1920, 0, 1920, 1040) };
             var onSecond = WindowPlacement.ClampToWorkingArea(new System.Drawing.Rectangle(2200, 100, 800, 600), two, min);
-            AssertEqual(new System.Drawing.Rectangle(2200, 100, 800, 600), onSecond, "на втором мониторе — без изменений");
+            AssertEq(new System.Drawing.Rectangle(2200, 100, 800, 600), onSecond, "на втором мониторе — без изменений");
         }
 
         private static void TestMoveActiveLast()
@@ -13498,10 +13498,10 @@ namespace ExcelMerger.Tests
             }
             var snap = new List<ShellContext.ToolSnapshot> { S("a", false), S("b", true), S("c", false) };
             ShellContext.MoveActiveLast(snap);
-            AssertEqual("a|c|b", snap[0].Key + "|" + snap[1].Key + "|" + snap[2].Key, "активный — последним");
+            AssertEq("a|c|b", snap[0].Key + "|" + snap[1].Key + "|" + snap[2].Key, "активный — последним");
             var none = new List<ShellContext.ToolSnapshot> { S("a", false), S("b", false) };
             ShellContext.MoveActiveLast(none);
-            AssertEqual("a|b", none[0].Key + "|" + none[1].Key, "без активного порядок не меняется");
+            AssertEq("a|b", none[0].Key + "|" + none[1].Key, "без активного порядок не меняется");
         }
 
         private static void TestOcrWideGapSplit()
@@ -13516,12 +13516,12 @@ namespace ExcelMerger.Tests
                 W("REG~MARK", 300, 90, 60, 10)
             };
             List<OcrParagraph> flow = OcrLayout.Analyze(words).Paragraphs;
-            AssertEqual(2, flow.Count, "в потоке — два абзаца-зоны");
-            AssertEqual("На № 02.07.2026", flow[0].Text, "левая зона");
-            AssertEqual("REG~MARK", flow[1].Text, "правая зона");
+            AssertEq(2, flow.Count, "в потоке — два абзаца-зоны");
+            AssertEq("На № 02.07.2026", flow[0].Text, "левая зона");
+            AssertEq("REG~MARK", flow[1].Text, "правая зона");
             List<OcrParagraph> cell = OcrLayout.Analyze(words, false).Paragraphs;
-            AssertEqual(1, cell.Count, "в ячейке строка едина");
-            AssertEqual("На № 02.07.2026 REG~MARK", cell[0].Text, "текст ячейки не порван");
+            AssertEq(1, cell.Count, "в ячейке строка едина");
+            AssertEq("На № 02.07.2026 REG~MARK", cell[0].Text, "текст ячейки не порван");
         }
 
         private static void TestCoalesceRowBands()
@@ -13547,9 +13547,9 @@ namespace ExcelMerger.Tests
                 P(0, 300, 70, 60)      // следующая строка — отдельно
             };
             List<PageBlocks.PageItem> result = PageBlocks.CoalesceRowBands(items);
-            AssertEqual(2, result.Count, "полоса + одиночный");
+            AssertEq(2, result.Count, "полоса + одиночный");
             AssertTrue(result[0].IsBand && result[0].Columns.Count == 2, "первая пара — полоса 1×2");
-            AssertEqual(200.0, result[0].ColLeft[1], "левый край правой колонки");
+            AssertEq(200.0, result[0].ColLeft[1], "левый край правой колонки");
             AssertTrue(!result[1].IsBand, "нижний абзац остался одиночным");
         }
 
@@ -13578,8 +13578,8 @@ namespace ExcelMerger.Tests
                 W("форма", 0, 75, 90, 10)
             };
             List<string> p = OcrLayout.ToParagraphs(words);
-            AssertEqual(1, p.Count, "один абзац");
-            AssertEqual("шла Word-форма", p[0], "дефис лат+кириллица сохранён");
+            AssertEq(1, p.Count, "один абзац");
+            AssertEq("шла Word-форма", p[0], "дефис лат+кириллица сохранён");
         }
 
         private static void TestCoveredByLowImage()
@@ -13610,8 +13610,8 @@ namespace ExcelMerger.Tests
 
         private static void TestOcrEmpty()
         {
-            AssertEqual(0, OcrLayout.ToParagraphs(new List<PdfWord>()).Count, "пусто -> нет абзацев");
-            AssertEqual(0, OcrLayout.ToParagraphs(null).Count, "null -> нет абзацев");
+            AssertEq(0, OcrLayout.ToParagraphs(new List<PdfWord>()).Count, "пусто -> нет абзацев");
+            AssertEq(0, OcrLayout.ToParagraphs(null).Count, "null -> нет абзацев");
         }
 
         // ---------- ListMarker (маркеры списка) ----------
@@ -13619,35 +13619,35 @@ namespace ExcelMerger.Tests
         private static void TestListMarkerNumbered()
         {
             ListMarker.Result a = ListMarker.Detect("1. Внести изменения");
-            AssertEqual((int)ListKind.Numbered, (int)a.Kind, "«1.» -> нумерованный");
-            AssertEqual(1, a.Number, "номер 1");
-            AssertEqual("Внести изменения", "1. Внести изменения".Substring(a.ContentStart), "содержимое без маркера");
+            AssertEq((int)ListKind.Numbered, (int)a.Kind, "«1.» -> нумерованный");
+            AssertEq(1, a.Number, "номер 1");
+            AssertEq("Внести изменения", "1. Внести изменения".Substring(a.ContentStart), "содержимое без маркера");
 
             ListMarker.Result b = ListMarker.Detect("12) пункт");
-            AssertEqual((int)ListKind.Numbered, (int)b.Kind, "«12)» -> нумерованный");
-            AssertEqual(12, b.Number, "номер 12");
-            AssertEqual("пункт", "12) пункт".Substring(b.ContentStart), "содержимое после «12)»");
+            AssertEq((int)ListKind.Numbered, (int)b.Kind, "«12)» -> нумерованный");
+            AssertEq(12, b.Number, "номер 12");
+            AssertEq("пункт", "12) пункт".Substring(b.ContentStart), "содержимое после «12)»");
         }
 
         private static void TestListMarkerBulleted()
         {
             ListMarker.Result a = ListMarker.Detect("• первый");
-            AssertEqual((int)ListKind.Bulleted, (int)a.Kind, "«•» -> маркированный");
-            AssertEqual("первый", "• первый".Substring(a.ContentStart), "содержимое без буллета");
+            AssertEq((int)ListKind.Bulleted, (int)a.Kind, "«•» -> маркированный");
+            AssertEq("первый", "• первый".Substring(a.ContentStart), "содержимое без буллета");
 
             ListMarker.Result b = ListMarker.Detect("— тире-буллет");
-            AssertEqual((int)ListKind.Bulleted, (int)b.Kind, "«—» -> маркированный");
-            AssertEqual("тире-буллет", "— тире-буллет".Substring(b.ContentStart), "содержимое без тире");
+            AssertEq((int)ListKind.Bulleted, (int)b.Kind, "«—» -> маркированный");
+            AssertEq("тире-буллет", "— тире-буллет".Substring(b.ContentStart), "содержимое без тире");
         }
 
         private static void TestListMarkerNegatives()
         {
-            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("2025 год отчёта").Kind, "год не маркер");
-            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("12.5% роста").Kind, "проценты не маркер");
-            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("1.без пробела").Kind, "без пробела после точки — не маркер");
-            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("•безпробела").Kind, "буллет без пробела — не маркер");
-            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("Обычный текст").Kind, "обычный текст — не список");
-            AssertEqual((int)ListKind.None, (int)ListMarker.Detect("").Kind, "пусто — не список");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("2025 год отчёта").Kind, "год не маркер");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("12.5% роста").Kind, "проценты не маркер");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("1.без пробела").Kind, "без пробела после точки — не маркер");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("•безпробела").Kind, "буллет без пробела — не маркер");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("Обычный текст").Kind, "обычный текст — не список");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("").Kind, "пусто — не список");
         }
 
         private static void TestOcrNumberedList()
@@ -13660,13 +13660,13 @@ namespace ExcelMerger.Tests
                 W("2.", 0, 88, 8, 10),  W("Второй", 12, 88, 40, 10)
             };
             List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
-            AssertEqual(2, ps.Count, "два пункта -> два абзаца");
-            AssertEqual((int)ListKind.Numbered, (int)ps[0].ListKind, "пункт 1 — нумерованный");
-            AssertEqual(1, ps[0].ListNumber, "номер первого пункта");
-            AssertEqual((int)ListKind.Numbered, (int)ps[1].ListKind, "пункт 2 — нумерованный");
-            AssertEqual(2, ps[1].ListNumber, "номер второго пункта");
-            AssertEqual("Первый", ps[0].Text.Substring(ps[0].ListContentStart), "содержимое 1 без маркера");
-            AssertEqual("Второй", ps[1].Text.Substring(ps[1].ListContentStart), "содержимое 2 без маркера");
+            AssertEq(2, ps.Count, "два пункта -> два абзаца");
+            AssertEq((int)ListKind.Numbered, (int)ps[0].ListKind, "пункт 1 — нумерованный");
+            AssertEq(1, ps[0].ListNumber, "номер первого пункта");
+            AssertEq((int)ListKind.Numbered, (int)ps[1].ListKind, "пункт 2 — нумерованный");
+            AssertEq(2, ps[1].ListNumber, "номер второго пункта");
+            AssertEq("Первый", ps[0].Text.Substring(ps[0].ListContentStart), "содержимое 1 без маркера");
+            AssertEq("Второй", ps[1].Text.Substring(ps[1].ListContentStart), "содержимое 2 без маркера");
         }
 
         private static void TestOcrBulletedList()
@@ -13677,11 +13677,11 @@ namespace ExcelMerger.Tests
                 W("•", 0, 88, 6, 10),  W("груша", 10, 88, 40, 10)
             };
             List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
-            AssertEqual(2, ps.Count, "два буллета -> два абзаца");
-            AssertEqual((int)ListKind.Bulleted, (int)ps[0].ListKind, "буллет 1");
-            AssertEqual((int)ListKind.Bulleted, (int)ps[1].ListKind, "буллет 2");
-            AssertEqual("яблоко", ps[0].Text.Substring(ps[0].ListContentStart), "содержимое буллета 1 без маркера");
-            AssertEqual("груша", ps[1].Text.Substring(ps[1].ListContentStart), "содержимое буллета 2 без маркера");
+            AssertEq(2, ps.Count, "два буллета -> два абзаца");
+            AssertEq((int)ListKind.Bulleted, (int)ps[0].ListKind, "буллет 1");
+            AssertEq((int)ListKind.Bulleted, (int)ps[1].ListKind, "буллет 2");
+            AssertEq("яблоко", ps[0].Text.Substring(ps[0].ListContentStart), "содержимое буллета 1 без маркера");
+            AssertEq("груша", ps[1].Text.Substring(ps[1].ListContentStart), "содержимое буллета 2 без маркера");
         }
 
         // ---------- StampDetector (текстовый штамп) ----------
@@ -13711,7 +13711,7 @@ namespace ExcelMerger.Tests
             List<PdfWord> words = StampWords();
             StampRegion s = StampDetector.Detect(words, 595, 842);
             AssertTrue(s != null, "штамп распознан");
-            AssertEqual(14, s.Words.Count, "в область попали все 14 слов штампа (без слова тела)");
+            AssertEq(14, s.Words.Count, "в область попали все 14 слов штампа (без слова тела)");
             bool bodyIn = false;
             foreach (PdfWord w in s.Words) if (w.Text == "Обычныйтекст") bodyIn = true;
             AssertTrue(!bodyIn, "слово тела вне полосы штампа не захвачено");
@@ -13809,7 +13809,7 @@ namespace ExcelMerger.Tests
             foreach (string key in Loc.Keys)
             {
                 string[] p = Loc.Pair(key);
-                AssertEqual(Placeholders(p[0]), Placeholders(p[1]), "плейсхолдеры {N} расходятся у «" + key + "»");
+                AssertEq(Placeholders(p[0]), Placeholders(p[1]), "плейсхолдеры {N} расходятся у «" + key + "»");
             }
         }
 
@@ -13850,21 +13850,21 @@ namespace ExcelMerger.Tests
             Lang saved = Loc.Current;
             try
             {
-                Loc.Init(Lang.En); AssertEqual((int)Lang.En, (int)Loc.Current, "Init En");
-                Loc.Init(Lang.Ru); AssertEqual((int)Lang.Ru, (int)Loc.Current, "Init Ru");
-                AssertEqual((int)Lang.En, (int)Loc.Parse("en"), "Parse en");
-                AssertEqual((int)Lang.En, (int)Loc.Parse("EN"), "Parse EN");
-                AssertEqual((int)Lang.Ru, (int)Loc.Parse("ru"), "Parse ru");
-                AssertEqual((int)Lang.Ru, (int)Loc.Parse("xx"), "Parse неизвестный -> ru");
-                AssertEqual("en", Loc.Code(Lang.En), "Code En");
-                AssertEqual("ru", Loc.Code(Lang.Ru), "Code Ru");
+                Loc.Init(Lang.En); AssertEq((int)Lang.En, (int)Loc.Current, "Init En");
+                Loc.Init(Lang.Ru); AssertEq((int)Lang.Ru, (int)Loc.Current, "Init Ru");
+                AssertEq((int)Lang.En, (int)Loc.Parse("en"), "Parse en");
+                AssertEq((int)Lang.En, (int)Loc.Parse("EN"), "Parse EN");
+                AssertEq((int)Lang.Ru, (int)Loc.Parse("ru"), "Parse ru");
+                AssertEq((int)Lang.Ru, (int)Loc.Parse("xx"), "Parse неизвестный -> ru");
+                AssertEq("en", Loc.Code(Lang.En), "Code En");
+                AssertEq("ru", Loc.Code(Lang.Ru), "Code Ru");
                 // Дефолт первого запуска по системной локали: русская → ru, прочие → en.
-                AssertEqual((int)Lang.Ru, (int)Loc.DefaultForCulture("ru-RU"), "локаль ru-RU -> ru");
-                AssertEqual((int)Lang.Ru, (int)Loc.DefaultForCulture("RU"), "локаль RU -> ru");
-                AssertEqual((int)Lang.En, (int)Loc.DefaultForCulture("en-US"), "локаль en-US -> en");
-                AssertEqual((int)Lang.En, (int)Loc.DefaultForCulture("de-DE"), "локаль de-DE -> en");
-                AssertEqual((int)Lang.En, (int)Loc.DefaultForCulture(null), "нет локали -> en");
-                AssertEqual((int)Lang.En, (int)Loc.DefaultForCulture(""), "пустая локаль -> en");
+                AssertEq((int)Lang.Ru, (int)Loc.DefaultForCulture("ru-RU"), "локаль ru-RU -> ru");
+                AssertEq((int)Lang.Ru, (int)Loc.DefaultForCulture("RU"), "локаль RU -> ru");
+                AssertEq((int)Lang.En, (int)Loc.DefaultForCulture("en-US"), "локаль en-US -> en");
+                AssertEq((int)Lang.En, (int)Loc.DefaultForCulture("de-DE"), "локаль de-DE -> en");
+                AssertEq((int)Lang.En, (int)Loc.DefaultForCulture(null), "нет локали -> en");
+                AssertEq((int)Lang.En, (int)Loc.DefaultForCulture(""), "пустая локаль -> en");
             }
             finally { Loc.Init(saved); }
         }
@@ -14009,15 +14009,15 @@ namespace ExcelMerger.Tests
                 Word("C", 25, 25), Word("D", 75, 25)  // нижняя строка
             };
             TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
-            AssertEqual(1, res.Tables.Count, "одна таблица");
+            AssertEq(1, res.Tables.Count, "одна таблица");
             OcrTable t = res.Tables[0];
-            AssertEqual(2, t.Rows.Count, "2 строки");
-            AssertEqual(2, t.ColumnCount, "2 колонки");
-            AssertEqual("A", TableCellText(t, 0, 0), "ячейка (0,0)");
-            AssertEqual("B", TableCellText(t, 0, 1), "ячейка (0,1)");
-            AssertEqual("C", TableCellText(t, 1, 0), "ячейка (1,0)");
-            AssertEqual("D", TableCellText(t, 1, 1), "ячейка (1,1)");
-            AssertEqual(0, res.RemainingWords.Count, "все слова в таблице");
+            AssertEq(2, t.Rows.Count, "2 строки");
+            AssertEq(2, t.ColumnCount, "2 колонки");
+            AssertEq("A", TableCellText(t, 0, 0), "ячейка (0,0)");
+            AssertEq("B", TableCellText(t, 0, 1), "ячейка (0,1)");
+            AssertEq("C", TableCellText(t, 1, 0), "ячейка (1,0)");
+            AssertEq("D", TableCellText(t, 1, 1), "ячейка (1,1)");
+            AssertEq(0, res.RemainingWords.Count, "все слова в таблице");
         }
 
         private static void TestTableRowSpan()
@@ -14030,13 +14030,13 @@ namespace ExcelMerger.Tests
             };
             var words = new List<PdfWord> { Word("L", 25, 50), Word("TR", 75, 75), Word("BR", 75, 25) };
             TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
-            AssertEqual(1, res.Tables.Count, "одна таблица");
+            AssertEq(1, res.Tables.Count, "одна таблица");
             OcrTable t = res.Tables[0];
-            AssertEqual(2, t.Rows[0].Cells[0].RowSpan, "левая ячейка на 2 строки");
+            AssertEq(2, t.Rows[0].Cells[0].RowSpan, "левая ячейка на 2 строки");
             AssertTrue(t.Rows[1].Cells[0].Covered, "накрытая позиция под объединением");
-            AssertEqual("L", TableCellText(t, 0, 0), "текст объединённой ячейки");
-            AssertEqual("TR", TableCellText(t, 0, 1), "правая верхняя");
-            AssertEqual("BR", TableCellText(t, 1, 1), "правая нижняя");
+            AssertEq("L", TableCellText(t, 0, 0), "текст объединённой ячейки");
+            AssertEq("TR", TableCellText(t, 0, 1), "правая верхняя");
+            AssertEq("BR", TableCellText(t, 1, 1), "правая нижняя");
         }
 
         private static void TestTableColSpan()
@@ -14049,13 +14049,13 @@ namespace ExcelMerger.Tests
             };
             var words = new List<PdfWord> { Word("Top", 50, 75), Word("BL", 25, 25), Word("BR", 75, 25) };
             TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
-            AssertEqual(1, res.Tables.Count, "одна таблица");
+            AssertEq(1, res.Tables.Count, "одна таблица");
             OcrTable t = res.Tables[0];
-            AssertEqual(2, t.Rows[0].Cells[0].ColSpan, "верхняя ячейка на 2 колонки");
+            AssertEq(2, t.Rows[0].Cells[0].ColSpan, "верхняя ячейка на 2 колонки");
             AssertTrue(t.Rows[0].Cells[1].Covered, "накрытая позиция справа");
-            AssertEqual("Top", TableCellText(t, 0, 0), "текст объединённой ячейки");
-            AssertEqual("BL", TableCellText(t, 1, 0), "нижняя левая");
-            AssertEqual("BR", TableCellText(t, 1, 1), "нижняя правая");
+            AssertEq("Top", TableCellText(t, 0, 0), "текст объединённой ячейки");
+            AssertEq("BL", TableCellText(t, 1, 0), "нижняя левая");
+            AssertEq("BR", TableCellText(t, 1, 1), "нижняя правая");
         }
 
         private static void TestTableStrayLines()
@@ -14064,8 +14064,8 @@ namespace ExcelMerger.Tests
             var lines = new List<PdfLine> { HLine(60, 0, 40), HLine(20, 0, 40) };
             var words = new List<PdfWord> { Word("x", 20, 60) };
             TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
-            AssertEqual(0, res.Tables.Count, "нет таблиц");
-            AssertEqual(1, res.RemainingWords.Count, "слово осталось в потоке");
+            AssertEq(0, res.Tables.Count, "нет таблиц");
+            AssertEq(1, res.RemainingWords.Count, "слово осталось в потоке");
         }
 
         private static void TestTableSingleBox()
@@ -14077,8 +14077,8 @@ namespace ExcelMerger.Tests
             };
             var words = new List<PdfWord> { Word("x", 50, 50) };
             TableDetectResult res = TableDetector.Detect(lines, words, 200, 200);
-            AssertEqual(0, res.Tables.Count, "рамка 1x1 — не таблица");
-            AssertEqual(1, res.RemainingWords.Count, "слово осталось в потоке");
+            AssertEq(0, res.Tables.Count, "рамка 1x1 — не таблица");
+            AssertEq(1, res.RemainingWords.Count, "слово осталось в потоке");
         }
 
         private static void TestTableWordsOutside()
@@ -14090,17 +14090,17 @@ namespace ExcelMerger.Tests
             };
             var words = new List<PdfWord> { Word("in", 25, 75), Word("out", 300, 300) };
             TableDetectResult res = TableDetector.Detect(lines, words, 500, 500);
-            AssertEqual(1, res.Tables.Count, "одна таблица");
-            AssertEqual(1, res.RemainingWords.Count, "внешнее слово в потоке");
-            AssertEqual("out", res.RemainingWords[0].Text, "именно внешнее слово");
+            AssertEq(1, res.Tables.Count, "одна таблица");
+            AssertEq(1, res.RemainingWords.Count, "внешнее слово в потоке");
+            AssertEq("out", res.RemainingWords[0].Text, "именно внешнее слово");
         }
 
         private static void TestTableNoLines()
         {
             var words = new List<PdfWord> { Word("a", 10, 10), Word("b", 20, 20) };
             TableDetectResult res = TableDetector.Detect(new List<PdfLine>(), words, 200, 200);
-            AssertEqual(0, res.Tables.Count, "нет линий — нет таблиц");
-            AssertEqual(2, res.RemainingWords.Count, "все слова в потоке");
+            AssertEq(0, res.Tables.Count, "нет линий — нет таблиц");
+            AssertEq(2, res.RemainingWords.Count, "все слова в потоке");
         }
 
         private static void TestUnderlineMarks()
@@ -14180,7 +14180,7 @@ namespace ExcelMerger.Tests
                 WordBox("three", 140, 190, 200), WordBox("four", 195, 235, 200)
             };
             List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
-            AssertEqual(1, paras.Count, "одна строка -> один абзац (сайдбар не сработал)");
+            AssertEq(1, paras.Count, "одна строка -> один абзац (сайдбар не сработал)");
             AssertTrue(paras[0].Text.Contains("one") && paras[0].Text.Contains("four"), "все слова в одном абзаце");
         }
 
@@ -14197,10 +14197,10 @@ namespace ExcelMerger.Tests
                 new OcrImage { LeftPt = 120, TopPt = 325, WidthPt = 113, HeightPt = 25 }  // печать на середине листа
             };
             PdfTextExtract.SetMargins(pt, words, images, 595, 842);
-            AssertEqual(57.0, pt.TopMarginPt, "верхнее поле — от логотипа, а не от первого слова");
-            AssertEqual(100.0, pt.LeftMarginPt, "левое поле — минимум по контенту");
-            AssertEqual(295.0, pt.RightMarginPt, "правое поле — от самого правого края контента");
-            AssertEqual(90.0, pt.BottomMarginPt, "нижнее поле ограничено капом");
+            AssertEq(57.0, pt.TopMarginPt, "верхнее поле — от логотипа, а не от первого слова");
+            AssertEq(100.0, pt.LeftMarginPt, "левое поле — минимум по контенту");
+            AssertEq(295.0, pt.RightMarginPt, "правое поле — от самого правого края контента");
+            AssertEq(90.0, pt.BottomMarginPt, "нижнее поле ограничено капом");
         }
 
         private static void TestColumnConfine()
@@ -14209,16 +14209,16 @@ namespace ExcelMerger.Tests
             // Правая колонка на странице textLeft=84..textRight=567: колонка 340..543.
             bool c1 = WordDocxWriter.ColumnConfineIndents(true, 340, 543, 84, 567, out li, out ri);
             AssertTrue(c1, "правая колонка конфайнится");
-            AssertEqual(256.0, li, "левый отступ = 340-84");
-            AssertEqual(24.0, ri, "правый отступ = 567-543");
+            AssertEq(256.0, li, "левый отступ = 340-84");
+            AssertEq(24.0, ri, "правый отступ = 567-543");
             // Левая колонка 104..285.
             WordDocxWriter.ColumnConfineIndents(true, 104, 285, 84, 567, out li, out ri);
-            AssertEqual(20.0, li, "левый отступ = 104-84");
-            AssertEqual(282.0, ri, "правый отступ = 567-285");
+            AssertEq(20.0, li, "левый отступ = 104-84");
+            AssertEq(282.0, ri, "правый отступ = 567-285");
             // Полноширинный блок (тело) 90..560 — конфайна нет.
             bool c3 = WordDocxWriter.ColumnConfineIndents(true, 90, 560, 84, 567, out li, out ri);
             AssertTrue(!c3, "полная ширина -> без конфайна");
-            AssertEqual(0.0, li, "нет левого"); AssertEqual(0.0, ri, "нет правого");
+            AssertEq(0.0, li, "нет левого"); AssertEq(0.0, ri, "нет правого");
             // Не центрированный (eligible=false) — не трогаем.
             bool c4 = WordDocxWriter.ColumnConfineIndents(false, 340, 543, 84, 567, out li, out ri);
             AssertTrue(!c4, "не центрированный -> без конфайна");
@@ -14246,10 +14246,10 @@ namespace ExcelMerger.Tests
                 WS("ИтогоОдно", 0, 140, 140, 8, 8) // одна широкая ячейка от левой до правой колонки
             };
             GridDetectResult r = GridDetector.Detect(words);
-            AssertEqual(1, r.Tables.Count, "одна сетка");
+            AssertEq(1, r.Tables.Count, "одна сетка");
             OcrTable t = r.Tables[0];
             OcrTableRow last = t.Rows[t.Rows.Count - 1];
-            AssertEqual(2, last.Cells[0].ColSpan, "широкий ряд -> ColSpan=2");
+            AssertEq(2, last.Cells[0].ColSpan, "широкий ряд -> ColSpan=2");
             AssertTrue(last.Cells[1].Covered, "вторая ячейка накрыта");
         }
 
@@ -14266,12 +14266,12 @@ namespace ExcelMerger.Tests
                 WS("LblE", 0, 208, 40, 8, 8),  WS("ValE", 100, 208, 40, 8, 8) // зазор 32 перед этой
             };
             GridDetectResult r = GridDetector.Detect(words);
-            AssertEqual(1, r.Tables.Count, "одна сетка");
+            AssertEq(1, r.Tables.Count, "одна сетка");
             OcrTable t = r.Tables[0];
-            AssertEqual(5, t.Rows.Count, "пять строк");
+            AssertEq(5, t.Rows.Count, "пять строк");
             AssertTrue(t.Rows[3].SpaceAfterPt > 10, "перед пустым промежутком — интервал после строки: " + t.Rows[3].SpaceAfterPt);
-            AssertEqual(0.0, t.Rows[0].SpaceAfterPt, "у плотных строк интервала нет");
-            AssertEqual(0.0, t.Rows[4].SpaceAfterPt, "последняя строка без интервала");
+            AssertEq(0.0, t.Rows[0].SpaceAfterPt, "у плотных строк интервала нет");
+            AssertEq(0.0, t.Rows[4].SpaceAfterPt, "последняя строка без интервала");
         }
 
         private static void TestLoneCollinearRule()
@@ -14285,8 +14285,8 @@ namespace ExcelMerger.Tests
                 new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 160, Y1 = 100, X2 = 220, Y2 = 100, Thickness = 1 }
             };
             TableDetectResult r = TableDetector.Detect(lines, new List<PdfWord>(), 600, 800);
-            AssertEqual(0, r.Tables.Count, "коллинеарные куски — не таблица");
-            AssertEqual(3, r.LoneLines.Count, "все три куска в LoneLines");
+            AssertEq(0, r.Tables.Count, "коллинеарные куски — не таблица");
+            AssertEq(3, r.LoneLines.Count, "все три куска в LoneLines");
         }
 
         private static void TestRuleInsideTableExcluded()
@@ -14305,8 +14305,8 @@ namespace ExcelMerger.Tests
                 new PdfLine { Orientation = LineOrientation.Horizontal, X1 = 20, Y1 = 50, X2 = 80, Y2 = 50, Thickness = 1 }
             };
             TableDetectResult r = TableDetector.Detect(lines, new List<PdfWord>(), 600, 800);
-            AssertEqual(1, r.Tables.Count, "рамка распознана таблицей");
-            AssertEqual(0, r.LoneLines.Count, "линия внутри таблицы не даёт прочерк");
+            AssertEq(1, r.Tables.Count, "рамка распознана таблицей");
+            AssertEq(0, r.LoneLines.Count, "линия внутри таблицы не даёт прочерк");
         }
 
         // ---------- GlyphDedup (сдвоенные глифы псевдо-жирного) ----------
@@ -14335,8 +14335,8 @@ namespace ExcelMerger.Tests
             };
             int dropped;
             List<int> keep = GlyphDedup.Keep(glyphs, out dropped);
-            AssertEqual("№74", KeptText(glyphs, keep), "дубли схлопнуты");
-            AssertEqual(3, dropped, "выброшено три дубля");
+            AssertEq("№74", KeptText(glyphs, keep), "дубли схлопнуты");
+            AssertEq(3, dropped, "выброшено три дубля");
             AssertTrue(GlyphDedup.LooksBold(keep.Count, dropped), "массовая двойная отрисовка = жирный");
         }
 
@@ -14346,8 +14346,8 @@ namespace ExcelMerger.Tests
             var glyphs = new List<GlyphInfo> { G("7", 10.0, 8.4), G("7", 14.2, 8.4) };
             int dropped;
             List<int> keep = GlyphDedup.Keep(glyphs, out dropped);
-            AssertEqual(2, keep.Count, "обе семёрки на месте");
-            AssertEqual(0, dropped, "дублей нет");
+            AssertEq(2, keep.Count, "обе семёрки на месте");
+            AssertEq(0, dropped, "дублей нет");
         }
 
         private static void TestGlyphDedupSparse()
@@ -14360,8 +14360,8 @@ namespace ExcelMerger.Tests
             };
             int dropped;
             List<int> keep = GlyphDedup.Keep(glyphs, out dropped);
-            AssertEqual("словами", KeptText(glyphs, keep), "дубль вычищен");
-            AssertEqual(1, dropped, "один дубль");
+            AssertEq("словами", KeptText(glyphs, keep), "дубль вычищен");
+            AssertEq(1, dropped, "один дубль");
             AssertTrue(!GlyphDedup.LooksBold(keep.Count, dropped), "единичный дубль — не жирный");
         }
 
@@ -14376,9 +14376,9 @@ namespace ExcelMerger.Tests
                 CB(4, 0, 160, 60, 10)
             };
             List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
-            AssertEqual(2, leaves.Count, "блок и пометка разрезаны");
-            AssertEqual("0,2,4", TagsOf(leaves[0]), "блок целиком");
-            AssertEqual("1", TagsOf(leaves[1]), "пометка отдельно");
+            AssertEq(2, leaves.Count, "блок и пометка разрезаны");
+            AssertEq("0,2,4", TagsOf(leaves[0]), "блок целиком");
+            AssertEq("1", TagsOf(leaves[1]), "пометка отдельно");
         }
 
         private static PdfWord WS(string text, double left, double bottom, double width, double height, double size)
@@ -14398,12 +14398,12 @@ namespace ExcelMerger.Tests
                 WS("LblD", 0, 140, 35, 8, 8),  WS("ValD", 100, 140, 40, 8, 8)
             };
             GridDetectResult r = GridDetector.Detect(words);
-            AssertEqual(1, r.Tables.Count, "одна сетка-таблица");
+            AssertEq(1, r.Tables.Count, "одна сетка-таблица");
             OcrTable t = r.Tables[0];
             AssertTrue(t.Borderless, "сетка без границ");
-            AssertEqual(2, t.ColumnCount, "две колонки");
-            AssertEqual(4, t.Rows.Count, "четыре ряда");
-            AssertEqual(0, r.RemainingWords.Count, "все слова в таблице");
+            AssertEq(2, t.ColumnCount, "две колонки");
+            AssertEq(4, t.Rows.Count, "четыре ряда");
+            AssertEq(0, r.RemainingWords.Count, "все слова в таблице");
             AssertTrue(t.Rows[0].Cells[0].Paragraphs[0].Text.Contains("LblA"), "метка в первой колонке");
             AssertTrue(t.Rows[0].Cells[1].Paragraphs[0].Text.Contains("ValA"), "значение во второй колонке");
         }
@@ -14419,8 +14419,8 @@ namespace ExcelMerger.Tests
                     words.Add(WS("w" + row + i, i * 45, y, 40, 10, 10));
             }
             GridDetectResult r = GridDetector.Detect(words);
-            AssertEqual(0, r.Tables.Count, "justified-текст не считается сеткой");
-            AssertEqual(words.Count, r.RemainingWords.Count, "слова остались в потоке");
+            AssertEq(0, r.Tables.Count, "justified-текст не считается сеткой");
+            AssertEq(words.Count, r.RemainingWords.Count, "слова остались в потоке");
         }
 
         private static void TestGridTwoRowsNegative()
@@ -14432,7 +14432,7 @@ namespace ExcelMerger.Tests
                 WS("c", 0, 180, 30, 10, 10), WS("d", 200, 180, 30, 10, 10)
             };
             GridDetectResult r = GridDetector.Detect(words);
-            AssertEqual(0, r.Tables.Count, "двух строк недостаточно");
+            AssertEq(0, r.Tables.Count, "двух строк недостаточно");
         }
 
         private static void TestRuleWords()
@@ -14446,10 +14446,10 @@ namespace ExcelMerger.Tests
             var lone = new List<PdfLine> { rule, under, fat };
             var used = new HashSet<PdfLine> { under };
             PdfTextExtract.AddRuleWords(words, lone, used);
-            AssertEqual(2, words.Count, "добавлен один прочерк");
+            AssertEq(2, words.Count, "добавлен один прочерк");
             PdfWord w = words[1];
-            AssertEqual("__________", w.Text, "50pt при кегле 10 -> десять «_»");
-            AssertEqual(10.0, w.Left, "прочерк на месте линии");
+            AssertEq("__________", w.Text, "50pt при кегле 10 -> десять «_»");
+            AssertEq(10.0, w.Left, "прочерк на месте линии");
             AssertTrue(w.Top > w.Bottom, "прочерку дана высота");
         }
 
@@ -14488,12 +14488,12 @@ namespace ExcelMerger.Tests
                 CB(4, 0, 160, 45, 10),   CB(5, 100, 160, 40, 10)
             };
             List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
-            AssertEqual(2, leaves.Count, "два листа-колонки");
-            AssertEqual("0,2,4", TagsOf(leaves[0]), "левая колонка целиком раньше");
-            AssertEqual("1,3,5", TagsOf(leaves[1]), "правая колонка после");
-            AssertEqual(0.0, leaves[0].ColumnLeft, "рамка левой колонки: левый край");
-            AssertEqual(45.0, leaves[0].ColumnRight, "рамка левой колонки: правый край");
-            AssertEqual(100.0, leaves[1].ColumnLeft, "рамка правой колонки: левый край");
+            AssertEq(2, leaves.Count, "два листа-колонки");
+            AssertEq("0,2,4", TagsOf(leaves[0]), "левая колонка целиком раньше");
+            AssertEq("1,3,5", TagsOf(leaves[1]), "правая колонка после");
+            AssertEq(0.0, leaves[0].ColumnLeft, "рамка левой колонки: левый край");
+            AssertEq(45.0, leaves[0].ColumnRight, "рамка левой колонки: правый край");
+            AssertEq(100.0, leaves[1].ColumnLeft, "рамка правой колонки: левый край");
         }
 
         private static void TestXyCutFloorsThenColumns()
@@ -14507,10 +14507,10 @@ namespace ExcelMerger.Tests
                 CB(6, 0, 100, 140, 10)   // пустая полоса 160-110=50 над ней -> свой этаж
             };
             List<CutLeaf> leaves = XyCut.Order(boxes, 20, 30, 25, 2);
-            AssertEqual(3, leaves.Count, "две колонки + нижний этаж");
-            AssertEqual("0,2,4", TagsOf(leaves[0]), "левая колонка");
-            AssertEqual("1,3,5", TagsOf(leaves[1]), "правая колонка");
-            AssertEqual("6", TagsOf(leaves[2]), "нижний этаж последним");
+            AssertEq(3, leaves.Count, "две колонки + нижний этаж");
+            AssertEq("0,2,4", TagsOf(leaves[0]), "левая колонка");
+            AssertEq("1,3,5", TagsOf(leaves[1]), "правая колонка");
+            AssertEq("6", TagsOf(leaves[2]), "нижний этаж последним");
         }
 
         private static void TestXyCutGuardSingleLine()
@@ -14519,8 +14519,8 @@ namespace ExcelMerger.Tests
             // разрез отклоняется, страница не читается «столбиками из одиночных слов».
             var boxes = new[] { CB(0, 0, 100, 60, 10), CB(1, 300, 100, 40, 10) };
             List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
-            AssertEqual(1, leaves.Count, "одна строка не делится на колонки");
-            AssertEqual("0,1", TagsOf(leaves[0]), "оба элемента в одном листе");
+            AssertEq(1, leaves.Count, "одна строка не делится на колонки");
+            AssertEq("0,1", TagsOf(leaves[0]), "оба элемента в одном листе");
         }
 
         private static void TestXyCutGuardThinColumn()
@@ -14534,7 +14534,7 @@ namespace ExcelMerger.Tests
                 CB(1, 100, 190, 40, 10)
             };
             List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
-            AssertEqual(2, leaves.Count, "существенная колонка + крошка режутся");
+            AssertEq(2, leaves.Count, "существенная колонка + крошка режутся");
         }
 
         private static void TestListNestingThreeLevels()
@@ -14546,10 +14546,10 @@ namespace ExcelMerger.Tests
             int level2 = tracker.LevelFor(86);
             int level0b = tracker.LevelFor(51); // близко к корню — остаёмся на 0
 
-            AssertEqual(0, level0a, "50 открывает уровень 0");
-            AssertEqual(1, level1, "68 глубже 50 на 18pt → уровень 1");
-            AssertEqual(2, level2, "86 глубже 68 на 18pt → уровень 2");
-            AssertEqual(0, level0b, "51 близко к 50 (корень) → уровень 0");
+            AssertEq(0, level0a, "50 открывает уровень 0");
+            AssertEq(1, level1, "68 глубже 50 на 18pt → уровень 1");
+            AssertEq(2, level2, "86 глубже 68 на 18pt → уровень 2");
+            AssertEq(0, level0b, "51 близко к 50 (корень) → уровень 0");
         }
 
         private static void TestListNestingReturnToRoot()
@@ -14560,7 +14560,7 @@ namespace ExcelMerger.Tests
             tracker.LevelFor(68);
             tracker.LevelFor(86);
             int back = tracker.LevelFor(50);
-            AssertEqual(0, back, "возврат на 50 закрывает вложенные уровни → 0");
+            AssertEq(0, back, "возврат на 50 закрывает вложенные уровни → 0");
         }
 
         private static void TestListNestingRaggedFlat()
@@ -14572,10 +14572,10 @@ namespace ExcelMerger.Tests
             int l3 = tracker.LevelFor(54);
             int l4 = tracker.LevelFor(51);
 
-            AssertEqual(0, l1, "50 → 0");
-            AssertEqual(0, l2, "52 близко к 50 (< MinNestStepPt) → 0");
-            AssertEqual(0, l3, "54 близко к 50 → 0");
-            AssertEqual(0, l4, "51 близко к 50 → 0");
+            AssertEq(0, l1, "50 → 0");
+            AssertEq(0, l2, "52 близко к 50 (< MinNestStepPt) → 0");
+            AssertEq(0, l3, "54 близко к 50 → 0");
+            AssertEq(0, l4, "51 близко к 50 → 0");
         }
 
         private static void TestListNestingRootShift()
@@ -14587,48 +14587,48 @@ namespace ExcelMerger.Tests
             int shift = tracker.LevelFor(50); // сдвиг всего списка влево на 20pt
             int nested = tracker.LevelFor(68); // 18pt правее нового корня
 
-            AssertEqual(0, shift, "50 левее 70 на >12pt → корень переезжает на 50, уровень 0");
-            AssertEqual(1, nested, "68 на 18pt правее нового корня 50 → уровень 1");
+            AssertEq(0, shift, "50 левее 70 на >12pt → корень переезжает на 50, уровень 0");
+            AssertEq(1, nested, "68 на 18pt правее нового корня 50 → уровень 1");
         }
 
         private static void TestPageRangePresetsOdd()
         {
             // Нечётные страницы: 1,3,5,7,9
-            AssertEqual("1,3,5", PageRangePresets.Odd(5), "5 страниц → 1,3,5");
-            AssertEqual("1,3,5,7,9", PageRangePresets.Odd(10), "10 страниц → 1,3,5,7,9");
-            AssertEqual("1", PageRangePresets.Odd(1), "1 страница → 1");
-            AssertEqual("1", PageRangePresets.Odd(2), "2 страницы → 1");
-            AssertEqual("", PageRangePresets.Odd(0), "0 страниц → пусто");
+            AssertEq("1,3,5", PageRangePresets.Odd(5), "5 страниц → 1,3,5");
+            AssertEq("1,3,5,7,9", PageRangePresets.Odd(10), "10 страниц → 1,3,5,7,9");
+            AssertEq("1", PageRangePresets.Odd(1), "1 страница → 1");
+            AssertEq("1", PageRangePresets.Odd(2), "2 страницы → 1");
+            AssertEq("", PageRangePresets.Odd(0), "0 страниц → пусто");
         }
 
         private static void TestPageRangePresetsEven()
         {
             // Чётные страницы: 2,4,6,8,10
-            AssertEqual("2,4", PageRangePresets.Even(5), "5 страниц → 2,4");
-            AssertEqual("2,4,6,8,10", PageRangePresets.Even(10), "10 страниц → 2,4,6,8,10");
-            AssertEqual("", PageRangePresets.Even(1), "1 страница → пусто");
-            AssertEqual("2", PageRangePresets.Even(2), "2 страницы → 2");
-            AssertEqual("", PageRangePresets.Even(0), "0 страниц → пусто");
+            AssertEq("2,4", PageRangePresets.Even(5), "5 страниц → 2,4");
+            AssertEq("2,4,6,8,10", PageRangePresets.Even(10), "10 страниц → 2,4,6,8,10");
+            AssertEq("", PageRangePresets.Even(1), "1 страница → пусто");
+            AssertEq("2", PageRangePresets.Even(2), "2 страницы → 2");
+            AssertEq("", PageRangePresets.Even(0), "0 страниц → пусто");
         }
 
         private static void TestPageRangePresetsEveryNth()
         {
             // Каждая N-я: step=2 → 1,3,5, step=3 → 1,4,7
-            AssertEqual("1,3,5,7,9", PageRangePresets.EveryNth(10, 2), "каждая 2-я из 10 → 1,3,5,7,9");
-            AssertEqual("1,4,7,10", PageRangePresets.EveryNth(10, 3), "каждая 3-я из 10 → 1,4,7,10");
-            AssertEqual("1,6", PageRangePresets.EveryNth(10, 5), "каждая 5-я из 10 → 1,6");
-            AssertEqual("1", PageRangePresets.EveryNth(10, 20), "step > count → только 1");
-            AssertEqual("", PageRangePresets.EveryNth(0, 2), "0 страниц → пусто");
-            AssertEqual("", PageRangePresets.EveryNth(5, 0), "step=0 → пусто");
+            AssertEq("1,3,5,7,9", PageRangePresets.EveryNth(10, 2), "каждая 2-я из 10 → 1,3,5,7,9");
+            AssertEq("1,4,7,10", PageRangePresets.EveryNth(10, 3), "каждая 3-я из 10 → 1,4,7,10");
+            AssertEq("1,6", PageRangePresets.EveryNth(10, 5), "каждая 5-я из 10 → 1,6");
+            AssertEq("1", PageRangePresets.EveryNth(10, 20), "step > count → только 1");
+            AssertEq("", PageRangePresets.EveryNth(0, 2), "0 страниц → пусто");
+            AssertEq("", PageRangePresets.EveryNth(5, 0), "step=0 → пусто");
         }
 
         private static void TestPageRangePresetsAll()
         {
             // Все страницы: "1-N" или "1" для одной
-            AssertEqual("1-10", PageRangePresets.All(10), "10 страниц → 1-10");
-            AssertEqual("1-5", PageRangePresets.All(5), "5 страниц → 1-5");
-            AssertEqual("1", PageRangePresets.All(1), "1 страница → 1 (не диапазон)");
-            AssertEqual("", PageRangePresets.All(0), "0 страниц → пусто");
+            AssertEq("1-10", PageRangePresets.All(10), "10 страниц → 1-10");
+            AssertEq("1-5", PageRangePresets.All(5), "5 страниц → 1-5");
+            AssertEq("1", PageRangePresets.All(1), "1 страница → 1 (не диапазон)");
+            AssertEq("", PageRangePresets.All(0), "0 страниц → пусто");
         }
 
         private static void TestOcrTwoColumnsSeparated()
@@ -14709,7 +14709,7 @@ namespace ExcelMerger.Tests
                 W("C2", 0, 148, 80, 10)
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
-            AssertEqual(15.0, layout.FirstLineIndentPt, "красная строка тела пережила шапку");
+            AssertEq(15.0, layout.FirstLineIndentPt, "красная строка тела пережила шапку");
         }
 
         private static OcrParagraph Para(string text, double left, double bottom, double width, double height)
@@ -14744,11 +14744,11 @@ namespace ExcelMerger.Tests
             page.Paragraphs.Add(Para("R2", 340, 580, 200, 50));
             page.Paragraphs.Add(Para("F", 100, 500, 440, 40)); // этаж ниже (зазор 580-540=40)
             List<PageBlocks.PageItem> items = PageBlocks.OrderedItems(page);
-            AssertEqual(2, items.Count, "полоса + нижний блок");
+            AssertEq(2, items.Count, "полоса + нижний блок");
             AssertTrue(items[0].IsBand, "первый элемент — side-by-side полоса");
-            AssertEqual(2, items[0].Columns.Count, "две колонки в полосе");
-            AssertEqual("L1,L2", ColText(items[0].Columns[0]), "левая колонка целиком");
-            AssertEqual("R1,R2", ColText(items[0].Columns[1]), "правая колонка целиком");
+            AssertEq(2, items[0].Columns.Count, "две колонки в полосе");
+            AssertEq("L1,L2", ColText(items[0].Columns[0]), "левая колонка целиком");
+            AssertEq("R1,R2", ColText(items[0].Columns[1]), "правая колонка целиком");
             AssertTrue(!items[1].IsBand && items[1].Single.Paragraph.Text == "F", "нижний — одиночный блок");
         }
 
@@ -14757,10 +14757,10 @@ namespace ExcelMerger.Tests
             // Страница 500×1000 pt отрендерена в 1000×2000 px (2 px/pt). Картинка Y-вверх:
             // left=100, top=800, w=200, h=100 (занимает Y 700..800). Верх в пикселях = (1000-800)*2.
             System.Drawing.Rectangle r = PageRasterizer.CropRect(1000, 2000, 500, 1000, 100, 800, 200, 100);
-            AssertEqual(200, r.X, "X");
-            AssertEqual(400, r.Y, "Y (ось вниз)");
-            AssertEqual(400, r.Width, "ширина в px");
-            AssertEqual(200, r.Height, "высота в px");
+            AssertEq(200, r.X, "X");
+            AssertEq(400, r.Y, "Y (ось вниз)");
+            AssertEq(400, r.Width, "ширина в px");
+            AssertEq(200, r.Height, "высота в px");
             // Кламп: картинка выходит за правый/нижний край — обрезается по границам страницы.
             System.Drawing.Rectangle c = PageRasterizer.CropRect(1000, 2000, 500, 1000, 400, 1000, 200, 100);
             AssertTrue(c.X + c.Width <= 1000, "правый край не за пределами");
@@ -14778,9 +14778,9 @@ namespace ExcelMerger.Tests
                 ColRight = new double[] { 280, 540 }
             };
             double[] w = WordDocxWriter.BandColumnWidths(band, 84, 567);
-            AssertEqual(2, w.Length, "две ширины");
-            AssertEqual(226.0, w[0], "левая ячейка = 310-84");
-            AssertEqual(257.0, w[1], "правая ячейка = 567-310");
+            AssertEq(2, w.Length, "две ширины");
+            AssertEq(226.0, w[0], "левая ячейка = 310-84");
+            AssertEq(257.0, w[1], "правая ячейка = 567-310");
         }
 
         private static void TestOrderedItemsWithinLeaf()
@@ -14799,7 +14799,7 @@ namespace ExcelMerger.Tests
                 AssertTrue(!it.IsBand, "узкий зазор — не полоса, всё одиночными блоками");
                 order.Add(it.Single.Paragraph.Text);
             }
-            AssertEqual("upper,lower,left,right", string.Join(",", order),
+            AssertEq("upper,lower,left,right", string.Join(",", order),
                 "строки сверху вниз, перекрытые бок о бок (узкий зазор) — слева направо");
         }
 
@@ -14847,45 +14847,45 @@ namespace ExcelMerger.Tests
 
         private static void TestXmlEscape()
         {
-            AssertEqual("a &amp; b", XmlText.Escape("a & b"), "амперсанд");
-            AssertEqual("&lt;tag&gt;", XmlText.Escape("<tag>"), "угловые скобки");
-            AssertEqual("&quot;q&quot;", XmlText.Escape("\"q\""), "кавычка (ею же пишутся значения атрибутов)");
-            AssertEqual("", XmlText.Escape(null), "null — пустая строка, а не падение");
-            AssertEqual("a=1&amp;b=2", XmlText.Encode("a=1&b=2"), "адрес ссылки: & обязан экранироваться");
+            AssertEq("a &amp; b", XmlText.Escape("a & b"), "амперсанд");
+            AssertEq("&lt;tag&gt;", XmlText.Escape("<tag>"), "угловые скобки");
+            AssertEq("&quot;q&quot;", XmlText.Escape("\"q\""), "кавычка (ею же пишутся значения атрибутов)");
+            AssertEq("", XmlText.Escape(null), "null — пустая строка, а не падение");
+            AssertEq("a=1&amp;b=2", XmlText.Encode("a=1&b=2"), "адрес ссылки: & обязан экранироваться");
         }
 
         private static void TestXmlSanitize()
         {
-            AssertEqual("ab", XmlText.Sanitize("a\0b"), "нулевой символ снят");
-            AssertEqual("ab", XmlText.Sanitize("a\u001Bb"), "управляющий символ снят");
-            AssertEqual("a\tb", XmlText.Sanitize("a\tb"), "табуляция допустима в XML");
-            AssertEqual("a b", XmlText.Sanitize("a\nb"), "перевод строки → пробел");
-            AssertEqual("a b", XmlText.Sanitize("a\rb"), "возврат каретки → пробел");
-            AssertEqual("ab", XmlText.Sanitize("a\uD83Db"), "непарная верхняя половина суррогата снята");
-            AssertEqual("ab", XmlText.Sanitize("a\uDE00b"), "непарная нижняя половина суррогата снята");
-            AssertEqual("a\uD83D\uDE00b", XmlText.Sanitize("a\uD83D\uDE00b"), "корректная пара сохранена целиком");
-            AssertEqual("ab", XmlText.Sanitize("a\uFFFEb"), "«не символ» U+FFFE снят");
+            AssertEq("ab", XmlText.Sanitize("a\0b"), "нулевой символ снят");
+            AssertEq("ab", XmlText.Sanitize("a\u001Bb"), "управляющий символ снят");
+            AssertEq("a\tb", XmlText.Sanitize("a\tb"), "табуляция допустима в XML");
+            AssertEq("a b", XmlText.Sanitize("a\nb"), "перевод строки → пробел");
+            AssertEq("a b", XmlText.Sanitize("a\rb"), "возврат каретки → пробел");
+            AssertEq("ab", XmlText.Sanitize("a\uD83Db"), "непарная верхняя половина суррогата снята");
+            AssertEq("ab", XmlText.Sanitize("a\uDE00b"), "непарная нижняя половина суррогата снята");
+            AssertEq("a\uD83D\uDE00b", XmlText.Sanitize("a\uD83D\uDE00b"), "корректная пара сохранена целиком");
+            AssertEq("ab", XmlText.Sanitize("a\uFFFEb"), "«не символ» U+FFFE снят");
         }
 
         private static void TestPptxEmu()
         {
-            AssertEqual(914400L, PptxGeometry.Emu(72), "72 pt — дюйм — 914400 EMU");
-            AssertEqual(12700L, PptxGeometry.Emu(1), "пункт — 12700 EMU");
-            AssertEqual(-12700L, PptxGeometry.Emu(-1), "координата сохраняет знак");
-            AssertEqual(0L, PptxGeometry.EmuSize(-5), "отрицательного размера не бывает");
-            AssertEqual(0L, PptxGeometry.Emu(double.NaN), "мусор — ноль, а не исключение");
-            AssertEqual(13L, PptxGeometry.Emu(0.001), "округление к ближайшему");
+            AssertEq(914400L, PptxGeometry.Emu(72), "72 pt — дюйм — 914400 EMU");
+            AssertEq(12700L, PptxGeometry.Emu(1), "пункт — 12700 EMU");
+            AssertEq(-12700L, PptxGeometry.Emu(-1), "координата сохраняет знак");
+            AssertEq(0L, PptxGeometry.EmuSize(-5), "отрицательного размера не бывает");
+            AssertEq(0L, PptxGeometry.Emu(double.NaN), "мусор — ноль, а не исключение");
+            AssertEq(13L, PptxGeometry.Emu(0.001), "округление к ближайшему");
         }
 
         private static void TestPptxHundredths()
         {
-            AssertEqual(1200, PptxGeometry.Hundredths(12), "12 pt — 1200 сотых");
-            AssertEqual(1050, PptxGeometry.Hundredths(10.5), "дробный кегль");
-            AssertEqual(100, PptxGeometry.Hundredths(0.2), "ниже предела разметки — 1 pt");
-            AssertEqual(400000, PptxGeometry.Hundredths(9000), "выше предела разметки — 4000 pt");
+            AssertEq(1200, PptxGeometry.Hundredths(12), "12 pt — 1200 сотых");
+            AssertEq(1050, PptxGeometry.Hundredths(10.5), "дробный кегль");
+            AssertEq(100, PptxGeometry.Hundredths(0.2), "ниже предела разметки — 1 pt");
+            AssertEq(400000, PptxGeometry.Hundredths(9000), "выше предела разметки — 4000 pt");
             // Кегль, УМЕНЬШЕННЫЙ вписыванием, обязан стать меньше, а не «отскочить» к умолчанию.
             SlideFit fit = PptxGeometry.Fit(1200, 675, 960, 540);
-            AssertEqual(480, fit.FontHundredths(6), "6 pt при масштабе 0,8 — это 4,8 pt");
+            AssertEq(480, fit.FontHundredths(6), "6 pt при масштабе 0,8 — это 4,8 pt");
         }
 
         private static void TestPptxSlideSize()
@@ -14895,43 +14895,43 @@ namespace ExcelMerger.Tests
             {
                 PptxPage(960, 540), PptxPage(595, 842), PptxPage(960, 540), PptxPage(960, 540)
             }, out w, out h);
-            AssertEqual(960.0, w, "ширина — по самому частому размеру страницы");
-            AssertEqual(540.0, h, "высота — по самому частому размеру страницы");
+            AssertEq(960.0, w, "ширина — по самому частому размеру страницы");
+            AssertEq(540.0, h, "высота — по самому частому размеру страницы");
 
             PptxGeometry.SlideSizePt(new List<PdfPageText>(), out w, out h);
-            AssertEqual(595.0, w, "пустой набор — лист A4");
+            AssertEq(595.0, w, "пустой набор — лист A4");
 
             PptxGeometry.SlideSizePt(new List<PdfPageText> { PptxPage(720, 540), PptxPage(960, 540) }, out w, out h);
-            AssertEqual(720.0, w, "при равенстве побеждает встретившийся раньше");
+            AssertEq(720.0, w, "при равенстве побеждает встретившийся раньше");
 
             PptxGeometry.SlideSizePt(new List<PdfPageText> { PptxPage(99999, 540) }, out w, out h);
-            AssertEqual(PptxGeometry.MaxSlidePt, w, "размер сверх предела PowerPoint обрезан");
+            AssertEq(PptxGeometry.MaxSlidePt, w, "размер сверх предела PowerPoint обрезан");
         }
 
         private static void TestPptxFit()
         {
             SlideFit same = PptxGeometry.Fit(960, 540, 960, 540);
-            AssertEqual(1.0, same.Scale, "размер совпал — масштаб 1");
-            AssertEqual(0L, same.X(0), "совпал — и сдвига нет");
+            AssertEq(1.0, same.Scale, "размер совпал — масштаб 1");
+            AssertEq(0L, same.X(0), "совпал — и сдвига нет");
 
             SlideFit noise = PptxGeometry.Fit(960.0001, 540, 960, 540);
-            AssertEqual(1.0, noise.Scale, "разница в тысячные — тот же размер, а не повод масштабировать");
+            AssertEq(1.0, noise.Scale, "разница в тысячные — тот же размер, а не повод масштабировать");
 
             // Книжная A4 на широком слайде: вписывается по высоте, центрируется по ширине.
             SlideFit fit = PptxGeometry.Fit(595, 842, 960, 540);
             AssertTrue(Math.Abs(fit.Scale - 540.0 / 842.0) < 1e-9, "масштаб по меньшей стороне");
             double scaledW = 595 * fit.Scale;
-            AssertEqual(PptxGeometry.Emu((960 - scaledW) / 2), fit.X(0), "левый край — по центру слайда");
-            AssertEqual(0L, fit.Y(842), "верх страницы совпал с верхом слайда");
+            AssertEq(PptxGeometry.Emu((960 - scaledW) / 2), fit.X(0), "левый край — по центру слайда");
+            AssertEq(0L, fit.Y(842), "верх страницы совпал с верхом слайда");
         }
 
         private static void TestPptxFlipY()
         {
             SlideFit fit = PptxGeometry.Fit(600, 800, 600, 800);
-            AssertEqual(0L, fit.Y(800), "верх страницы (ось PDF вверх) — ноль сверху слайда");
-            AssertEqual(PptxGeometry.Emu(100), fit.Y(700), "на 100 pt ниже верха");
-            AssertEqual(PptxGeometry.Emu(800), fit.Y(0), "низ страницы");
-            AssertEqual(PptxGeometry.Emu(20), fit.Size(20), "длина без масштаба не меняется");
+            AssertEq(0L, fit.Y(800), "верх страницы (ось PDF вверх) — ноль сверху слайда");
+            AssertEq(PptxGeometry.Emu(100), fit.Y(700), "на 100 pt ниже верха");
+            AssertEq(PptxGeometry.Emu(800), fit.Y(0), "низ страницы");
+            AssertEq(PptxGeometry.Emu(20), fit.Size(20), "длина без масштаба не меняется");
         }
 
         private static void TestOoxmlContentTypes()
@@ -14952,8 +14952,8 @@ namespace ExcelMerger.Tests
             using (var ms = new MemoryStream(pkg.ToArray()))
             using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
             {
-                AssertEqual("[Content_Types].xml", zip.Entries[0].FullName, "типы содержимого — ПЕРВОЙ записью архива");
-                AssertEqual(4, zip.Entries.Count, "три части плюс типы содержимого");
+                AssertEq("[Content_Types].xml", zip.Entries[0].FullName, "типы содержимого — ПЕРВОЙ записью архива");
+                AssertEq(4, zip.Entries.Count, "три части плюс типы содержимого");
             }
         }
 
@@ -15173,22 +15173,22 @@ namespace ExcelMerger.Tests
             XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
 
             List<XElement> shapes = new List<XElement>(slide.Descendants(PptxP + "sp"));
-            AssertEqual(1, shapes.Count, "один абзац — одна надпись");
+            AssertEq(1, shapes.Count, "один абзац — одна надпись");
 
             XElement off = PptxFirst(shapes[0].Descendants(PptxA + "off"));
-            AssertEqual(PptxGeometry.Emu(100).ToString(), (string)off.Attribute("x"), "левый край — из рамки абзаца");
+            AssertEq(PptxGeometry.Emu(100).ToString(), (string)off.Attribute("x"), "левый край — из рамки абзаца");
             // Рамка поднята над базовой линией первой строки: PowerPoint ставит буквы не вплотную
             // к верхнему краю надписи, и без поправки текст сел бы ниже, чем стоял в источнике.
             double boxTop = PptxWriter.FirstBaselinePt(par, 14) + PptxWriter.FirstBaselineDropPt(14);
-            AssertEqual(PptxGeometry.Emu(800 - boxTop).ToString(), (string)off.Attribute("y"),
+            AssertEq(PptxGeometry.Emu(800 - boxTop).ToString(), (string)off.Attribute("y"),
                 "верх = высота страницы − базовая линия первой строки − её место под верхом рамки");
 
             XElement bodyPr = PptxFirst(shapes[0].Descendants(PptxA + "bodyPr"));
-            AssertEqual("0", (string)bodyPr.Attribute("lIns"), "нулевое поле слева — иначе текст уезжает");
-            AssertEqual("0", (string)bodyPr.Attribute("tIns"), "нулевое поле сверху");
+            AssertEq("0", (string)bodyPr.Attribute("lIns"), "нулевое поле слева — иначе текст уезжает");
+            AssertEq("0", (string)bodyPr.Attribute("tIns"), "нулевое поле сверху");
             AssertTrue(bodyPr.Element(PptxA + "noAutofit") != null, "автоподбор кегля выключен");
             AssertTrue(PptxFirst(shapes[0].Descendants(PptxA + "noFill")) != null, "надпись без заливки");
-            AssertEqual("Привет", PptxAllText(slide), "текст на месте");
+            AssertEq("Привет", PptxAllText(slide), "текст на месте");
         }
 
         private static void TestPptxRunProps()
@@ -15204,13 +15204,13 @@ namespace ExcelMerger.Tests
             XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
 
             XElement rPr = PptxFirst(slide.Descendants(PptxA + "rPr"));
-            AssertEqual("1350", (string)rPr.Attribute("sz"), "кегль в сотых пункта");
-            AssertEqual("1", (string)rPr.Attribute("b"), "полужирный");
-            AssertEqual("1", (string)rPr.Attribute("i"), "курсив");
-            AssertEqual("sng", (string)rPr.Attribute("u"), "подчёркивание");
-            AssertEqual("30000", (string)rPr.Attribute("baseline"), "надстрочный");
-            AssertEqual("ru-RU", (string)rPr.Attribute("lang"), "кириллице — свой язык");
-            AssertEqual("D32F2F", (string)PptxFirst(rPr.Descendants(PptxA + "srgbClr")).Attribute("val"), "цвет");
+            AssertEq("1350", (string)rPr.Attribute("sz"), "кегль в сотых пункта");
+            AssertEq("1", (string)rPr.Attribute("b"), "полужирный");
+            AssertEq("1", (string)rPr.Attribute("i"), "курсив");
+            AssertEq("sng", (string)rPr.Attribute("u"), "подчёркивание");
+            AssertEq("30000", (string)rPr.Attribute("baseline"), "надстрочный");
+            AssertEq("ru-RU", (string)rPr.Attribute("lang"), "кириллице — свой язык");
+            AssertEq("D32F2F", (string)PptxFirst(rPr.Descendants(PptxA + "srgbClr")).Attribute("val"), "цвет");
 
             // Порядок детей задан схемой: заливка, шрифты, ссылка. Проверяем именно порядок.
             var order = new List<string>();
@@ -15258,9 +15258,9 @@ namespace ExcelMerger.Tests
 
         private static void TestPptxWidthSlack()
         {
-            AssertEqual(104.0, PptxWriter.SlackWidthPt(0, 100, 600), "запас 4% от ширины");
-            AssertEqual(12.0, PptxWriter.SlackWidthPt(0, 10, 600), "короткой строке — минимум 2 pt");
-            AssertEqual(100.0, PptxWriter.SlackWidthPt(500, 100, 600), "запас не выходит за край страницы");
+            AssertEq(104.0, PptxWriter.SlackWidthPt(0, 100, 600), "запас 4% от ширины");
+            AssertEq(12.0, PptxWriter.SlackWidthPt(0, 10, 600), "короткой строке — минимум 2 pt");
+            AssertEq(100.0, PptxWriter.SlackWidthPt(500, 100, 600), "запас не выходит за край страницы");
             AssertTrue(PptxWriter.SlackWidthPt(100, 0, 600) > 0, "вырожденная ширина — до правого края");
         }
 
@@ -15283,7 +15283,7 @@ namespace ExcelMerger.Tests
                 foreach (ZipArchiveEntry e in zip.Entries)
                     if (e.FullName.StartsWith("ppt/media/", StringComparison.OrdinalIgnoreCase))
                         mediaParts++;
-            AssertEqual(1, mediaParts, "одинаковые байты кладутся в пакет один раз");
+            AssertEq(1, mediaParts, "одинаковые байты кладутся в пакет один раз");
 
             for (int i = 1; i <= 3; i++)
             {
@@ -15317,14 +15317,14 @@ namespace ExcelMerger.Tests
             int hyperlinks = 0, at = 0;
             while ((at = rels.IndexOf("/hyperlink", at, StringComparison.Ordinal) + 1) > 0)
                 hyperlinks++;
-            AssertEqual(1, hyperlinks, "два рана с одним адресом — одна связь");
+            AssertEq(1, hyperlinks, "два рана с одним адресом — одна связь");
 
             XDocument slide = PptxSlideXml(package, 1);
             var ids = new List<string>();
             foreach (XElement click in slide.Descendants(PptxA + "hlinkClick"))
                 ids.Add((string)click.Attribute(PptxR + "id"));
-            AssertEqual(2, ids.Count, "ссылка стоит у обоих ранов");
-            AssertEqual(ids[0], ids[1], "и указывает на одну связь");
+            AssertEq(2, ids.Count, "ссылка стоит у обоих ранов");
+            AssertEq(ids[0], ids[1], "и указывает на одну связь");
 
             var failures = new List<string>();
             AssertOoxmlSelfConsistent(bytes, failures);
@@ -15348,9 +15348,9 @@ namespace ExcelMerger.Tests
             page.Paragraphs.Add(mixed);
 
             XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
-            AssertEqual(1, new List<XElement>(slide.Descendants(PptxP + "sp")).Count,
+            AssertEq(1, new List<XElement>(slide.Descendants(PptxP + "sp")).Count,
                 "абзац из одних прочерков фигуры не даёт");
-            AssertEqual("12,3", PptxAllText(slide), "в смешанном абзаце остаётся только текст");
+            AssertEq("12,3", PptxAllText(slide), "в смешанном абзаце остаётся только текст");
         }
 
         /// <summary>Таблица rows×cols из пустых ячеек в заданной рамке.</summary>
@@ -15442,10 +15442,10 @@ namespace ExcelMerger.Tests
 
             XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
             var shapes = new List<XElement>(slide.Descendants(PptxP + "sp"));
-            AssertEqual(1, shapes.Count, "абзац остаётся ОДНОЙ надписью — иначе его не выделить целиком");
+            AssertEq(1, shapes.Count, "абзац остаётся ОДНОЙ надписью — иначе его не выделить целиком");
 
             var paras = new List<XElement>(shapes[0].Descendants(PptxA + "p"));
-            AssertEqual(3, paras.Count, "строка источника = свой абзац разметки (у каждой свой шаг)");
+            AssertEq(3, paras.Count, "строка источника = свой абзац разметки (у каждой свой шаг)");
 
             var pitches = new List<string>();
             foreach (XElement spc in slide.Descendants(PptxA + "spcPts"))
@@ -15454,22 +15454,22 @@ namespace ExcelMerger.Tests
             AssertTrue(pitches.Contains("3000"), "увеличенный шаг 30 pt тоже — иначе низ абзаца уедет вверх");
 
             XElement pPr = PptxFirst(shapes[0].Descendants(PptxA + "pPr"));
-            AssertEqual(PptxGeometry.Emu(20).ToString(), (string)pPr.Attribute("indent"),
+            AssertEq(PptxGeometry.Emu(20).ToString(), (string)pPr.Attribute("indent"),
                 "красная строка — отступом первой строки, а не сдвигом всей рамки");
-            AssertEqual("перваявтораятретья", PptxAllText(slide), "текст на месте и в порядке");
+            AssertEq("перваявтораятретья", PptxAllText(slide), "текст на месте и в порядке");
         }
 
         private static void TestPptxAscentGap()
         {
             // Значение измерено настоящим PowerPoint (см. PptxWriter.FirstBaselineFactor): без
             // поправки текст садится ниже, чем стоял, и линовка подложки пересекает буквы.
-            AssertEqual(9.9, Math.Round(PptxWriter.FirstBaselineDropPt(10), 6), "десятый кегль");
-            AssertEqual(23.76, Math.Round(PptxWriter.FirstBaselineDropPt(24), 6), "двадцать четвёртый");
-            AssertEqual(PptxWriter.FirstBaselineDropPt(FontResolver.DefaultFontSize), PptxWriter.FirstBaselineDropPt(0),
+            AssertEq(9.9, Math.Round(PptxWriter.FirstBaselineDropPt(10), 6), "десятый кегль");
+            AssertEq(23.76, Math.Round(PptxWriter.FirstBaselineDropPt(24), 6), "двадцать четвёртый");
+            AssertEq(PptxWriter.FirstBaselineDropPt(FontResolver.DefaultFontSize), PptxWriter.FirstBaselineDropPt(0),
                 "неизвестный кегль — как у кегля по умолчанию");
             // Место ПЕРВОЙ строки от шага не зависит: точный шаг ей не задаётся вовсе, иначе
             // при щедром интерлиньяже абзац садится ниже своего места на треть кегля.
-            AssertEqual(19.8, Math.Round(PptxWriter.FirstBaselineDropPt(20), 6), "кегль 20 — и только он");
+            AssertEq(19.8, Math.Round(PptxWriter.FirstBaselineDropPt(20), 6), "кегль 20 — и только он");
 
             // Строка ИЗ ОДНИХ СТРОЧНЫХ букв стоит там же, где строка с заглавной: место берётся
             // от базовой линии, а верх чернил у них разный. Это и был дефект — абзац без
@@ -15478,12 +15478,12 @@ namespace ExcelMerger.Tests
             withCaps.LineBaselinesPt.Add(486);
             var lowerOnly = new OcrParagraph { TopPt = 494, BottomPt = 480, LeftPt = 10, RightPt = 300 };
             lowerOnly.LineBaselinesPt.Add(486);
-            AssertEqual(PptxWriter.FirstBaselinePt(withCaps, 20), PptxWriter.FirstBaselinePt(lowerOnly, 20),
+            AssertEq(PptxWriter.FirstBaselinePt(withCaps, 20), PptxWriter.FirstBaselinePt(lowerOnly, 20),
                 "базовая линия одна — и место одно, каким бы ни был верх чернил");
 
             // Базовой линии нет (линовка, прочерки) — прежний отсчёт от верха чернил.
             var noBaseline = new OcrParagraph { TopPt = 500, BottomPt = 480, LeftPt = 10, RightPt = 300 };
-            AssertEqual(500 - 14.0, Math.Round(PptxWriter.FirstBaselinePt(noBaseline, 20), 6),
+            AssertEq(500 - 14.0, Math.Round(PptxWriter.FirstBaselinePt(noBaseline, 20), 6),
                 "запасной вариант — верх чернил минус высота прописных");
         }
 
@@ -15503,7 +15503,7 @@ namespace ExcelMerger.Tests
 
             OoxmlPackage package = PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp);
             XDocument slide = PptxSlideXml(package, 1);
-            AssertEqual("первое второе", PptxAllText(slide), "пробел на стыке ранов остался");
+            AssertEq("первое второе", PptxAllText(slide), "пробел на стыке ранов остался");
 
             string xml = PptxPartText(package, "ppt/slides/slide1.xml");
             AssertTrue(xml.Contains("<a:t xml:space=\"preserve\">"),
@@ -15538,15 +15538,15 @@ namespace ExcelMerger.Tests
 
             XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
             var spacings = new List<XElement>(slide.Descendants(PptxA + "spcPts"));
-            AssertEqual(2, spacings.Count, "шаг задан ВТОРОЙ и третьей строкам, а первой — нет");
+            AssertEq(2, spacings.Count, "шаг задан ВТОРОЙ и третьей строкам, а первой — нет");
             foreach (XElement spc in spacings)
-                AssertEqual("2000", (string)spc.Attribute("val"),
+                AssertEq("2000", (string)spc.Attribute("val"),
                     "шаг ровный: чернила второй строки ниже, а базовая линия — на своём месте");
 
             var shapes = new List<XElement>(slide.Descendants(PptxP + "sp"));
             XElement off = PptxFirst(shapes[0].Descendants(PptxA + "off"));
             double boxTop = 692 + PptxWriter.FirstBaselineDropPt(12);
-            AssertEqual(PptxGeometry.Emu(800 - boxTop).ToString(), (string)off.Attribute("y"),
+            AssertEq(PptxGeometry.Emu(800 - boxTop).ToString(), (string)off.Attribute("y"),
                 "верх рамки отсчитан от базовой линии первой строки");
         }
 
@@ -15560,11 +15560,11 @@ namespace ExcelMerger.Tests
             line.Words.Add(new PdfWord { Text = "раз", Left = 10, Right = 40, Bottom = 100, Top = 112, BaselineYPt = 100 });
             line.Words.Add(new PdfWord { Text = "два", Left = 45, Right = 75, Bottom = 100, Top = 112, BaselineYPt = 100 });
             line.Words.Add(new PdfWord { Text = "1", Left = 76, Right = 80, Bottom = 108, Top = 116, BaselineYPt = 108 });
-            AssertEqual(100.0, line.BaselinePt, "надстрочный знак медиану не уводит");
+            AssertEq(100.0, line.BaselinePt, "надстрочный знак медиану не уводит");
 
             var empty = new OcrLayout.Line();
             empty.Words.Add(new PdfWord { Text = "___", Left = 0, Right = 30, Bottom = 50, Top = 52 });
-            AssertEqual(0.0, empty.BaselinePt, "букв нет — базовой линии нет, а не ноль по ошибке");
+            AssertEq(0.0, empty.BaselinePt, "букв нет — базовой линии нет, а не ноль по ошибке");
 
             // Поворот на 90°: точка (x, y) страницы 600×800 переходит в (y, x) страницы 800×600.
             var words = new List<PdfWord>
@@ -15632,10 +15632,10 @@ namespace ExcelMerger.Tests
         private static void TestStructureBlocksGroup()
         {
             // Красная строка у третьей строки: без разметки это граница абзаца.
-            AssertEqual(2, ParagraphsOf(-1, -1, -1, -1), "без разметки красная строка делит абзац — как и раньше");
-            AssertEqual(1, ParagraphsOf(7, 7, 7, 7), "один блок разметки — один абзац, отступ не в счёт");
-            AssertEqual(2, ParagraphsOf(7, 7, 8, 8), "разные блоки — разные абзацы");
-            AssertEqual(ParagraphsOf(-1, -1, -1, -1), ParagraphsOf(1, 2, 3, 4),
+            AssertEq(2, ParagraphsOf(-1, -1, -1, -1), "без разметки красная строка делит абзац — как и раньше");
+            AssertEq(1, ParagraphsOf(7, 7, 7, 7), "один блок разметки — один абзац, отступ не в счёт");
+            AssertEq(2, ParagraphsOf(7, 7, 8, 8), "разные блоки — разные абзацы");
+            AssertEq(ParagraphsOf(-1, -1, -1, -1), ParagraphsOf(1, 2, 3, 4),
                 "блок на строку разрывов НЕ добавляет: результат тот же, что и вовсе без разметки");
 
             // Вето геометрии — чистое условие, проверяем его напрямую: до трёх кеглей разметка
@@ -15697,14 +15697,14 @@ namespace ExcelMerger.Tests
 
             XDocument slide = PptxSlideXml(PptxWriter.BuildPackage(new List<PdfPageText> { page }, PptxStamp), 1);
             var props = new List<XElement>(slide.Descendants(PptxA + "pPr"));
-            AssertEqual(3, props.Count, "у каждой строки свои свойства абзаца");
+            AssertEq(3, props.Count, "у каждой строки свои свойства абзаца");
             foreach (XElement p in props)
-                AssertEqual("l", (string)p.Attribute("algn"),
+                AssertEq("l", (string)p.Attribute("algn"),
                     "выключки нет: место задаёт отступ, а не середина неточной рамки");
-            AssertEqual(null, (string)props[0].Attribute("indent"), "первая строка стоит у края рамки");
-            AssertEqual(PptxGeometry.Emu(40).ToString(), (string)props[1].Attribute("indent"),
+            AssertEq(null, (string)props[0].Attribute("indent"), "первая строка стоит у края рамки");
+            AssertEq(PptxGeometry.Emu(40).ToString(), (string)props[1].Attribute("indent"),
                 "вторая строка отодвинута на свои 40 pt");
-            AssertEqual(PptxGeometry.Emu(20).ToString(), (string)props[2].Attribute("indent"),
+            AssertEq(PptxGeometry.Emu(20).ToString(), (string)props[2].Attribute("indent"),
                 "третья — на свои 20 pt");
         }
 
@@ -15727,7 +15727,7 @@ namespace ExcelMerger.Tests
             string root = Path.GetPathRoot(Path.GetFullPath(path));
             AssertTrue(message.Contains(root), "в сообщении назван диск: " + message);
             AssertTrue(message != full.Message, "сообщение системы дополнено, а не повторено");
-            AssertEqual("файл занят", DiskSpace.Describe(new IOException("файл занят"), path),
+            AssertEq("файл занят", DiskSpace.Describe(new IOException("файл занят"), path),
                 "прочие ошибки передаются как есть");
             AssertTrue(DiskSpace.FreeMegabytes(path) >= 0, "остаток на своём же диске измеряется");
         }
@@ -15750,7 +15750,7 @@ namespace ExcelMerger.Tests
         private static void TestConvertDoneStatus()
         {
             const string fmt = "Готово: страниц {0}.";
-            AssertEqual("Готово: страниц 13.",
+            AssertEq("Готово: страниц 13.",
                 PdfConvertFormBase.DoneStatus(new ConvertResult { Pages = 13, PagesWithText = 13 }, fmt),
                 "текст нашёлся везде — лишнего не говорим");
             string mixed = PdfConvertFormBase.DoneStatus(new ConvertResult { Pages = 13, PagesWithText = 6 }, fmt);
@@ -16083,7 +16083,7 @@ namespace ExcelMerger.Tests
                             offenders.Add(lang + ": тело окна съехало не на высоту примечания");
                     }
                     AssertTrue(offenders.Count == 0, "перенос примечания: " + string.Join(" | ", offenders.ToArray()));
-                    AssertEqual(0, PdfConvertFormBase.NoteHeight(null, null, 100), "без текста и шрифта — ноль");
+                    AssertEq(0, PdfConvertFormBase.NoteHeight(null, null, 100), "без текста и шрифта — ноль");
                 }
             }
             finally { Loc.Init(was); }
@@ -16275,7 +16275,7 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestRasterBudget()
         {
-            AssertEqual(300, RasterBudget.FitWidth(300, 600, 800, 1000000),
+            AssertEq(300, RasterBudget.FitWidth(300, 600, 800, 1000000),
                 "в пределах бюджета ширина не меняется");
             int fitted = RasterBudget.FitWidth(2000, 600, 800, 1000000);
             AssertTrue(fitted < 2000,
@@ -16286,16 +16286,16 @@ namespace ExcelMerger.Tests
                 "точная граница пикселей разрешена");
             AssertTrue(!RasterBudget.IsWithin(101, 100, 10000),
                 "выход за бюджет отклоняется");
-            AssertEqual(IntPtr.Size == 8, RasterBudget.IsValidExportDpi(600),
+            AssertEq(IntPtr.Size == 8, RasterBudget.IsValidExportDpi(600),
                 "600 dpi доступно только там, где x64 memory budget держит честный A4");
             AssertTrue(!RasterBudget.IsValidExportDpi(RasterBudget.MaxExportDpi + 1),
                 "DPI выше архитектурного лимита отклоняется");
             AssertTrue(!RasterBudget.IsValidExportDpi(0), "нулевой DPI отклоняется");
-            AssertEqual(640, PdfReviewPageView.RenderWidthFor(100),
+            AssertEq(640, PdfReviewPageView.RenderWidthFor(100),
                 "узкая Review-панель получает минимальный полезный растр");
-            AssertEqual(1000, PdfReviewPageView.RenderWidthFor(500),
+            AssertEq(1000, PdfReviewPageView.RenderWidthFor(500),
                 "Review oversample следует ширине панели");
-            AssertEqual(1200, PdfReviewPageView.RenderWidthFor(900),
+            AssertEq(1200, PdfReviewPageView.RenderWidthFor(900),
                 "Review не выходит за прежний безопасный потолок");
             int ultraWide = RasterBudget.FitWidth(int.MaxValue, 14400, 3,
                 RasterBudget.DefaultRenderPixels);
@@ -16324,28 +16324,28 @@ namespace ExcelMerger.Tests
         {
             List<Tuple<int, int>> runs = PageBackgrounds.ContinuousRuns(
                 new[] { 1, 2, 4, 5, 9, 9, 0, -1 });
-            AssertEqual(3, runs.Count, "непрерывные runs объединяются");
-            AssertEqual("1-2|4-5|9-9", string.Join("|",
+            AssertEq(3, runs.Count, "непрерывные runs объединяются");
+            AssertEq("1-2|4-5|9-9", string.Join("|",
                 runs.ConvertAll(r => r.Item1 + "-" + r.Item2).ToArray()), "границы runs");
 
             var sparse = new List<int>();
             for (int i = 1; i <= 500; i += 2)
                 sparse.Add(i);
             List<Tuple<int, int>> bounded = PageBackgrounds.RenderRuns(sparse);
-            AssertEqual(1, bounded.Count, "разреженная выборка не запускает сотни процессов");
-            AssertEqual(1, bounded[0].Item1, "начало общего диапазона");
-            AssertEqual(499, bounded[0].Item2, "конец общего диапазона");
+            AssertEq(1, bounded.Count, "разреженная выборка не запускает сотни процессов");
+            AssertEq(1, bounded[0].Item1, "начало общего диапазона");
+            AssertEq(499, bounded[0].Item2, "конец общего диапазона");
 
             var seventeen = new List<int>();
             for (int i = 0; i < 17; i++)
                 seventeen.Add(1 + i * 1000);
             List<Tuple<int, int>> farMany = PageBackgrounds.RenderRuns(seventeen);
-            AssertEqual(17, farMany.Count,
+            AssertEq(17, farMany.Count,
                 "17 далёких страниц не расширяются до 16001 ненужной страницы");
 
             List<Tuple<int, int>> longRun = PageBackgrounds.RenderRuns(
                 new List<int>(System.Linq.Enumerable.Range(1, 1200)));
-            AssertEqual(3, longRun.Count, "длинный диапазон режется на bounded chunks");
+            AssertEq(3, longRun.Count, "длинный диапазон режется на bounded chunks");
             AssertTrue(longRun[0].Item2 - longRun[0].Item1 + 1 <= 512,
                 "один процесс не получает больше 512 страниц");
         }
@@ -16399,17 +16399,17 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestImageExifRotation()
         {
-            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
+            AssertEq(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
                 ImageToPdfService.ExifRotation(1).ToString(), "1 — как снято");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate90FlipNone.ToString(),
+            AssertEq(System.Drawing.RotateFlipType.Rotate90FlipNone.ToString(),
                 ImageToPdfService.ExifRotation(6).ToString(), "6 — вправо на 90");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate270FlipNone.ToString(),
+            AssertEq(System.Drawing.RotateFlipType.Rotate270FlipNone.ToString(),
                 ImageToPdfService.ExifRotation(8).ToString(), "8 — влево на 90");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate180FlipNone.ToString(),
+            AssertEq(System.Drawing.RotateFlipType.Rotate180FlipNone.ToString(),
                 ImageToPdfService.ExifRotation(3).ToString(), "3 — вверх ногами");
-            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
+            AssertEq(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
                 ImageToPdfService.ExifRotation(0).ToString(), "нуля в стандарте нет — как есть");
-            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
+            AssertEq(System.Drawing.RotateFlipType.RotateNoneFlipNone.ToString(),
                 ImageToPdfService.ExifRotation(42).ToString(), "мусор в теге — как есть");
         }
 
@@ -16708,7 +16708,7 @@ namespace ExcelMerger.Tests
                 && (string)locks.Attribute("noSelect") == "1", "подложка-картинка закреплена");
 
             byte[] bytes = package.ToArray();
-            AssertEqual(1, PptxMediaCount(bytes), "одинаковые подложки кладутся один раз");
+            AssertEq(1, PptxMediaCount(bytes), "одинаковые подложки кладутся один раз");
 
             var failures = new List<string>();
             AssertOoxmlSelfConsistent(bytes, failures);
@@ -16718,11 +16718,11 @@ namespace ExcelMerger.Tests
 
         private static void TestPptxBackgroundDpi()
         {
-            AssertEqual(150, PageBackgrounds.Dpi(1), "короткой колоде — подробная подложка");
-            AssertEqual(150, PageBackgrounds.Dpi(50), "граница пятидесяти страниц");
-            AssertEqual(120, PageBackgrounds.Dpi(51), "дальше подробность снижается");
-            AssertEqual(120, PageBackgrounds.Dpi(150), "полторы сотни страниц");
-            AssertEqual(96, PageBackgrounds.Dpi(151), "и всё, что больше — иначе файл раздуется");
+            AssertEq(150, PageBackgrounds.Dpi(1), "короткой колоде — подробная подложка");
+            AssertEq(150, PageBackgrounds.Dpi(50), "граница пятидесяти страниц");
+            AssertEq(120, PageBackgrounds.Dpi(51), "дальше подробность снижается");
+            AssertEq(120, PageBackgrounds.Dpi(150), "полторы сотни страниц");
+            AssertEq(96, PageBackgrounds.Dpi(151), "и всё, что больше — иначе файл раздуется");
         }
 
         private static void TestPptxMergeGrid()
@@ -16736,17 +16736,17 @@ namespace ExcelMerger.Tests
             table.Rows[2].Cells[2].Covered = true;
 
             PptxWriter.CellMerge[,] grid = PptxWriter.MergeGrid(table);
-            AssertEqual(2, grid[1, 1].GridSpan, "владелец объявляет пролёт по колонкам");
-            AssertEqual(2, grid[1, 1].RowSpan, "владелец объявляет пролёт по строкам");
+            AssertEq(2, grid[1, 1].GridSpan, "владелец объявляет пролёт по колонкам");
+            AssertEq(2, grid[1, 1].RowSpan, "владелец объявляет пролёт по строкам");
             AssertTrue(!grid[1, 1].HMerge && !grid[1, 1].VMerge, "владелец не помечен накрытым");
 
             AssertTrue(grid[1, 2].HMerge, "правая ячейка полосы накрыта слева");
-            AssertEqual(1, grid[1, 2].GridSpan, "и не повторяет пролёт по колонкам");
-            AssertEqual(2, grid[1, 2].RowSpan, "но несёт пролёт по строкам своей полосы");
+            AssertEq(1, grid[1, 2].GridSpan, "и не повторяет пролёт по колонкам");
+            AssertEq(2, grid[1, 2].RowSpan, "но несёт пролёт по строкам своей полосы");
 
             AssertTrue(grid[2, 1].VMerge, "нижняя ячейка накрыта сверху");
-            AssertEqual(2, grid[2, 1].GridSpan, "и несёт пролёт по колонкам");
-            AssertEqual(1, grid[2, 1].RowSpan, "не повторяя пролёт по строкам");
+            AssertEq(2, grid[2, 1].GridSpan, "и несёт пролёт по колонкам");
+            AssertEq(1, grid[2, 1].RowSpan, "не повторяя пролёт по строкам");
 
             AssertTrue(grid[2, 2].HMerge && grid[2, 2].VMerge, "диагональная накрыта с обеих сторон");
 
@@ -16764,11 +16764,11 @@ namespace ExcelMerger.Tests
             XDocument slide = PptxSlideXml(package, 1);
 
             AssertTrue(PptxFirst(slide.Descendants(PptxA + "tbl")) != null, "таблица переносится таблицей, а не надписями");
-            AssertEqual(3, new List<XElement>(slide.Descendants(PptxA + "gridCol")).Count, "три колонки в сетке");
+            AssertEq(3, new List<XElement>(slide.Descendants(PptxA + "gridCol")).Count, "три колонки в сетке");
             var rows = new List<XElement>(slide.Descendants(PptxA + "tr"));
-            AssertEqual(2, rows.Count, "две строки");
+            AssertEq(2, rows.Count, "две строки");
             foreach (XElement row in rows)
-                AssertEqual(3, new List<XElement>(row.Elements(PptxA + "tc")).Count,
+                AssertEq(3, new List<XElement>(row.Elements(PptxA + "tc")).Count,
                     "в строке ровно столько ячеек, сколько колонок — иначе файл «повреждён»");
             foreach (XElement tr in rows)
                 AssertTrue((string)tr.Attribute("h") != null, "высота строки обязательна по схеме");
@@ -16909,13 +16909,13 @@ namespace ExcelMerger.Tests
             string v;
             AssertTrue(lru.TryPeek("a", out v) && v == "A", "TryPeek видит значение");
             lru.Add("c", "C"); // peek НЕ освежил «a» — вытесняется именно он
-            AssertEqual(1, evicted.Count, "одно вытеснение");
-            AssertEqual("A", evicted[0], "вытеснен несвежий после peek");
+            AssertEq(1, evicted.Count, "одно вытеснение");
+            AssertEq("A", evicted[0], "вытеснен несвежий после peek");
             AssertTrue(!lru.TryPeek("a", out v), "вытесненный изъят");
 
             AssertTrue(lru.Remove("b", out v) && v == "B", "Remove возвращает значение");
-            AssertEqual(1, evicted.Count, "Remove не зовёт onEvict");
-            AssertEqual(1, lru.Count, "после Remove остался один");
+            AssertEq(1, evicted.Count, "Remove не зовёт onEvict");
+            AssertEq(1, lru.Count, "после Remove остался один");
             List<string> keys = lru.KeysSnapshot();
             AssertTrue(keys.Count == 1 && string.Equals(keys[0], "c", StringComparison.OrdinalIgnoreCase),
                 "KeysSnapshot отражает содержимое");
@@ -16924,13 +16924,13 @@ namespace ExcelMerger.Tests
 
         private static void TestRotationCompose()
         {
-            AssertEqual(90, PdfPageRef.ComposeRotation(0, 90), "0+90");
-            AssertEqual(0, PdfPageRef.ComposeRotation(270, 90), "270+90 → 0");
-            AssertEqual(270, PdfPageRef.ComposeRotation(0, -90), "0−90 → 270");
-            AssertEqual(0, PdfPageRef.ComposeRotation(180, 180), "180+180 → 0");
-            AssertEqual(180, PdfPageRef.ComposeRotation(90, 90), "90+90");
-            AssertEqual(90, PdfPageRef.ComposeRotation(90, 45), "не кратный 90 срезается вниз");
-            AssertEqual(270, PdfPageRef.ComposeRotation(-90, 0), "отрицательный исходный");
+            AssertEq(90, PdfPageRef.ComposeRotation(0, 90), "0+90");
+            AssertEq(0, PdfPageRef.ComposeRotation(270, 90), "270+90 → 0");
+            AssertEq(270, PdfPageRef.ComposeRotation(0, -90), "0−90 → 270");
+            AssertEq(0, PdfPageRef.ComposeRotation(180, 180), "180+180 → 0");
+            AssertEq(180, PdfPageRef.ComposeRotation(90, 90), "90+90");
+            AssertEq(90, PdfPageRef.ComposeRotation(90, 45), "не кратный 90 срезается вниз");
+            AssertEq(270, PdfPageRef.ComposeRotation(-90, 0), "отрицательный исходный");
         }
 
         private static void TestPageRefClone()
@@ -16938,11 +16938,11 @@ namespace ExcelMerger.Tests
             var page = new PdfPageRef { SourcePath = "C:\\a.pdf", PageIndex = 3, Rotation = 90 };
             PdfPageRef clone = page.Clone();
             AssertTrue(!ReferenceEquals(page, clone), "новый экземпляр");
-            AssertEqual(page.SourcePath, clone.SourcePath, "путь");
-            AssertEqual(page.PageIndex, clone.PageIndex, "индекс");
-            AssertEqual(page.Rotation, clone.Rotation, "поворот скопирован");
+            AssertEq(page.SourcePath, clone.SourcePath, "путь");
+            AssertEq(page.PageIndex, clone.PageIndex, "индекс");
+            AssertEq(page.Rotation, clone.Rotation, "поворот скопирован");
             clone.Rotation = 180;
-            AssertEqual(90, page.Rotation, "оригинал не задет");
+            AssertEq(90, page.Rotation, "оригинал не задет");
         }
 
         private static List<string> FiveLetters()
@@ -16953,76 +16953,76 @@ namespace ExcelMerger.Tests
         private static void TestMoveRange()
         {
             List<string> list = FiveLetters();
-            AssertEqual(0, ListReorder.MoveRange(list, new[] { 2, 3 }, 0), "перенос к началу: индекс");
-            AssertEqual("c,d,a,b,e", string.Join(",", list), "перенос к началу: порядок");
+            AssertEq(0, ListReorder.MoveRange(list, new[] { 2, 3 }, 0), "перенос к началу: индекс");
+            AssertEq("c,d,a,b,e", string.Join(",", list), "перенос к началу: порядок");
 
             list = FiveLetters();
-            AssertEqual(3, ListReorder.MoveRange(list, new[] { 0, 1 }, 5), "в конец: индекс");
-            AssertEqual("c,d,e,a,b", string.Join(",", list), "в конец: порядок");
+            AssertEq(3, ListReorder.MoveRange(list, new[] { 0, 1 }, 5), "в конец: индекс");
+            AssertEq("c,d,e,a,b", string.Join(",", list), "в конец: порядок");
 
             list = FiveLetters();
-            AssertEqual(1, ListReorder.MoveRange(list, new[] { 1, 2 }, 2), "вставка внутри набора: индекс");
-            AssertEqual("a,b,c,d,e", string.Join(",", list), "вставка внутри набора: порядок не меняется");
+            AssertEq(1, ListReorder.MoveRange(list, new[] { 1, 2 }, 2), "вставка внутри набора: индекс");
+            AssertEq("a,b,c,d,e", string.Join(",", list), "вставка внутри набора: порядок не меняется");
 
             list = FiveLetters();
-            AssertEqual(0, ListReorder.MoveRange(list, new[] { 3, 2 }, 0), "несортированные индексы");
-            AssertEqual("c,d,a,b,e", string.Join(",", list), "несортированные: порядок");
+            AssertEq(0, ListReorder.MoveRange(list, new[] { 3, 2 }, 0), "несортированные индексы");
+            AssertEq("c,d,a,b,e", string.Join(",", list), "несортированные: порядок");
 
             list = FiveLetters();
-            AssertEqual(0, ListReorder.MoveRange(list, new[] { 2, 2, 3 }, 0), "дубли игнорируются");
-            AssertEqual("c,d,a,b,e", string.Join(",", list), "дубли: порядок");
+            AssertEq(0, ListReorder.MoveRange(list, new[] { 2, 2, 3 }, 0), "дубли игнорируются");
+            AssertEq("c,d,a,b,e", string.Join(",", list), "дубли: порядок");
 
             list = FiveLetters();
-            AssertEqual(-1, ListReorder.MoveRange(list, new int[0], 2), "пустой набор — -1");
-            AssertEqual(-1, ListReorder.MoveRange(list, new[] { -1, 9 }, 2), "все вне диапазона — -1");
-            AssertEqual("a,b,c,d,e", string.Join(",", list), "список не тронут");
+            AssertEq(-1, ListReorder.MoveRange(list, new int[0], 2), "пустой набор — -1");
+            AssertEq(-1, ListReorder.MoveRange(list, new[] { -1, 9 }, 2), "все вне диапазона — -1");
+            AssertEq("a,b,c,d,e", string.Join(",", list), "список не тронут");
 
             list = FiveLetters();
-            AssertEqual(4, ListReorder.MoveRange(list, new[] { 0 }, 99), "insertAt клампится к концу");
-            AssertEqual("b,c,d,e,a", string.Join(",", list), "кламп: порядок");
+            AssertEq(4, ListReorder.MoveRange(list, new[] { 0 }, 99), "insertAt клампится к концу");
+            AssertEq("b,c,d,e,a", string.Join(",", list), "кламп: порядок");
         }
 
         private static void TestMoveRangeHelpers()
         {
-            AssertEqual(3, ListReorder.AdjustedInsertIndex(new List<int> { 1, 3 }, 5), "два изъятых левее");
-            AssertEqual(0, ListReorder.AdjustedInsertIndex(new List<int> { 0, 1, 2 }, 1), "изъятые вокруг цели");
-            AssertEqual(2, ListReorder.AdjustedInsertIndex(new List<int> { 3, 4 }, 2), "изъятые правее не сдвигают");
+            AssertEq(3, ListReorder.AdjustedInsertIndex(new List<int> { 1, 3 }, 5), "два изъятых левее");
+            AssertEq(0, ListReorder.AdjustedInsertIndex(new List<int> { 0, 1, 2 }, 1), "изъятые вокруг цели");
+            AssertEq(2, ListReorder.AdjustedInsertIndex(new List<int> { 3, 4 }, 2), "изъятые правее не сдвигают");
             List<int> norm = ListReorder.NormalizeIndices(new[] { 3, 1, 3, -2, 9 }, 5);
-            AssertEqual("1,3", string.Join(",", norm), "сортировка, дубли и границы");
-            AssertEqual(0, ListReorder.NormalizeIndices(null, 5).Count, "null — пусто");
+            AssertEq("1,3", string.Join(",", norm), "сортировка, дубли и границы");
+            AssertEq(0, ListReorder.NormalizeIndices(null, 5).Count, "null — пусто");
         }
 
         private static void TestPdfOrderInsertAt()
         {
             var order = new PdfPageOrder();
             order.AddDocument("x.pdf", 3);
-            AssertEqual(1, order.InsertDocument(1, "y.pdf", 2), "вставка в середину: индекс");
-            AssertEqual(5, order.Count, "стало пять страниц");
-            AssertEqual("y.pdf", order[1].SourcePath, "первая вставленная");
-            AssertEqual("y.pdf", order[2].SourcePath, "вторая вставленная");
-            AssertEqual(1, order[3].PageIndex, "прежняя страница сдвинулась");
-            AssertEqual(5, order.InsertDocument(99, "z.pdf", 1), "кламп к концу");
-            AssertEqual("z.pdf", order[5].SourcePath, "в конец");
+            AssertEq(1, order.InsertDocument(1, "y.pdf", 2), "вставка в середину: индекс");
+            AssertEq(5, order.Count, "стало пять страниц");
+            AssertEq("y.pdf", order[1].SourcePath, "первая вставленная");
+            AssertEq("y.pdf", order[2].SourcePath, "вторая вставленная");
+            AssertEq(1, order[3].PageIndex, "прежняя страница сдвинулась");
+            AssertEq(5, order.InsertDocument(99, "z.pdf", 1), "кламп к концу");
+            AssertEq("z.pdf", order[5].SourcePath, "в конец");
 
             var pages = new List<PdfPageRef> { new PdfPageRef { SourcePath = "p.pdf", PageIndex = 0 } };
-            AssertEqual(0, order.InsertAt(-5, pages), "отрицательный insertAt — в начало");
-            AssertEqual("p.pdf", order[0].SourcePath, "вставлено в начало");
+            AssertEq(0, order.InsertAt(-5, pages), "отрицательный insertAt — в начало");
+            AssertEq("p.pdf", order[0].SourcePath, "вставлено в начало");
 
             int landed = order.MoveRange(new[] { 0 }, order.Count);
-            AssertEqual(order.Count - 1, landed, "перенос в конец через модель");
-            AssertEqual("p.pdf", order[order.Count - 1].SourcePath, "перенесён");
+            AssertEq(order.Count - 1, landed, "перенос в конец через модель");
+            AssertEq("p.pdf", order[order.Count - 1].SourcePath, "перенесён");
         }
 
         private static void TestRenderWidthFor()
         {
             // Базовый рендер (до обычного масштаба BaseWidth = 190).
-            AssertEqual(300, ThumbZoom.RenderWidthFor(96, ThumbZoom.BaseWidth), "база, 100% DPI — прежние 300");
-            AssertEqual(357, ThumbZoom.RenderWidthFor(120, ThumbZoom.BaseWidth), "база, 125% DPI");
-            AssertEqual(428, ThumbZoom.RenderWidthFor(144, ThumbZoom.BaseWidth), "база, 150% DPI");
+            AssertEq(300, ThumbZoom.RenderWidthFor(96, ThumbZoom.BaseWidth), "база, 100% DPI — прежние 300");
+            AssertEq(357, ThumbZoom.RenderWidthFor(120, ThumbZoom.BaseWidth), "база, 125% DPI");
+            AssertEq(428, ThumbZoom.RenderWidthFor(144, ThumbZoom.BaseWidth), "база, 150% DPI");
             // Увеличенный рендер (крупный зум до MaxWidth = 400).
-            AssertEqual(600, ThumbZoom.RenderWidthFor(96, ThumbZoom.MaxWidth), "крупный, 100% DPI");
-            AssertEqual(640, ThumbZoom.RenderWidthFor(144, ThumbZoom.MaxWidth), "крупный, 150% DPI — потолок 640");
-            AssertEqual(300, ThumbZoom.RenderWidthFor(0, ThumbZoom.BaseWidth), "мусорный DPI — минимум");
+            AssertEq(600, ThumbZoom.RenderWidthFor(96, ThumbZoom.MaxWidth), "крупный, 100% DPI");
+            AssertEq(640, ThumbZoom.RenderWidthFor(144, ThumbZoom.MaxWidth), "крупный, 150% DPI — потолок 640");
+            AssertEq(300, ThumbZoom.RenderWidthFor(0, ThumbZoom.BaseWidth), "мусорный DPI — минимум");
             AssertTrue(ThumbZoom.RenderWidthFor(96, ThumbZoom.MaxWidth) >= ThumbZoom.MaxWidth,
                 "рендер не меньше самой крупной плитки");
         }
@@ -17034,7 +17034,7 @@ namespace ExcelMerger.Tests
             AssertTrue(cell.Width > tile.Width, "ячейка шире плитки (поля)");
             AssertTrue(cell.Height > tile.Height + 15, "в ячейке есть полоса под номер");
             System.Drawing.Size max = ThumbZoom.TileSize(ThumbZoom.MaxWidth);
-            AssertEqual(ThumbZoom.MaxWidth, max.Width, "максимум 400 доступен (лимита ImageList больше нет)");
+            AssertEq(ThumbZoom.MaxWidth, max.Width, "максимум 400 доступен (лимита ImageList больше нет)");
             AssertTrue(max.Height > 256, "высота плитки на максимуме больше прежнего лимита 256");
         }
 
@@ -17044,24 +17044,24 @@ namespace ExcelMerger.Tests
             // по X и от её верха по Y (хитбокс остаётся 256, клики по кольцу компенсируются).
             var icon = new System.Drawing.Rectangle(100, 50, 256, 256);
             System.Drawing.Rectangle tile = PdfPageGrid.TileRectFromIcon(icon, new System.Drawing.Size(300, 390));
-            AssertEqual(icon.Left + 128 - 150, tile.Left, "плитка центрирована по иконной зоне");
-            AssertEqual(icon.Top, tile.Top, "плитка от верха иконной зоны");
-            AssertEqual(300, tile.Width, "ширина плитки");
-            AssertEqual(390, tile.Height, "высота плитки");
+            AssertEq(icon.Left + 128 - 150, tile.Left, "плитка центрирована по иконной зоне");
+            AssertEq(icon.Top, tile.Top, "плитка от верха иконной зоны");
+            AssertEq(300, tile.Width, "ширина плитки");
+            AssertEq(390, tile.Height, "высота плитки");
 
             // Плитка меньше иконной зоны (обычный масштаб) — тоже по центру.
             System.Drawing.Rectangle small = PdfPageGrid.TileRectFromIcon(icon, new System.Drawing.Size(100, 130));
-            AssertEqual(icon.Left + 128 - 50, small.Left, "малая плитка по центру");
+            AssertEq(icon.Left + 128 - 50, small.Left, "малая плитка по центру");
         }
 
         private static void TestHoverRotateButtons()
         {
             var tile = new System.Drawing.Rectangle(100, 50, 132, 172);
             System.Drawing.Rectangle[] b = PdfPageGrid.HoverRotateButtons(tile, 24, 6);
-            AssertEqual(2, b.Length, "две кнопки");
+            AssertEq(2, b.Length, "две кнопки");
             AssertTrue(!b[0].IntersectsWith(b[1]), "кнопки не пересекаются");
             AssertTrue(tile.Contains(b[0]) && tile.Contains(b[1]), "кнопки внутри плитки");
-            AssertEqual(b[0].Y, b[1].Y, "на одной высоте");
+            AssertEq(b[0].Y, b[1].Y, "на одной высоте");
             AssertTrue(b[0].Right < b[1].Left, "левая левее правой");
             int center = tile.Left + tile.Width / 2;
             AssertTrue(Math.Abs((b[0].Left + b[1].Right) / 2 - center) <= 1, "пара по центру плитки");
@@ -17087,9 +17087,9 @@ namespace ExcelMerger.Tests
             System.Drawing.Rectangle[] chips = PdfPageGrid.HoverRotateButtons(tile, 24, 6);
             AssertTrue(cell.Contains(chips[0]) && cell.Contains(chips[1]),
                 "hover-кнопки внутри инвалидируемой ячейки");
-            AssertEqual(cellSz.Width, cell.Width, "ширина ячейки — из ThumbZoom.CellSize");
-            AssertEqual(cellSz.Height, cell.Height, "высота ячейки — из ThumbZoom.CellSize");
-            AssertEqual(tile.Top - 4, cell.Top, "верхний отступ ячейки соблюдён");
+            AssertEq(cellSz.Width, cell.Width, "ширина ячейки — из ThumbZoom.CellSize");
+            AssertEq(cellSz.Height, cell.Height, "высота ячейки — из ThumbZoom.CellSize");
+            AssertEq(tile.Top - 4, cell.Top, "верхний отступ ячейки соблюдён");
 
             // И на обычном масштабе геометрия согласована так же.
             System.Drawing.Size tileDef = ThumbZoom.TileSize(ThumbZoom.DefaultWidth);
@@ -17109,11 +17109,11 @@ namespace ExcelMerger.Tests
 
             order.Checkpoint();
             order.Move(0, 3); // [1,2,0]
-            AssertEqual(0, order[2].PageIndex, "порядок изменился (страница 0 в конце)");
-            AssertEqual(1, order[0].PageIndex, "порядок изменился (страница 1 в начале)");
+            AssertEq(0, order[2].PageIndex, "порядок изменился (страница 0 в конце)");
+            AssertEq(1, order[0].PageIndex, "порядок изменился (страница 1 в начале)");
             AssertTrue(order.CanUndo, "есть снимок");
             AssertTrue(order.Undo(), "откат удался");
-            AssertEqual(0, order[0].PageIndex, "порядок восстановлен");
+            AssertEq(0, order[0].PageIndex, "порядок восстановлен");
             AssertTrue(!order.CanUndo, "снимок израсходован");
 
             // Повороты входят в снимок: откат возвращает и порядок, и углы (в общие ссылки).
@@ -17121,12 +17121,12 @@ namespace ExcelMerger.Tests
             order[0].Rotation = 90;
             order.RemoveAt(new[] { 2 });
             order.Undo();
-            AssertEqual(3, order.Count, "состав восстановлен");
-            AssertEqual(0, order[0].Rotation, "поворот откатился вместе с жестом");
+            AssertEq(3, order.Count, "состав восстановлен");
+            AssertEq(0, order[0].Rotation, "поворот откатился вместе с жестом");
             AssertTrue(order.CanRedo, "после отката доступен возврат");
             AssertTrue(order.Redo(), "возврат удался");
-            AssertEqual(2, order.Count, "состав вернулся");
-            AssertEqual(90, order[0].Rotation, "поворот вернулся");
+            AssertEq(2, order.Count, "состав вернулся");
+            AssertEq(90, order[0].Rotation, "поворот вернулся");
             order.Undo(); // назад к трём страницам без поворота — для следующих проверок
 
             // Новый жест обнуляет ветку возврата (как в любом редакторе).
@@ -17145,7 +17145,7 @@ namespace ExcelMerger.Tests
             int undone = 0;
             while (order.Undo())
                 undone++;
-            AssertEqual(50, undone, "стек ограничен 50 снимками");
+            AssertEq(50, undone, "стек ограничен 50 снимками");
 
             order.Checkpoint();
             order.Clear();
@@ -17154,66 +17154,66 @@ namespace ExcelMerger.Tests
 
         private static void TestPageCacheCapacity()
         {
-            AssertEqual(96, ThumbZoom.PageCacheCapacity(48L << 20, 300), "48 МБ при 300 px");
-            AssertEqual(24, ThumbZoom.PageCacheCapacity(1L << 20, 300), "пол — 24");
-            AssertEqual(512, ThumbZoom.PageCacheCapacity(8L << 30, 300), "потолок — 512");
+            AssertEq(96, ThumbZoom.PageCacheCapacity(48L << 20, 300), "48 МБ при 300 px");
+            AssertEq(24, ThumbZoom.PageCacheCapacity(1L << 20, 300), "пол — 24");
+            AssertEq(512, ThumbZoom.PageCacheCapacity(8L << 30, 300), "потолок — 512");
             AssertTrue(ThumbZoom.PageCacheCapacity(192L << 20, 640) >= 24, "большой рендер не роняет пол");
         }
 
         private static void TestGridLabelTileKey()
         {
             var page = new PdfPageRef { SourcePath = "C:\\Docs\\a.pdf", PageIndex = 4 };
-            AssertEqual("3", PdfPageGrid.PageLabel(page, 2, true), "режим позиции");
-            AssertEqual("5", PdfPageGrid.PageLabel(page, 2, false), "режим исходной страницы");
+            AssertEq("3", PdfPageGrid.PageLabel(page, 2, true), "режим позиции");
+            AssertEq("5", PdfPageGrid.PageLabel(page, 2, false), "режим исходной страницы");
             AssertTrue(PdfPageGrid.TileKey(page).EndsWith("|r0"), "плитка без поворота");
             page.Rotation = 90;
             AssertTrue(PdfPageGrid.TileKey(page).EndsWith("|r90"), "плитка с поворотом");
             AssertTrue(PdfPageGrid.TileKey(page).StartsWith(PdfPageGrid.ThumbKey(page)),
                 "ключ плитки начинается с ключа страницы");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate90FlipNone, PageRotation.FlipFor(90), "90");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate180FlipNone, PageRotation.FlipFor(180), "180");
-            AssertEqual(System.Drawing.RotateFlipType.Rotate270FlipNone, PageRotation.FlipFor(270), "270");
-            AssertEqual(System.Drawing.RotateFlipType.RotateNoneFlipNone, PageRotation.FlipFor(0), "0");
+            AssertEq(System.Drawing.RotateFlipType.Rotate90FlipNone, PageRotation.FlipFor(90), "90");
+            AssertEq(System.Drawing.RotateFlipType.Rotate180FlipNone, PageRotation.FlipFor(180), "180");
+            AssertEq(System.Drawing.RotateFlipType.Rotate270FlipNone, PageRotation.FlipFor(270), "270");
+            AssertEq(System.Drawing.RotateFlipType.RotateNoneFlipNone, PageRotation.FlipFor(0), "0");
         }
 
         private static void TestPasteIndex()
         {
-            AssertEqual(3, PdfPageGrid.PasteIndex(2, true, new int[0], 10), "каретка после плитки 2");
-            AssertEqual(2, PdfPageGrid.PasteIndex(2, false, new int[0], 10), "каретка до плитки 2");
-            AssertEqual(10, PdfPageGrid.PasteIndex(9, true, new int[0], 10), "каретка в конце");
-            AssertEqual(5, PdfPageGrid.PasteIndex(-1, false, new[] { 1, 4 }, 10), "после последнего выбранного");
-            AssertEqual(10, PdfPageGrid.PasteIndex(-1, false, new int[0], 10), "без каретки и выбора — в конец");
+            AssertEq(3, PdfPageGrid.PasteIndex(2, true, new int[0], 10), "каретка после плитки 2");
+            AssertEq(2, PdfPageGrid.PasteIndex(2, false, new int[0], 10), "каретка до плитки 2");
+            AssertEq(10, PdfPageGrid.PasteIndex(9, true, new int[0], 10), "каретка в конце");
+            AssertEq(5, PdfPageGrid.PasteIndex(-1, false, new[] { 1, 4 }, 10), "после последнего выбранного");
+            AssertEq(10, PdfPageGrid.PasteIndex(-1, false, new int[0], 10), "без каретки и выбора — в конец");
         }
 
         private static void TestClassifyClipboardKeys()
         {
             var K = new Func<System.Windows.Forms.Keys, PdfToolFormBase.PageKeyAction>(PdfToolFormBase.ClassifyPageKey);
-            AssertEqual(PdfToolFormBase.PageKeyAction.Cut, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.X), "Ctrl+X");
-            AssertEqual(PdfToolFormBase.PageKeyAction.Copy, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C), "Ctrl+C");
-            AssertEqual(PdfToolFormBase.PageKeyAction.Paste, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.V), "Ctrl+V");
-            AssertEqual(PdfToolFormBase.PageKeyAction.GoTo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.G), "Ctrl+G");
-            AssertEqual(PdfToolFormBase.PageKeyAction.RotateRight,
+            AssertEq(PdfToolFormBase.PageKeyAction.Cut, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.X), "Ctrl+X");
+            AssertEq(PdfToolFormBase.PageKeyAction.Copy, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C), "Ctrl+C");
+            AssertEq(PdfToolFormBase.PageKeyAction.Paste, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.V), "Ctrl+V");
+            AssertEq(PdfToolFormBase.PageKeyAction.GoTo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.G), "Ctrl+G");
+            AssertEq(PdfToolFormBase.PageKeyAction.RotateRight,
                 K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Oemplus), "Ctrl+Shift+«+»");
-            AssertEqual(PdfToolFormBase.PageKeyAction.RotateRight,
+            AssertEq(PdfToolFormBase.PageKeyAction.RotateRight,
                 K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Add), "Ctrl+Shift+Num+");
-            AssertEqual(PdfToolFormBase.PageKeyAction.RotateLeft,
+            AssertEq(PdfToolFormBase.PageKeyAction.RotateLeft,
                 K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.OemMinus), "Ctrl+Shift+«−»");
-            AssertEqual(PdfToolFormBase.PageKeyAction.RotateLeft,
+            AssertEq(PdfToolFormBase.PageKeyAction.RotateLeft,
                 K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Subtract), "Ctrl+Shift+Num−");
-            AssertEqual(PdfToolFormBase.PageKeyAction.CancelClipboard, K(System.Windows.Forms.Keys.Escape), "Esc");
-            AssertEqual(PdfToolFormBase.PageKeyAction.Undo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Z), "Ctrl+Z");
-            AssertEqual(PdfToolFormBase.PageKeyAction.Redo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Y), "Ctrl+Y");
-            AssertEqual(PdfToolFormBase.PageKeyAction.Redo,
+            AssertEq(PdfToolFormBase.PageKeyAction.CancelClipboard, K(System.Windows.Forms.Keys.Escape), "Esc");
+            AssertEq(PdfToolFormBase.PageKeyAction.Undo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Z), "Ctrl+Z");
+            AssertEq(PdfToolFormBase.PageKeyAction.Redo, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Y), "Ctrl+Y");
+            AssertEq(PdfToolFormBase.PageKeyAction.Redo,
                 K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.Z), "Ctrl+Shift+Z");
-            AssertEqual(PdfToolFormBase.PageKeyAction.None, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Q), "чужая клавиша");
+            AssertEq(PdfToolFormBase.PageKeyAction.None, K(System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Q), "чужая клавиша");
         }
 
         private static void TestRotationAt()
         {
-            AssertEqual(0, PdfSplitService.RotationAt(null, 0), "нет карты — 0");
-            AssertEqual(90, PdfSplitService.RotationAt(new[] { 0, 90 }, 1), "по индексу");
-            AssertEqual(0, PdfSplitService.RotationAt(new[] { 0, 90 }, 5), "за пределами — 0");
-            AssertEqual(0, PdfSplitService.RotationAt(new[] { 0, 90 }, -1), "отрицательный — 0");
+            AssertEq(0, PdfSplitService.RotationAt(null, 0), "нет карты — 0");
+            AssertEq(90, PdfSplitService.RotationAt(new[] { 0, 90 }, 1), "по индексу");
+            AssertEq(0, PdfSplitService.RotationAt(new[] { 0, 90 }, 5), "за пределами — 0");
+            AssertEq(0, PdfSplitService.RotationAt(new[] { 0, 90 }, -1), "отрицательный — 0");
         }
 
         /// <summary>Двухстраничный PDF для проверок поворота; firstPageRotate — собственный /Rotate первой страницы.</summary>
@@ -17248,10 +17248,10 @@ namespace ExcelMerger.Tests
                 PdfMergeService.Merge(order, outPath);
                 using (PdfDocument doc = PdfReader.Open(outPath, PdfDocumentOpenMode.Import))
                 {
-                    AssertEqual(3, doc.PageCount, "страниц в итоге");
-                    AssertEqual(0, doc.Pages[0].Rotate, "исходные 270 + 90 пользователя = 0");
-                    AssertEqual(180, doc.Pages[1].Rotate, "поворот на 180");
-                    AssertEqual(0, doc.Pages[2].Rotate, "без поворота — как в исходнике");
+                    AssertEq(3, doc.PageCount, "страниц в итоге");
+                    AssertEq(0, doc.Pages[0].Rotate, "исходные 270 + 90 пользователя = 0");
+                    AssertEq(180, doc.Pages[1].Rotate, "поворот на 180");
+                    AssertEq(0, doc.Pages[2].Rotate, "без поворота — как в исходнике");
                 }
             }
             finally
@@ -17269,11 +17269,11 @@ namespace ExcelMerger.Tests
                 string src = MakeTwoPagePdf(dir, 0);
                 var ranges = new List<PageRange> { new PageRange(0, 1) };
                 List<string> files = PdfSplitService.SplitByRanges(src, ranges, dir, "part", null, new[] { 90, 0 });
-                AssertEqual(1, files.Count, "один файл диапазона");
+                AssertEq(1, files.Count, "один файл диапазона");
                 using (PdfDocument doc = PdfReader.Open(files[0], PdfDocumentOpenMode.Import))
                 {
-                    AssertEqual(90, doc.Pages[0].Rotate, "поворот из карты");
-                    AssertEqual(0, doc.Pages[1].Rotate, "вторая без поворота");
+                    AssertEq(90, doc.Pages[0].Rotate, "поворот из карты");
+                    AssertEq(0, doc.Pages[1].Rotate, "вторая без поворота");
                 }
             }
             finally
@@ -17307,13 +17307,13 @@ namespace ExcelMerger.Tests
             PageRotation.MapPoint(x, y, PageRotation.Inverse(90), 600, 400, out ix, out iy);
             AssertTrue(Math.Abs(ix - 33) < 1e-9 && Math.Abs(iy - 44) < 1e-9, "инверсия 90°");
 
-            AssertEqual(270, PageRotation.Inverse(90), "Inverse(90)");
-            AssertEqual(180, PageRotation.Inverse(180), "Inverse(180)");
-            AssertEqual(0, PageRotation.Inverse(0), "Inverse(0)");
+            AssertEq(270, PageRotation.Inverse(90), "Inverse(90)");
+            AssertEq(180, PageRotation.Inverse(180), "Inverse(180)");
+            AssertEq(0, PageRotation.Inverse(0), "Inverse(0)");
             AssertTrue(PageRotation.SwapsDimensions(90) && PageRotation.SwapsDimensions(270), "свап 90/270");
             AssertTrue(!PageRotation.SwapsDimensions(0) && !PageRotation.SwapsDimensions(180), "нет свапа 0/180");
-            AssertEqual(90, PageRotation.At(new[] { 0, 90 }, 1), "At по индексу");
-            AssertEqual(0, PageRotation.At(null, 3), "At без карты");
+            AssertEq(90, PageRotation.At(new[] { 0, 90 }, 1), "At по индексу");
+            AssertEq(0, PageRotation.At(null, 3), "At без карты");
         }
 
         private static byte[] MakeTinyPng(int w, int h)
@@ -17344,7 +17344,7 @@ namespace ExcelMerger.Tests
             AssertTrue(w == 600 && h == 400, "размеры страницы поменялись местами");
             AssertTrue(word.Left == 20 && word.Right == 70, "слово: X из прежних Y");
             AssertTrue(word.Bottom == 290 && word.Top == 390, "слово: Y из W−X");
-            AssertEqual(LineOrientation.Vertical, line.Orientation, "горизонталь стала вертикалью");
+            AssertEq(LineOrientation.Vertical, line.Orientation, "горизонталь стала вертикалью");
             AssertTrue(Math.Abs(line.Position - 500) < 1e-9, "постоянная координата линии сохранилась");
             AssertTrue(img.WidthPt == 40 && img.HeightPt == 100, "рамка картинки повёрнута");
             using (var ms = new MemoryStream(img.Png))
@@ -17380,9 +17380,9 @@ namespace ExcelMerger.Tests
             var maps = PdfPageExtraction.BuildRotations(order);
             AssertTrue(maps != null, "карта построена");
             AssertTrue(maps.ContainsKey("A.pdf"), "источник A");
-            AssertEqual(0, PageRotation.At(maps["A.pdf"], 0), "первый экземпляр (без поворота) решил");
-            AssertEqual(180, PageRotation.At(maps["A.pdf"], 2), "страница 3 источника A");
-            AssertEqual(270, PageRotation.At(maps["B.pdf"], 1), "источник B");
+            AssertEq(0, PageRotation.At(maps["A.pdf"], 0), "первый экземпляр (без поворота) решил");
+            AssertEq(180, PageRotation.At(maps["A.pdf"], 2), "страница 3 источника A");
+            AssertEq(270, PageRotation.At(maps["B.pdf"], 1), "источник B");
             AssertTrue(PdfPageExtraction.BuildRotations(
                 new List<PdfPageRef> { new PdfPageRef { SourcePath = "x.pdf", PageIndex = 5 } }) == null,
                 "нет ненулевых поворотов — null");
@@ -17478,19 +17478,19 @@ namespace ExcelMerger.Tests
 
                 string[] got = PdfDrop.ExtractPaths(MakeFileDrop(new[] { pdf, pdfUpper, txt, missing }));
                 Array.Sort(got);
-                AssertEqual(2, got.Length, "только существующие .pdf (регистр не важен)");
+                AssertEq(2, got.Length, "только существующие .pdf (регистр не важен)");
                 AssertTrue(Array.IndexOf(got, pdf) >= 0, "нижний регистр .pdf");
                 AssertTrue(Array.IndexOf(got, pdfUpper) >= 0, "верхний регистр .PDF");
                 AssertTrue(Array.IndexOf(got, txt) < 0, ".txt отсеян");
                 AssertTrue(Array.IndexOf(got, missing) < 0, "несуществующий отсеян");
 
-                AssertEqual(0, PdfDrop.ExtractPaths(MakeFileDrop(new string[0])).Length, "пустой список");
-                AssertEqual(0, PdfDrop.ExtractPaths(null).Length, "null-аргумент");
+                AssertEq(0, PdfDrop.ExtractPaths(MakeFileDrop(new string[0])).Length, "пустой список");
+                AssertEq(0, PdfDrop.ExtractPaths(null).Length, "null-аргумент");
 
                 var text = new System.Windows.Forms.DataObject(System.Windows.Forms.DataFormats.Text, "hi");
                 var e = new System.Windows.Forms.DragEventArgs(text, 0, 0, 0,
                     System.Windows.Forms.DragDropEffects.Copy, System.Windows.Forms.DragDropEffects.None);
-                AssertEqual(0, PdfDrop.ExtractPaths(e).Length, "не-FileDrop — пусто");
+                AssertEq(0, PdfDrop.ExtractPaths(e).Length, "не-FileDrop — пусто");
             }
             finally
             {
@@ -17509,32 +17509,32 @@ namespace ExcelMerger.Tests
         private static void TestDropInsertIndex()
         {
             // Сетка с порядком: вставка по метке (до/после плитки).
-            AssertEqual(2, PdfPageGrid.DropInsertIndex(true, 2, false, 10), "до плитки 2");
-            AssertEqual(3, PdfPageGrid.DropInsertIndex(true, 2, true, 10), "после плитки 2");
+            AssertEq(2, PdfPageGrid.DropInsertIndex(true, 2, false, 10), "до плитки 2");
+            AssertEq(3, PdfPageGrid.DropInsertIndex(true, 2, true, 10), "после плитки 2");
             // Нет метки (курсор в пустоте) — в конец.
-            AssertEqual(10, PdfPageGrid.DropInsertIndex(true, -1, false, 10), "нет метки — в конец");
+            AssertEq(10, PdfPageGrid.DropInsertIndex(true, -1, false, 10), "нет метки — в конец");
             // Сетка без порядка («Разделение») — позиция не важна, всегда в конец.
-            AssertEqual(10, PdfPageGrid.DropInsertIndex(false, 3, true, 10), "без порядка — в конец");
-            AssertEqual(0, PdfPageGrid.DropInsertIndex(true, -1, false, 0), "пустая сетка — 0");
+            AssertEq(10, PdfPageGrid.DropInsertIndex(false, 3, true, 10), "без порядка — в конец");
+            AssertEq(0, PdfPageGrid.DropInsertIndex(true, -1, false, 0), "пустая сетка — 0");
         }
 
         // ---------- быстрые победы UX 1.17.2 ----------
 
         private static void TestHintFor()
         {
-            AssertEqual(null, PdfPageGrid.HintFor(3, false, "empty", "drop"), "непустой список — без подсказки");
-            AssertEqual(null, PdfPageGrid.HintFor(3, true, "empty", "drop"), "непустой во время дропа — без подсказки");
-            AssertEqual("empty", PdfPageGrid.HintFor(0, false, "empty", "drop"), "пусто, не дроп — подсказка добавления");
-            AssertEqual("drop", PdfPageGrid.HintFor(0, true, "empty", "drop"), "пусто, дроп — «отпустите»");
-            AssertEqual("empty", PdfPageGrid.HintFor(0, true, "empty", null), "нет drop-текста — падаем на empty");
+            AssertEq(null, PdfPageGrid.HintFor(3, false, "empty", "drop"), "непустой список — без подсказки");
+            AssertEq(null, PdfPageGrid.HintFor(3, true, "empty", "drop"), "непустой во время дропа — без подсказки");
+            AssertEq("empty", PdfPageGrid.HintFor(0, false, "empty", "drop"), "пусто, не дроп — подсказка добавления");
+            AssertEq("drop", PdfPageGrid.HintFor(0, true, "empty", "drop"), "пусто, дроп — «отпустите»");
+            AssertEq("empty", PdfPageGrid.HintFor(0, true, "empty", null), "нет drop-текста — падаем на empty");
         }
 
         private static void TestRestingStatus()
         {
-            AssertEqual("3 / 10", PdfToolFormBase.RestingStatus(3, 10, "idle", "{0} / {1}"), "есть выделение");
-            AssertEqual("idle", PdfToolFormBase.RestingStatus(0, 10, "idle", "{0} / {1}"), "нет выделения — idle");
-            AssertEqual("1 / 1", PdfToolFormBase.RestingStatus(1, 1, "idle", "{0} / {1}"), "выбрана одна из одной");
-            AssertEqual("", PdfToolFormBase.RestingStatus(0, 0, "", "{0} / {1}"), "пусто — пустой idle");
+            AssertEq("3 / 10", PdfToolFormBase.RestingStatus(3, 10, "idle", "{0} / {1}"), "есть выделение");
+            AssertEq("idle", PdfToolFormBase.RestingStatus(0, 10, "idle", "{0} / {1}"), "нет выделения — idle");
+            AssertEq("1 / 1", PdfToolFormBase.RestingStatus(1, 1, "idle", "{0} / {1}"), "выбрана одна из одной");
+            AssertEq("", PdfToolFormBase.RestingStatus(0, 0, "", "{0} / {1}"), "пусто — пустой idle");
         }
 
         /// <summary>
@@ -17544,15 +17544,15 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestSuccessStatus()
         {
-            AssertEqual("✓ Сохранено страниц: 12.", PdfToolFormBase.SuccessStatus("Сохранено страниц: 12"),
+            AssertEq("✓ Сохранено страниц: 12.", PdfToolFormBase.SuccessStatus("Сохранено страниц: 12"),
                 "одна часть — галочка и точка");
-            AssertEqual("✓ Сохранено страниц: 12 · сжато.", PdfToolFormBase.SuccessStatus("Сохранено страниц: 12", "сжато"),
+            AssertEq("✓ Сохранено страниц: 12 · сжато.", PdfToolFormBase.SuccessStatus("Сохранено страниц: 12", "сжато"),
                 "две части через разделитель");
-            AssertEqual("✓ a · b.", PdfToolFormBase.SuccessStatus("a", null, "", "b"),
+            AssertEq("✓ a · b.", PdfToolFormBase.SuccessStatus("a", null, "", "b"),
                 "null и пустые части выпадают без лишних разделителей");
-            AssertEqual("", PdfToolFormBase.SuccessStatus(), "нет частей — пустая строка");
-            AssertEqual("", PdfToolFormBase.SuccessStatus(null, ""), "все части пустые — пустая строка");
-            AssertEqual("", PdfToolFormBase.SuccessStatus(null), "null вместо массива — пустая строка");
+            AssertEq("", PdfToolFormBase.SuccessStatus(), "нет частей — пустая строка");
+            AssertEq("", PdfToolFormBase.SuccessStatus(null, ""), "все части пустые — пустая строка");
+            AssertEq("", PdfToolFormBase.SuccessStatus(null), "null вместо массива — пустая строка");
         }
 
         /// <summary>
@@ -17562,17 +17562,17 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestCompressionDpi()
         {
-            AssertEqual(150, PdfCompression.ImageDpi(CompressionLevel.Good), "/ebook — 150 dpi");
-            AssertEqual(72, PdfCompression.ImageDpi(CompressionLevel.Small), "/screen — 72 dpi");
-            AssertEqual(0, PdfCompression.ImageDpi(CompressionLevel.None), "без сжатия — разрешения нет");
-            AssertEqual(0, PdfCompression.ImageDpi(CompressionLevel.VeryGood),
+            AssertEq(150, PdfCompression.ImageDpi(CompressionLevel.Good), "/ebook — 150 dpi");
+            AssertEq(72, PdfCompression.ImageDpi(CompressionLevel.Small), "/screen — 72 dpi");
+            AssertEq(0, PdfCompression.ImageDpi(CompressionLevel.None), "без сжатия — разрешения нет");
+            AssertEq(0, PdfCompression.ImageDpi(CompressionLevel.VeryGood),
                 "изображения не пересчитываются — разрешения у уровня нет");
             // Уровни и пресеты не должны разъезжаться: у кого есть разрешение, у того есть и
             // пресет. Обратное с 1.18.2 неверно — «Очень хорошо» имеет пресет без пересчёта.
             foreach (CompressionLevel level in Enum.GetValues(typeof(CompressionLevel)))
                 if (PdfCompression.ImageDpi(level) > 0)
                     AssertTrue(PdfCompression.Preset(level) != null, "разрешение без пресета у " + level);
-            AssertEqual(null, PdfToolFormBase.CompressedPart(false, CompressionLevel.None),
+            AssertEq(null, PdfToolFormBase.CompressedPart(false, CompressionLevel.None),
                 "сжатия не заказывали — части нет");
             // А вот заказанное сжатие, не давшее выигрыша, обязано отчитаться словами:
             // прежде статус в этом случае молчал, и человек не знал, сработало ли оно.
@@ -17602,21 +17602,21 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestPreviewRotationDelta()
         {
-            AssertEqual(90, PdfPageRef.ComposeRotation(90, -0), "с 0 на 90");
-            AssertEqual(180, PdfPageRef.ComposeRotation(270, -90), "с 90 на 270");
-            AssertEqual(270, PdfPageRef.ComposeRotation(0, -90), "с 90 на 0 — доворот на 270, а не -90");
-            AssertEqual(0, PdfPageRef.ComposeRotation(180, -180), "углы совпали — доворачивать нечего");
+            AssertEq(90, PdfPageRef.ComposeRotation(90, -0), "с 0 на 90");
+            AssertEq(180, PdfPageRef.ComposeRotation(270, -90), "с 90 на 270");
+            AssertEq(270, PdfPageRef.ComposeRotation(0, -90), "с 90 на 0 — доворот на 270, а не -90");
+            AssertEq(0, PdfPageRef.ComposeRotation(180, -180), "углы совпали — доворачивать нечего");
 
             int[] angles = { 0, 90, 180, 270 };
             foreach (int applied in angles)
                 foreach (int desired in angles)
                 {
                     int delta = PdfPageRef.ComposeRotation(desired, -applied);
-                    AssertEqual(desired, PdfPageRef.ComposeRotation(applied, delta),
+                    AssertEq(desired, PdfPageRef.ComposeRotation(applied, delta),
                         "доворот " + applied + " на " + delta + " должен дать " + desired);
-                    AssertEqual(applied == desired, delta == 0,
+                    AssertEq(applied == desired, delta == 0,
                         "доворот нужен тогда и только тогда, когда углы разошлись (" + applied + "→" + desired + ")");
-                    AssertEqual(applied == desired,
+                    AssertEq(applied == desired,
                         PageRotation.FlipFor(delta) == System.Drawing.RotateFlipType.RotateNoneFlipNone,
                         "ненулевой доворот обязан дать реальный RotateFlip (" + delta + ")");
                 }
@@ -17664,14 +17664,14 @@ namespace ExcelMerger.Tests
 
         private static void TestProgressItem()
         {
-            AssertEqual(0, PdfToolFormBase.ProgressItem(50, 0), "нет единиц — 0");
-            AssertEqual(1, PdfToolFormBase.ProgressItem(0, 10), "0% — минимум 1");
-            AssertEqual(5, PdfToolFormBase.ProgressItem(50, 10), "50% из 10 — 5");
-            AssertEqual(10, PdfToolFormBase.ProgressItem(100, 10), "100% — всё");
-            AssertEqual(3, PdfToolFormBase.ProgressItem(37, 8), "37% из 8 ≈ 3");
-            AssertEqual(10, PdfToolFormBase.ProgressItem(150, 10), "процент сверх 100 клампится");
-            AssertEqual(2, PdfToolFormBase.ProgressItem(1, 200), "1% из 200 — пропорционально 2");
-            AssertEqual(1, PdfToolFormBase.ProgressItem(0, 200), "0% — минимум 1, не 0");
+            AssertEq(0, PdfToolFormBase.ProgressItem(50, 0), "нет единиц — 0");
+            AssertEq(1, PdfToolFormBase.ProgressItem(0, 10), "0% — минимум 1");
+            AssertEq(5, PdfToolFormBase.ProgressItem(50, 10), "50% из 10 — 5");
+            AssertEq(10, PdfToolFormBase.ProgressItem(100, 10), "100% — всё");
+            AssertEq(3, PdfToolFormBase.ProgressItem(37, 8), "37% из 8 ≈ 3");
+            AssertEq(10, PdfToolFormBase.ProgressItem(150, 10), "процент сверх 100 клампится");
+            AssertEq(2, PdfToolFormBase.ProgressItem(1, 200), "1% из 200 — пропорционально 2");
+            AssertEq(1, PdfToolFormBase.ProgressItem(0, 200), "0% — минимум 1, не 0");
         }
 
         private static void TestBuildShortcuts()
@@ -17712,11 +17712,11 @@ namespace ExcelMerger.Tests
 
                 string[] got = ChoiceCard.FilterByExtension(new[] { pdf, pdfUp, txt, ghost }, new[] { ".pdf" });
                 Array.Sort(got);
-                AssertEqual(2, got.Length, "только существующие .pdf (регистр не важен)");
+                AssertEq(2, got.Length, "только существующие .pdf (регистр не важен)");
                 AssertTrue(Array.IndexOf(got, pdf) >= 0 && Array.IndexOf(got, pdfUp) >= 0, "оба регистра .pdf");
-                AssertEqual(0, ChoiceCard.FilterByExtension(new[] { txt }, new[] { ".pdf" }).Length, ".txt отсеян");
-                AssertEqual(0, ChoiceCard.FilterByExtension(null, new[] { ".pdf" }).Length, "null-пути — пусто");
-                AssertEqual(0, ChoiceCard.FilterByExtension(new[] { pdf }, null).Length, "null-расширения — пусто");
+                AssertEq(0, ChoiceCard.FilterByExtension(new[] { txt }, new[] { ".pdf" }).Length, ".txt отсеян");
+                AssertEq(0, ChoiceCard.FilterByExtension(null, new[] { ".pdf" }).Length, "null-пути — пусто");
+                AssertEq(0, ChoiceCard.FilterByExtension(new[] { pdf }, null).Length, "null-расширения — пусто");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
@@ -17725,23 +17725,23 @@ namespace ExcelMerger.Tests
 
         private static void TestZoomPercent()
         {
-            AssertEqual(100, ThumbZoom.Percent(ThumbZoom.DefaultWidth), "умолчание — 100%");
+            AssertEq(100, ThumbZoom.Percent(ThumbZoom.DefaultWidth), "умолчание — 100%");
             AssertTrue(ThumbZoom.Percent(ThumbZoom.MinWidth) < 100, "минимум < 100%");
             AssertTrue(ThumbZoom.Percent(ThumbZoom.MaxWidth) > 100, "максимум > 100%");
-            AssertEqual(ThumbZoom.Percent(ThumbZoom.MaxWidth), ThumbZoom.Percent(10000), "сверх максимума клампится");
+            AssertEq(ThumbZoom.Percent(ThumbZoom.MaxWidth), ThumbZoom.Percent(10000), "сверх максимума клампится");
         }
 
         private static void TestWidthFromPercent()
         {
-            AssertEqual(ThumbZoom.DefaultWidth, ThumbZoom.WidthFromPercent(100), "100% → ширина по умолчанию");
+            AssertEq(ThumbZoom.DefaultWidth, ThumbZoom.WidthFromPercent(100), "100% → ширина по умолчанию");
             // Round-trip на границах: процент границы обратно даёт ту же граничную ширину.
-            AssertEqual(ThumbZoom.MinWidth, ThumbZoom.WidthFromPercent(ThumbZoom.Percent(ThumbZoom.MinWidth)), "round-trip: минимум");
-            AssertEqual(ThumbZoom.MaxWidth, ThumbZoom.WidthFromPercent(ThumbZoom.Percent(ThumbZoom.MaxWidth)), "round-trip: максимум");
-            AssertEqual(ThumbZoom.MinWidth, ThumbZoom.WidthFromPercent(1), "ниже минимума клампится");
-            AssertEqual(ThumbZoom.MaxWidth, ThumbZoom.WidthFromPercent(9999), "выше максимума клампится");
+            AssertEq(ThumbZoom.MinWidth, ThumbZoom.WidthFromPercent(ThumbZoom.Percent(ThumbZoom.MinWidth)), "round-trip: минимум");
+            AssertEq(ThumbZoom.MaxWidth, ThumbZoom.WidthFromPercent(ThumbZoom.Percent(ThumbZoom.MaxWidth)), "round-trip: максимум");
+            AssertEq(ThumbZoom.MinWidth, ThumbZoom.WidthFromPercent(1), "ниже минимума клампится");
+            AssertEq(ThumbZoom.MaxWidth, ThumbZoom.WidthFromPercent(9999), "выше максимума клампится");
             AssertTrue(ThumbZoom.WidthFromPercent(50) < ThumbZoom.DefaultWidth, "50% < умолчания");
-            AssertEqual(ThumbZoom.Percent(ThumbZoom.MinWidth), ThumbZoom.MinPercent, "MinPercent = Percent(MinWidth)");
-            AssertEqual(ThumbZoom.Percent(ThumbZoom.MaxWidth), ThumbZoom.MaxPercent, "MaxPercent = Percent(MaxWidth)");
+            AssertEq(ThumbZoom.Percent(ThumbZoom.MinWidth), ThumbZoom.MinPercent, "MinPercent = Percent(MinWidth)");
+            AssertEq(ThumbZoom.Percent(ThumbZoom.MaxWidth), ThumbZoom.MaxPercent, "MaxPercent = Percent(MaxWidth)");
         }
 
         private static void TestIsOnLabel()
@@ -17768,8 +17768,8 @@ namespace ExcelMerger.Tests
             {
                 // 1. PDF-окно сохраняет вид: масштаб 300, сжатие 2.
                 new UserSettings().SaveView(300, 2);
-                AssertEqual(300, UserSettings.Load().ZoomWidth, "SaveView записал масштаб");
-                AssertEqual(2, UserSettings.Load().CompressionLevel, "SaveView записал сжатие");
+                AssertEq(300, UserSettings.Load().ZoomWidth, "SaveView записал масштаб");
+                AssertEq(2, UserSettings.Load().CompressionLevel, "SaveView записал сжатие");
 
                 // 2. Устаревший экземпляр (как у MainForm: масштаб 100) сохраняет СВОИ поля.
                 var stale = new UserSettings { LastInputFolder = "X", ZoomWidth = 100, CompressionLevel = 0 };
@@ -17777,9 +17777,9 @@ namespace ExcelMerger.Tests
 
                 // Масштаб/сжатие взяты с диска (300/2), а не из устаревшего экземпляра (100/0).
                 UserSettings after = UserSettings.Load();
-                AssertEqual(300, after.ZoomWidth, "общий Save НЕ затёр масштаб");
-                AssertEqual(2, after.CompressionLevel, "общий Save НЕ затёр сжатие");
-                AssertEqual("X", after.LastInputFolder, "общий Save сохранил собственные поля экземпляра");
+                AssertEq(300, after.ZoomWidth, "общий Save НЕ затёр масштаб");
+                AssertEq(2, after.CompressionLevel, "общий Save НЕ затёр сжатие");
+                AssertEq("X", after.LastInputFolder, "общий Save сохранил собственные поля экземпляра");
 
                 UserSettings staleView = UserSettings.Load();
                 UserSettings.SaveWindowBounds("PdfReviewForm", "1,2,700,500,0");
@@ -17789,9 +17789,9 @@ namespace ExcelMerger.Tests
                 string reviewBounds;
                 AssertTrue(afterView.WindowBounds.TryGetValue("PdfReviewForm", out reviewBounds) &&
                     reviewBounds == "1,2,700,500,0", "SaveView не затёр свежие границы");
-                AssertEqual("1.18.5", afterView.SkippedVersion,
+                AssertEq("1.18.5", afterView.SkippedVersion,
                     "SaveView не затёр свежую настройку обновлений");
-                AssertEqual(360, afterView.ZoomWidth, "SaveView записал только свой масштаб");
+                AssertEq(360, afterView.ZoomWidth, "SaveView записал только свой масштаб");
             }
             finally
             {
@@ -17813,11 +17813,11 @@ namespace ExcelMerger.Tests
             try
             {
                 AssertTrue(UserSettings.Load().UpdateCheckOnStart, "по умолчанию проверка при запуске включена");
-                AssertEqual(null, UserSettings.Load().SkippedVersion, "по умолчанию ничего не пропущено");
+                AssertEq(null, UserSettings.Load().SkippedVersion, "по умолчанию ничего не пропущено");
 
                 UserSettings.SaveSkippedVersion("1.18.0");
                 UserSettings.SaveUpdateCheckOnStart(false);
-                AssertEqual("1.18.0", UserSettings.Load().SkippedVersion, "пропущенная версия записана");
+                AssertEq("1.18.0", UserSettings.Load().SkippedVersion, "пропущенная версия записана");
                 AssertTrue(!UserSettings.Load().UpdateCheckOnStart, "проверка при запуске выключена");
 
                 // Устаревший экземпляр (создан ДО этих правок) сохраняет свои поля.
@@ -17825,15 +17825,15 @@ namespace ExcelMerger.Tests
                 stale.Save();
 
                 UserSettings after = UserSettings.Load();
-                AssertEqual("1.18.0", after.SkippedVersion, "общий Save НЕ затёр пропущенную версию");
+                AssertEq("1.18.0", after.SkippedVersion, "общий Save НЕ затёр пропущенную версию");
                 AssertTrue(!after.UpdateCheckOnStart, "общий Save НЕ включил проверку обратно");
-                AssertEqual("Y", after.LastInputFolder, "общий Save сохранил собственные поля экземпляра");
+                AssertEq("Y", after.LastInputFolder, "общий Save сохранил собственные поля экземпляра");
 
                 // Узкие методы не мешают друг другу: запись версии не трогает флаг и наоборот.
                 UserSettings.SaveSkippedVersion("1.18.1");
                 AssertTrue(!UserSettings.Load().UpdateCheckOnStart, "запись версии не включила проверку");
                 UserSettings.SaveUpdateCheckOnStart(true);
-                AssertEqual("1.18.1", UserSettings.Load().SkippedVersion, "запись флага не стёрла версию");
+                AssertEq("1.18.1", UserSettings.Load().SkippedVersion, "запись флага не стёрла версию");
             }
             finally
             {
@@ -17864,7 +17864,7 @@ namespace ExcelMerger.Tests
                 UserSettings after = UserSettings.Load();
                 string c;
                 AssertTrue(after.WindowBounds.TryGetValue("PdfSplitForm", out c) && c == "5,5,700,560,0", "чужие границы не затёрты устаревшим Save");
-                AssertEqual("Y", after.LastInputFolder, "устаревший экземпляр сохранил свои поля");
+                AssertEq("Y", after.LastInputFolder, "устаревший экземпляр сохранил свои поля");
             }
             finally
             {
@@ -18083,7 +18083,7 @@ namespace ExcelMerger.Tests
                 catch (OperationCanceledException) { threw = true; }
                 AssertTrue(threw, "отмена разбиения бросает OperationCanceledException");
                 string[] parts = Directory.GetFiles(dir, "part*.pdf");
-                AssertEqual(0, parts.Length, "частичные файлы удалены при отмене (осталось 0)");
+                AssertEq(0, parts.Length, "частичные файлы удалены при отмене (осталось 0)");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
@@ -18106,7 +18106,7 @@ namespace ExcelMerger.Tests
 
                 string whole = Path.Combine(dir, "whole");
                 PdfExportService.ToImages(src, pages, whole, NameTemplate.Default, ImageExportFormat.Png, 96);
-                AssertEqual(3, Directory.GetFiles(whole).Length, "без отмены сохраняется файл на страницу");
+                AssertEq(3, Directory.GetFiles(whole).Length, "без отмены сохраняется файл на страницу");
 
                 // Отмена ПОСЛЕ первой картинки: первый pre-check пропускает, второй — отменяет.
                 string part = Path.Combine(dir, "part");
@@ -18120,7 +18120,7 @@ namespace ExcelMerger.Tests
                 }
                 catch (OperationCanceledException) { threw = true; }
                 AssertTrue(threw, "отмена экспорта бросает OperationCanceledException");
-                AssertEqual(0, Directory.GetFiles(part).Length, "сохранённые картинки удалены при отмене (осталось 0)");
+                AssertEq(0, Directory.GetFiles(part).Length, "сохранённые картинки удалены при отмене (осталось 0)");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
@@ -18224,24 +18224,24 @@ namespace ExcelMerger.Tests
             var onTile = new System.Drawing.Point(tile.X + 30, tile.Y + 30);
             var onLabel = new System.Drawing.Point(cell.X + cell.Width / 2, tile.Bottom + 8);
 
-            AssertEqual(PdfPageGrid.DoubleClickAction.RotateChip,
+            AssertEq(PdfPageGrid.DoubleClickAction.RotateChip,
                 PdfPageGrid.ClassifyDoubleClick(onChip, tile, cell, chips, true), "чип поворота — проглотить");
-            AssertEqual(PdfPageGrid.DoubleClickAction.Preview,
+            AssertEq(PdfPageGrid.DoubleClickAction.Preview,
                 PdfPageGrid.ClassifyDoubleClick(onTile, tile, cell, chips, true), "плитка — предпросмотр");
-            AssertEqual(PdfPageGrid.DoubleClickAction.MoveAfter,
+            AssertEq(PdfPageGrid.DoubleClickAction.MoveAfter,
                 PdfPageGrid.ClassifyDoubleClick(onLabel, tile, cell, chips, true), "номер — перенос");
-            AssertEqual(PdfPageGrid.DoubleClickAction.Preview,
+            AssertEq(PdfPageGrid.DoubleClickAction.Preview,
                 PdfPageGrid.ClassifyDoubleClick(onLabel, tile, cell, chips, false), "номер без reorder — предпросмотр");
-            AssertEqual(PdfPageGrid.DoubleClickAction.Preview,
+            AssertEq(PdfPageGrid.DoubleClickAction.Preview,
                 PdfPageGrid.ClassifyDoubleClick(onChip, tile, cell, null, true),
                 "кнопки не показаны (не hot/Locked) — обычная плитка");
         }
 
         private static void TestNumberDialogWidth()
         {
-            AssertEqual(300, NumberPromptDialog.DialogWidth(100, 16, 300), "короткая подпись — базовая ширина");
-            AssertEqual(300, NumberPromptDialog.DialogWidth(268, 16, 300), "ровно впритык — базовая");
-            AssertEqual(333, NumberPromptDialog.DialogWidth(301, 16, 300), "длинная подпись расширяет окно с полями");
+            AssertEq(300, NumberPromptDialog.DialogWidth(100, 16, 300), "короткая подпись — базовая ширина");
+            AssertEq(300, NumberPromptDialog.DialogWidth(268, 16, 300), "ровно впритык — базовая");
+            AssertEq(333, NumberPromptDialog.DialogWidth(301, 16, 300), "длинная подпись расширяет окно с полями");
         }
 
         private static void TestAppIconCached()
@@ -18263,7 +18263,7 @@ namespace ExcelMerger.Tests
             System.Drawing.Font symbol = Ui.Font(9.5f, System.Drawing.FontStyle.Regular, "Segoe UI Symbol");
             AssertTrue(ReferenceEquals(symbol, Ui.Font(9.5f, System.Drawing.FontStyle.Regular, "Segoe UI Symbol")),
                 "семейство — часть ключа");
-            AssertEqual(9.75f, Ui.Font(9.75f).Size, "размер шрифта соответствует запросу");
+            AssertEq(9.75f, Ui.Font(9.75f).Size, "размер шрифта соответствует запросу");
         }
 
         /// <summary>
@@ -18272,13 +18272,13 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestWheelBasis()
         {
-            AssertEqual(132, PdfPageGrid.WheelBasis(0, 132), "без цели — текущая ширина");
-            AssertEqual(148, PdfPageGrid.WheelBasis(148, 132), "неприменённая цель старше");
+            AssertEq(132, PdfPageGrid.WheelBasis(0, 132), "без цели — текущая ширина");
+            AssertEq(148, PdfPageGrid.WheelBasis(148, 132), "неприменённая цель старше");
             // Последовательность из двух быстрых щелчков «+»: вторая цель считается от первой.
             int first = ThumbZoom.StepFromWheel(PdfPageGrid.WheelBasis(0, 132), 120);
             int second = ThumbZoom.StepFromWheel(PdfPageGrid.WheelBasis(first, 132), 120);
-            AssertEqual(148, first, "первый щелчок: +16");
-            AssertEqual(164, second, "второй щелчок шагает от цели, а не от устаревшей ширины");
+            AssertEq(148, first, "первый щелчок: +16");
+            AssertEq(164, second, "второй щелчок шагает от цели, а не от устаревшей ширины");
         }
 
         /// <summary>
@@ -18289,14 +18289,14 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestMedian()
         {
-            AssertEqual(0.0, MathUtil.Median(null), "null → 0");
-            AssertEqual(0.0, MathUtil.Median(new List<double>()), "пустой список → 0");
-            AssertEqual(5.0, MathUtil.Median(new List<double> { 5 }), "один элемент");
-            AssertEqual(2.0, MathUtil.Median(new List<double> { 1, 2, 3, 4 }), "чётное число — НИЖНЯЯ медиана");
-            AssertEqual(3.0, MathUtil.Median(new List<double> { 5, 1, 3 }), "порядок на входе не важен");
+            AssertEq(0.0, MathUtil.Median(null), "null → 0");
+            AssertEq(0.0, MathUtil.Median(new List<double>()), "пустой список → 0");
+            AssertEq(5.0, MathUtil.Median(new List<double> { 5 }), "один элемент");
+            AssertEq(2.0, MathUtil.Median(new List<double> { 1, 2, 3, 4 }), "чётное число — НИЖНЯЯ медиана");
+            AssertEq(3.0, MathUtil.Median(new List<double> { 5, 1, 3 }), "порядок на входе не важен");
             var src = new List<double> { 9, 1, 5 };
             MathUtil.Median(src);
-            AssertEqual("9,1,5", string.Join(",", src), "исходный список не переставлен");
+            AssertEq("9,1,5", string.Join(",", src), "исходный список не переставлен");
         }
 
         /// <summary>
@@ -18306,11 +18306,11 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestListMarkerNonAsciiDigits()
         {
-            AssertEqual(ListKind.None, ListMarker.Detect("１. текст").Kind, "полноширинная «１» — не номер");
-            AssertEqual(ListKind.None, ListMarker.Detect("١. текст").Kind, "арабско-индийская «١» — не номер");
+            AssertEq(ListKind.None, ListMarker.Detect("１. текст").Kind, "полноширинная «１» — не номер");
+            AssertEq(ListKind.None, ListMarker.Detect("١. текст").Kind, "арабско-индийская «١» — не номер");
             ListMarker.Result ok = ListMarker.Detect("1. текст");
-            AssertEqual(ListKind.Numbered, ok.Kind, "обычная ASCII-цифра по-прежнему номер");
-            AssertEqual(1, ok.Number, "номер разобран");
+            AssertEq(ListKind.Numbered, ok.Kind, "обычная ASCII-цифра по-прежнему номер");
+            AssertEq(1, ok.Number, "номер разобран");
         }
 
         /// <summary>
@@ -18319,9 +18319,9 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestLocMissingKey()
         {
-            AssertEqual("нет.такого.ключа", Loc.T("нет.такого.ключа"), "нет ключа — возвращается сам ключ");
-            AssertEqual(null, Loc.T(null), "null-ключ отдаётся как есть, без исключения");
-            AssertEqual("", Loc.T(""), "пустой ключ отдаётся как есть, без исключения");
+            AssertEq("нет.такого.ключа", Loc.T("нет.такого.ключа"), "нет ключа — возвращается сам ключ");
+            AssertEq(null, Loc.T(null), "null-ключ отдаётся как есть, без исключения");
+            AssertEq("", Loc.T(""), "пустой ключ отдаётся как есть, без исключения");
         }
 
         /// <summary>
@@ -18338,7 +18338,7 @@ namespace ExcelMerger.Tests
                 {
                     Loc.Init(lang);
                     string[] labels = PdfCompression.LevelLabels();
-                    AssertEqual(PdfCompression.LevelLabels().Length, labels.Length,
+                    AssertEq(PdfCompression.LevelLabels().Length, labels.Length,
                         "по подписи на каждый уровень (" + lang + ")");
                     var seen = new HashSet<string>();
                     for (int i = 0; i < labels.Length; i++)
@@ -18394,7 +18394,7 @@ namespace ExcelMerger.Tests
                     created.Add(make("ok1.txt"));
                     created.Add(make("ok2.txt"));
                 });
-                AssertEqual(2, done.Count, "без отмены возвращаются все созданные пути");
+                AssertEq(2, done.Count, "без отмены возвращаются все созданные пути");
                 AssertTrue(File.Exists(done[0]) && File.Exists(done[1]), "без отмены файлы остаются");
 
                 bool canceled = false;
@@ -18409,7 +18409,7 @@ namespace ExcelMerger.Tests
                 }
                 catch (OperationCanceledException) { canceled = true; }
                 AssertTrue(canceled, "отмена уходит наверх, а не проглатывается");
-                AssertEqual(0, Directory.GetFiles(dir, "part*.txt").Length, "созданное до отмены удалено");
+                AssertEq(0, Directory.GetFiles(dir, "part*.txt").Length, "созданное до отмены удалено");
 
                 // Сбой убирает за собой ровно так же, как отмена: из папки с семью частями от
                 // сорока не видно, что она неполная, — половина набора выглядит как набор.
@@ -18424,7 +18424,7 @@ namespace ExcelMerger.Tests
                 }
                 catch (MergeException) { failed = true; }
                 AssertTrue(failed, "ошибка уходит наверх");
-                AssertEqual(0, Directory.GetFiles(dir, "err*.txt").Length, "после сбоя частей не остаётся");
+                AssertEq(0, Directory.GetFiles(dir, "err*.txt").Length, "после сбоя частей не остаётся");
 
                 // Нехватка памяти — единственное исключение: там уже не до уборки.
                 bool oom = false;
@@ -18438,7 +18438,7 @@ namespace ExcelMerger.Tests
                 }
                 catch (OutOfMemoryException) { oom = true; }
                 AssertTrue(oom, "нехватка памяти уходит наверх нетронутой");
-                AssertEqual(1, Directory.GetFiles(dir, "oom*.txt").Length, "при нехватке памяти уборку не затеваем");
+                AssertEq(1, Directory.GetFiles(dir, "oom*.txt").Length, "при нехватке памяти уборку не затеваем");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
@@ -18452,13 +18452,13 @@ namespace ExcelMerger.Tests
             var left = new System.Drawing.Rectangle(0, 0, 1000, 800);
             var right = new System.Drawing.Rectangle(1000, 0, 1000, 800);
             var areas = new[] { left, right };
-            AssertEqual(right, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(1200, 100, 400, 300), areas),
+            AssertEq(right, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(1200, 100, 400, 300), areas),
                 "окно целиком на втором экране");
-            AssertEqual(left, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(850, 100, 200, 300), areas),
+            AssertEq(left, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(850, 100, 200, 300), areas),
                 "окно на стыке (150 px слева, 50 справа) — где пересечение больше");
-            AssertEqual(right, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(950, 100, 200, 300), areas),
+            AssertEq(right, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(950, 100, 200, 300), areas),
                 "перевес в другую сторону (50 px слева, 150 справа)");
-            AssertEqual(left, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(5000, 5000, 400, 300), areas),
+            AssertEq(left, WindowPlacement.BestWorkArea(new System.Drawing.Rectangle(5000, 5000, 400, 300), areas),
                 "монитора больше нет — первый экран, а не пустота");
         }
 
@@ -18479,10 +18479,10 @@ namespace ExcelMerger.Tests
             CutNode root = XyCut.OrderTree(boxes, 30, 30, 25, 1);
             AssertTrue(root != null && !root.IsLeaf, "корень — внутренний узел");
             AssertTrue(!root.SideBySide, "верхний уровень — этажи (стек сверху вниз)");
-            AssertEqual(2, root.Children.Count, "два этажа: пара колонок и нижний блок");
+            AssertEq(2, root.Children.Count, "два этажа: пара колонок и нижний блок");
             CutNode floor = root.Children[0];
             AssertTrue(!floor.IsLeaf && floor.SideBySide, "верхний этаж — колонки бок о бок");
-            AssertEqual(2, floor.Children.Count, "в этаже две колонки");
+            AssertEq(2, floor.Children.Count, "в этаже две колонки");
             AssertTrue(floor.Children[0].AvailRight <= floor.Children[1].ColumnLeft,
                 "доступное место левой колонки упирается в содержимое правой");
             AssertTrue(root.Children[1].IsLeaf, "нижний этаж — один блок");
@@ -18536,11 +18536,11 @@ namespace ExcelMerger.Tests
                 AssertTrue(SetupLanguage.Read() == null, "без файла выбора установщика нет");
 
                 File.WriteAllText(AppPaths.SetupLanguageFile, "en");
-                AssertEqual("en", SetupLanguage.Read(), "маркер прочитан");
+                AssertEq("en", SetupLanguage.Read(), "маркер прочитан");
 
                 // Установщик пишет строками, поэтому перевод строки в конце — норма.
                 File.WriteAllText(AppPaths.SetupLanguageFile, "ru\r\n");
-                AssertEqual("ru", SetupLanguage.Read(), "перевод строки не мешает");
+                AssertEq("ru", SetupLanguage.Read(), "перевод строки не мешает");
 
                 SetupLanguage.Consume();
                 AssertTrue(SetupLanguage.Read() == null, "снятый маркер больше не применяется");
@@ -18569,10 +18569,10 @@ namespace ExcelMerger.Tests
             {
                 UserSettings stale = UserSettings.Load(); // «старое» окно держит копию с прежним языком
                 Loc.Set(Lang.En);
-                AssertEqual("en", UserSettings.Load().Language, "Loc.Set записал выбор на диск");
+                AssertEq("en", UserSettings.Load().Language, "Loc.Set записал выбор на диск");
 
                 stale.Save(); // устаревший экземпляр сохраняет свои поля
-                AssertEqual("en", UserSettings.Load().Language, "чужая запись не вернула прежний язык");
+                AssertEq("en", UserSettings.Load().Language, "чужая запись не вернула прежний язык");
             }
             finally
             {
@@ -19647,19 +19647,19 @@ namespace ExcelMerger.Tests
         {
             var view = new System.Drawing.Size(800, 600);
             // Мельче окна и без прокрутки — ровно по центру.
-            AssertEqual(new System.Drawing.Point(275, 200),
+            AssertEq(new System.Drawing.Point(275, 200),
                 PreviewZoom.Centered(new System.Drawing.Size(250, 200), view, System.Drawing.Point.Empty),
                 "мелкая страница по центру");
             // Крупнее окна — в начало содержимого, без отрицательных полей.
-            AssertEqual(new System.Drawing.Point(0, 0),
+            AssertEq(new System.Drawing.Point(0, 0),
                 PreviewZoom.Centered(new System.Drawing.Size(1600, 1200), view, System.Drawing.Point.Empty),
                 "крупная страница от начала области");
             // Прокрутка сдвигает НАЧАЛО содержимого: центр остаётся тем же местом страницы.
-            AssertEqual(new System.Drawing.Point(275 - 120, 200 - 340),
+            AssertEq(new System.Drawing.Point(275 - 120, 200 - 340),
                 PreviewZoom.Centered(new System.Drawing.Size(250, 200), view,
                     new System.Drawing.Point(-120, -340)),
                 "прокрутка учтена в координатах содержимого");
-            AssertEqual(new System.Drawing.Point(-120, -340),
+            AssertEq(new System.Drawing.Point(-120, -340),
                 PreviewZoom.Centered(new System.Drawing.Size(1600, 1200), view,
                     new System.Drawing.Point(-120, -340)),
                 "крупная страница при прокрутке стоит ровно на смещении");
@@ -19667,28 +19667,28 @@ namespace ExcelMerger.Tests
 
         private static void TestPreviewZoomSteps()
         {
-            AssertEqual(1.25, PreviewZoom.Next(1.00, +1), "следующая ступень вверх от натуральной");
-            AssertEqual(0.75, PreviewZoom.Next(1.00, -1), "следующая ступень вниз от натуральной");
+            AssertEq(1.25, PreviewZoom.Next(1.00, +1), "следующая ступень вверх от натуральной");
+            AssertEq(0.75, PreviewZoom.Next(1.00, -1), "следующая ступень вниз от натуральной");
             // Подгонка по окну даёт масштаб МЕЖДУ ступенями — шаг обязан вести к соседней.
-            AssertEqual(0.50, PreviewZoom.Next(0.42, +1), "вверх от промежуточного значения");
-            AssertEqual(0.33, PreviewZoom.Next(0.42, -1), "вниз от промежуточного значения");
-            AssertEqual(PreviewZoom.Max, PreviewZoom.Next(PreviewZoom.Max, +1), "выше предела не уходим");
-            AssertEqual(PreviewZoom.Min, PreviewZoom.Next(PreviewZoom.Min, -1), "ниже предела не уходим");
-            AssertEqual(100, PreviewZoom.Percent(1.0), "проценты для подписи");
-            AssertEqual(33, PreviewZoom.Percent(0.33), "дробный масштаб округляется");
+            AssertEq(0.50, PreviewZoom.Next(0.42, +1), "вверх от промежуточного значения");
+            AssertEq(0.33, PreviewZoom.Next(0.42, -1), "вниз от промежуточного значения");
+            AssertEq(PreviewZoom.Max, PreviewZoom.Next(PreviewZoom.Max, +1), "выше предела не уходим");
+            AssertEq(PreviewZoom.Min, PreviewZoom.Next(PreviewZoom.Min, -1), "ниже предела не уходим");
+            AssertEq(100, PreviewZoom.Percent(1.0), "проценты для подписи");
+            AssertEq(33, PreviewZoom.Percent(0.33), "дробный масштаб округляется");
         }
 
         private static void TestPreviewZoomFit()
         {
             // Широкая страница в узком окне ограничена шириной, высокая — высотой.
-            AssertEqual(0.5, PreviewZoom.Fit(new System.Drawing.Size(1000, 500), new System.Drawing.Size(500, 500)),
+            AssertEq(0.5, PreviewZoom.Fit(new System.Drawing.Size(1000, 500), new System.Drawing.Size(500, 500)),
                 "вписывание по ширине");
-            AssertEqual(0.5, PreviewZoom.Fit(new System.Drawing.Size(500, 1000), new System.Drawing.Size(500, 500)),
+            AssertEq(0.5, PreviewZoom.Fit(new System.Drawing.Size(500, 1000), new System.Drawing.Size(500, 500)),
                 "вписывание по высоте");
             // Мелкую страницу не растягиваем: увеличенное мыло хуже честного размера.
-            AssertEqual(1.0, PreviewZoom.Fit(new System.Drawing.Size(100, 100), new System.Drawing.Size(900, 900)),
+            AssertEq(1.0, PreviewZoom.Fit(new System.Drawing.Size(100, 100), new System.Drawing.Size(900, 900)),
                 "мелкая страница не растягивается");
-            AssertEqual(1.0, PreviewZoom.Fit(new System.Drawing.Size(0, 0), new System.Drawing.Size(500, 500)),
+            AssertEq(1.0, PreviewZoom.Fit(new System.Drawing.Size(0, 0), new System.Drawing.Size(500, 500)),
                 "пустая картинка не роняет расчёт");
         }
 
@@ -19700,11 +19700,11 @@ namespace ExcelMerger.Tests
         {
             // Курсор в 100 px от края области, прокрутка 200 -> под курсором точка 300.
             // При удвоении масштаба та же точка обязана остаться под курсором: 300*2-100 = 500.
-            AssertEqual(500, PreviewZoom.Anchor(200, 100, 1.0, 2.0), "точка под курсором осталась на месте");
-            AssertEqual(50, PreviewZoom.Anchor(200, 100, 1.0, 0.5), "то же при уменьшении");
-            AssertEqual(200, PreviewZoom.Anchor(200, 100, 1.0, 1.0), "без смены масштаба ничего не двигается");
-            AssertEqual(0, PreviewZoom.Anchor(0, 100, 1.0, 0.25), "отрицательная прокрутка обрезается нулём");
-            AssertEqual(200, PreviewZoom.Anchor(200, 100, 0, 2.0), "нулевой исходный масштаб не ломает расчёт");
+            AssertEq(500, PreviewZoom.Anchor(200, 100, 1.0, 2.0), "точка под курсором осталась на месте");
+            AssertEq(50, PreviewZoom.Anchor(200, 100, 1.0, 0.5), "то же при уменьшении");
+            AssertEq(200, PreviewZoom.Anchor(200, 100, 1.0, 1.0), "без смены масштаба ничего не двигается");
+            AssertEq(0, PreviewZoom.Anchor(0, 100, 1.0, 0.25), "отрицательная прокрутка обрезается нулём");
+            AssertEq(200, PreviewZoom.Anchor(200, 100, 0, 2.0), "нулевой исходный масштаб не ломает расчёт");
         }
 
         private static void TestPreviewPan()
@@ -19727,17 +19727,17 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestSelectEveryOther()
         {
-            AssertEqual("0,2,4", string.Join(",", Array.ConvertAll(
+            AssertEq("0,2,4", string.Join(",", Array.ConvertAll(
                 PdfPageGrid.EveryOtherIndices(6, false), Convert.ToString)), "нечётные страницы 1, 3, 5");
-            AssertEqual("1,3,5", string.Join(",", Array.ConvertAll(
+            AssertEq("1,3,5", string.Join(",", Array.ConvertAll(
                 PdfPageGrid.EveryOtherIndices(6, true), Convert.ToString)), "чётные страницы 2, 4, 6");
-            AssertEqual("0,2", string.Join(",", Array.ConvertAll(
+            AssertEq("0,2", string.Join(",", Array.ConvertAll(
                 PdfPageGrid.EveryOtherIndices(3, false), Convert.ToString)), "нечётные при нечётной длине");
-            AssertEqual("1", string.Join(",", Array.ConvertAll(
+            AssertEq("1", string.Join(",", Array.ConvertAll(
                 PdfPageGrid.EveryOtherIndices(3, true), Convert.ToString)), "чётные при нечётной длине");
-            AssertEqual(0, PdfPageGrid.EveryOtherIndices(0, true).Length, "пустой документ — пустой выбор");
-            AssertEqual(0, PdfPageGrid.EveryOtherIndices(-5, false).Length, "отрицательная длина не роняет");
-            AssertEqual(0, PdfPageGrid.EveryOtherIndices(1, true).Length, "одна страница — чётных нет");
+            AssertEq(0, PdfPageGrid.EveryOtherIndices(0, true).Length, "пустой документ — пустой выбор");
+            AssertEq(0, PdfPageGrid.EveryOtherIndices(-5, false).Length, "отрицательная длина не роняет");
+            AssertEq(0, PdfPageGrid.EveryOtherIndices(1, true).Length, "одна страница — чётных нет");
         }
 
         /// <summary>
@@ -19752,21 +19752,21 @@ namespace ExcelMerger.Tests
             {
                 PR("a", 0), PR("a", 1), PR("a", 2), PR("b", 0), PR("b", 1)
             };
-            AssertEqual("3", string.Join(",", BlankPages.InsertPositions(pages).ConvertAll(Convert.ToString).ToArray()),
+            AssertEq("3", string.Join(",", BlankPages.InsertPositions(pages).ConvertAll(Convert.ToString).ToArray()),
                 "пустая после нечётного документа");
             AssertTrue(BlankPages.Needed(pages), "добивка нужна");
 
             // Последний документ не добиваем, даже если он нечётный.
             var tail = new List<PdfPageRef> { PR("a", 0), PR("a", 1), PR("b", 0) };
-            AssertEqual(0, BlankPages.InsertPositions(tail).Count, "последний документ не добиваем");
+            AssertEq(0, BlankPages.InsertPositions(tail).Count, "последний документ не добиваем");
             AssertTrue(!BlankPages.Needed(tail), "добивка не нужна");
 
             // Три нечётных документа подряд: две вставки, обе по ИСХОДНОЙ нумерации.
             var three = new List<PdfPageRef> { PR("a", 0), PR("b", 0), PR("c", 0) };
-            AssertEqual("1,2", string.Join(",", BlankPages.InsertPositions(three).ConvertAll(Convert.ToString).ToArray()),
+            AssertEq("1,2", string.Join(",", BlankPages.InsertPositions(three).ConvertAll(Convert.ToString).ToArray()),
                 "позиции считаются по исходной нумерации");
-            AssertEqual(0, BlankPages.InsertPositions(new List<PdfPageRef>()).Count, "пустой набор");
-            AssertEqual(0, BlankPages.InsertPositions(null).Count, "null не роняет");
+            AssertEq(0, BlankPages.InsertPositions(new List<PdfPageRef>()).Count, "пустой набор");
+            AssertEq(0, BlankPages.InsertPositions(null).Count, "null не роняет");
         }
 
         /// <summary>
@@ -19789,17 +19789,17 @@ namespace ExcelMerger.Tests
 
                 string plain = Path.Combine(dir, "без.pdf");
                 PdfMergeService.Merge(order, plain);
-                AssertEqual(5, PdfPageCount(plain), "без добивки — пять страниц");
+                AssertEq(5, PdfPageCount(plain), "без добивки — пять страниц");
 
                 string padded = Path.Combine(dir, "с.pdf");
                 PdfMergeService.Merge(order, padded, null, null, true);
-                AssertEqual(6, PdfPageCount(padded), "с добивкой — шесть страниц");
+                AssertEq(6, PdfPageCount(padded), "с добивкой — шесть страниц");
 
                 using (PdfDocument doc = PdfReader.Open(padded, PdfDocumentOpenMode.InformationOnly))
                 {
                     // Пустая встала ЧЕТВЁРТОЙ (после трёх страниц первого документа).
-                    AssertEqual(doc.Pages[2].Width.Point, doc.Pages[3].Width.Point, "ширина добивочной как у соседней");
-                    AssertEqual(doc.Pages[2].Height.Point, doc.Pages[3].Height.Point, "высота добивочной как у соседней");
+                    AssertEq(doc.Pages[2].Width.Point, doc.Pages[3].Width.Point, "ширина добивочной как у соседней");
+                    AssertEq(doc.Pages[2].Height.Point, doc.Pages[3].Height.Point, "высота добивочной как у соседней");
                 }
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
@@ -19812,9 +19812,9 @@ namespace ExcelMerger.Tests
         private static void TestPartNameOptional()
         {
             var v = new NameValues { BaseName = "свод", FileNumber = 3, TotalFiles = 9, CurrentPage = 5 };
-            AssertEqual("свод_1-3", PdfSplitService.PartName(null, "свод_1-3", v), "без шаблона — прежнее имя");
-            AssertEqual("свод_1-3", PdfSplitService.PartName("", "свод_1-3", v), "пустой шаблон — прежнее имя");
-            AssertEqual("свод-003", PdfSplitService.PartName("[BASENAME]-[FILENUMBER###]", "свод_1-3", v),
+            AssertEq("свод_1-3", PdfSplitService.PartName(null, "свод_1-3", v), "без шаблона — прежнее имя");
+            AssertEq("свод_1-3", PdfSplitService.PartName("", "свод_1-3", v), "пустой шаблон — прежнее имя");
+            AssertEq("свод-003", PdfSplitService.PartName("[BASENAME]-[FILENUMBER###]", "свод_1-3", v),
                 "шаблон заменяет имя целиком");
         }
 
@@ -19829,13 +19829,13 @@ namespace ExcelMerger.Tests
                 MakeEmptyPagesPdf(src, 6);
 
                 List<string> legacy = PdfSplitService.SplitEveryN(src, 3, dir, "часть");
-                AssertEqual("часть", Path.GetFileNameWithoutExtension(legacy[0]).Substring(0, 5),
+                AssertEq("часть", Path.GetFileNameWithoutExtension(legacy[0]).Substring(0, 5),
                     "без шаблона имя начинается как раньше");
 
                 List<string> shaped = PdfSplitService.SplitEveryN(src, 3, dir, "часть", null, null, null,
                     "лист[FILENUMBER##]из[TOTAL_FILES]");
-                AssertEqual("лист01из2", Path.GetFileNameWithoutExtension(shaped[0]), "первая часть по шаблону");
-                AssertEqual("лист02из2", Path.GetFileNameWithoutExtension(shaped[1]), "вторая часть по шаблону");
+                AssertEq("лист01из2", Path.GetFileNameWithoutExtension(shaped[0]), "первая часть по шаблону");
+                AssertEq("лист02из2", Path.GetFileNameWithoutExtension(shaped[1]), "вторая часть по шаблону");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
@@ -19869,9 +19869,9 @@ namespace ExcelMerger.Tests
                     File.WriteAllText(second.TempPath, "two");
                     string one = first.Commit();
                     string two = second.Commit();
-                    AssertEqual("result.txt", Path.GetFileName(one),
+                    AssertEq("result.txt", Path.GetFileName(one),
                         "первый rename занимает свободное имя");
-                    AssertEqual("result_2.txt", Path.GetFileName(two),
+                    AssertEq("result_2.txt", Path.GetFileName(two),
                         "второй rename атомарно уходит на следующий суффикс");
                 }
             }
@@ -19887,20 +19887,20 @@ namespace ExcelMerger.Tests
             var sheet = new System.Drawing.Rectangle(0, 0, 1000, 1000);
             // Широкая страница ограничена шириной и центрируется по вертикали.
             System.Drawing.Rectangle wide = PdfPrintService.FitToPage(new System.Drawing.Size(2000, 1000), sheet);
-            AssertEqual(1000, wide.Width, "по ширине листа");
-            AssertEqual(500, wide.Height, "пропорции сохранены");
-            AssertEqual(250, wide.Y, "по центру листа");
-            AssertEqual(0, wide.X, "прижата к краю по ширине");
+            AssertEq(1000, wide.Width, "по ширине листа");
+            AssertEq(500, wide.Height, "пропорции сохранены");
+            AssertEq(250, wide.Y, "по центру листа");
+            AssertEq(0, wide.X, "прижата к краю по ширине");
             // Высокая — ограничена высотой и центрируется по горизонтали.
             System.Drawing.Rectangle tall = PdfPrintService.FitToPage(new System.Drawing.Size(1000, 2000), sheet);
-            AssertEqual(500, tall.Width, "по высоте листа");
-            AssertEqual(250, tall.X, "по центру листа");
+            AssertEq(500, tall.Width, "по высоте листа");
+            AssertEq(250, tall.X, "по центру листа");
             // Мелкая страница увеличивается до листа — на бумаге пустые поля не нужны.
             System.Drawing.Rectangle small = PdfPrintService.FitToPage(new System.Drawing.Size(100, 100), sheet);
-            AssertEqual(1000, small.Width, "мелкая страница занимает лист");
+            AssertEq(1000, small.Width, "мелкая страница занимает лист");
             // Вырожденные размеры не роняют печать.
-            AssertEqual(sheet, PdfPrintService.FitToPage(new System.Drawing.Size(0, 0), sheet), "нулевая страница");
-            AssertEqual(new System.Drawing.Rectangle(0, 0, 0, 0),
+            AssertEq(sheet, PdfPrintService.FitToPage(new System.Drawing.Size(0, 0), sheet), "нулевая страница");
+            AssertEq(new System.Drawing.Rectangle(0, 0, 0, 0),
                 PdfPrintService.FitToPage(new System.Drawing.Size(10, 10), new System.Drawing.Rectangle(0, 0, 0, 0)),
                 "нулевой лист");
         }
@@ -19918,14 +19918,14 @@ namespace ExcelMerger.Tests
             {
                 string label = PdfCompression.Label(level);
                 bool namesDpi = label.Contains(PdfCompression.ImageDpi(level).ToString());
-                AssertEqual(PdfCompression.Downsamples(level), namesDpi,
+                AssertEq(PdfCompression.Downsamples(level), namesDpi,
                     "разрешение в подписи ровно у пересчитывающих уровней (" + level + "): " + label);
                 AssertTrue(!label.Contains("{0}"), "подстановка выполнена, а не показана как есть: " + label);
             }
             // Подпись из списка и подпись уровня — одно и то же (список строится из них).
             string[] labels = PdfCompression.LevelLabels();
             for (int i = 0; i < PdfCompression.LevelLabels().Length; i++)
-                AssertEqual(PdfCompression.Label(PdfCompression.LevelAt(i)), labels[i],
+                AssertEq(PdfCompression.Label(PdfCompression.LevelAt(i)), labels[i],
                     "подпись позиции " + i + " берётся из уровня");
         }
 
@@ -20419,16 +20419,16 @@ namespace ExcelMerger.Tests
         private static void TestRoundedButtonMetrics()
         {
             // Радиус: пропорция от высоты, но в разумных пределах.
-            AssertEqual(6f, RoundedButton.RadiusFor(24), "низкая кнопка");
-            AssertEqual(7.5f, RoundedButton.RadiusFor(30), "кнопка панели");
-            AssertEqual(9.5f, RoundedButton.RadiusFor(38), "кнопка действия");
-            AssertEqual(5f, RoundedButton.RadiusFor(8), "вырожденная высота — нижний предел");
-            AssertEqual(10f, RoundedButton.RadiusFor(200), "огромная высота — верхний предел");
+            AssertEq(6f, RoundedButton.RadiusFor(24), "низкая кнопка");
+            AssertEq(7.5f, RoundedButton.RadiusFor(30), "кнопка панели");
+            AssertEq(9.5f, RoundedButton.RadiusFor(38), "кнопка действия");
+            AssertEq(5f, RoundedButton.RadiusFor(8), "вырожденная высота — нижний предел");
+            AssertEq(10f, RoundedButton.RadiusFor(200), "огромная высота — верхний предел");
 
             // Поле подписи: на широкой кнопке постоянное, на узкой — доля ширины.
-            AssertEqual(10, RoundedButton.TextPadFor(150), "широкая кнопка");
-            AssertEqual(10, RoundedButton.TextPadFor(80), "кнопка средней ширины");
-            AssertEqual(4, RoundedButton.TextPadFor(32), "квадратная кнопка лупы");
+            AssertEq(10, RoundedButton.TextPadFor(150), "широкая кнопка");
+            AssertEq(10, RoundedButton.TextPadFor(80), "кнопка средней ширины");
+            AssertEq(4, RoundedButton.TextPadFor(32), "квадратная кнопка лупы");
             AssertTrue(RoundedButton.TextPadFor(32) * 2 < 32, "под подпись остаётся место");
             AssertTrue(RoundedButton.TextPadFor(1) >= 0, "вырожденная ширина не даёт отрицательного поля");
         }
@@ -20555,7 +20555,7 @@ namespace ExcelMerger.Tests
                     MakeColorPdf(p);
                     long before = new FileInfo(p).Length;
                     AssertTrue(!PdfConvert.Apply(p, PdfConvertMode.Grayscale), "без движка — без изменений");
-                    AssertEqual(before, new FileInfo(p).Length, "файл не тронут");
+                    AssertEq(before, new FileInfo(p).Length, "файл не тронут");
                 }
                 finally { try { Directory.Delete(tmp, true); } catch { } }
                 return;
@@ -20572,7 +20572,7 @@ namespace ExcelMerger.Tests
                 AssertTrue(PdfConvert.Apply(gray, PdfConvertMode.Grayscale), "перевод в серое применён");
                 AssertTrue(PdfCompression.LooksLikePdf(gray), "результат — валидный PDF");
                 AssertTrue(!HasColor(gray), "после перевода цветных пикселей не осталось");
-                AssertEqual(1, PdfPageCount(gray), "страница на месте");
+                AssertEq(1, PdfPageCount(gray), "страница на месте");
 
                 // 2. Восстановление: портим таблицу ссылок так, что файл перестаёт открываться.
                 string broken = Path.Combine(dir, "битый.pdf");
@@ -20587,7 +20587,7 @@ namespace ExcelMerger.Tests
                 AssertThrowsExactly<PdfSharp.Pdf.IO.PdfReaderException>("битый файл не открывается", delegate { PdfPageCount(broken); });
 
                 AssertTrue(PdfConvert.Apply(broken, PdfConvertMode.Repair), "восстановление применено");
-                AssertEqual(1, PdfPageCount(broken), "починенный файл снова открывается");
+                AssertEq(1, PdfPageCount(broken), "починенный файл снова открывается");
 
                 // 3. Защищённый паролем файл движок прочитать не может, но выходит с НУЛЁМ и
                 // оставляет годную по заголовку пустую заглушку в пару килобайт. До 1.17.9 она
@@ -20601,8 +20601,7 @@ namespace ExcelMerger.Tests
                     "защищённый файл не считается успешно преобразованным");
                 AssertTrue(!PdfCompression.Compress(locked, CompressionLevel.Good),
                     "и сжатым тоже не считается");
-                // Сравниваем длины как long: AssertEqual сверяет и тип, а Length у массива int.
-                AssertEqual((long)before.Length, new FileInfo(locked).Length, "файл не подменён заглушкой");
+                AssertEq((long)before.Length, new FileInfo(locked).Length, "файл не подменён заглушкой");
             }
             finally
             {
@@ -20746,66 +20745,136 @@ namespace ExcelMerger.Tests
         // ---------- Что не должно попасть на поток интерфейса ----------
 
         /// <summary>
-        /// Дрейф-гард на заморозку окна. В 1.18.3 дважды получилось так, что работа с диском
-        /// оказывалась на потоке интерфейса, и оба раза цена измерялась: разбор документа
-        /// ради размеров страницы — 278 мс на 900-страничном файле, а проверка существования
-        /// файла на отключённой сетевой шаре — около секунды НА КАЖДЫЙ путь, причём при
-        /// запуске, до появления стартового экрана.
+        /// Дрейф-гард на заморозку окна. В 1.18.3 дважды работа с диском оказывалась на потоке
+        /// интерфейса: разбор документа ради размеров страницы — 278 мс на 900-страничном файле, а
+        /// проверка существования файла на отключённой сетевой шаре — около секунды НА КАЖДЫЙ путь,
+        /// причём при запуске, до появления стартового экрана.
         ///
-        /// Тест держит оба места асинхронными: обращения к диску обязаны стоять внутри
-        /// фонового захода (RunWorker), а не в теле обработчика. Проверяется по исходнику —
-        /// поймать это на живом окне можно только с недоступной сетью под рукой.
+        /// Проверяется по поведению (TS-10), а не по тексту исходника, как раньше: тот тест проходил,
+        /// даже когда проверка недавних файлов переехала из найденного им метода. Подменённые
+        /// проверки записывают поток, на котором их позвали.
         /// </summary>
         private static void TestNoDiskWorkOnUiThread()
         {
-            string root = RepoRoot();
-            if (root == null) { AssertTrue(true, "исходники рядом не найдены — пропускаем"); return; }
-            var offenders = new List<string>();
+            int ui = -1; // поток окон — тот, на котором InIsolatedSettings выполняет тело
+            var calls = new List<string>();
+            object gate = new object();
+            Func<string, string> record = delegate(string what)
+            {
+                string call = what + (System.Threading.Thread.CurrentThread.ManagedThreadId == ui ? ":ui" : ":фон");
+                lock (gate) calls.Add(call);
+                return call;
+            };
+            Func<string, bool> seen = delegate(string call) { lock (gate) return calls.Exists(delegate(string c) { return c.StartsWith(call); }); };
+            StartForm.RecentExistsForTests = delegate(string path) { record("существование"); return true; };
+            PdfPageOrderFormBase.SizeOfForTests = delegate(PdfPageRef page) { record("размеры"); return null; }; // null — лист A4
+            var failures = new List<string>();
+            try
+            {
+                InIsolatedSettings("iwo_ui_disk_", delegate
+                {
+                    ui = System.Threading.Thread.CurrentThread.ManagedThreadId;
+                    using (var dir = new TempDir("iwo_ui_disk_"))
+                    {
+                        string pdf = dir.File("недавний.pdf");
+                        PdfProbe.WriteOnePagePdf(pdf);
+                        OperationHistory.Record("pdf.merged", pdf);
+                        using (var hub = new StartForm())
+                        {
+                            hub.Show();
+                            if (!PumpUntil(delegate { return seen("существование"); }, 15000))
+                                failures.Add("недавние файлы не проверялись");
+                            hub.Close();
+                        }
 
-            // Недавние файлы: и чтение истории, и File.Exists — только в фоне.
-            string start = File.ReadAllText(Path.Combine(root, "src", "StartForm.cs"));
-            int build = start.IndexOf("private void BuildRecentFiles", StringComparison.Ordinal);
-            AssertTrue(build > 0, "метод недавних файлов на месте");
-            int worker = start.IndexOf("Ui.RunWorker", build, StringComparison.Ordinal);
-            int exists = start.IndexOf("File.Exists", build, StringComparison.Ordinal);
-            if (worker < 0 || exists < 0 || exists < worker)
-                offenders.Add("StartForm: проверка недавних файлов вне фонового захода");
-
-            // Пустая страница: размеры соседа читаются в фоне, а не при нажатии. Метод живёт
-            // в общей базе — вставка доступна всюду, где сетка правится, а не в одном окне.
-            string ops = File.ReadAllText(Path.Combine(root, "src", "PdfPageOrderFormBase.cs"));
-            int add = ops.IndexOf("protected void AddBlankPage", StringComparison.Ordinal);
-            AssertTrue(add > 0, "вставка пустой страницы на месте");
-            int addWorker = ops.IndexOf("Ui.RunWorker", add, StringComparison.Ordinal);
-            int sizeOf = ops.IndexOf("SizeOf(", add, StringComparison.Ordinal);
-            if (addWorker < 0 || sizeOf < 0 || sizeOf < addWorker)
-                offenders.Add("PdfOpsForm: размеры соседней страницы читаются на потоке интерфейса");
-
-            AssertTrue(offenders.Count == 0, "работа с диском на потоке интерфейса: " +
-                string.Join(" | ", offenders.ToArray()));
+                        var form = new PdfMergeForm();
+                        try
+                        {
+                            form.Show();
+                            AuditDCall(form, "AddBlankPage");
+                            if (!PumpUntil(delegate { return seen("размеры") && !form.IsBusy; }, 15000))
+                                failures.Add("пустой лист не вставился");
+                        }
+                        finally
+                        {
+                            form.Close();
+                            form.Dispose();
+                        }
+                    }
+                });
+            }
+            finally
+            {
+                StartForm.RecentExistsForTests = null;
+                PdfPageOrderFormBase.SizeOfForTests = null;
+            }
+            lock (gate)
+            {
+                foreach (string call in calls)
+                    if (call.EndsWith(":ui", StringComparison.Ordinal))
+                        failures.Add(call.Substring(0, call.Length - 3) + " — на потоке интерфейса");
+            }
+            AssertTrue(failures.Count == 0, "работа с диском на потоке интерфейса: " + string.Join(" | ", failures.ToArray()));
         }
 
         /// <summary>
-        /// Дрейф-гард на зависшее окно: опрос пароля идёт из обработчика, и если он бросит,
-        /// окно останется в состоянии загрузки навсегда — кнопки и сетка заблокированы, и
-        /// помогает только закрыть инструмент. Оба места, где пароль спрашивается, обязаны
-        /// довести дело до конца в любом случае.
+        /// Дрейф-гард на зависшее окно: опрос пароля идёт из обработчика, и если он бросит, окно
+        /// останется в состоянии загрузки навсегда — кнопки и сетка заблокированы, помогает только
+        /// закрыть инструмент. Проверяется по поведению (TS-10): опрос бросает, а окно обоих путей
+        /// загрузки (пакет файлов и один документ) обязано выйти из загрузки и назвать причину.
         /// </summary>
         private static void TestPasswordPromptCannotHangWindow()
         {
-            string root = RepoRoot();
-            if (root == null) { AssertTrue(true, "исходники рядом не найдены — пропускаем"); return; }
-            foreach (string file in new[] { "PdfOrderedToolFormBase.cs", "PdfSingleDocFormBase.cs" })
+            const string failure = "сбой окна пароля (тест)";
+            int asked = 0;
+            PasswordPromptDialog.ShowForTests = delegate { asked++; throw new InvalidOperationException(failure); };
+            var failures = new List<string>();
+            try
             {
-                string text = File.ReadAllText(Path.Combine(root, "src", file));
-                int ask = text.IndexOf("AskPasswords(", StringComparison.Ordinal);
-                AssertTrue(ask > 0, file + ": опрос пароля на месте");
-                // Ищем try перед вызовом и catch после него в пределах того же метода.
-                int guard = text.LastIndexOf("try", ask, StringComparison.Ordinal);
-                int rescue = text.IndexOf("catch", ask, StringComparison.Ordinal);
-                AssertTrue(guard > 0 && rescue > ask && rescue - ask < 1200,
-                    file + ": опрос пароля не огорожен — сбой оставит окно заблокированным");
+                InIsolatedSettings("iwo_pw_hang_", delegate
+                {
+                    using (var dir = new TempDir("iwo_pw_hang_"))
+                    {
+                        string pdf = dir.File("под паролем.pdf");
+                        MakeProtectedPdf(pdf);
+                        var makers = new Func<PdfToolFormBase>[]
+                        {
+                            delegate { return new PdfMergeForm(); },          // пакет файлов
+                            delegate { return new PdfSplitForm(delegate { }); } // один документ
+                        };
+                        foreach (Func<PdfToolFormBase> make in makers)
+                        {
+                            PdfToolFormBase form = make();
+                            string name = form.GetType().Name;
+                            var shown = new List<string>();
+                            int before = asked;
+                            try
+                            {
+                                form.Show();
+                                using (AnswerMessages(DialogResult.OK, 1, delegate(string text) { shown.Add(text); }))
+                                {
+                                    ((IFileAcceptor)form).AcceptFiles(new[] { pdf });
+                                    if (!PumpUntil(delegate { return asked > before && !form.IsBusy && shown.Count > 0; }, 20000))
+                                        failures.Add(name + ": окно не вышло из загрузки (спросили: " + (asked - before) +
+                                            ", занято: " + form.IsBusy + ", сообщений: " + shown.Count + ")");
+                                    else if (!shown[0].Contains(failure))
+                                        failures.Add(name + ": причина не названа: " + shown[0].Replace('\n', ' '));
+                                }
+                            }
+                            finally
+                            {
+                                form.Close();
+                                form.Dispose();
+                            }
+                        }
+                    }
+                });
             }
+            finally
+            {
+                PasswordPromptDialog.ShowForTests = null;
+            }
+            AssertTrue(failures.Count == 0, "сбой опроса пароля: " + string.Join(" | ", failures.ToArray()));
         }
 
         // ---------- Недавние файлы ----------
@@ -20825,15 +20894,15 @@ namespace ExcelMerger.Tests
             Func<string, bool> exists = delegate(string p) { return p.StartsWith(@"C:\есть"); };
 
             List<HistoryEntry> recent = OperationHistory.RecentFiles(data, 5, exists);
-            AssertEqual(2, recent.Count, "исчезнувший файл в список не попал");
-            AssertEqual(@"C:\есть\первый.pdf", recent[0].Path, "самый свежий — первым, и без повтора");
-            AssertEqual(@"C:\есть\второй.pdf", recent[1].Path, "затем предыдущий");
+            AssertEq(2, recent.Count, "исчезнувший файл в список не попал");
+            AssertEq(@"C:\есть\первый.pdf", recent[0].Path, "самый свежий — первым, и без повтора");
+            AssertEq(@"C:\есть\второй.pdf", recent[1].Path, "затем предыдущий");
 
-            AssertEqual(1, OperationHistory.RecentFiles(data, 1, exists).Count, "предел соблюдается");
-            AssertEqual(0, OperationHistory.RecentFiles(data, 0, exists).Count, "нулевой предел — пустой список");
-            AssertEqual(0, OperationHistory.RecentFiles(null, 3, exists).Count, "истории нет — списка нет");
-            AssertEqual(0, OperationHistory.RecentFiles(data, 3, null).Count, "нечем проверить — не показываем");
-            AssertEqual(0, OperationHistory.RecentFiles(new OperationHistory.Data(), 3, exists).Count,
+            AssertEq(1, OperationHistory.RecentFiles(data, 1, exists).Count, "предел соблюдается");
+            AssertEq(0, OperationHistory.RecentFiles(data, 0, exists).Count, "нулевой предел — пустой список");
+            AssertEq(0, OperationHistory.RecentFiles(null, 3, exists).Count, "истории нет — списка нет");
+            AssertEq(0, OperationHistory.RecentFiles(data, 3, null).Count, "нечем проверить — не показываем");
+            AssertEq(0, OperationHistory.RecentFiles(new OperationHistory.Data(), 3, exists).Count,
                 "пустая история — пустой список");
 
             // Записи без пути и бросающая проверка не должны ронять стартовый экран.
@@ -20841,8 +20910,8 @@ namespace ExcelMerger.Tests
             messy.Entries.Add(null);
             messy.Entries.Add(new HistoryEntry { Path = null });
             messy.Entries.Add(new HistoryEntry { Path = @"C:\есть\целый.pdf" });
-            AssertEqual(1, OperationHistory.RecentFiles(messy, 3, exists).Count, "мусорные записи пропущены");
-            AssertEqual(0, OperationHistory.RecentFiles(messy, 3,
+            AssertEq(1, OperationHistory.RecentFiles(messy, 3, exists).Count, "мусорные записи пропущены");
+            AssertEq(0, OperationHistory.RecentFiles(messy, 3,
                 delegate { throw new UnauthorizedAccessException("нет доступа"); }).Count,
                 "недоступный путь считается исчезнувшим, а не поводом упасть");
         }
@@ -20853,19 +20922,19 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestRecentCardGlyph()
         {
-            AssertEqual(CardGlyph.PdfSplit, RecentCard.GlyphFor("split.done", "a.pdf"), "разделение");
-            AssertEqual(CardGlyph.Excel, RecentCard.GlyphFor("excel.merged", "свод.xlsx"), "свод Excel");
-            AssertEqual(CardGlyph.Pptx, RecentCard.GlyphFor("pptx.done", "a.pptx"), "презентация");
-            AssertEqual(CardGlyph.Ocr, RecentCard.GlyphFor("word.done", "a.docx"), "PDF → Word");
-            AssertEqual(CardGlyph.Tools, RecentCard.GlyphFor("ops.compressed", "a.pdf"), "прочие операции");
-            AssertEqual(CardGlyph.Pdf, RecentCard.GlyphFor("pdf.merged", "a.pdf"), "объединение");
+            AssertEq(CardGlyph.PdfSplit, RecentCard.GlyphFor("split.done", "a.pdf"), "разделение");
+            AssertEq(CardGlyph.Excel, RecentCard.GlyphFor("excel.merged", "свод.xlsx"), "свод Excel");
+            AssertEq(CardGlyph.Pptx, RecentCard.GlyphFor("pptx.done", "a.pptx"), "презентация");
+            AssertEq(CardGlyph.Ocr, RecentCard.GlyphFor("word.done", "a.docx"), "PDF → Word");
+            AssertEq(CardGlyph.Tools, RecentCard.GlyphFor("ops.compressed", "a.pdf"), "прочие операции");
+            AssertEq(CardGlyph.Pdf, RecentCard.GlyphFor("pdf.merged", "a.pdf"), "объединение");
             // Операция неизвестна — узнаём по расширению.
-            AssertEqual(CardGlyph.Excel, RecentCard.GlyphFor(null, @"C:\путь\книга.XLSX"), "по расширению .xlsx");
-            AssertEqual(CardGlyph.Pptx, RecentCard.GlyphFor("", "доклад.pptx"), "по расширению .pptx");
-            AssertEqual(CardGlyph.Ocr, RecentCard.GlyphFor("", "письмо.docx"), "по расширению .docx");
-            AssertEqual(CardGlyph.Pdf, RecentCard.GlyphFor("", "скан.pdf"), "по расширению .pdf");
-            AssertEqual(CardGlyph.Other, RecentCard.GlyphFor("", "заметки.txt"), "чужое расширение — общий значок");
-            AssertEqual(CardGlyph.Other, RecentCard.GlyphFor(null, null), "нет ничего — тоже общий, а не падение");
+            AssertEq(CardGlyph.Excel, RecentCard.GlyphFor(null, @"C:\путь\книга.XLSX"), "по расширению .xlsx");
+            AssertEq(CardGlyph.Pptx, RecentCard.GlyphFor("", "доклад.pptx"), "по расширению .pptx");
+            AssertEq(CardGlyph.Ocr, RecentCard.GlyphFor("", "письмо.docx"), "по расширению .docx");
+            AssertEq(CardGlyph.Pdf, RecentCard.GlyphFor("", "скан.pdf"), "по расширению .pdf");
+            AssertEq(CardGlyph.Other, RecentCard.GlyphFor("", "заметки.txt"), "чужое расширение — общий значок");
+            AssertEq(CardGlyph.Other, RecentCard.GlyphFor(null, null), "нет ничего — тоже общий, а не падение");
         }
 
         /// <summary>
@@ -20876,15 +20945,15 @@ namespace ExcelMerger.Tests
         private static void TestRecentFit()
         {
             const int gap = 10, min = 150;
-            AssertEqual(3, StartForm.RecentFit(700, gap, min, 3), "широкая полоса — все три");
-            AssertEqual(3, StartForm.RecentFit(480, gap, min, 3), "ровно на три по минимуму");
-            AssertEqual(2, StartForm.RecentFit(400, gap, min, 3), "на три не хватило — показываем две");
-            AssertEqual(1, StartForm.RecentFit(200, gap, min, 3), "хватило на одну");
-            AssertEqual(0, StartForm.RecentFit(100, gap, min, 3), "не хватило ни на одну — ничего");
-            AssertEqual(2, StartForm.RecentFit(2000, gap, min, 2), "больше, чем есть записей, не показываем");
-            AssertEqual(0, StartForm.RecentFit(0, gap, min, 3), "нулевая полоса");
-            AssertEqual(0, StartForm.RecentFit(-50, gap, min, 3), "отрицательная ширина не ломает счёт");
-            AssertEqual(0, StartForm.RecentFit(700, gap, min, 0), "записей нет — и карточек нет");
+            AssertEq(3, StartForm.RecentFit(700, gap, min, 3), "широкая полоса — все три");
+            AssertEq(3, StartForm.RecentFit(480, gap, min, 3), "ровно на три по минимуму");
+            AssertEq(2, StartForm.RecentFit(400, gap, min, 3), "на три не хватило — показываем две");
+            AssertEq(1, StartForm.RecentFit(200, gap, min, 3), "хватило на одну");
+            AssertEq(0, StartForm.RecentFit(100, gap, min, 3), "не хватило ни на одну — ничего");
+            AssertEq(2, StartForm.RecentFit(2000, gap, min, 2), "больше, чем есть записей, не показываем");
+            AssertEq(0, StartForm.RecentFit(0, gap, min, 3), "нулевая полоса");
+            AssertEq(0, StartForm.RecentFit(-50, gap, min, 3), "отрицательная ширина не ломает счёт");
+            AssertEq(0, StartForm.RecentFit(700, gap, min, 0), "записей нет — и карточек нет");
         }
 
         /// <summary>
@@ -20984,15 +21053,15 @@ namespace ExcelMerger.Tests
         {
             double w, h;
             BlankPages.SheetSize(new PdfPageInfo { WidthPt = 842, HeightPt = 1191 }, out w, out h);
-            AssertEqual(842.0, w, "ширина как у соседней страницы");
-            AssertEqual(1191.0, h, "высота как у соседней страницы");
+            AssertEq(842.0, w, "ширина как у соседней страницы");
+            AssertEq(1191.0, h, "высота как у соседней страницы");
             BlankPages.SheetSize(null, out w, out h);
-            AssertEqual(BlankPages.A4WidthPt, w, "соседа нет — ширина A4");
-            AssertEqual(BlankPages.A4HeightPt, h, "соседа нет — высота A4");
+            AssertEq(BlankPages.A4WidthPt, w, "соседа нет — ширина A4");
+            AssertEq(BlankPages.A4HeightPt, h, "соседа нет — высота A4");
             BlankPages.SheetSize(new PdfPageInfo { WidthPt = 0, HeightPt = 500 }, out w, out h);
-            AssertEqual(BlankPages.A4WidthPt, w, "бессмысленный размер соседа — тоже A4");
+            AssertEq(BlankPages.A4WidthPt, w, "бессмысленный размер соседа — тоже A4");
             BlankPages.SheetSize(new PdfPageInfo { WidthPt = 400, HeightPt = -1 }, out w, out h);
-            AssertEqual(BlankPages.A4HeightPt, h, "отрицательная высота соседа — A4");
+            AssertEq(BlankPages.A4HeightPt, h, "отрицательная высота соседа — A4");
         }
 
         /// <summary>
@@ -21007,10 +21076,10 @@ namespace ExcelMerger.Tests
             {
                 string blank = Path.Combine(dir, "пустая.pdf");
                 BlankPages.WriteSheet(blank, 842, 1191);   // A3
-                AssertEqual(1, PdfPageProbe.PageCount(blank), "обёртка — ровно одна страница");
+                AssertEq(1, PdfPageProbe.PageCount(blank), "обёртка — ровно одна страница");
                 List<PdfPageInfo> pages = PdfMergeService.LoadPages(blank);
-                AssertEqual(842, (int)Math.Round(pages[0].WidthPt), "ширина листа записана");
-                AssertEqual(1191, (int)Math.Round(pages[0].HeightPt), "высота листа записана");
+                AssertEq(842, (int)Math.Round(pages[0].WidthPt), "ширина листа записана");
+                AssertEq(1191, (int)Math.Round(pages[0].HeightPt), "высота листа записана");
 
                 // Собирается в документ как обычная страница — ради этого обёртка и нужна.
                 string doc = Path.Combine(dir, "с пустой.pdf");
@@ -21020,7 +21089,7 @@ namespace ExcelMerger.Tests
                     new PdfPageRef { SourcePath = source, PageIndex = 0 },
                     new PdfPageRef { SourcePath = blank, PageIndex = 0 },
                     new PdfPageRef { SourcePath = source, PageIndex = 1 } }, doc);
-                AssertEqual(3, PdfPageProbe.PageCount(doc), "пустая страница встала между своими");
+                AssertEq(3, PdfPageProbe.PageCount(doc), "пустая страница встала между своими");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
@@ -21034,15 +21103,15 @@ namespace ExcelMerger.Tests
         /// </summary>
         private static void TestPrintPreviewPageLimit()
         {
-            AssertEqual(0, PrintPreviewForm.PagesToShow(0), "печатать нечего — и показывать нечего");
-            AssertEqual(0, PrintPreviewForm.PagesToShow(-3), "отрицательное число страниц не ломает счёт");
-            AssertEqual(1, PrintPreviewForm.PagesToShow(1), "одна страница показывается целиком");
-            AssertEqual(PrintPreviewForm.PreviewPages - 1,
+            AssertEq(0, PrintPreviewForm.PagesToShow(0), "печатать нечего — и показывать нечего");
+            AssertEq(0, PrintPreviewForm.PagesToShow(-3), "отрицательное число страниц не ломает счёт");
+            AssertEq(1, PrintPreviewForm.PagesToShow(1), "одна страница показывается целиком");
+            AssertEq(PrintPreviewForm.PreviewPages - 1,
                 PrintPreviewForm.PagesToShow(PrintPreviewForm.PreviewPages - 1),
                 "меньше предела — показываем всё");
-            AssertEqual(PrintPreviewForm.PreviewPages, PrintPreviewForm.PagesToShow(PrintPreviewForm.PreviewPages),
+            AssertEq(PrintPreviewForm.PreviewPages, PrintPreviewForm.PagesToShow(PrintPreviewForm.PreviewPages),
                 "ровно предел — показываем всё");
-            AssertEqual(PrintPreviewForm.PreviewPages, PrintPreviewForm.PagesToShow(500),
+            AssertEq(PrintPreviewForm.PreviewPages, PrintPreviewForm.PagesToShow(500),
                 "больше предела — ровно предел, а не всё задание");
         }
 
@@ -21073,8 +21142,8 @@ namespace ExcelMerger.Tests
                     // На принтер ничего не уходит: считаем листы так же, как предпросмотр.
                     int first = CountPreviewPages(doc);
                     int second = CountPreviewPages(doc);
-                    AssertEqual(3, first, "листов столько же, сколько страниц");
-                    AssertEqual(first, second, "повторный обход даёт то же самое");
+                    AssertEq(3, first, "листов столько же, сколько страниц");
+                    AssertEq(first, second, "повторный обход даёт то же самое");
                 }
 
                 // Пустой набор — понятная ошибка, а не попытка печатать пустоту.
@@ -21141,31 +21210,31 @@ namespace ExcelMerger.Tests
             AssertTrue(!PdfCli.IsCommand(null), "и null тоже");
 
             PdfCliCommand merge = PdfCli.Parse(new[] { "--merge", "out.pdf", "a.pdf", "b.pdf" });
-            AssertEqual(null, merge.Error, "разбор объединения без ошибок");
-            AssertEqual(PdfCliKind.Merge, merge.Kind, "это объединение");
-            AssertEqual("out.pdf", merge.Output, "первый путь — результат");
-            AssertEqual(2, merge.Inputs.Count, "остальные — исходники");
+            AssertEq(null, merge.Error, "разбор объединения без ошибок");
+            AssertEq(PdfCliKind.Merge, merge.Kind, "это объединение");
+            AssertEq("out.pdf", merge.Output, "первый путь — результат");
+            AssertEq(2, merge.Inputs.Count, "остальные — исходники");
 
             PdfCliCommand levelled = PdfCli.Parse(new[] { "--merge", "o.pdf", "a.pdf", "--level", "normal" });
-            AssertEqual(CompressionLevel.Small, levelled.Level, "уровень читается по имени");
-            AssertEqual(1, levelled.Inputs.Count, "ключ не попал в список файлов");
+            AssertEq(CompressionLevel.Small, levelled.Level, "уровень читается по имени");
+            AssertEq(1, levelled.Inputs.Count, "ключ не попал в список файлов");
 
             PdfCliCommand split = PdfCli.Parse(new[] { "--split", "a.pdf", "dir", "--every", "3" });
-            AssertEqual(PdfCliSplitMode.Every, split.SplitMode, "режим — каждые N");
-            AssertEqual(3, split.Every, "N прочитано");
-            AssertEqual(PdfCliSplitMode.Bookmarks,
+            AssertEq(PdfCliSplitMode.Every, split.SplitMode, "режим — каждые N");
+            AssertEq(3, split.Every, "N прочитано");
+            AssertEq(PdfCliSplitMode.Bookmarks,
                 PdfCli.Parse(new[] { "--split", "a.pdf", "dir", "--bookmarks" }).SplitMode, "режим — по закладкам");
-            AssertEqual(PdfCliSplitMode.Ranges,
+            AssertEq(PdfCliSplitMode.Ranges,
                 PdfCli.Parse(new[] { "--split", "a.pdf", "dir", "--ranges", "1-3,5" }).SplitMode, "режим — диапазоны");
 
             PdfCliCommand images = PdfCli.Parse(new[] { "--to-image", "a.pdf", "dir", "--dpi", "300", "--format", "jpg" });
-            AssertEqual(300, images.Dpi, "разрешение прочитано");
-            AssertEqual(ImageExportFormat.Jpeg, images.Format, "формат прочитан");
-            AssertEqual(ImageExportFormat.Jpeg,
+            AssertEq(300, images.Dpi, "разрешение прочитано");
+            AssertEq(ImageExportFormat.Jpeg, images.Format, "формат прочитан");
+            AssertEq(ImageExportFormat.Jpeg,
                 PdfCli.Parse(new[] { "--to-image", "a.pdf", "d", "--format", "jpeg" }).Format, "jpeg = jpg");
 
             // Сжатие без уровня бессмысленно — берём средний, а не «ничего не делать».
-            AssertEqual(CompressionLevel.Good, PdfCli.Parse(new[] { "--compress", "a.pdf", "b.pdf" }).Level,
+            AssertEq(CompressionLevel.Good, PdfCli.Parse(new[] { "--compress", "a.pdf", "b.pdf" }).Level,
                 "у сжатия уровень по умолчанию рабочий");
 
             // Отказы: каждый обязан объяснить, что не так.
@@ -21191,8 +21260,8 @@ namespace ExcelMerger.Tests
                     "отказ объяснён: " + string.Join(" ", bad));
 
             PdfCliCommand dashed = PdfCli.Parse(new[] { "--merge", "--", "--out.pdf", "--in.pdf" });
-            AssertEqual(null, dashed.Error, "-- завершает разбор ключей");
-            AssertEqual("--out.pdf", dashed.Output, "путь, начинающийся с --, допустим после terminator");
+            AssertEq(null, dashed.Error, "-- завершает разбор ключей");
+            AssertEq("--out.pdf", dashed.Output, "путь, начинающийся с --, допустим после terminator");
 
             // Справка — тоже команда, иначе «--help» открывал бы окно вместо ответа: строка
             // запуска с неизвестным первым словом уводит приложение в обычный запуск с
@@ -21201,13 +21270,13 @@ namespace ExcelMerger.Tests
             {
                 AssertTrue(PdfCli.IsCommand(new[] { flag }), flag + " — команда, а не повод открыть окно");
                 PdfCliCommand help = PdfCli.Parse(new[] { flag });
-                AssertEqual(null, help.Error, flag + " разбирается без ошибок");
-                AssertEqual(PdfCliKind.Help, help.Kind, flag + " — это справка");
-                AssertEqual(PdfCli.Ok, PdfCli.Execute(help, delegate { }), flag + " — успех, а не отказ");
+                AssertEq(null, help.Error, flag + " разбирается без ошибок");
+                AssertEq(PdfCliKind.Help, help.Kind, flag + " — это справка");
+                AssertEq(PdfCli.Ok, PdfCli.Execute(help, delegate { }), flag + " — успех, а не отказ");
             }
 
             AssertTrue(!string.IsNullOrEmpty(PdfCli.Parse(null).Error), "пустой запуск — отказ, а не падение");
-            AssertEqual(PdfCli.BadUsage, PdfCli.Execute(PdfCli.Parse(new[] { "--merge" }), delegate { }),
+            AssertEq(PdfCli.BadUsage, PdfCli.Execute(PdfCli.Parse(new[] { "--merge" }), delegate { }),
                 "неверный вызов — код 2");
             AssertTrue(PdfCli.Usage().Contains("--merge") && PdfCli.Usage().Contains("Exit codes"),
                 "справка перечисляет команды и коды возврата");
@@ -21240,31 +21309,31 @@ namespace ExcelMerger.Tests
                 Action<string> say = delegate(string line) { log.Add(line); };
 
                 string merged = Path.Combine(dir, "объединено.pdf");
-                AssertEqual(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--merge", merged, src, src }), say),
+                AssertEq(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--merge", merged, src, src }), say),
                     "объединение выполнено");
-                AssertEqual(8, PdfPageProbe.PageCount(merged), "восемь страниц из двух копий");
+                AssertEq(8, PdfPageProbe.PageCount(merged), "восемь страниц из двух копий");
 
                 string part = Path.Combine(dir, "часть.pdf");
-                AssertEqual(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--extract", merged, "2-3", part }), say),
+                AssertEq(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--extract", merged, "2-3", part }), say),
                     "извлечение выполнено");
-                AssertEqual(2, PdfPageProbe.PageCount(part), "извлечены две страницы");
+                AssertEq(2, PdfPageProbe.PageCount(part), "извлечены две страницы");
 
                 string outDir = Path.Combine(dir, "части");
-                AssertEqual(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--split", merged, outDir, "--every", "3" }), say),
+                AssertEq(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--split", merged, outDir, "--every", "3" }), say),
                     "разделение выполнено");
-                AssertEqual(3, Directory.GetFiles(outDir, "*.pdf").Length, "восемь страниц по три — три файла");
+                AssertEq(3, Directory.GetFiles(outDir, "*.pdf").Length, "восемь страниц по три — три файла");
 
                 string txt = Path.Combine(dir, "текст.txt");
-                AssertEqual(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--to-text", merged, txt }), say),
+                AssertEq(PdfCli.Ok, PdfCli.Execute(PdfCli.Parse(new[] { "--to-text", merged, txt }), say),
                     "извлечение текста выполнено");
                 AssertTrue(File.Exists(txt), "файл текста создан");
 
                 // Исходник не тронут ни одной командой — общее правило приложения.
-                AssertEqual(4, PdfPageProbe.PageCount(src), "исходник остался прежним");
+                AssertEq(4, PdfPageProbe.PageCount(src), "исходник остался прежним");
                 AssertTrue(log.Count >= 4, "каждая команда отчиталась строкой");
 
                 // Несуществующий файл — честный отказ с кодом «не получилось», а не падение.
-                AssertEqual(PdfCli.Failed,
+                AssertEq(PdfCli.Failed,
                     PdfCli.Execute(PdfCli.Parse(new[] { "--extract", Path.Combine(dir, "нет.pdf"), "1", part }), say),
                     "нет исходника — код 1");
             }
@@ -21283,19 +21352,19 @@ namespace ExcelMerger.Tests
             try
             {
                 string path = Path.Combine(Path.GetTempPath(), "пример.pdf");
-                AssertEqual(null, PdfPasswords.For(path), "пароля нет — null, а не пустая строка");
+                AssertEq(null, PdfPasswords.For(path), "пароля нет — null, а не пустая строка");
                 PdfPasswords.Remember(path, "тайна");
-                AssertEqual("тайна", PdfPasswords.For(path), "запомнили и достали");
-                AssertEqual("тайна", PdfPasswords.For(path.ToUpperInvariant()),
+                AssertEq("тайна", PdfPasswords.For(path), "запомнили и достали");
+                AssertEq("тайна", PdfPasswords.For(path.ToUpperInvariant()),
                     "регистр пути не делает файл другим");
-                AssertEqual("тайна", PdfPasswords.For(Path.Combine(Path.GetTempPath(), ".", "пример.pdf")),
+                AssertEq("тайна", PdfPasswords.For(Path.Combine(Path.GetTempPath(), ".", "пример.pdf")),
                     "другое написание того же пути — тот же файл");
                 PdfPasswords.Remember(path, null);
-                AssertEqual(null, PdfPasswords.For(path), "пустой пароль стирает запись");
+                AssertEq(null, PdfPasswords.For(path), "пустой пароль стирает запись");
                 PdfPasswords.Remember(path, "снова");
                 PdfPasswords.Clear();
-                AssertEqual(null, PdfPasswords.For(path), "очистка убирает всё");
-                AssertEqual(null, PdfPasswords.For(null), "пустой путь не роняет реестр");
+                AssertEq(null, PdfPasswords.For(path), "очистка убирает всё");
+                AssertEq(null, PdfPasswords.For(null), "пустой путь не роняет реестр");
                 PdfPasswords.Remember(null, "x");   // не должно бросать
             }
             finally { PdfPasswords.Clear(); }
@@ -21341,11 +21410,11 @@ namespace ExcelMerger.Tests
                 int longer = PasswordPromptDialog.WidestLine(
                     "коротко\nсамая длинная строка подписи в этом окне", font);
                 AssertTrue(longer > oneLine, "берётся именно самая длинная строка");
-                AssertEqual(PasswordPromptDialog.WidestLine("строка\r\nдругая", font),
+                AssertEq(PasswordPromptDialog.WidestLine("строка\r\nдругая", font),
                     PasswordPromptDialog.WidestLine("строка\nдругая", font),
                     "перевод строки в двух видах даёт одно и то же");
-                AssertEqual(0, PasswordPromptDialog.WidestLine("", font), "пустая подпись — нулевая ширина");
-                AssertEqual(0, PasswordPromptDialog.WidestLine("текст", null), "без шрифта мерить нечем");
+                AssertEq(0, PasswordPromptDialog.WidestLine("", font), "пустая подпись — нулевая ширина");
+                AssertEq(0, PasswordPromptDialog.WidestLine("текст", null), "без шрифта мерить нечем");
             }
         }
 
@@ -21377,20 +21446,20 @@ namespace ExcelMerger.Tests
                 AssertTrue(denied != null, "без пароля файл не открывается");
                 AssertTrue(PdfPasswords.LooksPasswordProtected(denied),
                     "и отказ опознан как парольный: " + denied.Message);
-                AssertEqual(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(locked),
+                AssertEq(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(locked),
                     "PdfPig без пароля тоже не читает");
 
                 // 2. С паролем открываются все пути: страницы, счётчик, состав.
                 PdfPasswords.Remember(locked, "1234");
-                AssertEqual(1, PdfMergeService.LoadPages(locked).Count, "PdfSharp читает с паролем");
-                AssertEqual(1, PdfPageProbe.PageCount(locked), "PdfPig читает с паролем");
+                AssertEq(1, PdfMergeService.LoadPages(locked).Count, "PdfSharp читает с паролем");
+                AssertEq(1, PdfPageProbe.PageCount(locked), "PdfPig читает с паролем");
                 AssertTrue(PdfContentProfile.ImageShare(locked) >= 0, "состав документа тоже читается");
 
                 // 3. Полезная работа: страницы защищённого файла собираются в новый документ.
                 string result = Path.Combine(dir, "итог.pdf");
                 PdfMergeService.Merge(new List<PdfPageRef> {
                     new PdfPageRef { SourcePath = locked, PageIndex = 0 } }, result);
-                AssertEqual(1, PdfPageProbe.PageCount(result), "результат собран и открывается без пароля");
+                AssertEq(1, PdfPageProbe.PageCount(result), "результат собран и открывается без пароля");
                 if (Ghostscript.Available)
                 {
                     using (BackgroundRenderResult backgrounds = PageBackgrounds.Render(
@@ -21399,7 +21468,7 @@ namespace ExcelMerger.Tests
                             new PdfPageRef { SourcePath = locked, PageIndex = 0 }
                         }, null, null))
                     {
-                        AssertEqual(1, backgrounds.Report.Added,
+                        AssertEq(1, backgrounds.Report.Added,
                             "парольный PDF сохранил нетекстовую подложку PowerPoint");
                         AssertTrue(backgrounds.Items.Length == 1 &&
                             backgrounds.Items[0] != null &&
@@ -21487,10 +21556,10 @@ namespace ExcelMerger.Tests
                 AssertTrue(!PdfContentProfile.ShouldSuggestDownsampling(CompressionLevel.VeryGood, textShare),
                     "текстовому документу — нет");
 
-                AssertEqual(PdfContentProfile.Unknown, PdfContentProfile.ImageShare(Path.Combine(dir, "нет.pdf")),
+                AssertEq(PdfContentProfile.Unknown, PdfContentProfile.ImageShare(Path.Combine(dir, "нет.pdf")),
                     "несуществующий файл — «выяснить не удалось», а не исключение");
                 File.WriteAllText(Path.Combine(dir, "мусор.pdf"), "не PDF");
-                AssertEqual(PdfContentProfile.Unknown, PdfContentProfile.ImageShare(Path.Combine(dir, "мусор.pdf")),
+                AssertEq(PdfContentProfile.Unknown, PdfContentProfile.ImageShare(Path.Combine(dir, "мусор.pdf")),
                     "мусор вместо PDF — тоже «не удалось»");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
@@ -21517,40 +21586,40 @@ namespace ExcelMerger.Tests
             // Простой случай: уцелевшие получают новые номера, порядок обхода сохраняется.
             List<PdfBookmark> kept = PdfBookmarks.Remap(
                 new List<PdfBookmark> { Mark("A", 0, 0), Mark("B", 2, 0), Mark("C", 5, 0) }, map);
-            AssertEqual(3, kept.Count, "уцелели все три");
-            AssertEqual("A,0;B,1;C,2", Describe(kept), "номера страниц пересчитаны");
+            AssertEq(3, kept.Count, "уцелели все три");
+            AssertEq("A,0;B,1;C,2", Describe(kept), "номера страниц пересчитаны");
 
             // Закладка на выпавшую страницу уходит, но её потомок остаётся и поднимается.
             List<PdfBookmark> orphan = PdfBookmarks.Remap(
                 new List<PdfBookmark> { Mark("Глава", 1, 0), Mark("Раздел", 2, 1) }, map);
-            AssertEqual(1, orphan.Count, "выпавшая закладка не переносится");
-            AssertEqual("Раздел,1", Describe(orphan), "а её потомок остаётся");
-            AssertEqual(0, orphan[0].Level, "и поднимается на освободившийся уровень");
+            AssertEq(1, orphan.Count, "выпавшая закладка не переносится");
+            AssertEq("Раздел,1", Describe(orphan), "а её потомок остаётся");
+            AssertEq(0, orphan[0].Level, "и поднимается на освободившийся уровень");
 
             // Два выпавших предка подряд — потомок поднимается на оба уровня.
             List<PdfBookmark> deep = PdfBookmarks.Remap(
                 new List<PdfBookmark> { Mark("X", 1, 0), Mark("Y", 3, 1), Mark("Z", 5, 2) }, map);
-            AssertEqual("Z,2", Describe(deep), "уцелел только самый глубокий");
-            AssertEqual(0, deep[0].Level, "и он оказался на верхнем уровне");
+            AssertEq("Z,2", Describe(deep), "уцелел только самый глубокий");
+            AssertEq(0, deep[0].Level, "и он оказался на верхнем уровне");
 
             // Выход из ветви выпавшего предка не должен «съедать» уровень у следующей ветви.
             List<PdfBookmark> siblings = PdfBookmarks.Remap(
                 new List<PdfBookmark> { Mark("A", 0, 0), Mark("B", 1, 1), Mark("C", 2, 0), Mark("D", 5, 1) }, map);
-            AssertEqual("A,0;C,1;D,2", Describe(siblings), "соседняя ветвь уцелела целиком");
-            AssertEqual(0, siblings[0].Level, "A на верхнем уровне");
-            AssertEqual(0, siblings[1].Level, "C тоже на верхнем — она соседка A, а не потомок B");
-            AssertEqual(1, siblings[2].Level, "D осталась вложенной в C");
+            AssertEq("A,0;C,1;D,2", Describe(siblings), "соседняя ветвь уцелела целиком");
+            AssertEq(0, siblings[0].Level, "A на верхнем уровне");
+            AssertEq(0, siblings[1].Level, "C тоже на верхнем — она соседка A, а не потомок B");
+            AssertEq(1, siblings[2].Level, "D осталась вложенной в C");
 
             // Уровень не прыгает больше чем на ступень: иначе запись построит рваное дерево.
             List<PdfBookmark> jump = PdfBookmarks.Remap(
                 new List<PdfBookmark> { Mark("A", 0, 0), Mark("B", 2, 5) }, map);
-            AssertEqual(1, jump[1].Level, "вложенность растёт по одной ступени: " + jump[1].Level);
+            AssertEq(1, jump[1].Level, "вложенность растёт по одной ступени: " + jump[1].Level);
 
             // Пусто на входе и мусор не должны ронять пересчёт.
-            AssertEqual(0, PdfBookmarks.Remap(null, map).Count, "нет закладок — нет и результата");
-            AssertEqual(0, PdfBookmarks.Remap(new List<PdfBookmark> { Mark("A", 0, 0) }, null).Count,
+            AssertEq(0, PdfBookmarks.Remap(null, map).Count, "нет закладок — нет и результата");
+            AssertEq(0, PdfBookmarks.Remap(new List<PdfBookmark> { Mark("A", 0, 0) }, null).Count,
                 "нет карты — переносить некуда");
-            AssertEqual(0, PdfBookmarks.Remap(new List<PdfBookmark> { null }, map).Count,
+            AssertEq(0, PdfBookmarks.Remap(new List<PdfBookmark> { null }, map).Count,
                 "пустая запись пропускается, а не роняет");
         }
 
@@ -21566,12 +21635,12 @@ namespace ExcelMerger.Tests
         private static void TestBookmarksRangeMap()
         {
             Dictionary<int, int> map = PdfBookmarks.RangeMap(3, 5);
-            AssertEqual(3, map.Count, "три страницы диапазона");
-            AssertEqual(0, map[3], "первая страница диапазона становится первой");
-            AssertEqual(2, map[5], "последняя — последней");
+            AssertEq(3, map.Count, "три страницы диапазона");
+            AssertEq(0, map[3], "первая страница диапазона становится первой");
+            AssertEq(2, map[5], "последняя — последней");
             AssertTrue(!map.ContainsKey(2) && !map.ContainsKey(6), "соседние страницы в карту не попадают");
-            AssertEqual(1, PdfBookmarks.RangeMap(4, 4).Count, "диапазон из одной страницы");
-            AssertEqual(0, PdfBookmarks.RangeMap(5, 4).Count, "пустой диапазон — пустая карта");
+            AssertEq(1, PdfBookmarks.RangeMap(4, 4).Count, "диапазон из одной страницы");
+            AssertEq(0, PdfBookmarks.RangeMap(5, 4).Count, "пустой диапазон — пустая карта");
         }
 
         /// <summary>
@@ -21588,7 +21657,7 @@ namespace ExcelMerger.Tests
             {
                 string src = Path.Combine(dir, "с оглавлением.pdf");
                 MakeBookmarkedPdf(src);
-                AssertEqual("Глава А,0;Раздел А.1,1;Глава Б,2", ReadMarks(src), "исходник: три закладки");
+                AssertEq("Глава А,0;Раздел А.1,1;Глава Б,2", ReadMarks(src), "исходник: три закладки");
 
                 // 1. Объединение в исходном порядке — оглавление на месте.
                 string merged = Path.Combine(dir, "объединено.pdf");
@@ -21596,7 +21665,7 @@ namespace ExcelMerger.Tests
                 for (int i = 0; i < 4; i++)
                     order.Add(new PdfPageRef { SourcePath = src, PageIndex = i });
                 PdfMergeService.Merge(order, merged);
-                AssertEqual("Глава А,0;Раздел А.1,1;Глава Б,2", ReadMarks(merged), "объединение сохранило оглавление");
+                AssertEq("Глава А,0;Раздел А.1,1;Глава Б,2", ReadMarks(merged), "объединение сохранило оглавление");
 
                 // 2. Страницы переставлены задом наперёд — закладки обязаны переехать за ними.
                 string reversed = Path.Combine(dir, "наоборот.pdf");
@@ -21604,20 +21673,20 @@ namespace ExcelMerger.Tests
                 for (int i = 3; i >= 0; i--)
                     back.Add(new PdfPageRef { SourcePath = src, PageIndex = i });
                 PdfMergeService.Merge(back, reversed);
-                AssertEqual("Глава А,3;Раздел А.1,2;Глава Б,1", ReadMarks(reversed),
+                AssertEq("Глава А,3;Раздел А.1,2;Глава Б,1", ReadMarks(reversed),
                     "закладки указывают на новые места своих страниц");
 
                 // 3. Часть страниц выброшена — закладка выпавшей страницы уходит, прочие живут.
                 string subset = Path.Combine(dir, "подмножество.pdf");
                 PdfSplitService.Extract(src, new List<int> { 0, 2 }, subset);
-                AssertEqual("Глава А,0;Глава Б,1", ReadMarks(subset), "осталось оглавление уцелевших страниц");
+                AssertEq("Глава А,0;Глава Б,1", ReadMarks(subset), "осталось оглавление уцелевших страниц");
 
                 // 4. Разделение по диапазонам идёт другим путём в коде — проверяем и его.
                 List<string> parts = PdfSplitService.SplitByRanges(src,
                     new List<PageRange> { new PageRange(0, 1), new PageRange(2, 3) }, dir, "часть");
-                AssertEqual(2, parts.Count, "две части");
-                AssertEqual("Глава А,0;Раздел А.1,1", ReadMarks(parts[0]), "оглавление первой части");
-                AssertEqual("Глава Б,0", ReadMarks(parts[1]), "оглавление второй части");
+                AssertEq(2, parts.Count, "две части");
+                AssertEq("Глава А,0;Раздел А.1,1", ReadMarks(parts[0]), "оглавление первой части");
+                AssertEq("Глава Б,0", ReadMarks(parts[1]), "оглавление второй части");
 
                 // 5. Два источника подряд — оглавления идут одно за другим со сдвигом.
                 string twice = Path.Combine(dir, "дважды.pdf");
@@ -21627,7 +21696,7 @@ namespace ExcelMerger.Tests
                 MakeBookmarkedPdf(second);
                 for (int i = 0; i < 4; i++) both.Add(new PdfPageRef { SourcePath = second, PageIndex = i });
                 PdfMergeService.Merge(both, twice);
-                AssertEqual("Глава А,0;Раздел А.1,1;Глава Б,2;Глава А,4;Раздел А.1,5;Глава Б,6",
+                AssertEq("Глава А,0;Раздел А.1,1;Глава Б,2;Глава А,4;Раздел А.1,5;Глава Б,6",
                     ReadMarks(twice), "оглавления обоих файлов, второе со сдвигом");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
@@ -21686,19 +21755,19 @@ namespace ExcelMerger.Tests
         /// <summary>Выборка страниц для проверки цвета: все, пока их немного, иначе равномерно по длине.</summary>
         private static void TestColorSamplePages()
         {
-            AssertEqual("0,1,2", string.Join(",", ToStrings(PdfColorProbe.SamplePages(3, 8))),
+            AssertEq("0,1,2", string.Join(",", ToStrings(PdfColorProbe.SamplePages(3, 8))),
                 "страниц меньше лимита — берём все");
-            AssertEqual("0,1,2,3,4,5,6,7", string.Join(",", ToStrings(PdfColorProbe.SamplePages(8, 8))),
+            AssertEq("0,1,2,3,4,5,6,7", string.Join(",", ToStrings(PdfColorProbe.SamplePages(8, 8))),
                 "ровно лимит — тоже все");
             int[] many = PdfColorProbe.SamplePages(80, 8);
-            AssertEqual(8, many.Length, "страниц больше лимита — ровно лимит проб");
-            AssertEqual(0, many[0], "первая страница попадает всегда");
+            AssertEq(8, many.Length, "страниц больше лимита — ровно лимит проб");
+            AssertEq(0, many[0], "первая страница попадает всегда");
             AssertTrue(many[many.Length - 1] < 80, "индексы не выходят за документ");
             for (int i = 1; i < many.Length; i++)
                 AssertTrue(many[i] > many[i - 1], "выборка строго возрастает (без повторных рендеров)");
-            AssertEqual(0, PdfColorProbe.SamplePages(0, 8).Length, "пустой документ — нечего смотреть");
-            AssertEqual(0, PdfColorProbe.SamplePages(5, 0).Length, "нулевой лимит — пустая выборка");
-            AssertEqual(0, PdfColorProbe.SamplePages(PdfPageProbe.Unreadable, 8).Length,
+            AssertEq(0, PdfColorProbe.SamplePages(0, 8).Length, "пустой документ — нечего смотреть");
+            AssertEq(0, PdfColorProbe.SamplePages(5, 0).Length, "нулевой лимит — пустая выборка");
+            AssertEq(0, PdfColorProbe.SamplePages(PdfPageProbe.Unreadable, 8).Length,
                 "нечитаемый документ — пустая выборка, а не падение");
         }
 
@@ -21780,8 +21849,8 @@ namespace ExcelMerger.Tests
                 AssertTrue(PdfCompression.Compress(keep, CompressionLevel.VeryGood), "«Очень хорошо» применено");
                 AssertTrue(new FileInfo(keep).Length < before,
                     "файл стал меньше: " + before + " -> " + new FileInfo(keep).Length);
-                AssertEqual(2, PdfPageProbe.PageCount(keep), "страницы на месте");
-                AssertEqual(pixelsBefore, ImagePixels(keep), "изображения остались в том же разрешении");
+                AssertEq(2, PdfPageProbe.PageCount(keep), "страницы на месте");
+                AssertEq(pixelsBefore, ImagePixels(keep), "изображения остались в том же разрешении");
 
                 // Контроль: уровень с пересчётом пиксели действительно уменьшает.
                 string shrink = Path.Combine(dir, "пересчёт.pdf");
@@ -21825,11 +21894,11 @@ namespace ExcelMerger.Tests
             {
                 string src = Path.Combine(dir, "исходник.pdf");
                 MakeEmptyPagesPdf(src, 3);
-                AssertEqual(3, PdfPageProbe.PageCount(src), "обычный файл: страницы посчитаны");
-                AssertEqual(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(Path.Combine(dir, "нет.pdf")),
+                AssertEq(3, PdfPageProbe.PageCount(src), "обычный файл: страницы посчитаны");
+                AssertEq(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(Path.Combine(dir, "нет.pdf")),
                     "несуществующий файл — «не открылся», а не исключение");
                 File.WriteAllText(Path.Combine(dir, "мусор.pdf"), "это вовсе не PDF");
-                AssertEqual(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(Path.Combine(dir, "мусор.pdf")),
+                AssertEq(PdfPageProbe.Unreadable, PdfPageProbe.PageCount(Path.Combine(dir, "мусор.pdf")),
                     "мусор вместо PDF — «не открылся»");
 
                 if (!Ghostscript.Available)
@@ -21846,7 +21915,7 @@ namespace ExcelMerger.Tests
                 // PdfSharp бессмысленен, но счёт страниц PdfPig проверить всё равно надо.
                 bool hasObjectStreams = IndexOfBytes(File.ReadAllBytes(modern),
                     System.Text.Encoding.ASCII.GetBytes("/ObjStm")) >= 0;
-                AssertEqual(3, PdfPageProbe.PageCount(modern), "PdfPig читает файл версии 1.5");
+                AssertEq(3, PdfPageProbe.PageCount(modern), "PdfPig читает файл версии 1.5");
                 if (hasObjectStreams)
                     AssertThrowsExactly<ArgumentOutOfRangeException>("PdfSharp 1.50 на потоках объектов спотыкается — потому и PdfPig",
                         delegate { PdfPageCount(modern); });
@@ -21872,7 +21941,7 @@ namespace ExcelMerger.Tests
             {
                 string hard = Path.Combine(dir, "трудный.pdf");
                 MakeHardColorPdf(hard, dir);
-                AssertEqual(3, PdfPageProbe.PageCount(hard), "проба из трёх страниц");
+                AssertEq(3, PdfPageProbe.PageCount(hard), "проба из трёх страниц");
                 AssertTrue(HasColor(hard), "на первой странице исходника есть цвет");
 
                 // Без работающего рендера проба цвета молчит по построению (см. PdfColorProbe):
@@ -21887,7 +21956,7 @@ namespace ExcelMerger.Tests
                         "цветной документ проверку «серое» не проходит");
 
                 AssertTrue(PdfConvert.Apply(hard, PdfConvertMode.Grayscale), "перевод применён");
-                AssertEqual(3, PdfPageProbe.PageCount(hard), "все три страницы на месте");
+                AssertEq(3, PdfPageProbe.PageCount(hard), "все три страницы на месте");
                 AssertTrue(!HasColor(hard), "цвета не осталось (страница с JPEG)");
                 if (canRender)
                 {
@@ -21907,21 +21976,21 @@ namespace ExcelMerger.Tests
         private static void TestRenderFitWidth()
         {
             // A4 при ширине 140 даёт ~198 px — потолок в 2000 ей не мешает.
-            AssertEqual(140, PdfThumbnailRenderer.FitWidth(140, 595, 842, 2000), "обычная страница не ужимается");
-            AssertEqual(140, PdfThumbnailRenderer.FitWidth(140, 595, 842, 0), "нулевой потолок ничего не меняет");
+            AssertEq(140, PdfThumbnailRenderer.FitWidth(140, 595, 842, 2000), "обычная страница не ужимается");
+            AssertEq(140, PdfThumbnailRenderer.FitWidth(140, 595, 842, 0), "нулевой потолок ничего не меняет");
             // Умеренно вытянутый лист: потолок достижим, и ширина считается точно под него.
-            AssertEqual(100, PdfThumbnailRenderer.FitWidth(140, 100, 2000, 2000),
+            AssertEq(100, PdfThumbnailRenderer.FitWidth(140, 100, 2000, 2000),
                 "ширина подбирается ровно под потолок высоты");
             // Предельный лист 3×14400 не может уложиться в потолок даже при ширине 1:
             // безопаснее отказаться от растра, чем нарушить объявленный dimension cap.
-            AssertEqual(0, PdfThumbnailRenderer.FitWidth(140, 3, 14400, 2000),
+            AssertEq(0, PdfThumbnailRenderer.FitWidth(140, 3, 14400, 2000),
                 "невместимая геометрия честно отклоняется");
             // Ровно на границе — ужимать незачем.
-            AssertEqual(100, PdfThumbnailRenderer.FitWidth(100, 100, 2000, 2000), "высота ровно по потолку — как есть");
+            AssertEq(100, PdfThumbnailRenderer.FitWidth(100, 100, 2000, 2000), "высота ровно по потолку — как есть");
             // Мусор на входе не должен превращаться в деление на ноль.
-            AssertEqual(140, PdfThumbnailRenderer.FitWidth(140, 0, 842, 2000), "нулевая ширина страницы — ширина как есть");
-            AssertEqual(140, PdfThumbnailRenderer.FitWidth(140, 595, 0, 2000), "нулевая высота страницы — ширина как есть");
-            AssertEqual(0, PdfThumbnailRenderer.FitWidth(0, 595, 842, 2000), "нулевая запрошенная ширина — она же");
+            AssertEq(140, PdfThumbnailRenderer.FitWidth(140, 0, 842, 2000), "нулевая ширина страницы — ширина как есть");
+            AssertEq(140, PdfThumbnailRenderer.FitWidth(140, 595, 0, 2000), "нулевая высота страницы — ширина как есть");
+            AssertEq(0, PdfThumbnailRenderer.FitWidth(0, 595, 842, 2000), "нулевая запрошенная ширина — она же");
         }
 
         /// <summary>
@@ -22000,8 +22069,8 @@ namespace ExcelMerger.Tests
                 sw.Stop();
                 Console.WriteLine("      [замер] {0} циклов: отказов серого {1}, отказов сжатия {2}, {3} мс",
                     Rounds, grayFails, compressFails, sw.ElapsedMilliseconds);
-                AssertEqual(0, grayFails, "перевод в серое не отказывает на повторах");
-                AssertEqual(0, compressFails, "сжатие не отказывает на повторах");
+                AssertEq(0, grayFails, "перевод в серое не отказывает на повторах");
+                AssertEq(0, compressFails, "сжатие не отказывает на повторах");
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
@@ -22111,7 +22180,7 @@ namespace ExcelMerger.Tests
                 new[] { "Болт", "10" }));
 
             string text = PlainText.Page(page);
-            AssertEqual("Заголовок\n\nТовар\tЦена\nБолт\t10\n\nПодпись внизу", text,
+            AssertEq("Заголовок\n\nТовар\tЦена\nБолт\t10\n\nПодпись внизу", text,
                 "абзацы и таблица идут сверху вниз, ячейки через табуляцию");
         }
 
@@ -22134,10 +22203,10 @@ namespace ExcelMerger.Tests
             page.Paragraphs.Add(sized("верх", 700, 50));
             page.Paragraphs.Add(sized("середина справа", 400, 300));
             page.Paragraphs.Add(sized("середина слева", 400, 50));
-            AssertEqual("верх\n\nсередина слева\n\nсередина справа\n\nниз", PlainText.Page(page),
+            AssertEq("верх\n\nсередина слева\n\nсередина справа\n\nниз", PlainText.Page(page),
                 "сверху вниз, при равной высоте — слева направо");
-            AssertEqual("", PlainText.Page(null), "страницы нет — пустой текст");
-            AssertEqual("", PlainText.Page(new PdfPageText()), "пустая страница — пустой текст");
+            AssertEq("", PlainText.Page(null), "страницы нет — пустой текст");
+            AssertEq("", PlainText.Page(new PdfPageText()), "пустая страница — пустой текст");
         }
 
         /// <summary>Накрытые объединением ячейки дают пустое поле, иначе колонки разъезжаются.</summary>
@@ -22151,7 +22220,7 @@ namespace ExcelMerger.Tests
             row.Cells.Add(covered);
             row.Cells.Add(Cell("42"));
             t.Rows.Add(row);
-            AssertEqual("Итого\t\t42", PlainText.Table(t), "накрытая ячейка — пустое поле, колонки на месте");
+            AssertEq("Итого\t\t42", PlainText.Table(t), "накрытая ячейка — пустое поле, колонки на месте");
         }
 
         /// <summary>Страницы разделяются переводом страницы, пустые не съедаются — нумерация не съезжает.</summary>
@@ -22162,10 +22231,10 @@ namespace ExcelMerger.Tests
             var empty = new PdfPageText();
             var three = new PdfPageText();
             three.Paragraphs.Add(Par("третья", 700, 50));
-            AssertEqual("первая\n\f\n\n\f\nтретья",
+            AssertEq("первая\n\f\n\n\f\nтретья",
                 PlainText.Document(new List<PdfPageText> { one, empty, three }),
                 "пустая страница остаётся на своём месте");
-            AssertEqual("", PlainText.Document(null), "нет страниц — пустой текст");
+            AssertEq("", PlainText.Document(null), "нет страниц — пустой текст");
         }
 
         // ---------- Экспорт в картинки ----------
@@ -22173,12 +22242,12 @@ namespace ExcelMerger.Tests
         private static void TestExportPixelWidth()
         {
             // A4 шириной 595.28 pt: 96 dpi → 794 px, 300 dpi → 2480 px.
-            AssertEqual(794, PdfExportService.PixelWidth(595.28, 96), "экранное разрешение");
-            AssertEqual(2480, PdfExportService.PixelWidth(595.28, 300), "разрешение печати");
-            AssertEqual(1, PdfExportService.PixelWidth(0, 300), "нулевая ширина не даёт нулевую картинку");
-            AssertEqual(1, PdfExportService.PixelWidth(595.28, 0), "нулевое разрешение не даёт нулевую картинку");
-            AssertEqual(".png", PdfExportService.Extension(ImageExportFormat.Png), "расширение PNG");
-            AssertEqual(".jpg", PdfExportService.Extension(ImageExportFormat.Jpeg), "расширение JPEG");
+            AssertEq(794, PdfExportService.PixelWidth(595.28, 96), "экранное разрешение");
+            AssertEq(2480, PdfExportService.PixelWidth(595.28, 300), "разрешение печати");
+            AssertEq(1, PdfExportService.PixelWidth(0, 300), "нулевая ширина не даёт нулевую картинку");
+            AssertEq(1, PdfExportService.PixelWidth(595.28, 0), "нулевое разрешение не даёт нулевую картинку");
+            AssertEq(".png", PdfExportService.Extension(ImageExportFormat.Png), "расширение PNG");
+            AssertEq(".jpg", PdfExportService.Extension(ImageExportFormat.Jpeg), "расширение JPEG");
         }
 
         // ---------- Чередование страниц ----------
@@ -22201,16 +22270,16 @@ namespace ExcelMerger.Tests
         {
             var pages = new List<PdfPageRef> { PR("a", 0), PR("a", 1), PR("b", 0), PR("b", 1), PR("b", 2) };
             List<PageRun> runs = PageInterleave.SplitIntoRuns(pages);
-            AssertEqual(2, runs.Count, "два документа");
-            AssertEqual(0, runs[0].Start, "первый начинается с нуля");
-            AssertEqual(2, runs[0].Count, "в первом две страницы");
-            AssertEqual(3, runs[1].Count, "во втором три");
+            AssertEq(2, runs.Count, "два документа");
+            AssertEq(0, runs[0].Start, "первый начинается с нуля");
+            AssertEq(2, runs[0].Count, "в первом две страницы");
+            AssertEq(3, runs[1].Count, "во втором три");
             AssertTrue(PageInterleave.CanInterleave(runs), "два документа — чередовать есть что");
 
             // Тот же файл, добавленный дважды, — это две пачки: пользователь видит их отдельно.
             List<PageRun> twice = PageInterleave.SplitIntoRuns(
                 new List<PdfPageRef> { PR("a", 0), PR("b", 0), PR("a", 1) });
-            AssertEqual(3, twice.Count, "перемежающиеся страницы дают три отрезка");
+            AssertEq(3, twice.Count, "перемежающиеся страницы дают три отрезка");
             AssertTrue(!PageInterleave.CanInterleave(PageInterleave.SplitIntoRuns(
                 new List<PdfPageRef> { PR("a", 0), PR("a", 1) })), "один документ чередовать не с чем");
             AssertTrue(!PageInterleave.CanInterleave(null), "пустой ввод — нечего чередовать");
@@ -22232,8 +22301,8 @@ namespace ExcelMerger.Tests
             List<PageRun> runs = PageInterleave.SplitIntoRuns(pages);
             runs[1].Reverse = true; // оборотная пачка идёт с конца
             List<PdfPageRef> mixed = PageInterleave.Interleave(pages, runs, 1);
-            AssertEqual("face0,back2,face1,back1,face2,back0", PagesOf(mixed), "лицевая и оборотная сторона чередуются");
-            AssertEqual(pages.Count, mixed.Count, "ни одна страница не потеряна и не задвоена");
+            AssertEq("face0,back2,face1,back1,face2,back0", PagesOf(mixed), "лицевая и оборотная сторона чередуются");
+            AssertEq(pages.Count, mixed.Count, "ни одна страница не потеряна и не задвоена");
         }
 
         /// <summary>Шаг больше единицы, разная длина пачек и перестановка тех же ссылок.</summary>
@@ -22244,10 +22313,10 @@ namespace ExcelMerger.Tests
                 PR("a", 0), PR("a", 1), PR("a", 2), PR("a", 3), PR("b", 0), PR("b", 1)
             };
             List<PageRun> runs = PageInterleave.SplitIntoRuns(pages);
-            AssertEqual("a0,a1,b0,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 2)), "по две страницы по кругу");
+            AssertEq("a0,a1,b0,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 2)), "по две страницы по кругу");
             // Более длинный документ дописывает хвост, когда короткий кончился.
-            AssertEqual("a0,b0,a1,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 1)), "хвост длинной пачки в конце");
-            AssertEqual("a0,b0,a1,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 0)), "шаг меньше единицы считается за единицу");
+            AssertEq("a0,b0,a1,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 1)), "хвост длинной пачки в конце");
+            AssertEq("a0,b0,a1,b1,a2,a3", PagesOf(PageInterleave.Interleave(pages, runs, 0)), "шаг меньше единицы считается за единицу");
 
             // Это перестановка: те же самые объекты, а не копии — назначенные повороты уедут со страницами.
             List<PdfPageRef> mixed = PageInterleave.Interleave(pages, runs, 1);
@@ -22260,35 +22329,35 @@ namespace ExcelMerger.Tests
         private static void TestNameTemplateBasics()
         {
             var v = new NameValues { BaseName = "отчёт", FileNumber = 2, TotalFiles = 12, CurrentPage = 7 };
-            AssertEqual("отчёт_2", NameTemplate.Apply("[BASENAME]_[FILENUMBER]", v), "имя и номер файла");
-            AssertEqual("2_из_12", NameTemplate.Apply("[FILENUMBER]_из_[TOTAL_FILES]", v), "номер из всего");
-            AssertEqual("стр7", NameTemplate.Apply("стр[CURRENTPAGE]", v), "номер страницы источника");
-            AssertEqual("отчёт_2", NameTemplate.Apply(null, v), "пустой шаблон — прежнее поведение");
-            AssertEqual("отчёт_2", NameTemplate.Apply("", v), "пустая строка — прежнее поведение");
-            AssertEqual("без токенов", NameTemplate.Apply("без токенов", v), "текст без токенов идёт как есть");
+            AssertEq("отчёт_2", NameTemplate.Apply("[BASENAME]_[FILENUMBER]", v), "имя и номер файла");
+            AssertEq("2_из_12", NameTemplate.Apply("[FILENUMBER]_из_[TOTAL_FILES]", v), "номер из всего");
+            AssertEq("стр7", NameTemplate.Apply("стр[CURRENTPAGE]", v), "номер страницы источника");
+            AssertEq("отчёт_2", NameTemplate.Apply(null, v), "пустой шаблон — прежнее поведение");
+            AssertEq("отчёт_2", NameTemplate.Apply("", v), "пустая строка — прежнее поведение");
+            AssertEq("без токенов", NameTemplate.Apply("без токенов", v), "текст без токенов идёт как есть");
         }
 
         private static void TestNameTemplatePadAndOffset()
         {
             var v = new NameValues { FileNumber = 2, CurrentPage = 3 };
-            AssertEqual("002", NameTemplate.Apply("[FILENUMBER###]", v), "решётки дополняют нулями");
-            AssertEqual("12", NameTemplate.Apply("[FILENUMBER10]", v), "число — смещение нумерации");
-            AssertEqual("012", NameTemplate.Apply("[FILENUMBER###10]", v), "дополнение и смещение вместе");
-            AssertEqual("3", NameTemplate.Apply("[CURRENTPAGE#]", v), "одна решётка ничего не дополняет");
+            AssertEq("002", NameTemplate.Apply("[FILENUMBER###]", v), "решётки дополняют нулями");
+            AssertEq("12", NameTemplate.Apply("[FILENUMBER10]", v), "число — смещение нумерации");
+            AssertEq("012", NameTemplate.Apply("[FILENUMBER###10]", v), "дополнение и смещение вместе");
+            AssertEq("3", NameTemplate.Apply("[CURRENTPAGE#]", v), "одна решётка ничего не дополняет");
         }
 
         private static void TestNameTemplateUnknownAndUnsafe()
         {
             var v = new NameValues { BaseName = "имя", FileNumber = 1 };
             // Неизвестный токен и одиночные скобки — обычный текст, а не ошибка.
-            AssertEqual("[НЕТ]_имя", NameTemplate.Apply("[НЕТ]_[BASENAME]", v), "неизвестный токен остаётся текстом");
-            AssertEqual("[незакрытая имя", NameTemplate.Apply("[незакрытая [BASENAME]", v), "незакрытая скобка не ломает разбор");
+            AssertEq("[НЕТ]_имя", NameTemplate.Apply("[НЕТ]_[BASENAME]", v), "неизвестный токен остаётся текстом");
+            AssertEq("[незакрытая имя", NameTemplate.Apply("[незакрытая [BASENAME]", v), "незакрытая скобка не ломает разбор");
             // Разделители пути обязаны исчезнуть: шаблон не должен писать за пределы выбранной папки.
-            AssertEqual("_.._тайно_имя", NameTemplate.Apply("/../тайно/[BASENAME]", v), "разделители пути обезврежены");
-            AssertEqual("имя", NameTemplate.Apply("[BASENAME]...", v), "точки на конце срезаны");
-            AssertEqual("___", NameTemplate.Apply(":::", v), "запрещённые символы заменяются, а не выбрасываются");
+            AssertEq("_.._тайно_имя", NameTemplate.Apply("/../тайно/[BASENAME]", v), "разделители пути обезврежены");
+            AssertEq("имя", NameTemplate.Apply("[BASENAME]...", v), "точки на конце срезаны");
+            AssertEq("___", NameTemplate.Apply(":::", v), "запрещённые символы заменяются, а не выбрасываются");
             // Шаблон, давший пустое имя, откатывается к обычному: файла без имени быть не может.
-            AssertEqual("имя_1", NameTemplate.Apply("[BOOKMARK]", v), "нет закладки — откат к шаблону по умолчанию");
+            AssertEq("имя_1", NameTemplate.Apply("[BOOKMARK]", v), "нет закладки — откат к шаблону по умолчанию");
             AssertTrue(NameTemplate.Apply("[TIMESTAMP]", v).Length > 0, "без времени шаблон всё равно даёт имя");
         }
 
@@ -22300,13 +22369,6 @@ namespace ExcelMerger.Tests
             AssertTrue(!NameTemplate.IsUniquePerFile("[BASENAME]"), "одно имя источника — все части совпадут");
             AssertTrue(!NameTemplate.IsUniquePerFile("постоянное"), "текст без токенов — все части совпадут");
         }
-
-        private static void AssertEqual(object expected, object actual, string what)
-        {
-            if (!Equals(expected, actual))
-                throw new Exception(what + ": ожидалось «" + expected + "», получено «" + actual + "»");
-        }
-
         private static void AssertTrue(bool condition, string what)
         {
             if (!condition)

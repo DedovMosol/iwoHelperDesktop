@@ -262,6 +262,7 @@ namespace ExcelMerger
 
             if (!BeginLoad(Loc.T("common.status.loading")))
                 return;
+            Func<PdfPageRef, PdfPageInfo> sizeOf = SizeOfForTests ?? SizeOf;
             Ui.RunWorker(delegate()
             {
                 string error = null;
@@ -273,7 +274,9 @@ namespace ExcelMerger
                     else
                     {
                         double width, height;
-                        BlankPages.SheetSize(SizeOf(neighbour), out width, out height);
+                        // Чтение соседнего документа — только здесь, в фоне: на 900-страничном
+                        // файле разбор ради размеров занимал 278 мс на потоке интерфейса.
+                        BlankPages.SheetSize(sizeOf(neighbour), out width, out height);
                         if (LoadCancellationRequested)
                             cancelled = true;
                         else
@@ -312,6 +315,9 @@ namespace ExcelMerger
                 index = _order.Count - 1;
             return index < 0 ? null : _order[index];
         }
+
+        /// <summary>Шов для теста: подмена чтения размеров соседней страницы (null — настоящее).</summary>
+        internal static Func<PdfPageRef, PdfPageInfo> SizeOfForTests;
 
         /// <summary>
         /// Размеры страницы. Только с фонового потока: разбор документа не мгновенный.

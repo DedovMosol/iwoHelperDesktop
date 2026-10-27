@@ -97,7 +97,10 @@ namespace ExcelMerger.Tests
 
             // Исключение в обработчике события окна по умолчанию открывает модальный
             // ThreadExceptionDialog — прогон молча висел бы до таймаута CI. Пусть летит в тест.
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
+            // threadScope = false — для ВСЕХ потоков: окна тестов живут на своих STA-потоках
+            // (InIsolatedSettings, RunSta), и с режимом только для этого потока исключение в
+            // обработчике открывало там модальный ThreadExceptionDialog — прогон вставал до сторожа.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException, false);
             AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
             {
                 // Падение чужого (фонового) потока: процесс уже не спасти, но причина и

@@ -51,10 +51,10 @@ namespace ExcelMerger.Tests
             var div0 = escaped[1, 2] as ErrorWrapper;
             AssertTrue(na != null && na.ErrorCode == AuditBErrNA, "#Н/Д в массиве: " + AuditBDescribe(escaped[1, 1]));
             AssertTrue(div0 != null && div0.ErrorCode == AuditBErrDiv0, "#ДЕЛ/0! в массиве: " + AuditBDescribe(escaped[1, 2]));
-            AssertEqual(5.0, escaped[1, 3], "число (в Value2 всегда Double)");
-            AssertEqual("'=x", escaped[2, 1], "строка экранирована");
-            AssertEqual(true, escaped[2, 2], "булево");
-            AssertEqual(null, escaped[2, 3], "пустая ячейка");
+            AssertEq(5.0, escaped[1, 3], "число (в Value2 всегда Double)");
+            AssertEq("'=x", escaped[2, 1], "строка экранирована");
+            AssertEq(true, escaped[2, 2], "булево");
+            AssertEq(null, escaped[2, 3], "пустая ячейка");
         }
 
         [Test("Аудит B: «формулы → значения» оставляет ошибки ошибками, а не числами (живой Excel)")]
@@ -93,10 +93,10 @@ namespace ExcelMerger.Tests
                 AssertTrue(result.Files.Count == 1 && result.Files[0].Ok, "лист перенесён");
                 AssertEq<string>(null, result.Files[0].Note, "примечаний нет: замена полная");
                 AssertTrue(!anyFormula, "в своде не осталось формул");
-                AssertEqual(AuditBErrNA, cells[0], "A1 — значение-ошибка #Н/Д (Int32), а не число; получено " + AuditBDescribe(cells[0]));
-                AssertEqual(AuditBErrDiv0, cells[1], "A2 — значение-ошибка #ДЕЛ/0!; получено " + AuditBDescribe(cells[1]));
-                AssertEqual(2.0, cells[2], "A3 — число");
-                AssertEqual("=x", cells[3], "A4 — строка буквально");
+                AssertEq(AuditBErrNA, cells[0], "A1 — значение-ошибка #Н/Д (Int32), а не число; получено " + AuditBDescribe(cells[0]));
+                AssertEq(AuditBErrDiv0, cells[1], "A2 — значение-ошибка #ДЕЛ/0!; получено " + AuditBDescribe(cells[1]));
+                AssertEq(2.0, cells[2], "A3 — число");
+                AssertEq("=x", cells[3], "A4 — строка буквально");
             }
         }
 
@@ -986,11 +986,11 @@ namespace ExcelMerger.Tests
             });
 
             AssertTrue(!b2Formula, "имя листа «=1+1» не стало формулой");
-            AssertEqual("=1+1", cells["B2"], "B2 — имя буквально");
-            AssertEqual("0012", cells["B3"], "B3 — ведущие нули на месте: " + AuditBDescribe(cells["B3"]));
-            AssertEqual("=1+1.xlsx", cells["C2"], "C2 — имя файла буквально");
-            AssertEqual(1.0, cells["A2"], "№ — число, а не значение-ошибка: " + AuditBDescribe(cells["A2"]));
-            AssertEqual("пропущен: вызывал зависание Excel", cells["D4"], "примечание пропущенного");
+            AssertEq("=1+1", cells["B2"], "B2 — имя буквально");
+            AssertEq("0012", cells["B3"], "B3 — ведущие нули на месте: " + AuditBDescribe(cells["B3"]));
+            AssertEq("=1+1.xlsx", cells["C2"], "C2 — имя файла буквально");
+            AssertEq(1.0, cells["A2"], "№ — число, а не значение-ошибка: " + AuditBDescribe(cells["A2"]));
+            AssertEq("пропущен: вызывал зависание Excel", cells["D4"], "примечание пропущенного");
             AssertEq(2, links, "ссылки только у перенесённых листов");
             AssertEq("'=1+1'!A1", firstSub, "ссылка ведёт на свой лист");
         }
