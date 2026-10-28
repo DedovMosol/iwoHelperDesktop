@@ -9,6 +9,7 @@ Usage: python -m unittest discover -s tools -p "test_*.py"
 """
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,19 @@ WEB = ("Andrey Dodonov", "73111581+DedovMosol@users.noreply.github.com")
 GITHUB = ("GitHub", "noreply@github.com")
 STRANGER = ("Someone", "someone@example.com")
 TRAILER = "Co-Authored-By: Helper Bot <bot@example.com>"
+
+
+def remove_tree(path):
+    """Удалить временную папку целиком. git пишет объекты только для чтения, и на Windows
+    rmtree без снятия атрибута их не удаляет; ignore_errors прятал это, и каждый прогон
+    оставлял в %TEMP% по репозиторию на тест. Сбой здесь — ошибка теста, а не тихая утечка."""
+    def retry(func, target, _):
+        os.chmod(target, stat.S_IWRITE)
+        func(target)
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=retry)
+    else:
+        shutil.rmtree(path, onerror=retry)
 
 
 class PureRules(unittest.TestCase):
@@ -61,7 +75,7 @@ class TempRepo(unittest.TestCase):
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="iwo_meta_")
-        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.addCleanup(remove_tree, self.dir)
         self.env = dict(os.environ)
         for key in list(self.env):
             if key.startswith("GIT_"):
@@ -142,7 +156,7 @@ class History(TempRepo):
 
     def test_main_returns_two_when_not_a_repository(self):
         empty = tempfile.mkdtemp(prefix="iwo_norepo_")
-        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+        self.addCleanup(remove_tree, empty)
         self.assertEqual(2, cm.main(["--repo", empty]))
 
 

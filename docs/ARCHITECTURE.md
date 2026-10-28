@@ -752,7 +752,7 @@ invariants).
 The pyramid, bottom-up:
 
 1. **Unit tests** — `tests/UnitTests.cs` and `tests/AuditTests.*.cs` (507 listed with
-   `Run(...)` plus 325 `[Test]`-attributed tests, custom exe runner; tests that need
+   `Run(...)` plus 331 `[Test]`-attributed tests, custom exe runner; tests that need
    Office, a printer or Ghostscript skip honestly when it is missing) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
    zoom percentage and wheel-step chaining, the number-strip hit-test and double-click

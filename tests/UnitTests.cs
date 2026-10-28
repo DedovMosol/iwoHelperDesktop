@@ -6248,6 +6248,236 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
+        /// Доказуемый цикл порядка извлечения на одной странице: green стоит последним слева
+        /// и первым справа, по краям — Exact-якоря регистрации (before/after), между ними red/blue.
+        /// </summary>
+        private sealed class ReviewOrderCycle
+        {
+            internal readonly PdfReviewWord[] Left;  // before, red, blue, green, after
+            internal readonly PdfReviewWord[] Right; // before, green, red, blue, after
+
+            internal ReviewOrderCycle(int page, string suffix)
+            {
+                Func<string, double, double, double, PdfReviewWord> word = delegate(string key, double x, double y, double w)
+                {
+                    return ReviewGeometryWord(key + suffix, page, x, y, w);
+                };
+                Left = new[] { word("before", 5, 180, 55), word("red", 10, 135, 18), word("blue", 60, 135, 20),
+                    word("green", 10, 105, 24), word("after", 5, 40, 52) };
+                Right = new[] { word("before", 5, 180, 55), word("green", 10, 105, 24), word("red", 10, 135, 18),
+                    word("blue", 60, 135, 20), word("after", 5, 40, 52) };
+            }
+
+            /// <summary>Операции LCS для цикла; foreign — Exact-пара другой страницы между red и blue.</summary>
+            internal void AppendOperations(List<PdfReviewWordOp> operations, PdfReviewWord foreignLeft,
+                PdfReviewWord foreignRight)
+            {
+                PdfReviewDiff.AppendEqual(operations, Left[0], Right[0], PdfReviewMatchKind.Exact);
+                PdfReviewDiff.Append(operations, PdfReviewDiffKind.Insert, Right[1]);
+                PdfReviewDiff.AppendEqual(operations, Left[1], Right[2], PdfReviewMatchKind.Exact);
+                if (foreignLeft != null)
+                    PdfReviewDiff.AppendEqual(operations, foreignLeft, foreignRight, PdfReviewMatchKind.Exact);
+                PdfReviewDiff.AppendEqual(operations, Left[2], Right[3], PdfReviewMatchKind.Exact);
+                PdfReviewDiff.Append(operations, PdfReviewDiffKind.Delete, Left[3]);
+                PdfReviewDiff.AppendEqual(operations, Left[4], Right[4], PdfReviewMatchKind.Exact);
+            }
+        }
+
+        /// <summary>
+        /// Аудит TS-20. Exact-пара другой page-pair внутри цикла отсекает только этот регион:
+        /// без барьера регион принимался, а затем перестройка операций отказывала целиком, и
+        /// вместе с небезопасным циклом страницы 0 терялся доказанный цикл страницы 1.
+        /// </summary>
+        [Test("PDF Review: Exact другой page-pair отсекает только свой регион, соседний цикл снимается")]
+        private static void TestReviewOrderArtifactForeignExactRejectsOnlyItsRegion()
+        {
+            var pageZero = new ReviewOrderCycle(0, "-a");
+            var pageOne = new ReviewOrderCycle(1, "-b");
+            PdfReviewWord foreignLeft = ReviewGeometryWord("foreign", 1, 120, 20, 40);
+            PdfReviewWord foreignRight = ReviewGeometryWord("foreign", 1, 120, 20, 40);
+            var leftPageOne = new List<PdfReviewWord>(pageOne.Left) { foreignLeft };
+            var rightPageOne = new List<PdfReviewWord>(pageOne.Right) { foreignRight };
+            var result = new PdfReviewResult
+            {
+                Left = ReviewGeometryDocument("foreign-left.pdf", ReviewGeometryPage(0, pageZero.Left),
+                    ReviewGeometryPage(1, leftPageOne.ToArray())),
+                Right = ReviewGeometryDocument("foreign-right.pdf", ReviewGeometryPage(0, pageZero.Right),
+                    ReviewGeometryPage(1, rightPageOne.ToArray()))
+            };
+            result.Pairs.Add(new PdfReviewPagePair { LeftPageIndex = 0, RightPageIndex = 0 });
+            result.Pairs.Add(new PdfReviewPagePair { LeftPageIndex = 1, RightPageIndex = 1 });
+            pageZero.AppendOperations(result.Operations, foreignLeft, foreignRight);
+            pageOne.AppendOperations(result.Operations, null, null);
+            PdfReviewDiff.Project(result);
+
+            PdfReviewDiff.ReconcileOrderArtifacts(result);
+            AssertEq(0, ReviewChangedKeyCount(result, "green-b"),
+                "цикл страницы 1 снят: чужая Exact-пара на странице 0 его не блокирует");
+            AssertEq(1, ReviewMatchCount(result, PdfReviewMatchKind.ReconciledOrder),
+                "снят ровно один цикл — страницы 1");
+            AssertEq(2, ReviewChangedKeyCount(result, "green-a"),
+                "цикл страницы 0 через чужую Exact-пару остался явными Delete/Insert");
+            int foreignMatches = 0;
+            foreach (PdfReviewWordOp op in result.Operations)
+                foreach (PdfReviewWordMatch match in op.Matches)
+                    if (ReferenceEquals(match.Left, foreignLeft) && ReferenceEquals(match.Right, foreignRight) &&
+                        match.Kind == PdfReviewMatchKind.Exact)
+                        foreignMatches++;
+            AssertEq(1, foreignMatches, "чужая Exact-пара сохранена отдельной связью");
+            AssertReviewReconcilePagePairInvariant(result, "чужая Exact-пара внутри цикла");
+        }
+
+        /// <summary>
+        /// Число ReconciledOrder для страницы 0 (left/right), когда Exact-пара страницы 1
+        /// («foreign») стоит в потоке операций перед шагом foreignAt (steps.Count — в конце,
+        /// то есть вне цикла: это контроль). Шаги строят LCS-операции страницы 0.
+        /// </summary>
+        private static int ReviewReconciledWithForeignExact(PdfReviewWord[] left, PdfReviewWord[] right,
+            IList<Action<List<PdfReviewWordOp>>> steps, int foreignAt)
+        {
+            PdfReviewWord foreignLeft = ReviewGeometryWord("foreign", 1, 120, 20, 40);
+            PdfReviewWord foreignRight = ReviewGeometryWord("foreign", 1, 120, 20, 40);
+            var result = new PdfReviewResult
+            {
+                Left = ReviewGeometryDocument("foreign-left.pdf", ReviewGeometryPage(0, left), ReviewGeometryPage(1, foreignLeft)),
+                Right = ReviewGeometryDocument("foreign-right.pdf", ReviewGeometryPage(0, right), ReviewGeometryPage(1, foreignRight))
+            };
+            result.Pairs.Add(new PdfReviewPagePair { LeftPageIndex = 0, RightPageIndex = 0 });
+            result.Pairs.Add(new PdfReviewPagePair { LeftPageIndex = 1, RightPageIndex = 1 });
+            for (int i = 0; i <= steps.Count; i++)
+            {
+                if (i == foreignAt)
+                    PdfReviewDiff.AppendEqual(result.Operations, foreignLeft, foreignRight, PdfReviewMatchKind.Exact);
+                if (i < steps.Count)
+                    steps[i](result.Operations);
+            }
+            PdfReviewDiff.Project(result);
+            PdfReviewDiff.ReconcileOrderArtifacts(result);
+            return ReviewMatchCount(result, PdfReviewMatchKind.ReconciledOrder);
+        }
+
+        private static Action<List<PdfReviewWordOp>> ReviewExactStep(PdfReviewWord left, PdfReviewWord right)
+        {
+            return delegate(List<PdfReviewWordOp> ops) { PdfReviewDiff.AppendEqual(ops, left, right, PdfReviewMatchKind.Exact); };
+        }
+
+        private static Action<List<PdfReviewWordOp>> ReviewChangeStep(PdfReviewDiffKind kind, PdfReviewWord word)
+        {
+            return delegate(List<PdfReviewWordOp> ops) { PdfReviewDiff.Append(ops, kind, word); };
+        }
+
+        /// <summary>
+        /// Перестановка alpha/beta между Exact-якорями before/after (регистрация — по ним).
+        /// witnessShift ≠ null — перед якорями ещё свидетель того же trusted-блока, а ячейки
+        /// справа сдвинуты на witnessShift: без регистрации их связывает только свидетель.
+        /// </summary>
+        private static void ReviewForeignExactCycle(double? witnessShift, out PdfReviewWord[] left,
+            out PdfReviewWord[] right, out List<Action<List<PdfReviewWordOp>>> steps)
+        {
+            double shift = witnessShift ?? 0;
+            int leftBlock = witnessShift.HasValue ? 10 : -1;
+            int rightBlock = witnessShift.HasValue ? 90 : -1;
+            PdfReviewWord lBefore = ReviewGeometryWord("before", 0, 5, 185, 40);
+            PdfReviewWord rBefore = ReviewGeometryWord("before", 0, 5, 185, 40);
+            PdfReviewWord lAlpha = ReviewGeometryWord("alpha", 0, 100, 135, 18, leftBlock);
+            PdfReviewWord lBeta = ReviewGeometryWord("beta", 0, 125, 135, 20, leftBlock);
+            PdfReviewWord rBeta = ReviewGeometryWord("beta", 0, 125 + shift, 135, 20, rightBlock);
+            PdfReviewWord rAlpha = ReviewGeometryWord("alpha", 0, 100 + shift, 135, 18, rightBlock);
+            PdfReviewWord lAfter = ReviewGeometryWord("after", 0, 5, 20, 40);
+            PdfReviewWord rAfter = ReviewGeometryWord("after", 0, 5, 20, 40);
+            steps = new List<Action<List<PdfReviewWordOp>>>();
+            var leftWords = new List<PdfReviewWord>();
+            var rightWords = new List<PdfReviewWord>();
+            if (witnessShift.HasValue)
+            {
+                PdfReviewWord lWitness = ReviewGeometryWord("witness", 0, 100, 160, 40, leftBlock);
+                PdfReviewWord rWitness = ReviewGeometryWord("witness", 0, 100 + shift, 160, 40, rightBlock);
+                leftWords.Add(lWitness);
+                rightWords.Add(rWitness);
+                steps.Add(ReviewExactStep(lWitness, rWitness));
+            }
+            leftWords.AddRange(new[] { lBefore, lAlpha, lBeta, lAfter });
+            rightWords.AddRange(new[] { rBefore, rBeta, rAlpha, rAfter });
+            steps.Add(ReviewExactStep(lBefore, rBefore));
+            steps.Add(ReviewChangeStep(PdfReviewDiffKind.Delete, lAlpha));
+            steps.Add(ReviewChangeStep(PdfReviewDiffKind.Delete, lBeta));
+            steps.Add(ReviewChangeStep(PdfReviewDiffKind.Insert, rBeta));
+            steps.Add(ReviewChangeStep(PdfReviewDiffKind.Insert, rAlpha));
+            steps.Add(ReviewExactStep(lAfter, rAfter));
+            left = leftWords.ToArray();
+            right = rightWords.ToArray();
+        }
+
+        [Test("PDF Review: Exact другой page-pair между окном и якорем лишает окно этого якоря")]
+        private static void TestReviewOrderArtifactForeignExactBlocksAnchors()
+        {
+            PdfReviewWord[] left, right;
+            List<Action<List<PdfReviewWordOp>>> steps;
+            ReviewForeignExactCycle(null, out left, out right, out steps);
+            AssertEq(2, ReviewReconciledWithForeignExact(left, right, steps, steps.Count),
+                "контроль: чужая Exact-пара вне цикла — перестановка снята");
+            AssertEq(0, ReviewReconciledWithForeignExact(left, right, steps, 1),
+                "чужая Exact-пара между якорем before и окном — регистрации нет");
+            AssertEq(0, ReviewReconciledWithForeignExact(left, right, steps, steps.Count - 1),
+                "чужая Exact-пара между окном и якорем after — регистрации нет");
+        }
+
+        [Test("PDF Review: свидетель за Exact другой page-pair не подтверждает перестановку")]
+        private static void TestReviewOrderArtifactForeignExactBlocksWitness()
+        {
+            PdfReviewWord[] left, right;
+            List<Action<List<PdfReviewWordOp>>> steps;
+            ReviewForeignExactCycle(30, out left, out right, out steps);
+            AssertEq(2, ReviewReconciledWithForeignExact(left, right, steps, steps.Count),
+                "контроль: сдвинутые ячейки подтверждает свидетель их блока");
+            AssertEq(0, ReviewReconciledWithForeignExact(left, right, steps, 1),
+                "свидетель за чужой Exact-парой не учитывается");
+        }
+
+        /// <summary>
+        /// Перестановка alpha/beta между Exact-якорями левой страницы 0 и правой страницы 1.
+        /// paired — эти страницы явно сопоставлены viewer; иначе левая 0 стоит против правой 0.
+        /// </summary>
+        private static int ReviewReconciledAcrossPagePair(bool paired)
+        {
+            PdfReviewWord lBefore = ReviewGeometryWord("before", 0, 5, 185, 40);
+            PdfReviewWord lAlpha = ReviewGeometryWord("alpha", 0, 100, 135, 18);
+            PdfReviewWord lBeta = ReviewGeometryWord("beta", 0, 125, 135, 20);
+            PdfReviewWord lAfter = ReviewGeometryWord("after", 0, 5, 20, 40);
+            PdfReviewWord rCover = ReviewGeometryWord("cover", 0, 5, 100, 40);
+            PdfReviewWord rBefore = ReviewGeometryWord("before", 1, 5, 185, 40);
+            PdfReviewWord rBeta = ReviewGeometryWord("beta", 1, 125, 135, 20);
+            PdfReviewWord rAlpha = ReviewGeometryWord("alpha", 1, 100, 135, 18);
+            PdfReviewWord rAfter = ReviewGeometryWord("after", 1, 5, 20, 40);
+            var result = new PdfReviewResult
+            {
+                Left = ReviewGeometryDocument("pair-left.pdf", ReviewGeometryPage(0, lBefore, lAlpha, lBeta, lAfter)),
+                Right = ReviewGeometryDocument("pair-right.pdf", ReviewGeometryPage(0, rCover),
+                    ReviewGeometryPage(1, rBefore, rBeta, rAlpha, rAfter))
+            };
+            result.Pairs.Add(new PdfReviewPagePair { LeftPageIndex = paired ? -1 : 0, RightPageIndex = 0 });
+            result.Pairs.Add(new PdfReviewPagePair { LeftPageIndex = paired ? 0 : -1, RightPageIndex = 1 });
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Insert, rCover);
+            PdfReviewDiff.AppendEqual(result.Operations, lBefore, rBefore, PdfReviewMatchKind.Exact);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Delete, lAlpha);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Delete, lBeta);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Insert, rBeta);
+            PdfReviewDiff.Append(result.Operations, PdfReviewDiffKind.Insert, rAlpha);
+            PdfReviewDiff.AppendEqual(result.Operations, lAfter, rAfter, PdfReviewMatchKind.Exact);
+            PdfReviewDiff.Project(result);
+            PdfReviewDiff.ReconcileOrderArtifacts(result);
+            return ReviewMatchCount(result, PdfReviewMatchKind.ReconciledOrder);
+        }
+
+        [Test("PDF Review: reconciliation — только внутри явно сопоставленной пары страниц")]
+        private static void TestReviewOrderGateExplicitPagePair()
+        {
+            AssertEq(2, ReviewReconciledAcrossPagePair(true), "контроль: страницы сопоставлены — перестановка снята");
+            AssertEq(0, ReviewReconciledAcrossPagePair(false),
+                "Exact-якоря связывают несопоставленные страницы — перестановка остаётся правкой");
+        }
+
+        /// <summary>
         /// Латинский перенос в конце строки («inter-» над «national») склеивается в одно слово.
         /// Политика симметрична, сохраняет владельца/union-рамку и не затрагивает кириллицу,
         /// идентификаторы, обычные границы слов или дефисы внутри строки. Все отказы ниже
@@ -8087,6 +8317,32 @@ namespace ExcelMerger.Tests
                 "отмена на последнем checkpoint распространяется");
             AssertEq(total, calls, "отмена сработала именно на последнем checkpoint");
             before.AssertKept(result, "отмена на последнем checkpoint");
+        }
+
+        /// <summary>
+        /// Отмена, поднятая между физическими парами (в отчёте о прогрессе следующей), обязана
+        /// сработать до рендера этой пары: два рендера WinRT ради заведомо отменённой работы —
+        /// лишняя память и время.
+        /// </summary>
+        [Test("PDF Review visual: отмена между парами страниц не рендерит следующую пару")]
+        private static void TestReviewVisualRefineCancelBeforeNextPairRender()
+        {
+            PdfReviewResult result = ReviewVisualTwoPairResult();
+            bool cancelNow = false;
+            var rendered = new List<Bitmap>();
+            AssertThrowsExactly<OperationCanceledException>("отмена между парами распространяется", delegate
+            {
+                PdfReviewVisualDiff.Refine(result, PdfReviewLimits.Default(), delegate { return cancelNow; },
+                    delegate(string path, int pageIndex, int targetWidth, int maxHeight)
+                    {
+                        Bitmap bitmap = ReviewVisualInkBitmap(result, path, pageIndex, 200, 100);
+                        rendered.Add(bitmap);
+                        return bitmap;
+                    },
+                    delegate(int done, int total) { if (done == 1) cancelNow = true; });
+            });
+            AssertEq(2, rendered.Count, "отрендерена только первая пара (обе её стороны)");
+            AssertReviewVisualBitmapsDisposed(rendered, "отмена между парами");
         }
 
         /// <summary>
@@ -11155,6 +11411,36 @@ namespace ExcelMerger.Tests
                 AssertTrue(!form.WheelFilterRegistered, "при закрытии wheel filter обязательно снят");
                 AssertTrue(!form.RouteWheel(leftPoint, -120, false),
                     "закрытая форма больше не маршрутизирует wheel");
+            });
+        }
+
+        /// <summary>
+        /// Модальное закрытие не освобождает форму (ShowDialog оставляет Dispose вызывающему),
+        /// поэтому фильтр колеса обязан сниматься в OnFormClosed: иначе скрытая форма до
+        /// своего Dispose оставалась бы в списке фильтров приложения и удерживалась им.
+        /// </summary>
+        [Test("PDF Review Form: фильтр колеса снимается и при закрытии модального окна")]
+        private static void TestReviewWheelFilterRemovedOnModalClose()
+        {
+            InIsolatedSettings("iwo_reviewwheel_modal_", delegate
+            {
+                using (var form = new PdfReviewForm(null))
+                {
+                    bool registeredWhileShown = false;
+                    // Shown приходит изнутри base.OnShown, до регистрации: проверяем следующим сообщением.
+                    form.Shown += delegate
+                    {
+                        form.BeginInvoke((Action)delegate
+                        {
+                            registeredWhileShown = form.WheelFilterRegistered;
+                            form.Close();
+                        });
+                    };
+                    form.ShowDialog();
+                    AssertTrue(registeredWhileShown, "показанное модальное окно регистрирует фильтр");
+                    AssertTrue(!form.IsDisposed, "предусловие: модальное закрытие форму не освобождает");
+                    AssertTrue(!form.WheelFilterRegistered, "после закрытия фильтр снят ещё до Dispose");
+                }
             });
         }
 
