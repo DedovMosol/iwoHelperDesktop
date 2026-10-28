@@ -21,7 +21,7 @@ namespace ExcelMerger
     /// масштаба экрана: на 150% посчитанная на глаз координата кнопки оказалась бы под
     /// текстом. Ровно так уже разъезжались «Свойства документа» до 1.17.9.
     /// </summary>
-    public class SettingsForm : Form
+    public class SettingsForm : ScaledForm
     {
         private const int Pad = 24;        // поле слева и справа
         private const int BtnH = 34;
@@ -58,16 +58,17 @@ namespace ExcelMerger
                 Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
             title.AutoSize = false;
             title.TextAlign = ContentAlignment.MiddleCenter;
-            title.SetBounds(Pad, 22, width - 2 * Pad, title.PreferredHeight);
+            // Высоты и ширины по замеру — в пикселях экрана, раскладка здесь логическая (DpiScale).
+            title.SetBounds(Pad, 22, width - 2 * Pad, DpiScale.ToLogical(title.PreferredHeight));
 
             // ---------- обновления ----------
             int y = title.Bottom + GroupGap;
-            y = Section(Loc.T("settings.section.updates"), y).Bottom + Gap;
+            y = DpiScale.LogicalBottom(Section(Loc.T("settings.section.updates"), y)) + Gap;
 
             _checkOnStart = new AccentCheckBox();
             _checkOnStart.Text = Loc.T("settings.chk.updateOnStart");
             Controls.Add(_checkOnStart); // шрифт наследуется от формы: мерить только после этого
-            Size want = _checkOnStart.GetPreferredSize(Size.Empty);
+            Size want = DpiScale.ToLogical(_checkOnStart.GetPreferredSize(Size.Empty));
             _checkOnStart.SetBounds(Pad, y, Math.Min(want.Width, width - 2 * Pad), want.Height);
             _checkOnStart.CheckedChanged += OnCheckOnStartChanged;
 
@@ -81,7 +82,8 @@ namespace ExcelMerger
                 Text = Loc.T("settings.chk.whatsNew")
             };
             Controls.Add(_showWhatsNew);
-            Size whatsNewSize = _showWhatsNew.GetPreferredSize(Size.Empty);
+            Size whatsNewSize = DpiScale.ToLogical(_showWhatsNew.GetPreferredSize(Size.Empty));
+            // Высота абзаца уже логическая — её переводит JustifiedText.Paragraph.
             _showWhatsNew.SetBounds(Pad, hint.Bottom + 8,
                 Math.Min(whatsNewSize.Width, width - 2 * Pad), whatsNewSize.Height);
             _showWhatsNew.CheckedChanged += OnShowWhatsNewChanged;
@@ -106,12 +108,12 @@ namespace ExcelMerger
             _unskip.Click += OnUnskip;
 
             // ---------- история и статистика ----------
-            y = Section(Loc.T("settings.section.history"), _unskip.Bottom + GroupGap).Bottom + Gap;
+            y = DpiScale.LogicalBottom(Section(Loc.T("settings.section.history"), _unskip.Bottom + GroupGap)) + Gap;
 
             _keepHistory = new AccentCheckBox();
             _keepHistory.Text = Loc.T("settings.chk.history");
             Controls.Add(_keepHistory);
-            Size hw = _keepHistory.GetPreferredSize(Size.Empty);
+            Size hw = DpiScale.ToLogical(_keepHistory.GetPreferredSize(Size.Empty));
             _keepHistory.SetBounds(Pad, y, Math.Min(hw.Width, width - 2 * Pad), hw.Height);
             _keepHistory.CheckedChanged += OnKeepHistoryChanged;
 
@@ -127,7 +129,7 @@ namespace ExcelMerger
             _historyAuto.SetBounds(width - Pad - 180, _keepHistory.Bottom + 10, 180, 27);
             _historyAuto.SelectedIndexChanged += OnHistoryAutoChanged;
 
-            _historyCount = Ui.Label(this, "", Pad, _historyAuto.Bottom + 14, Font, Theme.TextMuted);
+            _historyCount = Ui.Label(this, "", Pad, DpiScale.LogicalBottom(_historyAuto) + 14, Font, Theme.TextMuted);
 
             // Три действия истории — ОДНИМ рядом в пределах той же полосы, что и текст выше:
             // столбиком они занимали треть окна, а делают вещи одного порядка. Ширина делится
@@ -137,7 +139,7 @@ namespace ExcelMerger
                     Loc.T("settings.btn.historyShow"),
                     Loc.T("settings.btn.historyClear"),
                     Loc.T("settings.btn.stats")
-                }, Pad, _historyCount.Bottom + Gap, width - 2 * Pad);
+                }, Pad, DpiScale.LogicalBottom(_historyCount) + Gap, width - 2 * Pad);
             row[0].Click += delegate { using (var f = new HistoryForm()) f.ShowDialog(this); };
             row[1].Click += OnClearHistory;
             row[2].Click += delegate { using (var f = new StatsForm()) f.ShowDialog(this); };
@@ -214,8 +216,10 @@ namespace ExcelMerger
         private static Font FitFont(string text, Font font, int maxWidth)
         {
             const float MinSize = 8f;
-            float size = font.Size;
-            while (size > MinSize && TextRenderer.MeasureText(text, Ui.Font(size, font.Style)).Width > maxWidth)
+            float size = font.Size / DpiScale.EmulatedScale; // номинал: масштаб теста добавит Ui.Font
+            // Только из конструктора: maxWidth логическая, замер — в пикселях экрана.
+            while (size > MinSize &&
+                   DpiScale.ToLogical(TextRenderer.MeasureText(text, Ui.Font(size, font.Style)).Width) > maxWidth)
                 size -= 0.5f;
             return Ui.Font(size, font.Style);
         }
@@ -224,8 +228,10 @@ namespace ExcelMerger
         private static void SetButtonText(RoundedButton button, string text)
         {
             button.Text = text;
-            int want = TextRenderer.MeasureText(text ?? "", button.Font).Width + BtnTextPad;
-            button.Width = Math.Max(BtnMinW, want);
+            // Зовётся и из конструктора, и при перечитывании настроек — в единицах окна сейчас.
+            int want = DpiScale.FromDevice(button, TextRenderer.MeasureText(text ?? "", button.Font).Width) +
+                DpiScale.Px(button, BtnTextPad);
+            button.Width = Math.Max(DpiScale.Px(button, BtnMinW), want);
         }
 
         /// <summary>

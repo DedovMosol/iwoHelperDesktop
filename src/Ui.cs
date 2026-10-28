@@ -26,6 +26,7 @@ namespace ExcelMerger
         /// <summary>Общий кэшированный шрифт (по умолчанию — <see cref="UiFontFamily"/>). НЕ освобождать у получателя.</summary>
         public static Font Font(float size, FontStyle style = FontStyle.Regular, string family = UiFontFamily)
         {
+            size *= DpiScale.EmulatedScale; // 1 вне тестов; ключ — по итоговому кеглю
             string key = family + "|" + size.ToString(CultureInfo.InvariantCulture) + "|" + (int)style;
             Font f;
             if (!_fonts.TryGetValue(key, out f))
@@ -34,6 +35,16 @@ namespace ExcelMerger
                 _fonts[key] = f;
             }
             return f;
+        }
+
+        /// <summary>
+        /// Кегль basis (± delta пунктов) другим начертанием — из того же кэша. basis.Size уже
+        /// включает масштаб теста (<see cref="DpiScale.EmulatedScale"/>), поэтому берём номинал:
+        /// иначе шрифт вырос бы дважды. Вне тестов это деление на 1.
+        /// </summary>
+        public static Font Font(Font basis, FontStyle style, float delta = 0f)
+        {
+            return Font(basis.Size / DpiScale.EmulatedScale + delta, style, basis.Name);
         }
         /// <summary>
         /// Включить двойную буферизацию ListView (убирает мерцание при добавлении строк);
@@ -280,11 +291,10 @@ namespace ExcelMerger
 
         /// <summary>
         /// Общий каркас модального диалога приложения: заголовок, иконка, кэшированный шрифт,
-        /// белый фон, неизменяемая рамка, центр по родителю и DPI-масштабирование. Четыре
-        /// диалога («О программе», сообщения, статистика, ввод номера) держали эти девять
-        /// строк своей копией — и три из них по-разному: где-то забывалась иконка окна.
-        /// Звать ПЕРВЫМ делом в конструкторе: масштабирование должно быть задано до
-        /// добавления контролов, а размер окна каждый диалог ставит себе сам.
+        /// белый фон, неизменяемая рамка, центр по родителю. Четыре диалога («О программе»,
+        /// сообщения, статистика, ввод номера) держали эти строки своей копией — и три из них
+        /// по-разному: где-то забывалась иконка окна. Размер окна каждый диалог ставит себе
+        /// сам, в логических единицах; под DPI его масштабирует <see cref="ScaledForm"/>.
         /// </summary>
         public static void InitDialog(Form form, string title)
         {
@@ -299,8 +309,6 @@ namespace ExcelMerger
             form.MinimizeBox = false;
             form.ShowInTaskbar = false;
             form.StartPosition = FormStartPosition.CenterParent;
-            form.AutoScaleDimensions = new SizeF(96f, 96f);
-            form.AutoScaleMode = AutoScaleMode.Dpi;
         }
 
         /// <summary>

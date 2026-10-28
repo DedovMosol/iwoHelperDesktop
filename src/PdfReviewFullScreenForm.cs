@@ -5,7 +5,7 @@ using System.Windows.Forms;
 namespace ExcelMerger
 {
     /// <summary>Maximized Review canvas using the exact same highlighted render request.</summary>
-    internal sealed class PdfReviewFullScreenForm : Form, IMessageFilter
+    internal sealed class PdfReviewFullScreenForm : ScaledForm, IMessageFilter
     {
         private readonly PdfReviewPageView _view;
         private readonly PdfReviewViewContent _content;
@@ -18,8 +18,6 @@ namespace ExcelMerger
             if (icon != null) Icon = icon;
             BackColor = Theme.DarkBarFill;
             Font = Ui.Font(9.75f);
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
             FormBorderStyle = FormBorderStyle.Sizable;
             MinimizeBox = true;
             MaximizeBox = true;

@@ -6,7 +6,7 @@ using System.Windows.Forms;
 namespace ExcelMerger
 {
     /// <summary>Version-aware, dismissible release notes with an unobtrusive support section.</summary>
-    internal sealed class WhatsNewForm : Form, IMessageFilter
+    internal sealed class WhatsNewForm : ScaledForm, IMessageFilter
     {
         private const int WmMouseWheel = 0x020A;
         // Дефолт — замеренный у пользователя удобный размер (1193×699 клиент): карточки
@@ -234,30 +234,34 @@ namespace ExcelMerger
         {
             if (_scroll == null || _supportLink == null || _supportPanel == null)
                 return;
+            // Зовётся из конструктора (окно логическое) и на ходу (уже в пикселях экрана):
+            // константы — через Px, замеры текста и системные размеры — через FromDevice.
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
+            Func<int, int> m = delegate(int v) { return DpiScale.FromDevice(this, v); };
             _scroll.SuspendLayout();
             try
             {
-                int y = 18;
-                int width = Math.Max(280, _scroll.ClientSize.Width - 2 * Pad -
+                int y = d(18);
+                int width = Math.Max(d(280), _scroll.ClientSize.Width - 2 * d(Pad) -
                     (_scroll.VerticalScroll.Visible
-                        ? SystemInformation.VerticalScrollBarWidth : 0));
+                        ? m(SystemInformation.VerticalScrollBarWidth) : 0));
                 for (int i = 0; i < _cards.Count; i++)
                 {
                     Panel card = _cards[i];
                     NonSelectableText body = _cardBodies[i];
-                    int bodyWidth = Math.Max(120, width - 72);
+                    int bodyWidth = Math.Max(d(120), width - d(72));
                     body.Font = TextFont();
-                    body.SetBounds(58, 14, bodyWidth,
-                        NonSelectableText.MeasureHeight(body.Text, body.Font, bodyWidth));
-                    card.SetBounds(Pad, y, width, Math.Max(58, body.Bottom + 14));
+                    body.SetBounds(d(58), d(14), bodyWidth,
+                        m(NonSelectableText.MeasureHeight(body.Text, body.Font, DpiScale.MeasureWidth(this, bodyWidth))));
+                    card.SetBounds(d(Pad), y, width, Math.Max(d(58), body.Bottom + d(14)));
                     // Номер центрируется по вертикали относительно текста.
                     card.Controls[0].Top = (card.Height - card.Controls[0].Height) / 2;
-                    y = card.Bottom + 10;
+                    y = card.Bottom + d(10);
                 }
                 LayoutSupportPanel(width);
-                _supportPanel.SetBounds(Pad, y, width, _supportPanel.Height);
+                _supportPanel.SetBounds(d(Pad), y, width, _supportPanel.Height);
                 if (_supportPanel.Visible)
-                    y = _supportPanel.Bottom + 16;
+                    y = _supportPanel.Bottom + d(16);
                 _scroll.AutoScrollMinSize = new Size(0, y);
             }
             finally
@@ -269,22 +273,25 @@ namespace ExcelMerger
 
         private void LayoutSupportPanel(int width)
         {
-            int innerWidth = Math.Max(160, width - 28);
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
+            Func<int, int> m = delegate(int v) { return DpiScale.FromDevice(this, v); };
+            int innerWidth = Math.Max(d(160), width - d(28));
             _supportNote.Font = TextFont();
-            _supportNote.SetBounds(14, 10, innerWidth,
-                NonSelectableText.MeasureHeight(_supportNote.Text, _supportNote.Font, innerWidth));
+            _supportNote.SetBounds(d(14), d(10), innerWidth,
+                m(NonSelectableText.MeasureHeight(_supportNote.Text, _supportNote.Font, DpiScale.MeasureWidth(this, innerWidth))));
 
-            int y = _supportNote.Bottom + 12;
+            // Высоту полей реквизитов ставит шрифт (пиксели экрана) — отсюда m(Height).
+            int y = _supportNote.Bottom + d(12);
             _supportAccountLabel.Font = TextFont();
-            _supportAccountLabel.Location = new Point(14, y);
+            _supportAccountLabel.Location = new Point(d(14), y);
             _supportAccount.Font = TextFont();
-            _supportAccount.SetBounds(112, y - 1, Math.Max(80, width - 128), 22);
-            y = _supportAccount.Bottom + 10;
+            _supportAccount.SetBounds(d(112), y - d(1), Math.Max(d(80), width - d(128)), d(22));
+            y = _supportAccount.Top + m(_supportAccount.Height) + d(10);
             _supportBankLabel.Font = TextFont();
-            _supportBankLabel.Location = new Point(14, y);
+            _supportBankLabel.Location = new Point(d(14), y);
             _supportBank.Font = TextFont();
-            _supportBank.SetBounds(112, y - 1, Math.Max(80, width - 128), 22);
-            _supportPanel.Height = _supportBank.Bottom + 14;
+            _supportBank.SetBounds(d(112), y - d(1), Math.Max(d(80), width - d(128)), d(22));
+            _supportPanel.Height = _supportBank.Top + m(_supportBank.Height) + d(14);
         }
 
         private Panel BuildSupportPanel()
@@ -324,21 +331,26 @@ namespace ExcelMerger
         {
             if (_close == null)
                 return;
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
+            Func<int, int> m = delegate(int v) { return DpiScale.FromDevice(this, v); };
             // Чекбокс всегда по центру окна по горизонтали, независимо от ширины.
-            Size optionSize = _dontShow.GetPreferredSize(Size.Empty);
-            int bottomY = ClientSize.Height - 48;
-            _close.SetBounds(ClientSize.Width - Pad - 110, ClientSize.Height - 52,
-                110, 36);
+            Size measured = _dontShow.GetPreferredSize(Size.Empty);
+            var optionSize = new Size(m(measured.Width), m(measured.Height));
+            int pad = d(Pad), gap = d(8);
+            int bottomY = ClientSize.Height - d(48);
+            _close.SetBounds(ClientSize.Width - pad - d(110), ClientSize.Height - d(52),
+                d(110), d(36));
             // Ссылка поддержки — слева, по центру вертикали относительно кнопки «Закрыть».
-            _supportLink.Location = new Point(Pad,
-                _close.Top + (_close.Height - _supportLink.Height) / 2);
+            int linkW = m(_supportLink.Width), linkH = m(_supportLink.Height);
+            _supportLink.Location = new Point(pad, _close.Top + (_close.Height - linkH) / 2);
+            int linkRight = pad + linkW;
             // При узком окне чекбокс сдвигается правее ссылки, не перекрывая её.
-            int optionX = Math.Max(Pad, (ClientSize.Width - optionSize.Width) / 2);
-            if (optionX < _supportLink.Right + 8)
-                optionX = _supportLink.Right + 8;
+            int optionX = Math.Max(pad, (ClientSize.Width - optionSize.Width) / 2);
+            if (optionX < linkRight + gap)
+                optionX = linkRight + gap;
             // И не заходя на кнопку «Закрыть».
-            if (optionX + optionSize.Width > _close.Left - 8)
-                optionX = Math.Max(_supportLink.Right + 8, _close.Left - 8 - optionSize.Width);
+            if (optionX + optionSize.Width > _close.Left - gap)
+                optionX = Math.Max(linkRight + gap, _close.Left - gap - optionSize.Width);
             _dontShow.SetBounds(optionX, bottomY, optionSize.Width, optionSize.Height);
         }
 
@@ -457,15 +469,26 @@ namespace ExcelMerger
             Location = new Point(x, y);
         }
 
-        protected override void OnResize(EventArgs e)
+        private bool _inLayout;
+
+        /// <summary>
+        /// В OnLayout, а не в OnResize: OnResize приходит и посреди масштабирования под DPI,
+        /// когда окно уже выросло, а карточки ещё нет (см. <see cref="ScaledForm"/>). Своя
+        /// раскладка двигает детей окна и сама вызывает раскладку — повторный вход пропускаем.
+        /// </summary>
+        protected override void OnLayout(LayoutEventArgs levent)
         {
-            base.OnResize(e);
-            if (_scroll != null && _supportLink != null)
+            base.OnLayout(levent);
+            if (_inLayout || _scroll == null || _supportLink == null)
+                return;
+            _inLayout = true;
+            try
             {
                 int offset = ScrollOffsetY();
                 LayoutBody(offset);
                 LayoutFooter();
             }
+            finally { _inLayout = false; }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

@@ -395,12 +395,12 @@ namespace ExcelMerger
                     ? SystemColors.Window : Color.White
             };
             Label title = Ui.Label(legend, Loc.T("review.unified.legend"), 10, 8,
-                Ui.Font(Font.Size, FontStyle.Bold), Theme.TextPrimary);
+                Ui.Font(Font, FontStyle.Bold), Theme.TextPrimary);
             title.AutoSize = false;
             title.SetBounds(10, 7, 520, 24);
             title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Label hint = Ui.Label(legend, Loc.T("review.unified.hint"), 10, 34,
-                Ui.Font(Math.Max(8f, Font.Size - 0.5f)), Theme.TextMuted);
+                Ui.Font(Font, FontStyle.Regular, -0.5f), Theme.TextMuted);
             hint.AutoSize = false;
             hint.SetBounds(10, 33, 520, 32);
             hint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -596,7 +596,7 @@ namespace ExcelMerger
                     "review.legend.added"),
                 Dock = DockStyle.Fill,
                 AutoSize = false,
-                Font = Ui.Font(Font.Size, FontStyle.Bold),
+                Font = Ui.Font(Font, FontStyle.Bold),
                 ForeColor = foreground,
                 BackColor = background,
                 TextAlign = ContentAlignment.MiddleLeft,
@@ -616,33 +616,43 @@ namespace ExcelMerger
         /// </summary>
         private void LayoutPathRow()
         {
-            int right = ClientSize.Width - 20;
-            int gap = 24;
-            int browseWidth = 100;
-            int browseGap = 6;
+            // Константы и _pathTop логические, окно после масштаба — в пикселях экрана.
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
+            int margin = d(20);
+            int right = ClientSize.Width - margin;
+            int gap = d(24);
+            int browseWidth = d(100);
+            int browseGap = d(6);
+            int top = d(_pathTop);
+            int labelTop = top - d(22), labelH = d(18);
             // Ширина окна может временно упасть ниже минимальной (пересборка, смена
             // масштаба) — не даём расчёту уйти в отрицательную ширину.
-            int half = Math.Max(140, (right - 20 - gap) / 2);
-            int leftPathWidth = Math.Max(60, half - browseGap - browseWidth);
+            int half = Math.Max(d(140), (right - margin - gap) / 2);
+            int leftPathWidth = Math.Max(d(60), half - browseGap - browseWidth);
 
-            _leftPath.SetBounds(20, _pathTop, leftPathWidth, _leftPath.Height);
-            _pickLeft.SetBounds(20 + leftPathWidth + browseGap, _pathTop - 1, browseWidth, _pickLeft.Height);
+            _leftPath.SetBounds(margin, top, leftPathWidth, _leftPath.Height);
+            _pickLeft.SetBounds(margin + leftPathWidth + browseGap, top - d(1), browseWidth, _pickLeft.Height);
             if (_leftPathLabel != null)
-                _leftPathLabel.SetBounds(20, _pathTop - 22, leftPathWidth, 18);
+                _leftPathLabel.SetBounds(margin, labelTop, leftPathWidth, labelH);
 
-            int rightStart = 20 + half + gap;
-            int rightPathWidth = Math.Max(60, right - rightStart - browseGap - browseWidth);
-            _rightPath.SetBounds(rightStart, _pathTop, rightPathWidth, _rightPath.Height);
-            _pickRight.SetBounds(rightStart + rightPathWidth + browseGap, _pathTop - 1, browseWidth, _pickRight.Height);
+            int rightStart = margin + half + gap;
+            int rightPathWidth = Math.Max(d(60), right - rightStart - browseGap - browseWidth);
+            _rightPath.SetBounds(rightStart, top, rightPathWidth, _rightPath.Height);
+            _pickRight.SetBounds(rightStart + rightPathWidth + browseGap, top - d(1), browseWidth, _pickRight.Height);
             if (_rightPathLabel != null)
-                _rightPathLabel.SetBounds(rightStart, _pathTop - 22, rightPathWidth, 18);
+                _rightPathLabel.SetBounds(rightStart, labelTop, rightPathWidth, labelH);
         }
 
-        protected override void OnResize(EventArgs e)
+        /// <summary>
+        /// В OnLayout, а не в OnResize: OnResize приходит и посреди масштабирования под DPI,
+        /// когда окно уже выросло, а поля ещё нет (см. <see cref="ScaledForm"/>).
+        /// </summary>
+        protected override void OnLayout(LayoutEventArgs levent)
         {
-            base.OnResize(e);
-            if (_leftPath == null)
-                return; // InitShell задал ClientSize до того, как контролы построены
+            base.OnLayout(levent);
+            // Раскладка приходит и посреди сборки ряда: правая кнопка создаётся последней.
+            if (_pickRight == null)
+                return;
             LayoutPathRow();
         }
 

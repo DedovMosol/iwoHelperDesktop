@@ -8,7 +8,7 @@ namespace ExcelMerger
     /// Окно «Статистика»: локальные счётчики операций, выбор авто-очистки
     /// (выкл / раз в день / 7 / 30 дней) и ручная очистка. Данные — в UsageStats.
     /// </summary>
-    public class StatsForm : Form
+    public class StatsForm : ScaledForm
     {
         private static readonly int[] AutoDays = { 0, 1, 7, 30 }; // индекс combo -> дни
 

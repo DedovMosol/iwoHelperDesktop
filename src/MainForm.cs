@@ -9,7 +9,7 @@ using System.Windows.Forms;
 
 namespace ExcelMerger
 {
-    public class MainForm : Form, IBusyAware, IUnsavedStateAware
+    public class MainForm : ScaledForm, IBusyAware, IUnsavedStateAware
     {
         private const string AppTitle = "iwo Helper Desktop";
         private const int MenuHeight = HelpMenu.Height;
@@ -150,8 +150,6 @@ namespace ExcelMerger
             Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(780, 785);
             // Ширина минимума не даёт нижним ссылкам («Записка Word») перекрыться с правой
             // кнопкой «Повторить пропущенные». Высоту здесь не задаём вовсе: её ставит по
@@ -1341,23 +1339,18 @@ namespace ExcelMerger
             if (WindowState != FormWindowState.Normal)
                 return; // свёрнутое окно имеет крошечный клиент, а развёрнутое размер не выбирает:
                         // в обоих случаях правка размера боролась бы с самим Windows
-            int needed = _btnUncheckAll.Bottom + RowGap + BottomRowHeight;
+            // Константы логические, окно после масштаба — в пикселях экрана (см. ScaledForm).
+            int needed = _btnUncheckAll.Bottom + DpiScale.Px(this, RowGap + BottomRowHeight);
             if (ClientSize.Height >= needed)
                 return;
             ClientSize = new Size(ClientSize.Width, needed);
             if (MinimumSize.Height != Height)
-                MinimumSize = new Size(MinWidth, Height); // рамка теперь известна по факту
+                MinimumSize = new Size(DpiScale.Px(this, MinWidth), Height); // рамка теперь известна по факту
         }
 
-        // Два входа, потому что положение кнопки меняют оба события: изменение размера окна
-        // и пересчёт раскладки (масштабирование под экран двигает контролы, не трогая окна).
-        // Метод идемпотентен, поэтому лишний вызов ничего не стоит.
-        protected override void OnResize(EventArgs e)
-        {
-            base.OnResize(e);
-            ClampToLayout();
-        }
-
+        // Только OnLayout: раскладка идёт и при изменении размера окна, и при масштабировании
+        // под экран, а OnResize приходил бы ещё и посреди масштабирования — окно уже выросло,
+        // а кнопка ещё нет (см. ScaledForm). Метод идемпотентен.
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e);

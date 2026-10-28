@@ -20,7 +20,7 @@ namespace ExcelMerger
     /// инициализируются позже, поэтому раскладку строит сам наследник, а база лишь
     /// хранит общее состояние и поведение (KISS, без анти-паттерна «virtual в ctor»).
     /// </summary>
-    public abstract class PdfToolFormBase : Form, IBusyAware
+    public abstract class PdfToolFormBase : ScaledForm, IBusyAware
     {
         protected readonly Action _showHub;
         protected PdfPageGrid _grid;
@@ -89,8 +89,6 @@ namespace ExcelMerger
             Font = Ui.Font(9.75f); // общий кэшированный шрифт (не освобождать)
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = clientSize;
             MinimumSize = minSize;
             ShowInTaskbar = true;

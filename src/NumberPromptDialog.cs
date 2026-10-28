@@ -10,7 +10,7 @@ namespace ExcelMerger
     /// Возвращает число в [min..max] или -1 при отмене. Освобождается вызывающим
     /// (using в <see cref="Show"/>).
     /// </summary>
-    internal sealed class NumberPromptDialog : Form
+    internal sealed class NumberPromptDialog : ScaledForm
     {
         private readonly NumericUpDown _num;
 
@@ -28,11 +28,13 @@ namespace ExcelMerger
             var ok = new RoundedButton(true);
             ok.Text = okText;
             ok.DialogResult = DialogResult.OK;
-            int btnW = ButtonWidth(Ui.TextWidth(cancel.Text, cancel.Font), Ui.TextWidth(ok.Text, ok.Font));
+            // Замеры — в пикселях экрана, окно в конструкторе логическое (см. DpiScale).
+            int btnW = ButtonWidth(DpiScale.ToLogical(Ui.TextWidth(cancel.Text, cancel.Font)),
+                DpiScale.ToLogical(Ui.TextWidth(ok.Text, ok.Font)));
 
             // База 300 вмещает кнопки по краям; длинная подпись (например, 5-значное число
             // страниц в «до {0}») расширяет окно по замеру — статичная константа обрезала бы её.
-            int w = Math.Max(DialogWidth(TextRenderer.MeasureText(prompt, Font).Width, margin, 300),
+            int w = Math.Max(DialogWidth(DpiScale.ToLogical(TextRenderer.MeasureText(prompt, Font).Width), margin, 300),
                 2 * btnW + 3 * margin); // разнесённым по краям кнопкам нужно не сойтись вплотную
 
             var label = new Label();

@@ -17,7 +17,7 @@ namespace ExcelMerger
     /// Сами файлы здесь не открываются вслепую: путь мог устареть, файл — переехать или быть
     /// удалённым, и «Открыть» обязано это заметить, а не бросить исключение оболочки.
     /// </summary>
-    public class HistoryForm : Form
+    public class HistoryForm : ScaledForm
     {
         private const int Pad = 20;
         private const int BtnH = 34;
@@ -77,7 +77,8 @@ namespace ExcelMerger
             b.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             Controls.Add(b); // шрифт наследуется от формы, до добавления мерить нечем
             b.Text = text;
-            b.Width = Math.Max(150, TextRenderer.MeasureText(text, b.Font).Width + 28);
+            // Замер — в пикселях экрана, окно в конструкторе логическое (см. DpiScale).
+            b.Width = Math.Max(150, DpiScale.ToLogical(TextRenderer.MeasureText(text, b.Font).Width) + 28);
             return b;
         }
 

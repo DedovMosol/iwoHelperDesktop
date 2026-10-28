@@ -33,7 +33,9 @@ namespace ExcelMerger
             rtb.TabStop = false;
             rtb.ReadOnly = true;
             rtb.Text = text;
-            rtb.SetBounds(x, y, width, Height(text, parent.Font, width));
+            // Высота — в единицах родителя: в конструкторе окно ещё логическое (см. DpiScale).
+            rtb.SetBounds(x, y, width, DpiScale.FromDevice(parent,
+                Height(text, parent.Font, DpiScale.MeasureWidth(parent, width))));
             // Формат абзаца хранится в самом окне элемента, а WinForms окно пересоздаёт (смена
             // родителя, пересборка интерфейса) — поэтому ставим выключку на КАЖДОЕ создание
             // хэндла, иначе разовая установка в конструкторе однажды потерялась бы.

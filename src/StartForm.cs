@@ -31,7 +31,7 @@ namespace ExcelMerger
     /// <see cref="ShellContext"/>. Закрытие хаба не закрывает уже открытые инструменты, кнопка
     /// «Главная» в инструменте снова показывает этот экран — и сразу нужным разделом.
     /// </summary>
-    public class StartForm : Form
+    public class StartForm : ScaledForm
     {
         private const string AppTitle = "iwo Helper Desktop";
         // Раздел PDF — шесть инструментов сеткой 3×2. Третий РЯД не поместился бы: окно и так
@@ -80,10 +80,12 @@ namespace ExcelMerger
             // прижиматься к левому верхнему углу они не должны.
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = true;
-            MinimumSize = new Size(820, 730);
+            // Высота минимума — ниже карточек: на ноутбуке 1080p при 150 % рабочая область —
+            // 688 логических пикселей, а с карточками целиком окно было бы 730 и уходило за
+            // край вместе с нижним рядом. Ниже карточек область уровня прокручивается
+            // (AutoScroll в AddLevelPanel), шапка и нижний ряд остаются на месте.
+            MinimumSize = new Size(820, 560);
             KeyPreview = true; // Esc — назад из раздела
-            AutoScaleDimensions = new SizeF(96f, 96f);
-            AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(804, 692);
             WindowChrome.Enable(this, Theme.HubBlue); // синий заголовок на Windows 11
             // Размер и состояние окна переживают перезапуск — как у окон инструментов.
@@ -225,7 +227,10 @@ namespace ExcelMerger
         private int LevelBottom() { return BottomRowTop(); }
 
         /// <summary>Верх нижнего ряда: он держится на постоянном расстоянии от низа окна.</summary>
-        private int BottomRowTop() { return ClientSize.Height - BottomRowGap; }
+        private int BottomRowTop() { return ClientSize.Height - D(BottomRowGap); }
+
+        /// <summary>Логическая длина раскладки → единицы окна сейчас (см. <see cref="DpiScale.Px"/>).</summary>
+        private int D(int logical) { return DpiScale.Px(this, logical); }
 
 
 
@@ -234,7 +239,7 @@ namespace ExcelMerger
         {
             foreach (Panel level in new[] { _levelMain, _levelPdf, _levelOther })
                 if (level != null)
-                    level.Height = Math.Max(0, LevelBottom() - HeaderH);
+                    level.Height = Math.Max(0, LevelBottom() - D(HeaderH));
             CenterLevels();
         }
 
@@ -247,21 +252,32 @@ namespace ExcelMerger
         {
             if (_designSize.Width <= 0)
                 return;
-            int dx = (ClientSize.Width - _designSize.Width) / 2;
+            // Исходная раскладка (_designSize, _cardHome) запомнена в логических единицах.
+            int dx = (ClientSize.Width - D(_designSize.Width)) / 2;
             // По вертикали центрируем внутри ТОГО места, что осталось уровню: полоса недавних
             // забирает низ, и считать от высоты окна значило бы сдвинуть карточки под неё.
-            int dy = (LevelBottom() - HeaderH) - (_designHeightOfLevel > 0 ? _designHeightOfLevel : 0);
+            int dy = (LevelBottom() - D(HeaderH)) - D(_designHeightOfLevel > 0 ? _designHeightOfLevel : 0);
             dy = dy / 2;
             foreach (KeyValuePair<Control, Rectangle> home in _cardHome)
             {
                 Rectangle r = home.Value;
-                home.Key.Location = new Point(r.X + (dx > 0 ? dx : 0), r.Y + (dy > 0 ? dy : 0));
+                // Уровень прокручивается, когда окно ниже карточек: положение ребёнка
+                // прокручиваемой панели включает её текущий сдвиг (он отрицательный).
+                Point scroll = ((ScrollableControl)home.Key.Parent).AutoScrollPosition;
+                var want = new Point(D(r.X) + (dx > 0 ? dx : 0) + scroll.X,
+                    D(r.Y) + (dy > 0 ? dy : 0) + scroll.Y);
+                if (home.Key.Location != want)
+                    home.Key.Location = want;
             }
         }
 
-        protected override void OnResize(EventArgs e)
+        /// <summary>
+        /// В OnLayout, а не в OnResize: OnResize приходит и посреди масштабирования под DPI,
+        /// когда окно уже выросло, а карточки ещё нет (см. <see cref="ScaledForm"/>).
+        /// </summary>
+        protected override void OnLayout(LayoutEventArgs levent)
         {
-            base.OnResize(e);
+            base.OnLayout(levent);
             PlaceRecentCards();
             LayoutLevels();
         }
@@ -277,6 +293,7 @@ namespace ExcelMerger
             // когда полоса появляется или исчезает.
             panel.SetBounds(0, HeaderH, ClientSize.Width, LevelBottom() - HeaderH);
             panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            panel.AutoScroll = true; // окно ниже карточек (малый экран, крупный масштаб) — прокрутка
             panel.BackColor = Color.White;
             panel.Visible = false;
             Controls.Add(panel);
@@ -559,15 +576,16 @@ namespace ExcelMerger
             // Карточки стоят В нижнем ряду, между значком настроек и значком «О программе»:
             // эта полоса всё равно пуста посередине, и так недавние видны при ЛЮБОМ размере
             // окна, ничего не отнимая у карточек инструментов.
-            int left = Pad + BottomRowH + 12;
-            int right = ClientSize.Width - Pad - BottomRowH - 12;
+            int left = D(Pad + BottomRowH + 12);
+            int right = ClientSize.Width - D(Pad + BottomRowH + 12);
             if (_recentCards.Count == 0)
                 return;
             // Сколько карточек показать: столько, сколько влезает НОРМАЛЬНОЙ ширины. Ужимать
             // все три до нечитаемых огрызков хуже, чем показать две целых, — имя файла здесь
             // единственное, ради чего карточка существует.
-            int shown = RecentFit(right - left, RecentGap, RecentMinWidth, _recentCards.Count);
-            int width = shown > 0 ? (right - left - (shown - 1) * RecentGap) / shown : 0;
+            int gap = D(RecentGap);
+            int shown = RecentFit(right - left, gap, D(RecentMinWidth), _recentCards.Count);
+            int width = shown > 0 ? (right - left - (shown - 1) * gap) / shown : 0;
             int x = left;
             for (int i = 0; i < _recentCards.Count; i++)
             {
@@ -575,8 +593,8 @@ namespace ExcelMerger
                 card.Visible = i < shown;
                 if (i >= shown)
                     continue;
-                card.SetBounds(x, RecentRowY(), width, RecentCardH);
-                x += width + RecentGap;
+                card.SetBounds(x, RecentRowY(), width, D(RecentCardH));
+                x += width + gap;
             }
         }
 

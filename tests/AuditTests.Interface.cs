@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
@@ -71,6 +73,381 @@ namespace ExcelMerger.Tests
                 "у тестового exe нет .config — иначе проверка ничего не доказывает");
             using (var form = new Form())
                 AssertTrue(!DpiAwareness.IsPerMonitor(form.Handle), "окно тестового процесса DPI-unaware");
+        }
+    }
+}
+
+namespace ExcelMerger.Tests
+{
+    internal static partial class UnitTests
+    {
+        // ---------- UI-1: масштаб под DPI после постройки окна ----------
+
+        /// <summary>
+        /// Все окна, которые проверяются под масштабом экрана: инструменты, диалоги, хаб и
+        /// «Что нового». Отказ сборки — в offenders, а не исключением: одно сломанное окно
+        /// не должно прятать остальные.
+        /// </summary>
+        private static List<Form> ScaledWindows(List<string> offenders)
+        {
+            var windows = new List<Form>(NewAllToolWindows());
+            windows.AddRange(NewAllDialogs(offenders));
+            windows.Add(new StartForm());
+            windows.Add(new WhatsNewForm(WhatsNewCatalog.CurrentVersion));
+            try
+            {
+                windows.Add((Form)Construct(typeof(PasswordPromptDialog)));
+                // Длинная подпись: ширину диалога задаёт уже она, а не минимум в 300 логических.
+                windows.Add((Form)typeof(NumberPromptDialog).GetConstructors(
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)[0]
+                    .Invoke(new object[] { "Проверка раскладки",
+                        "Переместить выделенные страницы после страницы (от 1 до 12345):",
+                        "Переместить", 1, 12345, 1 }));
+            }
+            catch (Exception ex) { offenders.Add("диалог ввода — не собрался: " + Root(ex).Message); }
+            return windows;
+        }
+
+        /// <summary>
+        /// Главная проверка UI-1. На машине с 96 DPI масштаб экрана изображает шов
+        /// <see cref="DpiScale.EmulatedScale"/>: шрифты растут, как выросли бы на мониторе
+        /// 125/150 %, а окна масштабируются тем же автомасштабом WinForms. До исправления на
+        /// 150 % шрифты росли, а раскладка оставалась в пикселях 96 DPI — подписи обрезались.
+        /// Проверяем: ничего не свисает и не наложено, подписи кнопок целы — на собственном
+        /// размере окна и на минимальном; окно выросло пропорционально масштабу (двойной рост
+        /// замеров текста дал бы +20 %, недоросшая раскладка — меньше); раскрытие секций в
+        /// «О программе» после масштаба не сжимает окно обратно до логических пикселей.
+        /// Окно, которому при этом масштабе не хватает экрана этой машины, не проверяется —
+        /// Windows обрезает его по экрану, и это уже другой вопрос (см. audit.md, UI-1).
+        /// </summary>
+        [Test("Аудит UI-1: при 125 % и 150 % окна целы, пропорциональны, подписи не обрезаны")]
+        private static void AuditWindowsSurviveDisplayScale()
+        {
+            var offenders = new List<string>();
+            var notChecked = new List<string>();
+            var baseline = new Dictionary<string, Size>();
+            var edges = new Dictionary<string, Dictionary<string, int[]>>();
+            int checkedCount = 0;
+            foreach (float scale in new[] { 1f, 1.25f, 1.5f })
+            {
+                DpiScale.EmulatedScale = scale;
+                try
+                {
+                    // Шов действительно растит шрифты — иначе проверка была бы на 100 % трижды.
+                    AssertEq(9.75f * scale, Ui.Font(9.75f).Size, "шрифт окна при масштабе " + scale);
+                    InIsolatedSettings("iwo_dpi_", delegate
+                    {
+                        List<Form> windows = ScaledWindows(offenders);
+                        for (int index = 0; index < windows.Count; index++)
+                            using (Form f = windows[index])
+                            {
+                                // Один тип окна бывает в списке дважды (короткая и длинная подпись).
+                                string name = f.GetType().Name + "#" + index;
+                                string where = name + " @" + (int)Math.Round(scale * 100) + "%";
+                                try
+                                {
+                                    f.Show();
+                                    f.PerformLayout();
+                                    if (scale == 1f)
+                                    {
+                                        baseline[name] = f.ClientSize;
+                                        edges[name] = CollectEdges(f);
+                                        f.Close();
+                                        continue;
+                                    }
+                                    Rectangle area = Screen.FromRectangle(f.Bounds).WorkingArea;
+                                    if (f.Width > area.Width || f.Height > area.Height)
+                                    {
+                                        // Больше экрана законно только тогда, когда экрану не хватает
+                                        // минимума окна. «Свод Excel» растит высоту по своему содержимому
+                                        // (ClampToLayout) — оно на 1080p при 150 % выше рабочей области.
+                                        // Диалоги с неизменяемой рамкой не ужимаются (ScaledForm.FitToScreen).
+                                        bool sizable = f.FormBorderStyle == FormBorderStyle.Sizable;
+                                        bool minimumFits = f.MinimumSize.Width <= area.Width &&
+                                            f.MinimumSize.Height <= area.Height;
+                                        if (sizable && minimumFits && !(f is MainForm))
+                                            offenders.Add(where + " → окно " + f.Size + " больше рабочей области " +
+                                                area.Size + ", хотя минимум " + f.MinimumSize + " в неё помещается");
+                                        else
+                                            notChecked.Add(where);
+                                        f.Close();
+                                        continue;
+                                    }
+                                    checkedCount++;
+                                    CheckScaledLayout(f, where, offenders);
+                                    CheckButtonCaptionsFit(f, where, offenders);
+                                    if (CheckGrewWithScale(f, baseline[name], scale, area, where, offenders))
+                                        CheckEdgesScaled(f, edges[name], scale, where, offenders);
+                                    var about = f as AboutForm;
+                                    if (about != null)
+                                    {
+                                        int width = about.ClientSize.Width;
+                                        about.ProjectToggle.PerformClick();
+                                        about.SupportToggle.PerformClick();
+                                        about.PerformLayout();
+                                        if (about.ClientSize.Width != width)
+                                            offenders.Add(where + " → раскрытие секций изменило ширину: " +
+                                                width + " → " + about.ClientSize.Width);
+                                        CheckScaledLayout(about, where + " (секции раскрыты)", offenders);
+                                    }
+                                    if (f.MinimumSize.Width > 0 && f.MinimumSize.Height <= area.Height &&
+                                        f.MinimumSize.Width <= area.Width)
+                                    {
+                                        f.Size = f.MinimumSize;
+                                        f.PerformLayout();
+                                        CheckScaledLayout(f, where + " MIN", offenders);
+                                    }
+                                    f.Close();
+                                }
+                                catch (Exception ex) { offenders.Add(where + " — " + Root(ex).Message); }
+                            }
+                    });
+                }
+                finally { DpiScale.EmulatedScale = 1f; }
+            }
+            if (notChecked.Count > 0)
+                Console.WriteLine("      UI-1: экран мал для " + string.Join(", ", notChecked.ToArray()));
+            AssertTrue(checkedCount >= 8, "под масштабом проверено окон: " + checkedCount);
+            AssertTrue(offenders.Count == 0, "под масштабом экрана: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Те же проверки целости, что у раскладочных тестов на 100 %.</summary>
+        private static void CheckScaledLayout(Form f, string where, List<string> offenders)
+        {
+            CheckFits(f, where, offenders);
+            CheckControlsDoNotOverlap(f, where, offenders);
+            CheckButtonsDoNotOverlap(f, where, offenders);
+        }
+
+        /// <summary>
+        /// Клиентская область выросла в scale раз (±8 %) против той же раскладки на 100 % —
+        /// если такое окно помещается на экран; иначе его законно ужал FitToScreen. Возвращает,
+        /// поместилось ли окно целиком: только тогда с ним сравнимы и места контролов.
+        /// </summary>
+        private static bool CheckGrewWithScale(Form f, Size b, float scale,
+            Rectangle area, string where, List<string> offenders)
+        {
+            if (b.Width <= 0 || b.Height <= 0)
+                return false;
+            Size frame = f.Size - f.ClientSize;
+            bool fitsW = b.Width * scale + frame.Width <= area.Width;
+            bool fitsH = b.Height * scale + frame.Height <= area.Height;
+            double rw = f.ClientSize.Width / (b.Width * scale);
+            double rh = f.ClientSize.Height / (b.Height * scale);
+            // Допуск несимметричный. Вниз — 8 %: на 96 DPI шов растит шрифт, но не системные
+            // метрики (рамка поля ввода, квадрат флажка), и поля выходят на 5 % ниже, чем на
+            // настоящем мониторе. Вверх — 4,5 %: лишний рост — это и есть след двойного масштаба.
+            if (fitsW && (rw < 0.92 || rw > 1.045))
+                offenders.Add(where + " → ширина " + f.ClientSize.Width + " вместо ~" + (int)(b.Width * scale));
+            if (fitsH && (rh < 0.92 || rh > 1.045))
+                offenders.Add(where + " → высота " + f.ClientSize.Height + " вместо ~" + (int)(b.Height * scale));
+            return fitsW && fitsH;
+        }
+
+        /// <summary>
+        /// Место каждого контрола — от того края родителя, к которому он привязан (у правого
+        /// и нижнего якоря — расстояние до правого/нижнего края). Путь — индексы в Controls:
+        /// окна строятся одинаково при любом масштабе, поэтому пути совпадают.
+        /// </summary>
+        private static Dictionary<string, int[]> CollectEdges(Control root)
+        {
+            var into = new Dictionary<string, int[]>();
+            CollectEdges(root, "", into);
+            return into;
+        }
+
+        /// <summary>Место (от своего якоря), размер и кегль ×100 каждого контрола.</summary>
+        private static void CollectEdges(Control parent, string path, Dictionary<string, int[]> into)
+        {
+            for (int i = 0; i < parent.Controls.Count; i++)
+            {
+                Control c = parent.Controls[i];
+                // Высоту регулятора задают системные метрики, а не шрифт: шов масштаба (96 DPI)
+                // её не растит, хотя на настоящем мониторе 150 % она выросла бы. Детей таблицы
+                // и стрелки поля-счётчика раскладывают сами таблица и поле — по своим стилям и
+                // системным метрикам, сравнивать их места незачем.
+                if (c is TrackBar || parent is TableLayoutPanel || parent is UpDownBase)
+                    continue;
+                string p = path + "/" + i + c.GetType().Name;
+                bool fromRight = (c.Anchor & AnchorStyles.Right) != 0 && (c.Anchor & AnchorStyles.Left) == 0;
+                bool fromBottom = (c.Anchor & AnchorStyles.Bottom) != 0 && (c.Anchor & AnchorStyles.Top) == 0;
+                into[p] = new[]
+                {
+                    fromRight ? parent.ClientSize.Width - c.Right : c.Left,
+                    fromBottom ? parent.ClientSize.Height - c.Bottom : c.Top,
+                    c.Width, c.Height, (int)Math.Round(c.Font.Size * 100)
+                };
+                CollectEdges(c, p, into);
+            }
+        }
+
+        /// <summary>
+        /// Места и размеры контролов выросли вместе с масштабом, а кегль — ровно в scale раз.
+        /// Размер окна ловит не всё: лишний отступ под каждым полем ввода, умноженный второй
+        /// раз, менял высоту диалога на 10 %, а место последнего поля — на 15 %; подпись,
+        /// ужатая шрифтом по замеру в чужих единицах, на размерах не видна вовсе.
+        /// </summary>
+        private static void CheckEdgesScaled(Form f, Dictionary<string, int[]> was,
+            float scale, string where, List<string> offenders)
+        {
+            int reported = 0;
+            foreach (KeyValuePair<string, int[]> now in CollectEdges(f))
+            {
+                int[] b;
+                if (!was.TryGetValue(now.Key, out b))
+                    continue;
+                // Кегль — ровно в scale раз; разрешена одна ступень вниз (0,5 пункта): подпись,
+                // ужимаемая шрифтом до ширины кнопки (SettingsForm.FitFont), на нелинейных
+                // метриках шрифта может уступить одну ступень на одном масштабе и не на другом.
+                double font = b[4] * scale;
+                if ((now.Value[4] > font + 1 || now.Value[4] < font - 50 * scale - 1) && reported++ < 3)
+                    offenders.Add(where + " → " + now.Key + ": кегль " + now.Value[4] / 100.0 +
+                        " вместо " + b[4] * scale / 100.0);
+                for (int k = 0; k < 4; k++)
+                {
+                    int[] axis = { b[k], now.Value[k] };
+                    double expected = axis[0] * scale;
+                    double drift = axis[1] - expected;
+                    // Вниз шире, вверх уже — по той же причине, что у размера окна; вверх
+                    // чуть шире, чем у окна: место кнопки складывается из нескольких замеров
+                    // текста, и нелинейность метрик шрифта копится (длинная подпись — +6 %).
+                    if (drift <= Math.Abs(expected) * 0.065 + 6 && -drift <= Math.Abs(expected) * 0.08 + 6)
+                        continue;
+                    if (reported++ < 3)
+                        offenders.Add(where + " → " + now.Key + ": " + axis[1] + " вместо ~" + (int)expected);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Масштаб ставится перед созданием хэндла (<see cref="ScaledForm"/>), значит, ни одно
+        /// окно не имеет права создать хэндл в конструкторе: тогда WinForms масштабировал бы
+        /// недостроенное окно, и всё, что добавлено после, осталось бы в пикселях 96 DPI.
+        /// Так и случилось при разработке: Screen.FromControl в раскладке «Свода Excel»
+        /// создавал хэндл, и окно выходило в 1,44 раза шире. Заодно: каждое окно приложения
+        /// наследует ScaledForm — новое окно, забывшее об этом, не масштабировалось бы вовсе.
+        /// </summary>
+        [Test("Аудит UI-1: окна масштабируются после постройки и все наследуют ScaledForm")]
+        private static void AuditFormsScaleAfterConstruction()
+        {
+            var offenders = new List<string>();
+            foreach (Type t in typeof(ScaledForm).Assembly.GetTypes())
+            {
+                // Свои окна тестов (зонды раскладки) — не окна приложения.
+                if (!typeof(Form).IsAssignableFrom(t) || t == typeof(ScaledForm) || t.Namespace == "ExcelMerger.Tests")
+                    continue;
+                // Предпросмотр страницы считает размер от рабочей области сам (AutoScaleMode.None).
+                if (t == typeof(PagePreviewForm))
+                    continue;
+                if (!typeof(ScaledForm).IsAssignableFrom(t))
+                    offenders.Add(t.Name + " не наследует ScaledForm");
+            }
+            InIsolatedSettings("iwo_dpi_ctor_", delegate
+            {
+                foreach (Form f in ScaledWindows(offenders))
+                    using (f)
+                    {
+                        var scaled = f as ScaledForm;
+                        if (f.IsHandleCreated || (scaled != null && scaled.IsScaled))
+                            offenders.Add(f.GetType().Name + ": хэндл создан в конструкторе");
+                        if (f.AutoScaleMode != AutoScaleMode.Inherit)
+                            offenders.Add(f.GetType().Name + ": масштаб задан до постройки (" + f.AutoScaleMode + ")");
+                        IntPtr handle = f.Handle;
+                        if (scaled == null || !scaled.IsScaled || f.AutoScaleMode != AutoScaleMode.Dpi)
+                            offenders.Add(f.GetType().Name + ": после создания хэндла масштаб не включён");
+                    }
+            });
+            AssertTrue(offenders.Count == 0, "масштаб окон: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>Зонд порядка: раскладка, увидевшая IsScaled раньше самого масштаба.</summary>
+        private sealed class ScaleOrderProbe : ScaledForm
+        {
+            internal int EarlyLayouts;
+
+            internal ScaleOrderProbe()
+            {
+                ClientSize = new Size(300, 200);
+                Controls.Add(new Button { Bounds = new Rectangle(10, 10, 100, 30) });
+            }
+
+            protected override void OnLayout(LayoutEventArgs levent)
+            {
+                base.OnLayout(levent);
+                // Закончив масштаб, WinForms приравнивает AutoScaleDimensions к текущим;
+                // до второй настройки режим ещё не Dpi.
+                if (IsScaled && (AutoScaleMode != AutoScaleMode.Dpi ||
+                                 AutoScaleDimensions != CurrentAutoScaleDimensions))
+                    EarlyLayouts++;
+            }
+        }
+
+        /// <summary>
+        /// Наследник ScaledForm переводит константы по IsScaled, поэтому IsScaled обязан
+        /// становиться истинным не раньше самого масштаба. Две настройки автомасштаба
+        /// запускают раскладку каждая; без SuspendLayout вокруг них раскладка шла между ними —
+        /// с IsScaled = true на ещё логическом окне, и всё, что она ставила в пикселях экрана,
+        /// WinForms затем умножал ещё раз (то, что не пересчитывается заново, так и оставалось).
+        /// </summary>
+        [Test("Аудит UI-1: раскладка не видит IsScaled раньше самого масштаба")]
+        private static void AuditScaledFlagFollowsScale()
+        {
+            DpiScale.EmulatedScale = 1.5f;
+            try
+            {
+                using (var probe = new ScaleOrderProbe())
+                {
+                    IntPtr handle = probe.Handle;
+                    AssertEq(0, probe.EarlyLayouts, "раскладок с IsScaled до масштаба");
+                    AssertEq(new Size(450, 300), probe.ClientSize, "окно выросло ровно в 1,5 раза");
+                    AssertEq(new Rectangle(15, 15, 150, 45), probe.Controls[0].Bounds, "и его содержимое тоже");
+                }
+            }
+            finally { DpiScale.EmulatedScale = 1f; }
+        }
+
+        /// <summary>
+        /// Переводы единиц и вписывание окна в экран — чистые функции, проверяем числами:
+        /// именно в них сидят ошибки на полпикселя, которые потом обрезают последнюю букву.
+        /// </summary>
+        [Test("Аудит UI-1: переводы логических единиц и вписывание окна в экран")]
+        private static void AuditDpiScaleArithmetic()
+        {
+            // 150 % на 96 DPI: шов умножает системный DPI.
+            DpiScale.EmulatedScale = 1.5f;
+            try
+            {
+                AssertEq(100, DpiScale.ToLogical(150), "150 px экрана — 100 логических");
+                AssertEq(101, DpiScale.ToLogical(151), "с запасом вверх: место не меньше замеренного");
+                AssertEq(new Size(20, 14), DpiScale.ToLogical(new Size(30, 21)), "размер переводится по обеим осям");
+                using (var free = new Label())
+                {
+                    AssertEq(30, DpiScale.Px(free, 20), "контрол вне окна приложения — уже в пикселях экрана");
+                    AssertEq(45, DpiScale.FromDevice(free, 45), "замер для такого контрола не переводится");
+                }
+                using (var form = new AboutForm())
+                {
+                    AssertEq(20, DpiScale.Px(form, 20), "окно до масштаба — логическое");
+                    AssertEq(30, DpiScale.FromDevice(form, 45), "замер в конструкторе переводится в логические");
+                    AssertEq(450, DpiScale.MeasureWidth(form, 300), "перенос текста меряется на ширине экрана");
+                    IntPtr handle = form.Handle;
+                    AssertEq(30, DpiScale.Px(form, 20), "после масштаба — пиксели экрана");
+                    AssertEq(45, DpiScale.FromDevice(form, 45), "после масштаба замер как есть");
+                    AssertEq(300, DpiScale.MeasureWidth(form, 300), "после масштаба ширина как есть");
+                }
+            }
+            finally { DpiScale.EmulatedScale = 1f; }
+
+            var frame = new Size(16, 39);
+            var area = new Size(1920, 1032);
+            AssertEq(new Size(780, 660), ScaledForm.FitClient(new Size(780, 660), new Size(660, 540), frame, area, 1.5f),
+                "помещается — размер не трогаем");
+            AssertEq(new Size(780, 662), ScaledForm.FitClient(new Size(780, 785), new Size(760, 0), frame, area, 1.5f),
+                "выше экрана: (1032 − 39) / 1,5 = 662 логических");
+            AssertEq(new Size(780, 691), ScaledForm.FitClient(new Size(780, 785), new Size(820, 730), frame, area, 1.5f),
+                "не ниже минимума окна, даже если экран меньше");
+            AssertEq(new Size(1269, 500), ScaledForm.FitClient(new Size(1500, 500), Size.Empty, frame, area, 1.5f),
+                "по ширине так же: (1920 − 16) / 1,5 = 1269");
         }
     }
 }

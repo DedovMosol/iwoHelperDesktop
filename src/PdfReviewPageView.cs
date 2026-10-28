@@ -254,17 +254,31 @@ namespace ExcelMerger
                     StringComparison.OrdinalIgnoreCase);
         }
 
-        protected override void OnResize(EventArgs e)
+        /// <summary>
+        /// В OnLayout, а не в OnResize: OnResize приходит и посреди масштабирования окна под
+        /// DPI — когда сам вид уже вырос, а его дети ещё нет, и поставленное здесь WinForms
+        /// умножил бы ещё раз (см. <see cref="ScaledForm"/>). Константы — через Px.
+        /// </summary>
+        protected override void OnLayout(LayoutEventArgs levent)
         {
-            base.OnResize(e);
+            base.OnLayout(levent);
             if (_status == null || _viewport == null)
-                return; // OnResize в середине конструктора (контролы ещё не созданы)
+                return; // раскладка в середине конструктора (контролы ещё не созданы)
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
             // На узкой панели (разделение сплиттера) строка статуса может не поместиться
             // после кнопок — прижимаем её к правому краю и не даём вылезти за ширину.
-            int statusX = Math.Min(194, Math.Max(0, Width - 10));
-            _status.SetBounds(statusX, 8, Math.Max(1, Width - statusX - 8), 28);
-            _viewport.SetBounds(0, 44, Width, Math.Max(1, Height - 44));
-            PlacePicture();
+            int statusX = Math.Min(d(194), Math.Max(0, Width - d(10)));
+            int top = d(8), rowH = d(28), bar = d(44);
+            Rectangle status = new Rectangle(statusX, top, Math.Max(1, Width - statusX - d(8)), rowH);
+            Rectangle viewport = new Rectangle(0, bar, Width, Math.Max(1, Height - bar));
+            // Только при изменении: присваивание границ ребёнку снова запускает раскладку.
+            if (_status.Bounds != status)
+                _status.Bounds = status;
+            if (_viewport.Bounds != viewport)
+            {
+                _viewport.Bounds = viewport;
+                PlacePicture();
+            }
         }
 
         /// <summary>Пустая сторона до сравнения; это не «нет парной страницы».</summary>

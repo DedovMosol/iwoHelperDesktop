@@ -10,7 +10,7 @@ namespace ExcelMerger
     /// цветной значок по типу, заголовок, текст и кнопки. Одна кнопка — по центру,
     /// две — разнесены по краям (слева/справа). Вызывается через <see cref="Dialogs"/>.
     /// </summary>
-    public class MessageForm : Form
+    public class MessageForm : ScaledForm
     {
         public enum Kind { Info, Warning, Error }
 
@@ -83,7 +83,8 @@ namespace ExcelMerger
             hdr.Location = new Point(textLeft, Pad);
             Controls.Add(hdr);
 
-            int y = hdr.Bottom;
+            // Высоты подписей AutoSize — в пикселях экрана, раскладка здесь логическая (DpiScale).
+            int y = DpiScale.LogicalBottom(hdr);
             if (!string.IsNullOrEmpty(body))
             {
                 var text = new Label();
@@ -93,7 +94,7 @@ namespace ExcelMerger
                 text.Text = body;
                 text.Location = new Point(textLeft, y + 8);
                 Controls.Add(text);
-                y = text.Bottom;
+                y = DpiScale.LogicalBottom(text);
             }
 
             // Кликабельная ссылка (например, страница загрузки Ghostscript). Высота
@@ -101,7 +102,7 @@ namespace ExcelMerger
             if (!string.IsNullOrEmpty(linkText) && !string.IsNullOrEmpty(linkUrl))
             {
                 LinkLabel link = Ui.UrlLink(this, linkText, textLeft, y + 10, linkUrl);
-                y = link.Bottom;
+                y = DpiScale.LogicalBottom(link);
             }
 
             int textBottom = Math.Max(y, Pad + IconSize);
@@ -113,10 +114,10 @@ namespace ExcelMerger
             {
                 _option = new AccentCheckBox();
                 _option.Text = optionText;
-                Size want = _option.GetPreferredSize(Size.Empty);
+                Controls.Add(_option); // шрифт наследуется от окна: мерить только после этого
+                Size want = DpiScale.ToLogical(_option.GetPreferredSize(Size.Empty));
                 _option.SetBounds(textLeft, textBottom + 16, Math.Min(want.Width, textW), want.Height);
-                Controls.Add(_option);
-                textBottom = _option.Bottom;
+                textBottom = _option.Top + want.Height;
             }
 
             int btnY = textBottom + 24;

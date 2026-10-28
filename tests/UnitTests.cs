@@ -16105,8 +16105,9 @@ namespace ExcelMerger.Tests
                             offenders.Add(lang + ": высота меньше строки текста");
                         // Тело окна съезжает вниз ровно на высоту примечания: иначе сетка
                         // наехала бы на него (или под ним осталась бы пустая полоса).
-                        int topNarrow = PdfConvertFormBase.ContentTop(24, narrow);
-                        int topWide = PdfConvertFormBase.ContentTop(24, wide);
+                        Func<int, int> logical = delegate(int v) { return v; };
+                        int topNarrow = PdfConvertFormBase.ContentTop(24, narrow, logical);
+                        int topWide = PdfConvertFormBase.ContentTop(24, wide, logical);
                         if (topNarrow - topWide != narrow - wide)
                             offenders.Add(lang + ": тело окна съехало не на высоту примечания");
                     }
@@ -21022,7 +21023,13 @@ namespace ExcelMerger.Tests
                 {
                     if (!card.Visible || card.GetType().Name != "ChoiceCard")
                         continue;
-                        System.Drawing.Rectangle box = form.RectangleToClient(card.RectangleToScreen(card.ClientRectangle));
+                    // Видимая часть карточки: окно ниже карточек прокручивает уровень (UI-1), и
+                    // уходящий под полосу недавних хвост обрезан самой панелью — его не видно.
+                    System.Drawing.Rectangle box = System.Drawing.Rectangle.Intersect(
+                        form.RectangleToClient(card.RectangleToScreen(card.ClientRectangle)),
+                        form.RectangleToClient(panel.RectangleToScreen(panel.ClientRectangle)));
+                    if (box.IsEmpty)
+                        continue;
                     foreach (System.Drawing.Rectangle r in recent)
                         if (r.IntersectsWith(box))
                             offenders.Add("недавние наезжают на карточку инструмента при " +

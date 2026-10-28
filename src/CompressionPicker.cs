@@ -22,7 +22,8 @@ namespace ExcelMerger
         /// <summary>
         /// Ширина контрола (подпись + список под самый длинный пункт). Статична, чтобы экраны БЕЗ
         /// сжатия (PDF → Word) резервировали такое же место и регулятор масштаба был одинакового
-        /// размера на всех PDF-инструментах (единая раскладка).
+        /// размера на всех PDF-инструментах (единая раскладка). В логических единицах: контрол
+        /// и окна вокруг строятся в них и масштабируются вместе (см. DpiScale).
         /// </summary>
         public static int PreferredWidth()
         {
@@ -30,7 +31,8 @@ namespace ExcelMerger
             int widest = 0;
             foreach (string lbl in PdfCompression.LevelLabels())
                 widest = Math.Max(widest, TextRenderer.MeasureText(lbl, font).Width);
-            return TextRenderer.MeasureText(Loc.T("common.compression"), font).Width + CaptionGap + widest + ComboExtra;
+            return DpiScale.ToLogical(TextRenderer.MeasureText(Loc.T("common.compression"), font).Width) +
+                CaptionGap + DpiScale.ToLogical(widest) + ComboExtra;
         }
 
         public CompressionPicker()
@@ -58,7 +60,8 @@ namespace ExcelMerger
             // Ширина контрола — PreferredWidth (под самый длинный пункт), ту же резервируют экраны
             // без сжатия, чтобы регулятор масштаба был одинакового размера везде.
             int total = PreferredWidth();
-            _combo.SetBounds(caption.Right + CaptionGap, 1, total - caption.Right - CaptionGap, 27);
+            int captionRight = DpiScale.ToLogical(caption.Right); // подпись AutoSize — замер экрана
+            _combo.SetBounds(captionRight + CaptionGap, 1, total - captionRight - CaptionGap, 27);
             _combo.SelectedIndexChanged += OnSelectedIndexChanged;
             Controls.Add(_combo);
 

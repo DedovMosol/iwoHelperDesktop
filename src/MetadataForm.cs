@@ -25,7 +25,7 @@ namespace ExcelMerger
     /// в 25), и посчитанная по литералам сетка разъезжалась — кнопки наезжали на рамку
     /// последнего поля на 1 px, а между группами оставалось 3 px вместо просвета.
     /// </summary>
-    internal sealed class MetadataForm : Form
+    internal sealed class MetadataForm : ScaledForm
     {
         private const int Pad = 24;       // поля окна — как в «О программе» (имя Margin занято Control.Margin)
         private const int LabelGap = 4;   // между подписью и её полем
@@ -46,7 +46,7 @@ namespace ExcelMerger
                 // подсказкой на весь текст, а не «уезжает за край».
                 Label file = Ui.Label(this, fileName, Pad, y, Font, Theme.TextMuted);
                 Ui.Ellipsize(file, ClientSize.Width - 2 * Pad, AnchorStyles.Top | AnchorStyles.Left);
-                y = file.Bottom + GroupGap;
+                y = DpiScale.LogicalBottom(file) + GroupGap;
             }
 
             _title = AddField(Loc.T("meta.field.title"), ref y, current.Title);
@@ -59,7 +59,7 @@ namespace ExcelMerger
             // отправкой файла, и об этом надо сказать прямо: иначе выглядит как «не заполнил».
             Label hint = Ui.Label(this, Loc.T("meta.hint.empty"), Pad, y + 16, Font, Theme.TextMuted);
 
-            int buttonsTop = hint.Bottom + 16;
+            int buttonsTop = DpiScale.LogicalBottom(hint) + 16;
             ClientSize = new Size(ClientSize.Width, buttonsTop + ButtonH + Pad);
 
             var ok = new RoundedButton(true);
@@ -86,11 +86,11 @@ namespace ExcelMerger
         {
             Label label = Ui.Label(this, caption, Pad, y, Font, Theme.TextMuted);
             var box = new TextBox();
-            box.SetBounds(Pad, label.Bottom + LabelGap, ClientSize.Width - 2 * Pad, 24);
+            box.SetBounds(Pad, DpiScale.LogicalBottom(label) + LabelGap, ClientSize.Width - 2 * Pad, 24);
             box.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             box.Text = value ?? "";
             Controls.Add(box);
-            y = box.Bottom + GroupGap;
+            y = DpiScale.LogicalBottom(box) + GroupGap; // высоту поля ставит шрифт
             return box;
         }
 

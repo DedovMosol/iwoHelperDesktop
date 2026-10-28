@@ -152,30 +152,33 @@ namespace ExcelMerger
             if (_beta == null || _grid == null || _btnPrint == null)
                 return;
 
-            int m = HelpMenu.Height;
-            int right = ClientSize.Width - 20;
-            int width = right - 20;
+            // Константы логические, окно после масштаба — в пикселях экрана (см. ScaledForm).
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
+            int m = d(HelpMenu.Height);
+            int right = ClientSize.Width - d(20);
+            int width = right - d(20);
             int noteH = NoteHeight(_beta.Text, _beta.Font, width);
-            SetBoundsIfChanged(_beta, 20, m + NoteTop, width, noteH);
+            SetBoundsIfChanged(_beta, d(20), m + d(NoteTop), width, noteH);
 
-            int top = ContentTop(m, noteH);
-            int gridH = Math.Max(MinGridHeight, ClientSize.Height - 152 - top);
-            SetBoundsIfChanged(_grid, 20, top, width - PanelWidth, gridH);
+            int top = ContentTop(m, noteH, d);
+            int gridH = Math.Max(d(MinGridHeight), ClientSize.Height - d(152) - top);
+            SetBoundsIfChanged(_grid, d(20), top, width - d(PanelWidth), gridH);
 
-            int px = right - PanelWidth + 10, pw = PanelWidth - 10;
-            SetBoundsIfChanged(_btnOpen, px, top, pw, 32);
-            SetBoundsIfChanged(_btnUp, px, top + 44, pw, 30);
-            SetBoundsIfChanged(_btnDown, px, top + 80, pw, 30);
-            SetBoundsIfChanged(_btnRemove, px, top + 124, pw, 30);
-            SetBoundsIfChanged(_btnPrint, px, top + 160, pw, 30);
+            int px = right - d(PanelWidth) + d(10), pw = d(PanelWidth) - d(10);
+            SetBoundsIfChanged(_btnOpen, px, top, pw, d(32));
+            SetBoundsIfChanged(_btnUp, px, top + d(44), pw, d(30));
+            SetBoundsIfChanged(_btnDown, px, top + d(80), pw, d(30));
+            SetBoundsIfChanged(_btnRemove, px, top + d(124), pw, d(30));
+            SetBoundsIfChanged(_btnPrint, px, top + d(160), pw, d(30));
         }
 
         /// <summary>
-        /// Верх тела окна: под полоской «бета» с просветом. Чистая — под тест.
+        /// Верх тела окна: под полоской «бета» с просветом. Чистая — под тест; px переводит
+        /// логические отступы в единицы окна (<see cref="DpiScale.Px"/>).
         /// </summary>
-        internal static int ContentTop(int menuHeight, int noteHeight)
+        internal static int ContentTop(int menuHeight, int noteHeight, Func<int, int> px)
         {
-            return menuHeight + NoteTop + noteHeight + NoteGap;
+            return menuHeight + px(NoteTop) + noteHeight + px(NoteGap);
         }
 
         /// <summary>
@@ -337,7 +340,8 @@ namespace ExcelMerger
             // прежних 230 px — иначе кнопка отняла бы место у строки состояния и та начала бы
             // обрезаться на минимальной ширине окна. «Конвертировать в PowerPoint…» (231 px)
             // получает свои 267 px с теми же полями по краям.
-            int text = TextRenderer.MeasureText(caption, font).Width + 36;
+            // Замер — в пикселях экрана, окно в конструкторе ещё логическое (см. DpiScale).
+            int text = DpiScale.ToLogical(TextRenderer.MeasureText(caption, font).Width) + 36;
             int min = 230, max = ClientSize.Width / 2;
             if (text < min) text = min;
             return text > max ? max : text;

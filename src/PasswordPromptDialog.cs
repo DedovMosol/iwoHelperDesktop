@@ -17,7 +17,7 @@ namespace ExcelMerger
     /// модальных окон — человек, бросивший десяток файлов, закрывал бы двадцать. Сказать
     /// заранее в том же окне и честнее, и дешевле.
     /// </summary>
-    internal sealed class PasswordPromptDialog : Form
+    internal sealed class PasswordPromptDialog : ScaledForm
     {
         private readonly TextBox _input;
 
@@ -32,13 +32,14 @@ namespace ExcelMerger
             var ok = new RoundedButton(true);
             ok.Text = Loc.T("pdf.password.open");
             ok.DialogResult = DialogResult.OK;
-            int btnW = NumberPromptDialog.ButtonWidth(Ui.TextWidth(cancel.Text, cancel.Font),
-                Ui.TextWidth(ok.Text, ok.Font));
+            // Замеры — в пикселях экрана, окно в конструкторе логическое (см. DpiScale).
+            int btnW = NumberPromptDialog.ButtonWidth(DpiScale.ToLogical(Ui.TextWidth(cancel.Text, cancel.Font)),
+                DpiScale.ToLogical(Ui.TextWidth(ok.Text, ok.Font)));
 
             // Ширина считается по САМОЙ ДЛИННОЙ строке подписи, а не по всему тексту: подпись
             // многострочная (имя файла плюс предупреждение), и мерить её целиком значило бы
             // растянуть окно на всю ширину экрана.
-            int w = Math.Max(NumberPromptDialog.DialogWidth(WidestLine(prompt, Font), margin, 380),
+            int w = Math.Max(NumberPromptDialog.DialogWidth(DpiScale.ToLogical(WidestLine(prompt, Font)), margin, 380),
                 2 * btnW + 3 * margin);
 
             var label = new Label();
@@ -52,7 +53,7 @@ namespace ExcelMerger
             _input.SetBounds(margin, 16 + promptH + 8, w - 2 * margin, 27);
             Controls.Add(_input);
 
-            int btnY = _input.Bottom + 16;
+            int btnY = DpiScale.LogicalBottom(_input) + 16; // высоту поля ставит шрифт
             cancel.SetBounds(MessageForm.ButtonX(0, 2, w, btnW, margin), btnY, btnW, btnH);
             Controls.Add(cancel);
             ok.SetBounds(MessageForm.ButtonX(1, 2, w, btnW, margin), btnY, btnW, btnH);

@@ -18,7 +18,7 @@ namespace ExcelMerger
     /// отвечает на вопрос «как ляжет», а не заменяет чтение документа, и за этот ответ не
     /// стоит платить рендером всего задания.
     /// </summary>
-    internal sealed class PrintPreviewForm : Form
+    internal sealed class PrintPreviewForm : ScaledForm
     {
         /// <summary>Сколько листов рисуем. Хватает, чтобы увидеть раскладку и поля.</summary>
         internal const int PreviewPages = 8;

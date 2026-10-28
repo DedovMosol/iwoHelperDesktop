@@ -136,6 +136,22 @@ Excel and Word are **optional**: PDF Merge, Split, Compare, More operations and 
   exits with 5 if the first window is not per-monitor (`DpiAwareness.IsPerMonitor` asks
   the system whether it knows PerMonitorV2, not the manifest-reported OS version), and a
   unit test guards the config value, the csproj line, the manifest and the installer line.
+- **Layout in logical pixels, scaled once after the window is built.** Every window derives
+  from `ScaledForm` (only `PagePreviewForm` sizes itself from the working area with
+  `AutoScaleMode.None`). Constructors lay controls out in 96-DPI pixels; `ScaledForm`
+  switches WinForms autoscale on in `CreateHandle`, after the whole constructor chain and
+  before the CenterScreen position is computed, under `SuspendLayout` so that no layout
+  sees `IsScaled` before the scale itself. A sizable window that would outgrow the
+  working area is fitted to it first (`FitClient`, never below `MinimumSize`). Two rules
+  follow, both enforced by tests at emulated 125/150 % (`DpiScale.EmulatedScale` grows
+  `Ui.Font` sizes and the autoscale ratio on a 96-DPI machine): layout that reruns later
+  lives in `OnLayout`, not `OnResize` (OnResize fires mid-scale, when the window has grown
+  and its children have not), and converts its constants with `DpiScale.Px`; text measured
+  in a constructor is in screen pixels and goes through `DpiScale.ToLogical` /
+  `LogicalBottom` (or `FromDevice` in code that runs in both phases), measured only after
+  the control is parented — before that it has the default font, not the window's.
+  Constructors must not create a handle (`Screen.FromControl` does): the window would be
+  scaled half-built.
 - **Office through `dynamic`** (late binding, `Microsoft.CSharp`): no PIA/interop
   packages, builds on machines without Office, works with any Office version. The price
   is a set of strict usage rules — see [Office COM layer](#office-com-layer).
@@ -170,6 +186,7 @@ are conceptual.
 | `Loc.cs`, `Flags.cs` | Localization catalog and GDI-drawn menu flags — see [Localization](#localization). |
 | `SetupLanguage.cs` | The language picked in the installer. Setup writes a one-line ASCII file next to the settings, the app applies it at startup (it outranks the stored language), saves it the normal UTF-8 way and removes the marker. Setup never edits `settings.txt` itself: it writes text in the system code page while the app reads UTF-8, and a read-modify-write would corrupt non-ASCII paths inside. |
 | `UserManual.cs`, `ThirdPartyNotices.cs` | The bilingual user guides and PDFsharp/PdfPig license/NOTICE texts embedded as resources: unpacked beside settings only on explicit About actions. The portable build therefore carries both its offline manual and redistribution notices; `--selftest` verifies all resources in the real exe. |
+| `ScaledForm.cs`, `DpiScale.cs` | The base window that applies DPI autoscale once after it is built and fits itself to the screen; the logical ↔ screen pixel conversions for layout that runs before or after that moment, and the test seam that emulates a display scale. |
 | `Theme.cs`, `Ui.cs`, `HelpMenu.cs` | Palette, DPI/layout helpers, the shared ☰ menu. Menus are drawn with the **application** font rather than the system menu font: the strip has a fixed height, while the system font size is a separate Windows setting, and that combination clipped the captions. Every window sets its own font too, so that setting cannot reach the layout anywhere else. |
 | `JustifiedText.cs` | A paragraph justified to both margins — WinForms offers left, right and centre only, so the alignment is set on the paragraph format through `EM_SETPARAFORMAT`. Shared by About and Settings; re-applied on every handle creation, because WinForms recreates the window and a one-time setup would be lost. |
 
