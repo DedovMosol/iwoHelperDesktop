@@ -160,7 +160,7 @@ jobs:
         shell: pwsh
         run: |
           $p = Start-Process -FilePath .\${{ matrix.dist }}\iwoHelperDesktop.exe -ArgumentList '--selftest' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode) (3 = окно не создалось, 4 = в exe нет руководства/лицензий)"; exit 1 }
+          if ($p.ExitCode -ne 0) { Write-Host "selftest exit=$($p.ExitCode) (3 = окно не создалось, 4 = в exe нет руководства/лицензий, 5 = окно не per-monitor DPI: нет iwoHelperDesktop.exe.config)"; exit 1 }
 
       - name: Проверка вшитого PdfSharp
         shell: pwsh
@@ -223,7 +223,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: iwoHelperDesktop-${{ matrix.arch }}
-          path: ${{ matrix.dist }}/iwoHelperDesktop.exe
+          # exe работает только в паре со своим .config (режим DPI) — как в portable-архиве
+          path: |
+            ${{ matrix.dist }}/iwoHelperDesktop.exe
+            ${{ matrix.dist }}/iwoHelperDesktop.exe.config
           retention-days: 30
 
       - name: Артефакт установщика (без подписи — подпись локально)

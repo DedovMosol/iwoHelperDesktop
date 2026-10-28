@@ -136,7 +136,8 @@ namespace ExcelMerger
 
         /// <summary>
         /// Смоук-тест GUI без показа окна: конструктор формы и создание хэндла.
-        /// 0 = OK, 3 = окно не создалось, 4 = в exe нет руководства пользователя.
+        /// 0 = OK, 3 = окно не создалось, 4 = в exe нет руководства пользователя,
+        /// 5 = окно не per-monitor DPI (рядом с exe нет iwoHelperDesktop.exe.config).
         /// </summary>
         private static int RunSelfTest()
         {
@@ -168,6 +169,11 @@ namespace ExcelMerger
                     IntPtr handle = form.Handle; // форсирует создание окна без показа
                     if (handle == IntPtr.Zero)
                         return 3;
+                    // Режим DPI ставит WinForms по .config при создании первого контрола —
+                    // к этому моменту он уже применён. Пропавший из сборки или пакета файл
+                    // иначе не выдал бы себя ничем, кроме размытых окон на 125–200 %.
+                    if (!DpiAwareness.IsPerMonitor(handle))
+                        return 5;
                 }
                 using (var about = new AboutForm())
                 {

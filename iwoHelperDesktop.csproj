@@ -3,7 +3,8 @@
   <!-- Приложение .NET Framework 4.8 (на целевой машине уже есть, ничего не ставится).
        WinRT (Windows.Data.Pdf для миниатюр PDF) даёт Microsoft.Windows.SDK.Contracts —
        только на этапе компиляции; проекция в рантайме встроена в .NET Framework.
-       На выходе один exe в dist\; PdfSharp вшит ресурсом. -->
+       На выходе exe и его iwoHelperDesktop.exe.config (режим DPI, см. build\app.config)
+       в dist\; PdfSharp вшит ресурсом. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
@@ -27,10 +28,13 @@
     <DebugSymbols>false</DebugSymbols>
     <ApplicationIcon>build\app.ico</ApplicationIcon>
     <ApplicationManifest>build\app.manifest</ApplicationManifest>
+    <!-- DpiAwareness=PerMonitorV2 для WinForms; копируется в dist как iwoHelperDesktop.exe.config.
+         В манифесте DPI не объявляется: он перекрыл бы этот файл. -->
+    <AppConfig>build\app.config</AppConfig>
     <Optimize>true</Optimize>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
-    <!-- Один exe в dist\ без вложенных net48\ и rid\ (x86-вариант — в dist\x86\) -->
+    <!-- Exe и .config в dist\ без вложенных net48\ и rid\ (x86-вариант — в dist\x86\) -->
     <OutputPath>dist\</OutputPath>
     <OutputPath Condition="'$(Arch)' == 'x86'">dist\x86\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

@@ -58,9 +58,11 @@ def is_pending_asset_url(target, version):
     if not target.startswith(prefix):
         return False
     name = target[len(prefix):]
+    # Имена ассетов — как их называет tools/make_release.ps1. Portable — zip: exe работает
+    # в паре со своим .config (режим DPI), а одиночный portable-exe больше не выпускается.
     return name in {
-        "iwoHelperDesktop-%s.exe" % version,
-        "iwoHelperDesktop-%s-x86.exe" % version,
+        "iwoHelperDesktop-%s.zip" % version,
+        "iwoHelperDesktop-%s-x86.zip" % version,
         "iwoHelperDesktop-setup-%s.exe" % version,
         "iwoHelperDesktop-setup-%s-x86.exe" % version,
     }

@@ -1,5 +1,6 @@
-# Local GitHub release: builds and SIGNS all four artifacts - the portable exe and the
-# installer for BOTH architectures (make_installer.ps1 -Arch x64/x86) - extracts the
+# Local GitHub release: builds and SIGNS the exe and the installer for BOTH architectures
+# (make_installer.ps1 -Arch x64/x86), packs each signed exe with its .config into a
+# portable zip, extracts the
 # notes for the current version from docs\CHANGELOG.md, and creates a release with them.
 # Signing uses a self-signed certificate (locally only), so releases are cut here, not
 # on CI. Staging the x86 installer needs a 32-bit Ghostscript installed alongside the
@@ -46,14 +47,51 @@ $installer86 = Join-Path $root ("dist\iwoHelperDesktop-setup-$ver3-x86.exe")
 foreach ($p in @($installer, $installer86)) { if (-not (Test-Path $p)) { throw "missing installer $p" } }
 
 # Every asset's file name carries the version, so a downloaded file is self-identifying.
-# Installers already come out versioned from ISCC; the portable exes are copied to
-# versioned names (the copy keeps the Authenticode signature made by make_installer).
+# Installers already come out versioned from ISCC. The portable build is a versioned zip:
+# the exe needs iwoHelperDesktop.exe.config beside it (WinForms DPI mode, build\app.config),
+# and a zip keeps the pair together. The exe inside keeps the Authenticode signature made
+# by make_installer; a zip itself cannot carry one.
 # The README buttons link to releases/download/<tag>/<versioned name> — a direct
 # download (not the release page), pinned to this version and updated per release.
-$portable64 = Join-Path $root ("dist\iwoHelperDesktop-$ver3.exe")
-$portable86 = Join-Path $root ("dist\iwoHelperDesktop-$ver3-x86.exe")
-Copy-Item $exe $portable64 -Force
-Copy-Item $exe86src $portable86 -Force
+function Assert-Signed([string]$path) {
+    $signature = Get-AuthenticodeSignature $path
+    if (-not $signature.SignerCertificate) { throw "not signed: $path" }
+    if (-not $signature.TimeStamperCertificate) { throw "no trusted timestamp: $path" }
+}
+foreach ($p in @($exe, $exe86src, $installer, $installer86)) { Assert-Signed $p }
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+function New-PortableZip([string]$exePath, [string]$zipPath) {
+    $files = @($exePath, "$exePath.config")
+    foreach ($f in $files) { if (-not (Test-Path $f)) { throw "missing $f" } }
+    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    $archive = [IO.Compression.ZipFile]::Open($zipPath, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($f in $files) {
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $f,
+                [IO.Path]::GetFileName($f), [IO.Compression.CompressionLevel]::Optimal)
+        }
+    }
+    finally { $archive.Dispose() }
+    # Read the zip back: exactly these two entries, byte-identical to the signed build output.
+    $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+        $names = @($archive.Entries | ForEach-Object { $_.FullName }) -join '|'
+        $expected = @($files | ForEach-Object { [IO.Path]::GetFileName($_) }) -join '|'
+        if ($names -ne $expected) { throw "unexpected entries in ${zipPath}: $names" }
+        foreach ($f in $files) {
+            $stream = $archive.GetEntry([IO.Path]::GetFileName($f)).Open()
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try { $packed = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
+            finally { $stream.Dispose(); $sha.Dispose() }
+            if ($packed -ne (Get-FileHash $f -Algorithm SHA256).Hash) { throw "zip entry differs from ${f}: $zipPath" }
+        }
+    }
+    finally { $archive.Dispose() }
+}
+$portable64 = Join-Path $root ("dist\iwoHelperDesktop-$ver3.zip")
+$portable86 = Join-Path $root ("dist\iwoHelperDesktop-$ver3-x86.zip")
+New-PortableZip $exe $portable64
+New-PortableZip $exe86src $portable86
 
 # 3. Release notes from the CHANGELOG section for this version
 $notes = Join-Path $root ("dist\release-notes-$ver3.md")
@@ -69,8 +107,9 @@ foreach ($line in $changelog) {
 }
 if ($section.Count -eq 0) { throw "no [$ver3] section in docs\CHANGELOG.md" }
 $body = "# iwo Helper Desktop $tag`r`n" + (($section -join "`r`n").Trim()) + "`r`n`r`n" +
-    "**Files:** ``iwoHelperDesktop-$ver3.exe`` / ``iwoHelperDesktop-$ver3-x86.exe`` - portable " +
-    "(single file, 64-bit / 32-bit); ``iwoHelperDesktop-setup-$ver3.exe`` / " +
+    "**Files:** ``iwoHelperDesktop-$ver3.zip`` / ``iwoHelperDesktop-$ver3-x86.zip`` - portable " +
+    "(64-bit / 32-bit; unpack both files into one folder and run the exe - the .config beside it " +
+    "keeps the windows sharp on high-DPI displays); ``iwoHelperDesktop-setup-$ver3.exe`` / " +
     "``iwoHelperDesktop-setup-$ver3-x86.exe`` - installers with bundled Ghostscript " +
     "(per-user install, no administrator rights). Take x64 unless your Windows is 32-bit."
 [IO.File]::WriteAllText($notes, $body, (New-Object Text.UTF8Encoding($false)))
@@ -78,9 +117,6 @@ Write-Host "Release notes: $notes"
 
 $assets = @($portable64, $portable86, $installer, $installer86)
 foreach ($asset in $assets) {
-    $signature = Get-AuthenticodeSignature $asset
-    if (-not $signature.SignerCertificate) { throw "asset is not signed: $asset" }
-    if (-not $signature.TimeStamperCertificate) { throw "asset has no trusted timestamp: $asset" }
     Write-Host ("SHA256 {0}  {1}" -f (Get-FileHash $asset -Algorithm SHA256).Hash,
         [IO.Path]::GetFileName($asset))
 }

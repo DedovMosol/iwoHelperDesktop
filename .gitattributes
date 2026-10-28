@@ -15,6 +15,7 @@ tools/githooks/* text eol=lf
 *.iss text
 *.yml text
 *.manifest text
+*.config text
 .gitignore text
 .gitattributes text
 

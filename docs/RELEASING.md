@@ -7,11 +7,13 @@ push, but does **not** create GitHub Releases.
 
 Each release publishes four assets — the same tool set for both architectures. **Every
 file name carries the version** so a downloaded file is self-identifying (the portable
-exes are copied from the build output to versioned names, keeping their signature, the
-installers come out versioned from ISCC):
-
-- `iwoHelperDesktop-<version>.exe` / `iwoHelperDesktop-<version>-x86.exe` — portable single
-  files, 64-bit and 32-bit (run as-is — PDF compression works if Ghostscript is installed).
+zips pack the signed exe with its `.config`, the installers come out versioned from ISCC):
+- `iwoHelperDesktop-<version>.zip` / `iwoHelperDesktop-<version>-x86.zip` — portable,
+  64-bit and 32-bit (since 1.18.5; earlier releases shipped a single exe). Each holds the
+  signed `iwoHelperDesktop.exe` and `iwoHelperDesktop.exe.config` — the WinForms DPI mode
+  from `build\app.config`, which must stay beside the exe; without it the app still runs,
+  but DPI-unaware (Windows stretches the windows, blurry on scaled displays). PDF
+  compression works if Ghostscript is installed.
 - `iwoHelperDesktop-setup-<version>.exe` / `iwoHelperDesktop-setup-<version>-x86.exe` —
   installers that **bundle Ghostscript** of the matching bitness (compression out of the
   box), install **per-user without admin** by default. Minimum OS is Windows 8.1, the
@@ -44,7 +46,9 @@ assets of the still-unpublished `AssemblyInfo` version are reported as pending.
    section: the version in `AssemblyInfo.cs` is the *pending* one until then, so there is
    no need for an “Unreleased” heading and no reason to bump again.
 3. Update the four download buttons and the version note in the README (see above) — in
-   the same commit that is about to be tagged, after everything else is final.
+   the same commit that is about to be tagged, after everything else is final. For 1.18.5
+   the portable buttons change from `.exe` to `.zip`, and so does the README wording that
+   calls the portable build a single `.exe` (the intro and the download notes).
 4. Run the full local pyramid (`tests\run_all.cmd`). CI cannot run the parts that need
    Excel and Word, so this is the last chance to catch them. For a public release, also run
    `--selftest`, `--thumbcheck` and one PDF operation in the maintained Windows 8.1/10 VM:
@@ -52,8 +56,10 @@ assets of the still-unpublished `AssemblyInfo` version are reported as pending.
 5. Commit the intended changes with explicit paths. Confirm `git status --short --untracked-files=all`
    is empty: the release script refuses modified **and untracked** inputs because the project
    compiles `src\**\*.cs`, and otherwise an asset could contain code absent from its tag.
-6. Dry run — builds and signs all four artifacts, requires an Authenticode timestamp on each,
-   verifies x64/x86 versions match, prints SHA-256 hashes, writes
+6. Dry run — builds and signs both exes and both installers, requires an Authenticode
+   timestamp on each, packs the portable zips and reads them back (exactly the exe and its
+   `.config`, byte-identical to the signed build), verifies x64/x86 versions match, prints
+   SHA-256 hashes, writes
    `dist\release-notes-<ver>.md`, and prints what would be published:
 
    ```

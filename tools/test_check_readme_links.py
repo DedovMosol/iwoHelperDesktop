@@ -47,5 +47,23 @@ class ExtractTargetsTest(unittest.TestCase):
         self.assertEqual(4, len(downloads), downloads)
 
 
+class PendingAssetTest(unittest.TestCase):
+    PREFIX = "https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.2.3/"
+
+    def test_release_asset_names_are_pending(self):
+        for name in ("iwoHelperDesktop-1.2.3.zip", "iwoHelperDesktop-1.2.3-x86.zip",
+                     "iwoHelperDesktop-setup-1.2.3.exe", "iwoHelperDesktop-setup-1.2.3-x86.exe"):
+            self.assertTrue(check_readme_links.is_pending_asset_url(self.PREFIX + name, "1.2.3"), name)
+
+    def test_single_portable_exe_is_no_longer_an_asset(self):
+        # Portable без .config рядом потерял бы режим DPI: такая кнопка — битая ссылка.
+        for name in ("iwoHelperDesktop-1.2.3.exe", "iwoHelperDesktop-1.2.3-x86.exe"):
+            self.assertFalse(check_readme_links.is_pending_asset_url(self.PREFIX + name, "1.2.3"), name)
+
+    def test_other_version_is_not_pending(self):
+        self.assertFalse(check_readme_links.is_pending_asset_url(
+            self.PREFIX + "iwoHelperDesktop-1.2.4.zip", "1.2.4"))
+
+
 if __name__ == "__main__":
     unittest.main()

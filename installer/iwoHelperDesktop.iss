@@ -122,6 +122,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#DistDir}\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+; Режим DPI WinForms (PerMonitorV2, build\app.config): без него окна растягиваются картинкой.
+Source: "{#DistDir}\{#AppExe}.config"; DestDir: "{app}"; Flags: ignoreversion
 ; Ghostscript своей разрядности (подготовлен tools\stage_gs.ps1 в installer\{#GsDir}\).
 ; Приложение ищет в {app}\gs\bin оба имени (gswin64c/gswin32c), путь установки общий.
 Source: "{#GsDir}\bin\{#GsDll}"; DestDir: "{app}\gs\bin"; Flags: ignoreversion

@@ -350,7 +350,7 @@
 
 | ID | Статус | Серьёзн. | Где | Суть | Исправление | Сл. |
 |---|---|---|---|---|---|---|
-| UI-1 | ✅ | High | `Ui.cs:302-303`, `StartForm.cs:85-87`, `build\app.manifest` | Шрифты растут с DPI, координаты в пикселях — нет; PerMonitorV2 объявлен без App.config. На 150 % текст не помещается. | SuspendLayout/ResumeLayout или масштабирование констант. | L |
+| UI-1 | 🛠⚠️ | High | `Ui.cs:302-303`, `StartForm.cs:85-87`, `build\app.manifest` | Шрифты растут с DPI, координаты в пикселях — нет; PerMonitorV2 объявлен без App.config. На 150 % текст не помещается. | SuspendLayout/ResumeLayout или масштабирование констант. Шаг 1 сделан 28.10.2026: режим DPI из `build\app.config`, portable — zip; масштаб геометрии впереди (журнал «UI-1, шаг 1»). | L |
 | UI-2 | ⏳ | Medium | `StartForm.cs:499`, `PdfSplitForm.cs:629` | Результаты разбиения (папки) не попадают в «Недавние» (фильтр File.Exists). | `File.Exists || Directory.Exists`. | S |
 | UI-3 | ⏳ | Medium | `RecentCard.cs:48, 94` | Явный клик открывает файл молча (без предупреждения); Enter с автоповтором открывает несколько раз. | OpenPathOrWarn, KeyUp. | S |
 | UI-4 | ⏳ | Medium | `StartForm.cs:630` | У GlyphButton нет AccessibleRole (диктор называет «клиент»). | PushButton. | S |
@@ -561,7 +561,7 @@
 | 3. Распознавание | этапы выше | 6–10 недель |
 | 4. Рефакторинг | XL-27, GR-24, RD-17, RS-19, PF-24, RC-29, WP-30, UI-23 | 3–4 недели |
 | 5. Документация | AR-*, DC-* | 2–3 дня |
-| 6. Интерфейс | UI-1, UI-7, доступность, UI-21 | 1–1,5 недели |
+| 6. Интерфейс — **идёт** (с 28.10.2026) | UI-1 (шаг 1 сделан), UI-7, доступность, UI-21 | 1–1,5 недели |
 
 ## Журнал проверки
 
@@ -1118,6 +1118,31 @@ RC-5 подтверждён, механизм совпал с описанием
 Оставлены осознанно (не нестабильны): нижняя граница ожидания `AppDataLock`; 4 срока XL-3 на живом Office (на CI пропускаются, запас 10–20×); проба цвета (55 мс при 20 с; пик памяти процесса — пока не шумел).
 
 **Итог:** x64 под `chcp 65001` в строгом режиме и x86 — 836 PASS, 0 FAIL, 2 SKIP; приложение и тесты собираются без предупреждений; Python — 25 OK.
+
+### UI-1, шаг 1: режим DPI из app.config (28.10.2026)
+
+**Что было.** PerMonitorV2 объявлялся только в `build\app.manifest`. WinForms 4.7+ включает свою поддержку высокого DPI (перестройку окна при `WM_DPICHANGED`) только по ключу `DpiAwareness` в app.config ([Microsoft: High DPI support in Windows Forms](https://learn.microsoft.com/dotnet/desktop/winforms/high-dpi-support-in-windows-forms)), а файла не было. Проба: exe с манифестом 1.18.4 и `TargetFramework` 4.8 — `DpiHelper.EnableDpiChangedMessageHandling = False`, тот же exe с app.config — `True` (и с новым манифестом, и со старым).
+
+**Как WinForms применяет ключ** (IL `DpiHelper.SetWinformsApplicationDpiAwareness`, .NET Framework 4.8 на этой машине): Windows 10 1703+ — `SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)`; 8.1…1607 — `SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE)`, то есть per-monitor v1; версия ОС берётся из `Environment.OSVersion`, а её сообщает манифест.
+
+**Сделано.**
+- `build\app.config` с `DpiAwareness=PerMonitorV2`, подключён как `<AppConfig>`; сборка кладёт `dist\iwoHelperDesktop.exe.config` и `dist\x86\…` (проверено: файлы побайтно равны `build\app.config`).
+- Из манифеста убраны `dpiAware`/`dpiAwareness` (Microsoft больше не рекомендует этот путь: он перекрывает app.config); совместимость с Windows 10 и 8.1 осталась — без Windows 10 WinForms выбрал бы v1.
+- `DpiAwareness.IsPerMonitor` (`src\DpiAwareness.cs`) и код 5 в `--selftest`: окно не per-monitor — значит, рядом с exe нет `.config`. Поддержку PerMonitorV2 спрашиваем у системы (`IsValidDpiAwarenessContext`), а не по версии ОС: первая версия проверяла `Environment.OSVersion`, и мутант «из манифеста убрана Windows 10» её прошёл (selftest 0 при окне v1). Теперь он даёт 5.
+- Упаковка: установщик ставит `.config` рядом с exe (ISCC падает, если файла нет); `make_release.ps1` собирает portable как `iwoHelperDesktop-<версия>[-x86].zip` из подписанного exe и `.config`, перечитывает архив (ровно два файла, SHA-256 совпадает с исходными) и проверяет подписи exe и установщиков; артефакт CI несёт оба файла; `check_readme_links.py` считает ожидаемыми именно zip; `.gitattributes`: `*.config text`.
+- Документы: ARCHITECTURE (раздел о режиме DPI, `--selftest`, `build/`), RELEASING (состав ассетов, шаг 3 — кнопки Portable и формулировку README про одиночный exe меняет коммит релиза 1.18.5, шаг 6), CHANGELOG 1.18.5.
+
+**Проверено.**
+- Настоящий exe, x64 и x86: `--selftest` без `.config` — 5, с ним — 0, с `PerMonitor` (v1) — 5. Распакованный zip — 0. Повторная сборка zip заменяет старый; без `.config` сборка zip падает с именем файла.
+- Тесты «Аудит UI-1» (2): значение в app.config, строка в csproj, отсутствие DPI и наличие Windows 10 в манифесте, строка установщика; окно тестового процесса (без `.config`) не считается per-monitor. Python: 3 теста имён ассетов.
+- Мутанты, все убиты: значение `PerMonitor`, DPI снова в манифесте, без `<AppConfig>`, без строки установщика, без Windows 10 в манифесте, `IsPerMonitor` всегда `true` — тестами; ветка поддержки PerMonitorV2 наоборот, удалённая проверка кода 5, без Windows 10 в манифесте, без `<AppConfig>` — запуском настоящего exe; zip → exe в именах ассетов — Python-тестами.
+- Установщик: ISCC локально прошёл строку `.config` и остановился на Ghostscript (здесь 10.7.1, для упаковки нужен 10.8.0+); полную сборку установщика делает CI.
+
+**Итог:** x64 и x86 в строгом режиме — 838 PASS, 0 FAIL, 2 SKIP; приложение и тесты собираются без предупреждений; Python — 28 OK; ссылки README живы.
+
+**Ограничения.**
+- Windows 8.1–10 1607: процесс per-monitor v1, а WinForms обрабатывает смену DPI только с 1703. На одном мониторе разницы нет; при переносе окна на монитор с другим масштабом окно не перестраивается (раньше система растягивала его картинкой). На 8.1 и 1607 не проверено — здесь Windows 11.
+- Шрифты по-прежнему растут с DPI, а координаты нет: это шаг 2 (автомасштаб после построения контролов и пересчёт пиксельной геометрии), UI-1 остаётся открытым. Проверку на реальном экране 125–200 % делает пользователь: на этой машине один монитор 96 DPI.
 
 ## Дополнено при перепроверке: что первичный аудит упустил
 

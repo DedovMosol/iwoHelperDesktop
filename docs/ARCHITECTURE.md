@@ -63,7 +63,8 @@ The guiding principles, in priority order:
   are written only to user-chosen folders and `%APPDATA%`.
 - **Zero footprint.** Target machines have nothing installed: .NET Framework 4.8 ships
   with Windows 10/11 (one-time install on Windows 8.1), Office is driven late-bound (no
-  interop assemblies), managed libraries are embedded into the single exe, installs are
+  interop assemblies), managed libraries are embedded into the exe (only its `.config`
+  with the DPI mode sits beside it), installs are
   per-user without admin. Both x64 and x86 packages are published.
 - **Fidelity first.** PDF pages are copied without recompression, PDF → Word reproduces
   the source layout (columns, tables, spacing, fonts) rather than dumping plain text.
@@ -120,12 +121,28 @@ Excel and Word are **optional**: PDF Merge, Split, Compare, More operations and 
   touch PdfSharp types call
   `EmbeddedAssemblies.Ensure()` first behind `[MethodImpl(NoInlining)]` gates, so the JIT
   never sees a library type before the resolver is registered.
+- **DPI mode in `iwoHelperDesktop.exe.config`.** The one file beside the exe is
+  `build\app.config` (`<AppConfig>` in the csproj) with WinForms'
+  `DpiAwareness=PerMonitorV2`, the documented .NET Framework 4.7+ switch: WinForms reads it
+  when the first control is created, sets the process awareness itself and only then turns
+  on its own handling of a monitor DPI change (probe: `EnableDpiChangedMessageHandling` is
+  `False` without the file even in a PerMonitorV2 process, `True` with it). The manifest
+  declares Windows 10 and 8.1 compatibility (WinForms needs Windows 10 declared to pick
+  PerMonitorV2) and no DPI setting: Microsoft no longer recommends that way, and with such
+  a declaration the selftest could not notice a lost config. Without the file the app runs
+  DPI-unaware (Windows
+  stretches the windows, blurry but intact); on Windows 8.1–10 1607 WinForms maps the same
+  value to per-monitor v1. The portable zip and the installer ship the pair; `--selftest`
+  exits with 5 if the first window is not per-monitor (`DpiAwareness.IsPerMonitor` asks
+  the system whether it knows PerMonitorV2, not the manifest-reported OS version), and a
+  unit test guards the config value, the csproj line, the manifest and the installer line.
 - **Office through `dynamic`** (late binding, `Microsoft.CSharp`): no PIA/interop
   packages, builds on machines without Office, works with any Office version. The price
   is a set of strict usage rules — see [Office COM layer](#office-com-layer).
 - **WinRT via `Microsoft.Windows.SDK.Contracts`** — compile-time only, the runtime
   projection is part of .NET Framework.
-- Deterministic release build, no PDBs, output flattened to `dist\iwoHelperDesktop.exe`.
+- Deterministic release build, no PDBs, output flattened to `dist\iwoHelperDesktop.exe`
+  and `dist\iwoHelperDesktop.exe.config`.
 
 ## Code map
 
@@ -137,7 +154,7 @@ are conceptual.
 
 | File | Responsibility |
 |---|---|
-| `Program.cs` | Entry point. Parses CLI flags, installs `CrashReport`, initializes `Loc`, then runs the GUI (`ShellContext`) — or a headless mode: `--cli` (scripted Excel Digest), `--selftest` (create every window unshown), `--pdfcheck` / `--pdftextcheck` / `--reviewcheck` / `--thumbcheck` / `--gscheck` (embedded-dependency and renderer probes used by CI). A command-looking typo is also handled headlessly and returns bad-usage instead of opening the GUI. Headless modes leave via `FastExit.Now`. The GUI path first claims the single-instance slot (`SingleInstance`); headless modes are checked earlier and always run, however many at a time. |
+| `Program.cs` | Entry point. Parses CLI flags, installs `CrashReport`, initializes `Loc`, then runs the GUI (`ShellContext`) — or a headless mode: `--cli` (scripted Excel Digest), `--selftest` (create every window unshown; exit 5 if the first is not per-monitor DPI-aware, see `DpiAwareness.cs`), `--pdfcheck` / `--pdftextcheck` / `--reviewcheck` / `--thumbcheck` / `--gscheck` (embedded-dependency and renderer probes used by CI). A command-looking typo is also handled headlessly and returns bad-usage instead of opening the GUI. Headless modes leave via `FastExit.Now`. The GUI path first claims the single-instance slot (`SingleInstance`); headless modes are checked earlier and always run, however many at a time. |
 | `SingleInstance.cs` | One GUI process per user session. A named `Local\` mutex taken **without ownership** (nothing to abandon on a crash, and the name lives only as long as a handle is held) marks the running instance; a second launch broadcasts a `RegisterWindowMessage` signal and exits, so Task Manager shows one app instead of two. The signal is received by a hidden top-level window (`WS_EX_TOOLWINDOW`, never shown) — a message-only window would not do, broadcasts never reach those. The newly started process calls `AllowSetForegroundWindow` before signalling, otherwise Windows lets the running instance restore its window but not raise it. Any failure degrades to “start normally”. |
 | `ShellContext.cs` | `ApplicationContext` that owns the hub and all tool windows (independent, non-modal). Reopens the hub, focuses an already-open tool, rebuilds windows on language change (active window last, busy or unsaved-state windows skipped — `IBusyAware.IsBusy` or `IUnsavedStateAware.HasUncommittedState` — and the count of skipped ones reported in a dialog, each rebuilt window put back through `WindowPlacement.Snapshot`/`ShowAt` so a minimized or maximized one returns exactly as it was), exits when the last window closes. Knows which **hub section** each tool was opened from (`HubLevel`) and hands it to the tool as its `Home` action, so “Home” returns to that section and not to the top screen — and carries the section over when the hub is rebuilt on a language change. Owns the `SingleInstance` listener (created before the first window, so a launch that follows immediately still finds it) and answers the signal with `ShowHub`, which is idempotent. |
 | `ToolRegistry.cs` | Live-window registry keyed by tool id, prevents duplicate windows. |
@@ -857,7 +874,8 @@ The pyramid, bottom-up:
    the comparison's own work budget, bytes read (`CountingReadStream`), managed bytes
    allocated on the thread (`AllocatedBytes`) and an IL rule (`CallersOf`, e.g. “no
    `GetPixel` in `PdfReviewPageView`”). Hanging is the runner watchdog's job.
-2. **Self-checks in the exe** — `--selftest` (every window created headless),
+2. **Self-checks in the exe** — `--selftest` (every window created headless, the first
+   one per-monitor DPI-aware, i.e. the `.config` was found),
    `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded PdfSharp,
    embedded PdfPig extraction, WinRT thumbnail render from memory, Ghostscript
    round-trip). CI runs each as a separate step.
@@ -926,7 +944,7 @@ needs Office gets a `verify` script.
 | `src/` | All application sources (one project, flat). |
 | `tests/` | `UnitTests.cs` + runner project, `verify*.ps1` integration scripts, corpus generators. |
 | `tools/` | Maintainer scripts: `make_release.ps1`, `make_installer.ps1`, `sign.ps1`, `stage_gs.ps1`, `make_wizard_images.ps1`, `make_flag_bitmaps.ps1` (renders the installer language‑picker flags, mirroring `Flags.cs`). |
-| `build/` | Build inputs: icon, manifest, vendored `PdfSharp.dll`, `pdfpig/*`. |
+| `build/` | Build inputs: icon, manifest, `app.config` (DPI mode), vendored `PdfSharp.dll`, `pdfpig/*`. |
 | `installer/` | Inno Setup script + wizard images + language‑picker flags (`flag_en.bmp`, `flag_ru.bmp`), `gs/` and `gs32/` are staged locally and gitignored. |
 | `docs/` | This file, `CHANGELOG.md`, `PRIVACY.md`, `RELEASING.md`, screenshots. |
 | `dist/` | Build output (gitignored), `dist\x86\` holds the 32-bit build. |
