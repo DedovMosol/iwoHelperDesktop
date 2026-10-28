@@ -917,23 +917,29 @@ namespace ExcelMerger.Tests
             }
             using (source)
             {
-                // Порог не про скорость машины: двадцать раскладок через один LockBits-срез —
-                // десятки мс, а прежний GetPixel-обход (~0,9 млн вызовов, сотни мс на
-                // раскладку) дал бы секунды. 3 с — ~30× запаса на загруженный CI, и возврат
-                // к попиксельному чтению всё ещё ловится.
-                const int repeats = 20;
+                // Детерминированные меры вместо секундомера (TS-5). Прежний GetPixel-обход —
+                // ~0,9 млн вызовов GDI+ на раскладку; одно чтение LockBits — полоса у края листа.
+                // Выделения: полоса одна на раскладку (замер 28.10.2026: 1,21 МБ на x64 и x86,
+                // 88 px × 3400 строк × 4 байта); потолок — две полосы. Копия всего листа (~32 МБ)
+                // или полоса на каждую рейку выходят за него.
                 List<PdfReviewChangeBar> bars = null;
-                var watch = System.Diagnostics.Stopwatch.StartNew();
-                for (int i = 0; i < repeats; i++)
+                long allocated = AllocatedBytes(delegate
+                {
                     bars = PdfReviewPageView.LayoutChangeBars(highlight, width, height, source);
-                watch.Stop();
+                });
                 AssertEq(lines, bars.Count, "каждая строка получила полосу");
                 foreach (PdfReviewChangeBar bar in bars)
                     AssertEq(12f, bar.X,
                         "все кандидаты заняты чернилами — рейка на предпочтительном отступе");
-                AssertTrue(watch.ElapsedMilliseconds < 3000,
-                    repeats + " раскладок 76 полос на 2400×3400 слишком медленные: " +
-                    watch.ElapsedMilliseconds + " мс");
+                AssertTrue(allocated < 2500000, "раскладка выделила " + allocated +
+                    " байт: растр читается не одной полосой у края");
+                // Попиксельное чтение следа в памяти не оставляет — его запрещает правило по коду.
+                foreach (string name in new[] { "GetPixel", "SetPixel" })
+                {
+                    List<string> callers = CallersOf(typeof(PdfReviewPageView), typeof(Bitmap).GetMethod(name));
+                    AssertEq(0, callers.Count, "PdfReviewPageView читает пиксели только через LockBits, а " +
+                        name + " зовут: " + string.Join(", ", callers.ToArray()));
+                }
 
                 var clear = new Bitmap(width, height);
                 using (Graphics graphics = Graphics.FromImage(clear))

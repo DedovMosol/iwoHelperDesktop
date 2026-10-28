@@ -754,7 +754,7 @@ namespace ExcelMerger.Tests
             AssertTrue(!AuditBHasPackage(cyclic), "зацикленная цепочка завершается");
         }
 
-        [Test("Аудит B: CFB — враждебный файл 64 МБ (самоцикл каталога и DIFAT) разбирается быстрее секунды")]
+        [Test("Аудит B: CFB — враждебный файл 64 МБ (самоцикл каталога и DIFAT) читается в пределах потолка секторов")]
         private static void AuditBCfbHostileCycleIsFast()
         {
             const int S = 512;
@@ -779,15 +779,23 @@ namespace ExcelMerger.Tests
                     fs.Write(sector, 0, S);
                 }
 
-                var watch = Stopwatch.StartNew();
-                bool found = FileSignature.HasEncryptedPackage(path);
-                watch.Stop();
-
+                // Мера — прочитанные байты, а не время (TS-5). Заголовок, затем на каждый из не
+                // больше MaxDirectorySectors шагов — сектор каталога; сектор FAT кэширован и на
+                // самоцикле перечитывается не каждый раз. Без потолка цепочка не кончается вовсе:
+                // предел счётчика (10 потолков) превращает это в немедленный провал.
+                long ceiling = S + 2L * FileSignature.MaxDirectorySectors * S;
+                bool found;
+                long read;
+                using (var counted = new CountingReadStream(
+                    new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite), 10 * ceiling))
+                {
+                    found = FileSignature.HasEncryptedPackage(counted);
+                    read = counted.BytesRead;
+                }
                 AssertTrue(!found, "в зацикленном каталоге потока нет");
-                // Без потолка зацикленная цепочка не кончается вовсе; с потолком разбор — миллисекунды.
-                // 5 с — запас на загруженный раннер CI, а не мера скорости (TS-5).
-                AssertTrue(watch.ElapsedMilliseconds < 5000,
-                    "разбор занял " + watch.ElapsedMilliseconds + " мс: цепочка каталога не ограничена потолком");
+                AssertTrue(read <= ceiling, "прочитано " + read + " байт при потолке " + ceiling +
+                    ": цепочка каталога или DIFAT не ограничена");
+                AssertTrue(!FileSignature.HasEncryptedPackage(path), "то же через путь к файлу");
             }
         }
 

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using ExcelMerger;
@@ -13,6 +12,23 @@ namespace ExcelMerger.Tests
     /// </summary>
     internal static partial class UnitTests
     {
+        // Порог производительности — бюджет работы самого сравнения, а не секундомер (TS-5):
+        // работу DiffContext считает детерминированно, и тест не зависит ни от машины, ни от
+        // загрузки раннера. Бюджет — в полтора раза больше наименьшего, при котором сценарий
+        // ещё проходит (бинарный поиск 28.10.2026, по умолчанию 20 млн): 500 замен — 3,73–3,84
+        // млн; 3% замен в 250 тыс. слов — 1,41–1,47 млн; две копии сотен страниц и копии 500
+        // страниц с частыми словами — 1,47–1,53 млн. Рост работы на половину — провал теста:
+        // это регресс алгоритма, и бюджет меняют только осознанно, повторив замер.
+        private const long AuditF1ReplacementWork = 5800000;
+        private const long AuditF1AlignmentWork = 2300000;
+
+        private static PdfReviewLimits AuditF1WorkLimits(long maxDiffWork)
+        {
+            PdfReviewLimits limits = PdfReviewLimits.Default();
+            limits.MaxDiffWork = maxDiffWork;
+            return limits;
+        }
+
         private static List<string> AuditF1Tokens(string prefix, int count)
         {
             var tokens = new List<string>(count);
@@ -124,10 +140,8 @@ namespace ExcelMerger.Tests
                 string context = "общих слов на странице " +
                     shared.ToString(CultureInfo.InvariantCulture);
 
-                Stopwatch watch = Stopwatch.StartNew();
                 PdfReviewResult result = PdfReviewDiff.Compare(left, right,
-                    PdfReviewLimits.Default());
-                watch.Stop();
+                    AuditF1WorkLimits(AuditF1AlignmentWork));
 
                 AuditF1AssertExactOperations(result, 0, 0, context);
                 AssertEq(0, result.Stats.ChangedPercent, context + ": процент изменений");
@@ -141,8 +155,6 @@ namespace ExcelMerger.Tests
                         context + ": строка " + i + " = " + pair.LeftPageIndex + ":" +
                         pair.RightPageIndex + ":" + pair.Status + ", ожидалась неизменная пара");
                 }
-                AssertTrue(watch.Elapsed < TimeSpan.FromSeconds(30),
-                    context + ": сравнение заняло " + watch.Elapsed + " (порог 30 с)");
             }
         }
 
@@ -168,16 +180,12 @@ namespace ExcelMerger.Tests
             PdfReviewDocument left = AuditF1Document("many-left.pdf", baseline, PageWords);
             PdfReviewDocument right = AuditF1Document("many-right.pdf", revised, PageWords);
 
-            Stopwatch watch = Stopwatch.StartNew();
             PdfReviewResult result = PdfReviewDiff.Compare(left, right,
-                PdfReviewLimits.Default());
-            watch.Stop();
+                AuditF1WorkLimits(AuditF1ReplacementWork));
 
             AuditF1AssertExactOperations(result, Replacements, Replacements, "500 замен");
             AssertEq(Replacements, result.Stats.Replacements, "500 замен: число замен");
             AssertEq(false, result.WorkExhausted, "500 замен: бюджет не исчерпан");
-            AssertTrue(watch.Elapsed < TimeSpan.FromSeconds(60),
-                "500 замен: сравнение заняло " + watch.Elapsed + " (порог 60 с)");
         }
 
         /// <summary>
@@ -1031,10 +1039,8 @@ namespace ExcelMerger.Tests
                     shape[0].ToString(CultureInfo.InvariantCulture) + " служебных + " +
                     shape[2].ToString(CultureInfo.InvariantCulture) + " своих";
 
-                Stopwatch watch = Stopwatch.StartNew();
                 PdfReviewResult result = PdfReviewDiff.Compare(left, right,
-                    PdfReviewLimits.Default());
-                watch.Stop();
+                    AuditF1WorkLimits(AuditF1AlignmentWork));
 
                 AssertEq(PdfReviewStage.None, result.IncompleteStages,
                     context + ": все стадии завершены");
@@ -1047,8 +1053,6 @@ namespace ExcelMerger.Tests
                         context + ": строка " + i + " = " + pair.LeftPageIndex + ":" +
                         pair.RightPageIndex + ":" + pair.Status + ", ожидалась неизменная пара");
                 }
-                AssertTrue(watch.Elapsed < TimeSpan.FromSeconds(30),
-                    context + ": сравнение заняло " + watch.Elapsed + " (порог 30 с)");
             }
         }
 
@@ -1167,17 +1171,13 @@ namespace ExcelMerger.Tests
             PdfReviewDocument left = AuditF1Document("dense-left.pdf", baseline, PageWords);
             PdfReviewDocument right = AuditF1Document("dense-right.pdf", revised, PageWords);
 
-            Stopwatch watch = Stopwatch.StartNew();
             PdfReviewResult result = PdfReviewDiff.Compare(left, right,
-                PdfReviewLimits.Default());
-            watch.Stop();
+                AuditF1WorkLimits(AuditF1AlignmentWork));
 
             int equal = ReviewOperationWordCount(result.Operations, PdfReviewDiffKind.Equal, -1);
             AssertTrue(equal >= (Words - replaced) * 9 / 10,
                 "совпало " + equal + " из " + (Words - replaced) + " неизменных слов (порог 90%)");
             AuditF1AssertExactOperations(result, Words - equal, Words - equal, "3% замен");
-            AssertTrue(watch.Elapsed < TimeSpan.FromSeconds(60),
-                "сравнение заняло " + watch.Elapsed + " (порог 60 с)");
         }
 
         /// <summary>

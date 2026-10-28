@@ -853,6 +853,10 @@ The pyramid, bottom-up:
    seams in the app are `null`-by-default auto-properties named `…ForTests`. A long live
    scenario is split by behaviour into `[Test]` parts over a shared fixture (for example
    `WithWheelRoutingForm`), and each part is checked by mutating the production code.
+   Performance and boundedness are checked by deterministic measures, not by a stopwatch:
+   the comparison's own work budget, bytes read (`CountingReadStream`), managed bytes
+   allocated on the thread (`AllocatedBytes`) and an IL rule (`CallersOf`, e.g. “no
+   `GetPixel` in `PdfReviewPageView`”). Hanging is the runner watchdog's job.
 2. **Self-checks in the exe** — `--selftest` (every window created headless),
    `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded PdfSharp,
    embedded PdfPig extraction, WinRT thumbnail render from memory, Ghostscript

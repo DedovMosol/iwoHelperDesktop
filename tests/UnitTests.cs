@@ -1664,8 +1664,8 @@ namespace ExcelMerger.Tests
         private static void TestGhostscriptBoundedRun()
         {
             string command = Environment.GetEnvironmentVariable("ComSpec");
-            if (string.IsNullOrEmpty(command) || !File.Exists(command))
-                return;
+            AssertTrue(!string.IsNullOrEmpty(command) && File.Exists(command),
+                "командный процессор ComSpec есть на любой Windows — без него тест молча прошёл бы");
             Ghostscript.ResetResolutionForTests();
             try
             {
@@ -1679,17 +1679,40 @@ namespace ExcelMerger.Tests
                     "fatal sentinel после 64 KiB не потерян");
                 AssertTrue(stderr.Length < 70000, "сохранённая диагностика ограничена");
 
-                var watch = System.Diagnostics.Stopwatch.StartNew();
+                // Внук (ping) держит унаследованные каналы stdout/stderr, когда cmd уже убит:
+                // WaitForExit без срока ждал бы его конца. Мера — жив ли ещё внук в момент
+                // возврата, а не секундомер (TS-5). Размер пакета — метка именно этого запуска.
+                int marker = 1000 + new Random().Next(400);
+                string pingMark = "-l " + marker.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 exit = Ghostscript.Run(
-                    "/d /c \"ping 127.0.0.1 -n 6 >nul\"", 100, out stderr);
-                watch.Stop();
+                    "/d /c \"ping 127.0.0.1 -n 30 " + pingMark + " >nul\"", 100, out stderr);
+                List<int> grandchildren = ProcessIdsByCommandLine("PING.EXE", pingMark);
+                foreach (int pid in grandchildren)
+                    try { using (var p = System.Diagnostics.Process.GetProcessById(pid)) p.Kill(); } catch { } // уборка
                 AssertEq(-1, exit, "таймаут — отказ");
-                AssertTrue(watch.ElapsedMilliseconds < 5000,
-                    "после timeout нет неограниченного WaitForExit");
+                AssertEq(1, grandchildren.Count,
+                    "Run вернулся, пока внук ещё работал: нет неограниченного ожидания его каналов");
             }
             finally { Ghostscript.ResetResolutionForTests(); }
         }
 
+
+        /// <summary>PID процессов exeName, в командной строке которых есть marker (WMI Win32_Process).</summary>
+        private static List<int> ProcessIdsByCommandLine(string exeName, string marker)
+        {
+            var ids = new List<int>();
+            using (var query = new System.Management.ManagementObjectSearcher(
+                "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = '" + exeName + "'"))
+            using (System.Management.ManagementObjectCollection found = query.Get())
+                foreach (System.Management.ManagementBaseObject process in found)
+                    using (process)
+                    {
+                        string line = process["CommandLine"] as string;
+                        if (line != null && line.IndexOf(marker, StringComparison.Ordinal) >= 0)
+                            ids.Add(Convert.ToInt32(process["ProcessId"], System.Globalization.CultureInfo.InvariantCulture));
+                    }
+            return ids;
+        }
 
         private static void TestReviewCodePoints()
         {

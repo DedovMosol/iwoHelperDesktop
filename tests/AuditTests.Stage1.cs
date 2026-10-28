@@ -764,6 +764,8 @@ namespace ExcelMerger.Tests
             var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            const int TrickleBytes = 300;
+            int sent = 0;
             var server = new System.Threading.Thread(delegate()
             {
                 try
@@ -778,9 +780,10 @@ namespace ExcelMerger.Tests
                         stream.Write(head, 0, head.Length);
                         // По байту раз в 200 мс: ни одно чтение не ждёт дольше ReadWriteTimeout,
                         // и только общий срок может закончить запрос.
-                        for (int i = 0; i < 300; i++)
+                        for (int i = 0; i < TrickleBytes; i++)
                         {
                             stream.WriteByte((byte)'x');
+                            System.Threading.Interlocked.Increment(ref sent);
                             System.Threading.Thread.Sleep(200);
                         }
                     }
@@ -789,15 +792,23 @@ namespace ExcelMerger.Tests
             });
             server.IsBackground = true;
             server.Start();
-            var watch = System.Diagnostics.Stopwatch.StartNew();
             bool aborted = false;
+            int sentWhenReturned;
             try { UpdateChecker.Download("http://127.0.0.1:" + port + "/", "application/json", 1500); }
             catch (WebException) { aborted = true; }
             catch (IOException) { aborted = true; }
-            finally { listener.Stop(); }
-            watch.Stop();
+            finally
+            {
+                sentWhenReturned = System.Threading.Volatile.Read(ref sent);
+                listener.Stop();
+            }
             AssertTrue(aborted, "запрос оборван ошибкой сети");
-            AssertTrue(watch.ElapsedMilliseconds < 8000, "и не позже общего срока с запасом: " + watch.ElapsedMilliseconds + " мс");
+            // Мера — ход сервера, а не секундомер (TS-5): запрос обязан вернуться, пока сервер ещё
+            // отдаёт тело (60 с по байту). Без общего срока он дождался бы последнего байта:
+            // ни одно чтение не длится дольше шагового таймаута.
+            AssertTrue(sentWhenReturned < TrickleBytes, "запрос вернулся после " + sentWhenReturned +
+                " из " + TrickleBytes + " байт: общий срок не оборвал медленный сервер");
+            AssertTrue(server.Join(5000), "сервер закончил работу после обрыва соединения");
         }
 
         // ---------- SH-10: сроки и прокси проверки обновлений ----------

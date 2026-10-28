@@ -149,6 +149,152 @@ namespace ExcelMerger.Tests
             }
             return text.ToString();
         }
+
+        // ---------- Детерминированные меры работы вместо секундомера (TS-5) ----------
+        // Порог по времени зависит от машины и загрузки раннера; сколько прочитано байтов и
+        // выделено памяти — нет. Проверка «не зависает» остаётся за сторожем раннера.
+
+        /// <summary>
+        /// Методы type (и вложенных в него типов), в IL которых есть вызов target. Правило «этот
+        /// класс не зовёт X» проверяется по коду, а не по времени (TS-5): так закреплено решение,
+        /// у которого нет иного наблюдаемого следа, например «пиксели — только через LockBits».
+        /// IL разбирается по таблице OpCodes, поэтому байты операндов не принимаются за вызовы.
+        /// </summary>
+        private static List<string> CallersOf(Type type, System.Reflection.MethodBase target)
+        {
+            var callers = new List<string>();
+            var types = new Stack<Type>();
+            types.Push(type);
+            while (types.Count > 0)
+            {
+                Type current = types.Pop();
+                foreach (Type nested in current.GetNestedTypes(System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic))
+                    types.Push(nested);
+                const System.Reflection.BindingFlags all = System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+                var methods = new List<System.Reflection.MethodBase>(current.GetMethods(all));
+                methods.AddRange(current.GetConstructors(all));
+                foreach (System.Reflection.MethodBase method in methods)
+                    if (CallsMethod(method, target))
+                        callers.Add(current.Name + "." + method.Name);
+            }
+            return callers;
+        }
+
+        private static readonly Dictionary<short, System.Reflection.Emit.OpCode> IlOpCodes = LoadIlOpCodes();
+
+        private static Dictionary<short, System.Reflection.Emit.OpCode> LoadIlOpCodes()
+        {
+            var codes = new Dictionary<short, System.Reflection.Emit.OpCode>();
+            foreach (System.Reflection.FieldInfo field in typeof(System.Reflection.Emit.OpCodes).GetFields(
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                var code = (System.Reflection.Emit.OpCode)field.GetValue(null);
+                codes[code.Value] = code;
+            }
+            return codes;
+        }
+
+        private static bool CallsMethod(System.Reflection.MethodBase method, System.Reflection.MethodBase target)
+        {
+            System.Reflection.MethodBody body = method.GetMethodBody();
+            if (body == null)
+                return false;
+            byte[] il = body.GetILAsByteArray();
+            Type[] typeArgs = method.DeclaringType.IsGenericType ? method.DeclaringType.GetGenericArguments() : null;
+            Type[] methodArgs = method.IsGenericMethod ? method.GetGenericArguments() : null;
+            int i = 0;
+            while (i < il.Length)
+            {
+                short value = il[i] == 0xFE && i + 1 < il.Length ? (short)(0xFE00 | il[i + 1]) : il[i];
+                System.Reflection.Emit.OpCode code;
+                if (!IlOpCodes.TryGetValue(value, out code))
+                    throw new Exception("неизвестный опкод 0x" + value.ToString("X") + " в " + method.Name);
+                i += code.Size;
+                if (code.OperandType == System.Reflection.Emit.OperandType.InlineMethod)
+                {
+                    int token = BitConverter.ToInt32(il, i);
+                    System.Reflection.MethodBase called = method.Module.ResolveMethod(token, typeArgs, methodArgs);
+                    if (called == target)
+                        return true;
+                }
+                i += IlOperandSize(code.OperandType, il, i);
+            }
+            return false;
+        }
+
+        private static int IlOperandSize(System.Reflection.Emit.OperandType type, byte[] il, int at)
+        {
+            switch (type)
+            {
+                case System.Reflection.Emit.OperandType.InlineNone: return 0;
+                case System.Reflection.Emit.OperandType.ShortInlineBrTarget:
+                case System.Reflection.Emit.OperandType.ShortInlineI:
+                case System.Reflection.Emit.OperandType.ShortInlineVar: return 1;
+                case System.Reflection.Emit.OperandType.InlineVar: return 2;
+                case System.Reflection.Emit.OperandType.InlineI8:
+                case System.Reflection.Emit.OperandType.InlineR: return 8;
+                case System.Reflection.Emit.OperandType.InlineSwitch: return 4 + 4 * BitConverter.ToInt32(il, at);
+                default: return 4; // токены, InlineI, InlineBrTarget, ShortInlineR
+            }
+        }
+
+        /// <summary>
+        /// Байты, выделенные в управляемой куче кодом action на этом потоке. Мера годна только для
+        /// однопоточного кода: выделения других потоков сюда не попадают.
+        /// </summary>
+        private static long AllocatedBytes(Action action)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        /// <summary>
+        /// Поток только для чтения, считающий прочитанные байты. Дальше limit — исключение: код,
+        /// потерявший предел чтения, падает сразу, а не зацикливается до сторожа прогона.
+        /// </summary>
+        private sealed class CountingReadStream : System.IO.Stream
+        {
+            private readonly System.IO.Stream _inner;
+            private readonly long _limit;
+
+            internal CountingReadStream(System.IO.Stream inner, long limit)
+            {
+                _inner = inner;
+                _limit = limit;
+            }
+
+            internal long BytesRead { get; private set; }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                int read = _inner.Read(buffer, offset, count);
+                BytesRead += read;
+                if (BytesRead > _limit)
+                    throw new InvalidOperationException("прочитано больше " + _limit + " байт — чтение не ограничено");
+                return read;
+            }
+
+            public override bool CanRead { get { return true; } }
+            public override bool CanSeek { get { return _inner.CanSeek; } }
+            public override bool CanWrite { get { return false; } }
+            public override long Length { get { return _inner.Length; } }
+            public override long Position { get { return _inner.Position; } set { _inner.Position = value; } }
+            public override void Flush() { }
+            public override long Seek(long offset, System.IO.SeekOrigin origin) { return _inner.Seek(offset, origin); }
+            public override void SetLength(long value) { throw new NotSupportedException(); }
+            public override void Write(byte[] buffer, int offset, int count) { throw new NotSupportedException(); }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                    _inner.Dispose();
+                base.Dispose(disposing);
+            }
+        }
     }
 }
 

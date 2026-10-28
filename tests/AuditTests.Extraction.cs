@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -501,10 +500,16 @@ namespace ExcelMerger.Tests
                 HLine(300, 0, 1e9), HLine(-5e8, -1e9, 1e9), VLine(1e9, -1e9, 1e9)
             };
             var words = new List<PdfWord> { Word("A", 25, 75), Word("B", 75, 75), Word("C", 25, 25), Word("D", 75, 25) };
-            Stopwatch sw = Stopwatch.StartNew();
-            TableDetectResult res = TableDetector.Detect(lines, words, 600, 800);
-            sw.Stop();
-            AssertTrue(sw.ElapsedMilliseconds < 3000, "поиск закончился быстро: " + sw.ElapsedMilliseconds + " мс");
+            // Мера — выделенная память, а не время (TS-5): сетка связей ограничена окрестностью
+            // листа, и линия в миллиард пунктов даёт столько же клеток, сколько в пределах
+            // листа. Без потолка — десятки миллионов клеток (гигабайты). Поиск однопоточный,
+            // поэтому счётчик потока видит всю его работу. Замер 28.10.2026: ~47 КБ на x64,
+            // ~32 КБ на x86; окрестность по наибольшему листу (14 400 pt) вместо этого листа —
+            // ~515 КБ, без потолка вовсе — гигабайты. Потолок 192 КБ — четырёхкратный запас.
+            TableDetectResult res = null;
+            long allocated = AllocatedBytes(delegate { res = TableDetector.Detect(lines, words, 600, 800); });
+            AssertTrue(allocated < 192L * 1024, "поиск таблиц выделил " + allocated +
+                " байт: сетка связей не ограничена окрестностью листа");
             AssertEq(1, res.Tables.Count, "настоящая таблица найдена");
             AssertEq(0, res.RemainingWords.Count, "слова в ячейках");
         }
