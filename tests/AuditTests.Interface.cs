@@ -127,6 +127,7 @@ namespace ExcelMerger.Tests
             var notChecked = new List<string>();
             var baseline = new Dictionary<string, Size>();
             var edges = new Dictionary<string, Dictionary<string, int[]>>();
+            var minimum = new Dictionary<string, Size>();
             int checkedCount = 0;
             foreach (float scale in new[] { 1f, 1.25f, 1.5f })
             {
@@ -151,11 +152,18 @@ namespace ExcelMerger.Tests
                                     if (scale == 1f)
                                     {
                                         baseline[name] = f.ClientSize;
+                                        minimum[name] = f.MinimumSize;
                                         edges[name] = CollectEdges(f);
                                         f.Close();
                                         continue;
                                     }
                                     Rectangle area = Screen.FromRectangle(f.Bounds).WorkingArea;
+                                    // Помещается ли минимум — по минимуму 100 %, умноженному на масштаб:
+                                    // MinimumSize живого окна Windows сам ужимает до размеров экрана
+                                    // (на CI 1024×768 он «помещался» всегда).
+                                    Size min100 = minimum[name];
+                                    bool minimumFits = min100.Width * scale <= area.Width &&
+                                        min100.Height * scale <= area.Height;
                                     if (f.Width > area.Width || f.Height > area.Height)
                                     {
                                         // Больше экрана законно только тогда, когда экрану не хватает
@@ -163,8 +171,6 @@ namespace ExcelMerger.Tests
                                         // (ClampToLayout) — оно на 1080p при 150 % выше рабочей области.
                                         // Диалоги с неизменяемой рамкой не ужимаются (ScaledForm.FitToScreen).
                                         bool sizable = f.FormBorderStyle == FormBorderStyle.Sizable;
-                                        bool minimumFits = f.MinimumSize.Width <= area.Width &&
-                                            f.MinimumSize.Height <= area.Height;
                                         if (sizable && minimumFits && !(f is MainForm))
                                             offenders.Add(where + " → окно " + f.Size + " больше рабочей области " +
                                                 area.Size + ", хотя минимум " + f.MinimumSize + " в неё помещается");
@@ -190,8 +196,7 @@ namespace ExcelMerger.Tests
                                                 width + " → " + about.ClientSize.Width);
                                         CheckScaledLayout(about, where + " (секции раскрыты)", offenders);
                                     }
-                                    if (f.MinimumSize.Width > 0 && f.MinimumSize.Height <= area.Height &&
-                                        f.MinimumSize.Width <= area.Width)
+                                    if (f.MinimumSize.Width > 0 && minimumFits)
                                     {
                                         f.Size = f.MinimumSize;
                                         f.PerformLayout();
