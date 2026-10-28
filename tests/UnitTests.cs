@@ -1682,10 +1682,14 @@ namespace ExcelMerger.Tests
                 // Внук (ping) держит унаследованные каналы stdout/stderr, когда cmd уже убит:
                 // WaitForExit без срока ждал бы его конца. Мера — жив ли ещё внук в момент
                 // возврата, а не секундомер (TS-5). Размер пакета — метка именно этого запуска.
+                // Срок 3 с, а не 100 мс: внук обязан успеть родиться до таймаута. На раннере
+                // CI cmd не успел запустить ping за 100 мс, убивать было некого, и тест падал
+                // без дефекта. ping живёт ~59 с: возврат по сроку застаёт его живым, а
+                // неограниченное ожидание каналов вернулось бы только после его конца.
                 int marker = 1000 + new Random().Next(400);
                 string pingMark = "-l " + marker.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 exit = Ghostscript.Run(
-                    "/d /c \"ping 127.0.0.1 -n 30 " + pingMark + " >nul\"", 100, out stderr);
+                    "/d /c \"ping 127.0.0.1 -n 60 " + pingMark + " >nul\"", 3000, out stderr);
                 List<int> grandchildren = ProcessIdsByCommandLine("PING.EXE", pingMark);
                 foreach (int pid in grandchildren)
                     try { using (var p = System.Diagnostics.Process.GetProcessById(pid)) p.Kill(); } catch { } // уборка
