@@ -551,7 +551,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("auditB_busy_"))
             {
                 string pdf = dir.File("in.pdf");
-                WriteReviewPdf(pdf, new[] { "Текст страницы" });
+                WriteTextPdf(pdf, new[] { "Текст страницы" });
                 string output = dir.File("out.docx");
                 File.WriteAllText(output, "старый результат");
                 int progressCalls = 0;
@@ -578,7 +578,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("auditB_commit_"))
             {
                 string pdf = dir.File("in.pdf");
-                WriteReviewPdf(pdf, new[] { "Текст страницы" });
+                WriteTextPdf(pdf, new[] { "Текст страницы" });
                 string output = dir.File("out.docx");
                 FileStream locker = null;
                 Exception error = null;

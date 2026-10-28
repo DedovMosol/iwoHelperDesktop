@@ -39,6 +39,8 @@ namespace ExcelMerger
         private IPdfReviewClipboardWriter _clipboardWriter;
         private Panel _scrollViewport;
         private bool _dragging;
+        internal bool IsDragging { get { return _dragging; } } // для тестов (TS-11), только UI-поток
+        internal bool AutoScrollActive { get { return _autoScrollTimer.Enabled; } } // для тестов (TS-11), только UI-поток
         private Size _rectangleSize;
         private readonly List<RectangleF> _wordRectangles = new List<RectangleF>();
         private readonly Dictionary<PdfReviewWord, int> _wordIndex =

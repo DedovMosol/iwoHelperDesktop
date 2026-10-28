@@ -25,8 +25,8 @@ namespace ExcelMerger.Tests
         {
             string leftPath = dir.File("left.pdf");
             string rightPath = dir.File("right.pdf");
-            WriteReviewPdf(leftPath, new[] { "Left zero", "Left one", "Left two" });
-            WriteReviewPdf(rightPath, new[] { "Right zero", "Right one", "Right two" });
+            WriteTextPdf(leftPath, new[] { "Left zero", "Left one", "Left two" });
+            WriteTextPdf(rightPath, new[] { "Right zero", "Right one", "Right two" });
             var result = new PdfReviewResult
             {
                 Left = ReviewDocument(leftPath, "left zero", "left one", "left two"),
@@ -58,12 +58,11 @@ namespace ExcelMerger.Tests
                         form.Show();
                         Application.DoEvents();
                         InvokeReviewApplyResult(form, result);
-                        PdfReviewPageView unified = Internal<PdfReviewPageView>(form,
-                            "_unifiedSource");
+                        PdfReviewPageView unified = form.UnifiedSourceView;
                         AssertTrue(WaitFor(delegate { return AuditViewIdle(unified); }),
                             "единый canvas отрендерил первую строку");
-                        Panel viewport = Internal<Panel>(unified, "_viewport");
-                        ListBox rows = Internal<ListBox>(form, "_pairs");
+                        Panel viewport = unified.ViewportPanel;
+                        ListBox rows = form.PairsList;
                         Point point = ReviewScreenCenter(viewport);
                         var filter = (IMessageFilter)form;
 
@@ -103,7 +102,7 @@ namespace ExcelMerger.Tests
                             full.Show(form);
                             AssertTrue(WaitFor(delegate { return AuditViewIdle(full.View); }),
                                 "полноэкранный canvas отрендерил страницу");
-                            Panel fullViewport = Internal<Panel>(full.View, "_viewport");
+                            Panel fullViewport = full.View.ViewportPanel;
                             Point fullPoint = ReviewScreenCenter(fullViewport);
                             double fullFit = full.View.ZoomScale;
                             scale = unified.ZoomScale;
@@ -138,12 +137,10 @@ namespace ExcelMerger.Tests
                         form.Show();
                         Application.DoEvents();
                         InvokeReviewApplyResult(form, result);
-                        PdfReviewPageView unified = Internal<PdfReviewPageView>(form,
-                            "_unifiedSource");
+                        PdfReviewPageView unified = form.UnifiedSourceView;
                         AssertTrue(WaitFor(delegate { return AuditViewIdle(unified); }),
                             "страница готова");
-                        Point point = ReviewScreenCenter(Internal<Panel>(unified,
-                            "_viewport"));
+                        Point point = ReviewScreenCenter(unified.ViewportPanel);
                         for (int i = 0; i < 64 && unified.ZoomScale < PreviewZoom.Max - 0.000001; i++)
                             form.RouteWheel(point, 120, true);
                         AssertEq(PreviewZoom.Max, unified.ZoomScale, "дошли до максимума");
@@ -158,7 +155,7 @@ namespace ExcelMerger.Tests
                         AssertEq(PreviewZoom.Min, unified.ZoomScale, "дошли до минимума");
                         AssertTrue(form.RouteWheel(point, -120, true),
                             "на 25% Ctrl+колесо тоже поглощено");
-                        AssertEq(0, Internal<ListBox>(form, "_pairs").SelectedIndex,
+                        AssertEq(0, form.PairsList.SelectedIndex,
                             "Ctrl+колесо на пределе не листает строки");
                         form.Close();
                     }
@@ -287,14 +284,13 @@ namespace ExcelMerger.Tests
                         Application.DoEvents();
                         InvokeReviewApplyResult(form, live);
                         form.ApplyManualPair(2, 1);
-                        ListBox rows = Internal<ListBox>(form, "_pairs");
-                        PdfReviewResult shown = Internal<PdfReviewResult>(form, "_result");
+                        ListBox rows = form.PairsList;
+                        PdfReviewResult shown = form.ReviewResult;
                         AssertTrue(!ReferenceEquals(live, shown), "окно подменило снимок целиком");
                         AssertEq(PdfReviewForm.FindPairRow(shown.Pairs, 2, 1), rows.SelectedIndex,
                             "выделена созданная строка, а не первая");
                         AssertEq(1, rows.SelectedIndex, "созданная строка — вторая");
-                        PdfReviewPageView unified = Internal<PdfReviewPageView>(form,
-                            "_unifiedSource");
+                        PdfReviewPageView unified = form.UnifiedSourceView;
                         AssertTrue(WaitFor(delegate { return AuditViewIdle(unified); }),
                             "созданная строка отрисована");
                         form.Close();
@@ -344,7 +340,7 @@ namespace ExcelMerger.Tests
                         form.Show();
                         Application.DoEvents();
                         InvokeReviewApplyResult(form, live);
-                        Label summary = Internal<Label>(form, "_summary");
+                        Label summary = form.SummaryLabel;
                         AssertTrue(summary.Text.StartsWith(Loc.T("review.warn.workExhausted"),
                             StringComparison.Ordinal), "окно показывает предупреждение: " + summary.Text);
                         AssertEq(Theme.WarnOrange.ToArgb(), summary.ForeColor.ToArgb(),
@@ -353,8 +349,7 @@ namespace ExcelMerger.Tests
                             "предупреждение доступно экранному диктору");
                         AssertTrue(WaitFor(delegate
                         {
-                            return AuditViewIdle(Internal<PdfReviewPageView>(form,
-                                "_unifiedSource"));
+                            return AuditViewIdle(form.UnifiedSourceView);
                         }), "страница отрисована до закрытия");
                         form.Close();
                     }
@@ -381,18 +376,17 @@ namespace ExcelMerger.Tests
                         form.Show();
                         Application.DoEvents();
                         InvokeReviewApplyResult(form, live);
-                        Label summary = Internal<Label>(form, "_summary");
+                        Label summary = form.SummaryLabel;
                         AssertEq(System.Windows.Forms.Automation.AutomationLiveSetting.Polite,
                             summary.LiveSetting, "итог сравнения объявляется диктором при смене");
                         // Не живая область бросила бы InvalidOperationException.
                         summary.AccessibilityObject.RaiseLiveRegionChanged();
-                        PdfReviewPageView unified = Internal<PdfReviewPageView>(form,
-                            "_unifiedSource");
+                        PdfReviewPageView unified = form.UnifiedSourceView;
                         AssertEq(System.Windows.Forms.Automation.AutomationLiveSetting.Polite,
-                            Internal<Label>(unified, "_message").LiveSetting,
+                            unified.MessageLabel.LiveSetting,
                             "«недоступно» и «слишком большой» панели тоже объявляются");
 
-                        TextBox input = Internal<TextBox>(form, "_leftPageInput");
+                        TextBox input = form.LeftPageBox;
                         string warning = Loc.T("review.warn.workExhausted");
                         input.Text = "abc";
                         AssertTrue(!form.NavigateToPhysicalPage(true), "нечисловой номер отвергнут");
@@ -988,20 +982,18 @@ namespace ExcelMerger.Tests
                     using (var form = new PdfReviewForm(null))
                     {
                         form.Show();
-                        Internal<RoundedButton>(form, "_sideModeButton").PerformClick();
+                        form.SideModeButton.PerformClick();
                         Application.DoEvents();
-                        PdfReviewPageView left = Internal<PdfReviewPageView>(form, "_leftSource");
-                        PdfReviewPageView right = Internal<PdfReviewPageView>(form, "_rightSource");
-                        PdfReviewPageView unified = Internal<PdfReviewPageView>(form,
-                            "_unifiedSource");
-                        PdfReviewRenderSession session = Internal<PdfReviewRenderSession>(form,
-                            "_renderSession");
+                        PdfReviewPageView left = form.LeftSourceView;
+                        PdfReviewPageView right = form.RightSourceView;
+                        PdfReviewPageView unified = form.UnifiedSourceView;
+                        PdfReviewRenderSession session = form.RenderSession;
                         AssertTrue(ReferenceEquals(session, left.RenderSession) &&
                                    ReferenceEquals(session, right.RenderSession) &&
                                    ReferenceEquals(session, unified.RenderSession),
                             "все панели окна рендерят через один рендерер");
                         InvokeReviewApplyResult(form, result);
-                        ListBox rows = Internal<ListBox>(form, "_pairs");
+                        ListBox rows = form.PairsList;
                         for (int row = 0; row < 3; row++)
                         {
                             rows.SelectedIndex = row;
@@ -1024,7 +1016,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("iwo_f2_idle_"))
             {
                 string pdf = dir.File("doc.pdf");
-                WriteReviewPdf(pdf, new[] { "page one", "page two" });
+                WriteTextPdf(pdf, new[] { "page one", "page two" });
                 AuditWithView(delegate(PdfReviewPageView view)
                 {
                     // Повторное использование — на сессии с простоем дольше теста: между
@@ -1090,7 +1082,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("iwo_f2_retry_"))
             {
                 string pdf = dir.File("doc.pdf");
-                WriteReviewPdf(pdf, new[] { "page one" });
+                WriteTextPdf(pdf, new[] { "page one" });
                 AuditWithView(delegate(PdfReviewPageView view)
                 {
                     var missing = new PdfPageRef { SourcePath = dir.File("missing.pdf"), PageIndex = 0 };
@@ -1170,7 +1162,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("iwo_f2_toolarge_"))
             {
                 string pdf = dir.File("doc.pdf");
-                WriteReviewPdf(pdf, new[] { "page one" });
+                WriteTextPdf(pdf, new[] { "page one" });
                 AuditWithView(delegate(PdfReviewPageView view)
                 {
                     view.RenderSession.ShowBudgetBytes = 1L << 20;
@@ -1181,7 +1173,7 @@ namespace ExcelMerger.Tests
                         return AuditViewSettled(view, PdfReviewPageViewState.TooLargeToShow);
                     }), "файл больше предела показа — отдельное состояние");
                     AssertEq(Loc.T("review.source.tooLarge"),
-                        Internal<Label>(view, "_message").Text,
+                        view.MessageLabel.Text,
                         "пользователь видит «слишком большой», а не «недоступно»");
                     AssertTrue(view.IsShowing(page, 9L),
                         "детерминированный отказ не перерендеривается на каждый клик");
@@ -1473,8 +1465,8 @@ namespace ExcelMerger.Tests
             {
                 string left = dir.File("left.pdf");
                 string right = dir.File("right.pdf");
-                WriteReviewPdf(left, new[] { "Alpha one", "Beta two", "Gamma three" });
-                WriteReviewPdf(right, new[] { "Alpha one", "Beta changed", "Gamma three" });
+                WriteTextPdf(left, new[] { "Alpha one", "Beta two", "Gamma three" });
+                WriteTextPdf(right, new[] { "Alpha one", "Beta changed", "Gamma three" });
                 var percents = new List<int>();
                 PdfReviewService.Compare(left, right, delegate(int done, int total)
                 {
@@ -1513,7 +1505,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("iwo_f2_load_"))
             {
                 string text = dir.File("text.pdf");
-                WriteReviewPdf(text, new[] { "Visible text one", "Visible text two" });
+                WriteTextPdf(text, new[] { "Visible text one", "Visible text two" });
                 PdfReviewDocument loaded = PdfReviewService.Load(text, null, null,
                     PdfReviewLimits.Default());
                 AssertEq(2, loaded.Pages.Count, "born-digital PDF загружен целиком");
@@ -1536,7 +1528,7 @@ namespace ExcelMerger.Tests
                 var fewPages = PdfReviewLimits.Default();
                 fewPages.MaxPages = 1;
                 string other = dir.File("other.pdf");
-                WriteReviewPdf(other, new[] { "Another one", "Another two" });
+                WriteTextPdf(other, new[] { "Another one", "Another two" });
                 PdfReviewException tooMany = AssertThrowsExactly<PdfReviewException>(
                     "слишком много страниц", delegate
                     {
@@ -1622,7 +1614,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("iwo_f2_drag_"))
             {
                 string pdf = dir.File("drop.pdf");
-                WriteReviewPdf(pdf, new[] { "Dropped" });
+                WriteTextPdf(pdf, new[] { "Dropped" });
                 InIsolatedSettings("iwo_f2_drag_settings_", delegate
                 {
                     using (var form = new PdfReviewForm(null))
@@ -1663,7 +1655,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("iwo_f2_dragwork_"))
             {
                 string pdf = dir.File("drop.pdf");
-                WriteReviewPdf(pdf, new[] { "Dropped" });
+                WriteTextPdf(pdf, new[] { "Dropped" });
                 InIsolatedSettings("iwo_f2_dragwork_settings_", delegate
                 {
                     using (var form = new PdfReviewForm(null))

@@ -18,9 +18,11 @@ namespace ExcelMerger
     {
         private static readonly object Sync = new object();
         private static bool _registered;
-        // Кэшируем Assembly.Load(byte[]) сами: CLR не дедуплицирует загрузку из байтов.
-        private static readonly Dictionary<string, Assembly> _loaded =
-            new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Cache Resources = new Cache(delegate(string name)
+        {
+            // Ресурс называется «<простое имя>.dll»; нет такого — сборка не наша.
+            return typeof(EmbeddedAssemblies).Assembly.GetManifestResourceStream(name + ".dll");
+        });
 
         public static void Ensure()
         {
@@ -35,39 +37,64 @@ namespace ExcelMerger
 
         private static Assembly OnResolve(object sender, ResolveEventArgs args)
         {
-            string name = new AssemblyName(args.Name).Name;
-            Assembly cached;
-            lock (Sync)
-                if (_loaded.TryGetValue(name, out cached))
-                    return cached;
+            return Resources.Resolve(new AssemblyName(args.Name).Name);
+        }
 
-            // Ресурс называется «<простое имя>.dll»; нет такого — сборка не наша.
-            byte[] bytes;
-            using (Stream stream = typeof(EmbeddedAssemblies).Assembly.GetManifestResourceStream(name + ".dll"))
+        /// <summary>
+        /// Сборки по простому имени из источника байтов; каждая загружается один раз. Отделён от
+        /// подписки на AssemblyResolve, чтобы правила кэша и гонки проверялись тестом на своём
+        /// источнике, не трогая загрузчик процесса.
+        /// </summary>
+        internal sealed class Cache
+        {
+            private readonly Func<string, Stream> _open;
+            private readonly object _sync = new object();
+            // Кэшируем Assembly.Load(byte[]) сами: CLR не дедуплицирует загрузку из байтов.
+            private readonly Dictionary<string, Assembly> _loaded =
+                new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+
+            /// <summary>open — поток байтов сборки по простому имени; null — сборка не наша.</summary>
+            internal Cache(Func<string, Stream> open)
             {
-                if (stream == null)
-                    return null;
-                bytes = ReadAll(stream);
+                if (open == null)
+                    throw new ArgumentNullException("open");
+                _open = open;
             }
 
-            // Assembly.Load зовём БЕЗ своего лока: обработчик AssemblyResolve выполняется
-            // внутри загрузчика CLR, и удерживать поверх него собственную блокировку — это
-            // инверсия блокировок (два воркера, впервые резолвящие РАЗНЫЕ вшитые сборки —
-            // PdfSharp в одном окне и PdfPig в другом, — могли встать намертво).
-            Assembly loaded = Assembly.Load(bytes);
-            lock (Sync)
+            internal Assembly Resolve(string name)
             {
-                // Гонку выиграл другой поток — отдаём ЕГО сборку: два Assembly.Load одних и тех
-                // же байтов дают РАЗНЫЕ типы, и вернуть разным вызывающим разные сборки значит
-                // получить InvalidCastException между ними. Лишняя копия останется без ссылок.
-                if (_loaded.TryGetValue(name, out cached))
-                    return cached;
-                _loaded[name] = loaded;
-                return loaded;
+                Assembly cached;
+                lock (_sync)
+                    if (_loaded.TryGetValue(name, out cached))
+                        return cached;
+
+                byte[] bytes;
+                using (Stream stream = _open(name))
+                {
+                    if (stream == null)
+                        return null;
+                    bytes = ReadAll(stream);
+                }
+
+                // Assembly.Load зовём БЕЗ своего лока: обработчик AssemblyResolve выполняется
+                // внутри загрузчика CLR, и удерживать поверх него собственную блокировку — это
+                // инверсия блокировок (два воркера, впервые резолвящие РАЗНЫЕ вшитые сборки —
+                // PdfSharp в одном окне и PdfPig в другом, — могли встать намертво).
+                Assembly loaded = Assembly.Load(bytes);
+                lock (_sync)
+                {
+                    // Гонку выиграл другой поток — отдаём ЕГО сборку: два Assembly.Load одних и тех
+                    // же байтов дают РАЗНЫЕ типы, и вернуть разным вызывающим разные сборки значит
+                    // получить InvalidCastException между ними. Лишняя копия останется без ссылок.
+                    if (_loaded.TryGetValue(name, out cached))
+                        return cached;
+                    _loaded[name] = loaded;
+                    return loaded;
+                }
             }
         }
 
-        private static byte[] ReadAll(Stream stream)
+        internal static byte[] ReadAll(Stream stream)
         {
             var bytes = new byte[stream.Length];
             int done = 0;

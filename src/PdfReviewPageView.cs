@@ -210,6 +210,12 @@ namespace ExcelMerger
         internal PdfPageRef ShownPage { get { return _page; } }   // только UI-поток
         internal bool RenderWorkerActive { get { lock (_renderGate) return _renderWorker; } }
         internal int ShowGeneration { get { return _generation; } } // только UI-поток
+        internal PdfReviewPage ShownReviewPage { get { return _reviewPage; } } // только UI-поток
+        internal long TargetContentRevision { get { return _targetContentRevision; } } // только UI-поток
+        internal Panel ViewportPanel { get { return _viewport; } }
+        internal PdfReviewPageSurface SurfaceControl { get { return _picture; } }
+        internal Label MessageLabel { get { return _message; } }
+        internal Label StatusLabel { get { return _status; } }
         internal Point ScrollOffset
         {
             get { return new Point(-_viewport.AutoScrollPosition.X, -_viewport.AutoScrollPosition.Y); }

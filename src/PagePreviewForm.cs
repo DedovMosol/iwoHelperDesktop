@@ -37,6 +37,8 @@ namespace ExcelMerger
         private BudgetedBitmap _inFlight; // рендер отправлен в UI-поток, но ещё не применён (см. Post)
         private int _appliedRotation;   // поворот, УЖЕ впечённый в _image (в градусах по часовой)
         private Thread _worker;
+        internal Thread RenderThread { get { return _worker; } } // для тестов (TS-11)
+        internal Panel ViewportPanel { get { return _viewport; } } // для тестов (TS-11), только UI-поток
         private volatile bool _closed;  // окно закрыто: поздний рендер не применяем
 
         // Масштаб. Пока пользователь не трогал лупу, страница подгоняется под окно и следует

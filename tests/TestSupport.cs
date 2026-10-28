@@ -62,6 +62,35 @@ namespace ExcelMerger.Tests
             return null; // недостижимо: SkipMissing бросает
         }
 
+        // ---------- Построители PDF (TS-13) ----------
+
+        /// <summary>Born-digital PDF: на каждой странице одна строка текста (Times New Roman 14).</summary>
+        private static void WriteTextPdf(string path, params string[] pageTexts)
+        {
+            using (var doc = new PdfSharp.Pdf.PdfDocument())
+            {
+                var font = new PdfSharp.Drawing.XFont("Times New Roman", 14);
+                foreach (string text in pageTexts)
+                {
+                    PdfSharp.Pdf.PdfPage page = doc.AddPage();
+                    using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
+                        g.DrawString(text, font, PdfSharp.Drawing.XBrushes.Black, new PdfSharp.Drawing.XPoint(50, 100));
+                }
+                doc.Save(path);
+            }
+        }
+
+        /// <summary>PDF из заданного числа пустых страниц по точному пути.</summary>
+        private static void MakeEmptyPagesPdf(string path, int pages)
+        {
+            using (var doc = new PdfSharp.Pdf.PdfDocument())
+            {
+                for (int i = 0; i < pages; i++)
+                    doc.AddPage();
+                doc.Save(path);
+            }
+        }
+
         // ---------- Доступ к внутреннему состоянию (TS-11, TS-13) ----------
         // Одна реализация вместо четырёх копий (ReviewPrivateField, AuditDField, SetField, AuditDCall).
         // Поле ищется по всей цепочке базовых типов; нет поля — понятная ошибка с именем типа:
@@ -78,12 +107,6 @@ namespace ExcelMerger.Tests
                     return field;
             }
             throw new Exception("нет поля " + name + " у " + target.GetType().Name + " — поле переименовано или удалено");
-        }
-
-        /// <summary>Значение внутреннего поля объекта (поиск по базовым типам).</summary>
-        private static T Internal<T>(object target, string name)
-        {
-            return (T)InternalFieldInfo(target, name).GetValue(target);
         }
 
         /// <summary>Записать внутреннее поле объекта (поиск по базовым типам).</summary>

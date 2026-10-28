@@ -40,12 +40,43 @@ namespace ExcelMerger
         private int _leftRowIndex = -1, _rightRowIndex = -1;
         private int _pathTop; // ордината ряда выбора файлов: пересчитывается в OnResize
         private string _leftFile, _rightFile;
-        // Наблюдаемое состояние для тестов (TS-11), только UI-поток: строки, показанные слева и
-        // справа, и файлы сравнения — вместо чтения приватных полей по имени.
+        // Наблюдаемое состояние и элементы окна для тестов (TS-11), только UI-поток: вместо чтения
+        // приватных полей по имени — переименование поля ломает сборку тестов, а не прогон.
         internal int LeftRowIndex { get { return _leftRowIndex; } }
         internal int RightRowIndex { get { return _rightRowIndex; } }
         internal string LeftFile { get { return _leftFile; } }
         internal string RightFile { get { return _rightFile; } }
+        internal TextBox LeftPathBox { get { return _leftPath; } }
+        internal TextBox RightPathBox { get { return _rightPath; } }
+        internal TextBox LeftPageBox { get { return _leftPageInput; } }
+        internal TextBox RightPageBox { get { return _rightPageInput; } }
+        internal Label LeftLegendLabel { get { return _leftLegend; } }
+        internal Label RightLegendLabel { get { return _rightLegend; } }
+        internal Button PickRightButton { get { return _pickRight; } }
+        internal Button SwapButton { get { return _swap; } }
+        internal Button CompareButton { get { return _compare; } }
+        internal SplitContainer BodySplit { get { return _body; } }
+        internal Panel UnifiedHost { get { return _unifiedHost; } }
+        internal RoundedButton SideModeButton { get { return _sideModeButton; } }
+        internal PdfReviewViewMode CurrentViewMode { get { return _viewMode; } }
+        internal ListBox PairsList { get { return _pairs; } }
+        internal PdfReviewPageView LeftSourceView { get { return _leftSource; } }
+        internal PdfReviewPageView RightSourceView { get { return _rightSource; } }
+        internal Label SummaryLabel { get { return _summary; } }
+        internal PdfReviewResult ReviewResult { get { return _result; } }
+        internal bool RightSourceChecking { get { return _rightSourceChecking; } }
+        internal PdfReviewSourceError LeftSourceError { get { return _leftSourceError; } }
+        internal bool SourceCallbacksStopped { get { return _sourceCallbacksStopped; } }
+        internal int NavigationSide { get { return _navigationSide; } }
+        internal PdfReviewPagePosition NavigationPosition { get { return _navigationPosition; } }
+        internal RoundedButton UnifiedModeButton { get { return _unifiedModeButton; } }
+        internal PdfReviewPageView UnifiedSourceView { get { return _unifiedSource; } }
+        internal Panel UnifiedLegendPanel { get { return _unifiedLegend; } }
+        internal SplitContainer SourceSplit { get { return _sourceSplit; } }
+        internal Label LeftPageRangeLabel { get { return _leftPageRange; } }
+        internal Label RightPageRangeLabel { get { return _rightPageRange; } }
+        internal int LeftSourceGeneration { get { return _leftSourceGeneration; } }
+        internal PdfReviewRenderSession RenderSession { get { return _renderSession; } }
         private bool _pathTextSync;
         private bool _pageTextSync, _leftPageDirty, _rightPageDirty;
         private int _leftSourceGeneration, _rightSourceGeneration;

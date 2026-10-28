@@ -34,6 +34,11 @@ namespace ExcelMerger
         private readonly AccentCheckBox _dontShow;
         private readonly RoundedButton _close;
         private readonly ToolTip _zoomTip = new ToolTip();
+        // Элементы окна для тестов (TS-11), только UI-поток.
+        internal Panel ScrollPanel { get { return _scroll; } }
+        internal Panel SupportPanel { get { return _supportPanel; } }
+        internal LinkLabel SupportLink { get { return _supportLink; } }
+        internal AccentCheckBox DontShowBox { get { return _dontShow; } }
         private bool _filterRegistered;
         private bool _persisted;
         private bool _positioned;

@@ -121,6 +121,8 @@ namespace ExcelMerger
         private const int LVM_SETICONSPACING = 0x1035; // шаг ячеек сетки (cx, cy) в пикселях
 
         private readonly ScrollList _list = new ScrollList();
+        internal ListView ListControl { get { return _list; } } // для тестов (TS-11), только UI-поток
+        internal int CachedTileCount { get { return _tiles.Count; } } // для тестов (TS-11), только UI-поток: кэш правится на нём же
         // ПУСТОЙ ImageList задаёт нативной ListView размер «иконной зоны» (якорь отрисовки
         // и хитбокс кликов): min(плитка, 256) — выше 256 WinForms не пускает. Плитки крупнее
         // рисуются поверх, а клики по их внешнему кольцу компенсируются в MouseUp

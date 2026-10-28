@@ -100,21 +100,6 @@ namespace ExcelMerger.Tests
 
         // ---------- PDF → PowerPoint ----------
 
-        /// <summary>Born-digital PDF: на каждой странице одна строка текста.</summary>
-        private static void Ts15TextPdf(string path, params string[] pageTexts)
-        {
-            using (var doc = new PdfSharp.Pdf.PdfDocument())
-            {
-                var font = new PdfSharp.Drawing.XFont("Arial", 16);
-                foreach (string text in pageTexts)
-                {
-                    PdfSharp.Pdf.PdfPage page = doc.AddPage();
-                    using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
-                        g.DrawString(text, font, PdfSharp.Drawing.XBrushes.Black, new PdfSharp.Drawing.XPoint(72, 120));
-                }
-                doc.Save(path);
-            }
-        }
 
         [Test("Аудит TS-15: PDF → PowerPoint — слайд на страницу, текст источника, валидный пакет, порядок из набора")]
         private static void AuditTs15PdfToPptx()
@@ -122,7 +107,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("iwo_ts15_pptx_"))
             {
                 string pdf = dir.File("источник.pdf");
-                Ts15TextPdf(pdf, "Alpha first page", "Beta second page");
+                WriteTextPdf(pdf, "Alpha first page", "Beta second page");
                 string pptx = dir.File("итог.pptx");
                 // Порядок задан набором, а не файлом: вторая страница — первым слайдом.
                 var order = new List<PdfPageRef>
@@ -146,7 +131,7 @@ namespace ExcelMerger.Tests
             using (var dir = new TempDir("iwo_ts15_pptxcancel_"))
             {
                 string pdf = dir.File("источник.pdf");
-                Ts15TextPdf(pdf, "One", "Two", "Three");
+                WriteTextPdf(pdf, "One", "Two", "Three");
                 string pptx = dir.File("итог.pptx");
                 var order = new List<PdfPageRef>();
                 for (int i = 0; i < 3; i++)
@@ -181,6 +166,171 @@ namespace ExcelMerger.Tests
                 }
             }
             return texts;
+        }
+
+        // ---------- EmbeddedAssemblies ----------
+
+        /// <summary>Байты настоящей сборки для загрузки из памяти (небольшая зависимость из папки тестов).</summary>
+        private static byte[] Ts15AssemblyBytes()
+        {
+            // PdfSharp — та самая вшиваемая сборка; копия в папке тестов, грузится из байтов отдельно.
+            return File.ReadAllBytes(typeof(PdfSharp.Pdf.PdfDocument).Assembly.Location);
+        }
+
+        [Test("Аудит TS-15: EmbeddedAssemblies — своя сборка грузится один раз, чужое имя — null, источник открыт один раз")]
+        private static void AuditTs15EmbeddedCache()
+        {
+            byte[] bytes = Ts15AssemblyBytes();
+            int opened = 0;
+            var cache = new EmbeddedAssemblies.Cache(delegate(string name)
+            {
+                if (name != "Зонд")
+                    return null;
+                Interlocked.Increment(ref opened);
+                return new MemoryStream(bytes);
+            });
+            System.Reflection.Assembly first = cache.Resolve("Зонд");
+            AssertTrue(first != null, "сборка загружена из байтов");
+            AssertTrue(ReferenceEquals(first, cache.Resolve("ЗОНД")), "повтор (имя без учёта регистра) — тот же экземпляр");
+            AssertEq(1, opened, "ресурс прочитан один раз");
+            AssertTrue(cache.Resolve("Чужая") == null, "сборка не наша — null, загрузчик ищет дальше");
+        }
+
+        [Test("Аудит TS-15: EmbeddedAssemblies — первые одновременные запросы получают ОДИН экземпляр сборки")]
+        private static void AuditTs15EmbeddedRace()
+        {
+            byte[] bytes = Ts15AssemblyBytes();
+            var gate = new ManualResetEvent(false);
+            var cache = new EmbeddedAssemblies.Cache(delegate(string name)
+            {
+                gate.WaitOne(); // все потоки дошли до чтения — гонка гарантирована
+                return new MemoryStream(bytes);
+            });
+            const int threads = 8;
+            var got = new System.Reflection.Assembly[threads];
+            var workers = new Thread[threads];
+            for (int i = 0; i < threads; i++)
+            {
+                int index = i;
+                workers[i] = new Thread(delegate() { got[index] = cache.Resolve("Зонд"); });
+                workers[i].Start();
+            }
+            Thread.Sleep(100);
+            gate.Set();
+            foreach (Thread t in workers)
+                AssertTrue(t.Join(30000), "поток резолва завершился");
+            gate.Close();
+            for (int i = 1; i < threads; i++)
+                AssertTrue(ReferenceEquals(got[0], got[i]),
+                    "две загрузки одних байтов — разные типы и InvalidCastException; всем — один экземпляр");
+        }
+
+        /// <summary>Поток, который заявляет больше байтов, чем отдаёт, — как обрезанный ресурс.</summary>
+        private sealed class Ts15ShortStream : MemoryStream
+        {
+            public Ts15ShortStream() : base(new byte[10]) { }
+            public override long Length { get { return 100; } }
+        }
+
+        [Test("Аудит TS-15: EmbeddedAssemblies — недочитанный ресурс — понятная ошибка, а не Assembly.Load обрезка")]
+        private static void AuditTs15EmbeddedTruncated()
+        {
+            var cache = new EmbeddedAssemblies.Cache(delegate { return new Ts15ShortStream(); });
+            EndOfStreamException error = AssertThrowsExactly<EndOfStreamException>("обрезанный ресурс",
+                delegate { cache.Resolve("Зонд"); });
+            AssertTrue(error.Message.Contains("10 из 100"), "сколько прочитано из скольких: " + error.Message);
+        }
+
+        // ---------- FolderPicker ----------
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "FindWindowW", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern IntPtr Ts15FindWindow(string className, string title);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "PostMessageW")]
+        private static extern bool Ts15PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        /// <summary>
+        /// Показать FolderPicker на STA-потоке и ответить на настоящий диалог: confirm — кнопка
+        /// выбора папки (IDOK), иначе закрытие окна (отмена). Окно ищется по уникальному заголовку.
+        /// </summary>
+        private static string Ts15PickFolder(string initialDir, bool confirm, out bool dialogFound)
+        {
+            string title = "iwo-test " + Guid.NewGuid().ToString("N");
+            string result = null;
+            bool found = false;
+            Exception error = null;
+            var ui = new Thread(delegate()
+            {
+                try
+                {
+                    using (var owner = new System.Windows.Forms.Form { ShowInTaskbar = false })
+                    {
+                        owner.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                        owner.Location = new System.Drawing.Point(-32000, -32000);
+                        owner.Show();
+                        var answer = new Thread(delegate()
+                        {
+                            try
+                            {
+                                for (int i = 0; i < 300; i++)
+                                {
+                                    IntPtr dialog = Ts15FindWindow("#32770", title);
+                                    if (dialog != IntPtr.Zero)
+                                    {
+                                        found = true;
+                                        Thread.Sleep(300); // диалог дорисовался и принял папку
+                                        if (confirm)
+                                            Ts15PostMessage(dialog, 0x0111, (IntPtr)1, IntPtr.Zero); // WM_COMMAND, IDOK
+                                        else
+                                            Ts15PostMessage(dialog, 0x0010, IntPtr.Zero, IntPtr.Zero); // WM_CLOSE
+                                        return;
+                                    }
+                                    Thread.Sleep(100);
+                                }
+                            }
+                            catch (Exception ex) { error = ex; } // упавший фоновый поток уронил бы весь прогон
+                        });
+                        answer.IsBackground = true;
+                        answer.Start();
+                        result = FolderPicker.Show(owner, title, initialDir);
+                        answer.Join(5000);
+                    }
+                }
+                catch (Exception ex) { error = ex; }
+            });
+            ui.SetApartmentState(ApartmentState.STA);
+            ui.IsBackground = true;
+            ui.Start();
+            if (!ui.Join(60000))
+            {
+                // Диалог не ответил: закрываем его, чтобы поток не остался висеть.
+                IntPtr stuck = Ts15FindWindow("#32770", title);
+                if (stuck != IntPtr.Zero)
+                    Ts15PostMessage(stuck, 0x0010, IntPtr.Zero, IntPtr.Zero);
+                ui.Join(10000);
+                throw new Exception("диалог выбора папки не закрылся за 60 с");
+            }
+            if (error != null)
+                throw new Exception(error.GetType().Name + ": " + error.Message);
+            dialogFound = found;
+            return result;
+        }
+
+        [Test("Аудит TS-15: FolderPicker — настоящий диалог: выбор возвращает папку, закрытие — null и без второго окна")]
+        private static void AuditTs15FolderPicker()
+        {
+            using (var dir = new TempDir("iwo_ts15_folder_"))
+            {
+                bool found;
+                string picked = Ts15PickFolder(dir.Path, true, out found);
+                if (!found)
+                    SkipMissing("desktop", "диалог выбора папки не появился — нет интерактивного рабочего стола");
+                AssertEq(Path.GetFullPath(dir.Path).TrimEnd('\\'), (picked ?? "").TrimEnd('\\'), "выбрана начальная папка");
+
+                string cancelled = Ts15PickFolder(dir.Path, false, out found);
+                AssertTrue(found, "диалог появился и во второй раз");
+                AssertTrue(cancelled == null, "закрытие диалога — отмена, а не путь: " + cancelled);
+            }
         }
 
         // ---------- Записка Word ----------

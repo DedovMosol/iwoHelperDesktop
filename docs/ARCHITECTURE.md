@@ -114,7 +114,10 @@ Excel and Word are **optional**: PDF Merge, Split, Compare, More operations and 
 - **One exe.** All managed dependencies (`build/PdfSharp.dll`, `build/pdfpig/*` — 12
   PdfPig assemblies plus net48 polyfills such as `System.Memory`) are embedded as
   resources and resolved by name at runtime by `src/EmbeddedAssemblies.cs`. This also
-  removes the need for binding redirects. Services that touch PdfSharp types call
+  removes the need for binding redirects. Each assembly is loaded once
+  (`EmbeddedAssemblies.Cache`, which takes the byte source as a parameter so tests can
+  check the cache and the first-request race without the process loader). Services that
+  touch PdfSharp types call
   `EmbeddedAssemblies.Ensure()` first behind `[MethodImpl(NoInlining)]` gates, so the JIT
   never sees a library type before the resolver is registered.
 - **Office through `dynamic`** (late binding, `Microsoft.CSharp`): no PIA/interop
@@ -748,8 +751,8 @@ invariants).
 
 The pyramid, bottom-up:
 
-1. **Unit tests** — `tests/UnitTests.cs` and `tests/AuditTests.*.cs` (523 listed with
-   `Run(...)` plus the `[Test]`-attributed audit tests, custom exe runner; tests that need
+1. **Unit tests** — `tests/UnitTests.cs` and `tests/AuditTests.*.cs` (507 listed with
+   `Run(...)` plus 325 `[Test]`-attributed tests, custom exe runner; tests that need
    Office, a printer or Ghostscript skip honestly when it is missing) covering the pure core: layout analysis, table/grid/stamp
    detection, X-Y cut, list markers, naming/escaping/ranges, tag parsing, spacing rules,
    zoom percentage and wheel-step chaining, the number-strip hit-test and double-click
@@ -818,7 +821,7 @@ The pyramid, bottom-up:
    fails if it would be cut with an ellipsis: clipping is silent, and it had already shipped
    in a dialog whose primary button is set larger and bold than the window it lives in. Run by `tests\build_tests.cmd [x86]`, and CI runs both
    architectures because cache sizing branches on `IntPtr.Size`. The runner also requires
-   exactly 523 `Run(...)` registrations (a skip or a filter does not change the count), so
+   exactly 507 `Run(...)` registrations (a skip or a filter does not change the count), so
    adding or deleting a `Run(...)` line must be accompanied by an intentional count update.
 
    What the runner enforces besides pass/fail:
@@ -844,8 +847,12 @@ The pyramid, bottom-up:
    culture so the output must not depend on the machine's culture. `IWO_UPDATE_GOLDEN=1`
    rewrites the reference in the repository and fails the test, so a format change always
    arrives as a reviewed diff. Shared test helpers (modal-dialog answerer, window text,
-   printer, access to internal state) live in `tests/TestSupport.cs`; test seams in the app
-   are `null`-by-default auto-properties named `…ForTests`.
+   printer, internal-state writes and calls, PDF builders `WriteTextPdf`/`MakeEmptyPagesPdf`)
+   live in `tests/TestSupport.cs`, temporary folders are `TempDir`. Tests read app state
+   through typed `internal` read-only properties, not reflection over private fields; test
+   seams in the app are `null`-by-default auto-properties named `…ForTests`. A long live
+   scenario is split by behaviour into `[Test]` parts over a shared fixture (for example
+   `WithWheelRoutingForm`), and each part is checked by mutating the production code.
 2. **Self-checks in the exe** — `--selftest` (every window created headless),
    `--pdfcheck` / `--pdftextcheck` / `--thumbcheck` / `--gscheck` (embedded PdfSharp,
    embedded PdfPig extraction, WinRT thumbnail render from memory, Ghostscript

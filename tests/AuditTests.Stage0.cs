@@ -518,7 +518,7 @@ namespace ExcelMerger.Tests
                         if (bridged.Count != 1) failures.Add("нетронутая сетка: переходов " + bridged.Count);
 
                         // Правка сетки: страница удалена.
-                        var order = (PdfPageOrder)Internal<object>(form, "_order");
+                        var order = form.PageOrder;
                         order.RemoveAt(new[] { 1 });
                         asked = false;
                         using (Stage0AnswerNextConfirm(false, delegate { asked = true; }))

@@ -69,14 +69,14 @@ namespace ExcelMerger.Tests
                             failures.Add("пустой лист не вставился");
                             return;
                         }
-                        wrapDir = (string)Internal<object>(form, "_wrapDir");
+                        wrapDir = form.WrapperDirectory;
                         string[] own = Directory.GetFiles(wrapDir);
                         if (own.Length != 1)
                             failures.Add("ожидалась одна своя обёртка, в папке: " + own.Length);
 
                         // Первая страница — пустой лист, за ним настоящий документ: диалог
                         // сохранения обязан предложить папку документа, а не временную.
-                        var order = (PdfPageOrder)Internal<object>(form, "_order");
+                        var order = form.PageOrder;
                         order.AddDocument(doc, 1);
                         string hint = (string)CallInternal(form, "OutputFolderHint", new object[] { null });
                         if (!string.Equals(hint, docs.Path, StringComparison.OrdinalIgnoreCase))
@@ -191,8 +191,8 @@ namespace ExcelMerger.Tests
                     host.Show();
                     var calls = new List<string>();
                     a.ReorderRequested += delegate(int from, int to) { calls.Add(from + "→" + to); };
-                    var listA = (ListView)Internal<object>(a, "_list");
-                    var listB = (ListView)Internal<object>(b, "_list");
+                    var listA = a.ListControl;
+                    var listB = b.ListControl;
 
                     AuditDDropItem(a, listA, listB.Items[2], 1);
                     if (calls.Count != 0)
@@ -737,7 +737,7 @@ namespace ExcelMerger.Tests
                         // Курсор — над областью просмотра: иначе фильтр отказался бы и без правки.
                         Point cursor = Cursor.Position;
                         form.Location = new Point(cursor.X - form.Width / 2, cursor.Y - form.Height / 2);
-                        var viewport = (Control)Internal<object>(form, "_viewport");
+                        var viewport = form.ViewportPanel;
                         Func<bool> cursorOver = delegate
                         {
                             return viewport.RectangleToScreen(viewport.ClientRectangle).Contains(Cursor.Position);
@@ -794,7 +794,7 @@ namespace ExcelMerger.Tests
         /// <summary>Дождаться фонового рендера окна (несуществующий файл — быстрый отказ).</summary>
         private static void AuditDJoinPreviewWorker(PagePreviewForm form)
         {
-            var worker = Internal<object>(form, "_worker") as System.Threading.Thread;
+            var worker = form.RenderThread;
             if (worker != null && !worker.Join(15000))
                 throw new Exception("фоновый рендер предпросмотра не завершился");
         }
@@ -904,7 +904,7 @@ namespace ExcelMerger.Tests
                 using (var form = new PdfMergeForm())
                 {
                     form.Show();
-                    var order = (PdfPageOrder)Internal<object>(form, "_order");
+                    var order = form.PageOrder;
                     order.AddDocument(@"C:\docs\нет.pdf", 4);
                     CallInternal(form, "RefreshGrid");
                     order.Checkpoint();
@@ -974,8 +974,7 @@ namespace ExcelMerger.Tests
                     host.Controls.Add(grid);
                     grid.SetPages(AuditDPristine(pdf, 1));
                     host.Show();
-                    var tiles = (System.Collections.ICollection)Internal<object>(grid, "_tiles");
-                    if (!WaitFor(delegate { return tiles.Count > 0; }, 15000))
+                    if (!WaitFor(delegate { return grid.CachedTileCount > 0; }, 15000))
                     {
                         skip = "миниатюра не отрисовалась: системный рендер PDF (WinRT) недоступен";
                         return;
@@ -994,15 +993,15 @@ namespace ExcelMerger.Tests
                         }
                         if (PdfMemoryBudget.TryAcquire(1, out refused)) // отказ: кто-то ждёт пополнения
                             refused.Dispose();
-                        ((Control)Internal<object>(grid, "_list")).Invalidate();
+                        grid.ListControl.Invalidate();
                         Pump(host, 300);
-                        if (tiles.Count != 0)
+                        if (grid.CachedTileCount != 0)
                         {
                             failures.Add("плитка составилась без бюджета — проверка не состоялась");
                             return;
                         }
                         big.Dispose(); // память вернули — сетка обязана перерисоваться сама
-                        if (!WaitFor(delegate { return tiles.Count > 0; }, 3000))
+                        if (!WaitFor(delegate { return grid.CachedTileCount > 0; }, 3000))
                             failures.Add("после пополнения бюджета плитка осталась заглушкой");
                     }
                     finally { if (big != null) big.Dispose(); }

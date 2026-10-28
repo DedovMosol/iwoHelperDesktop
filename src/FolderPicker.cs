@@ -11,56 +11,82 @@ namespace ExcelMerger
     /// </summary>
     public static class FolderPicker
     {
+        /// <summary>Выбранная папка или null (отмена).</summary>
         public static string Show(IWin32Window owner, string title, string initialDir)
         {
-            try
+            string path;
+            if (TryShowVistaDialog(owner, title, initialDir, out path))
+                return path;
+            using (var fbd = new FolderBrowserDialog())
             {
-                return ShowVistaDialog(owner, title, initialDir);
-            }
-            catch
-            {
-                using (var fbd = new FolderBrowserDialog())
-                {
-                    fbd.Description = title;
-                    if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
-                        fbd.SelectedPath = initialDir;
-                    return fbd.ShowDialog(owner) == DialogResult.OK ? fbd.SelectedPath : null;
-                }
+                fbd.Description = title;
+                if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
+                    fbd.SelectedPath = initialDir;
+                return fbd.ShowDialog(owner) == DialogResult.OK ? fbd.SelectedPath : null;
             }
         }
 
-        private static string ShowVistaDialog(IWin32Window owner, string title, string initialDir)
+        private const int HResultCancelled = unchecked((int)0x800704C7); // HRESULT_FROM_WIN32(ERROR_CANCELLED)
+
+        /// <summary>
+        /// Современный диалог. false — показать его не удалось (нет COM-класса, сбой до или при
+        /// показе): тогда, и только тогда, — запасной диалог. Раньше запасной открывался после
+        /// ЛЮБОГО сбоя, в том числе когда человек уже выбрал папку, а путь не прочитался, —
+        /// второе окно выбора подряд. Человек ответил — true: путь или null (отмена, или выбран
+        /// не файловый путь).
+        /// </summary>
+        private static bool TryShowVistaDialog(IWin32Window owner, string title, string initialDir, out string path)
         {
-            var dialog = (IFileOpenDialog)new FileOpenDialogRCW();
+            path = null;
+            IFileOpenDialog dialog = null;
             IShellItem folder = null;
             IShellItem item = null;
+            IntPtr pszPath = IntPtr.Zero;
             try
             {
-                uint options;
-                dialog.GetOptions(out options);
-                dialog.SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-                dialog.SetTitle(title);
-
-                if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
+                int hr;
+                try
                 {
-                    Guid shellItemGuid = typeof(IShellItem).GUID;
-                    if (SHCreateItemFromParsingName(initialDir, IntPtr.Zero, ref shellItemGuid, out folder) == 0)
-                        dialog.SetFolder(folder);
+                    dialog = (IFileOpenDialog)new FileOpenDialogRCW();
+                    uint options;
+                    dialog.GetOptions(out options);
+                    dialog.SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+                    dialog.SetTitle(title);
+
+                    if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
+                    {
+                        Guid shellItemGuid = typeof(IShellItem).GUID;
+                        if (SHCreateItemFromParsingName(initialDir, IntPtr.Zero, ref shellItemGuid, out folder) == 0)
+                            dialog.SetFolder(folder);
+                    }
+
+                    hr = dialog.Show(owner != null ? owner.Handle : IntPtr.Zero);
                 }
-
-                int hr = dialog.Show(owner != null ? owner.Handle : IntPtr.Zero);
+                catch
+                {
+                    return false; // современный диалог недоступен
+                }
+                if (hr == HResultCancelled)
+                    return true; // человек отказался
                 if (hr != 0)
-                    return null; // отмена
+                    return false; // показать не удалось
 
-                dialog.GetResult(out item);
-                IntPtr pszPath;
-                item.GetDisplayName(SIGDN_FILESYSPATH, out pszPath);
-                string path = Marshal.PtrToStringUni(pszPath);
-                Marshal.FreeCoTaskMem(pszPath);
-                return path;
+                try
+                {
+                    dialog.GetResult(out item);
+                    item.GetDisplayName(SIGDN_FILESYSPATH, out pszPath);
+                    path = Marshal.PtrToStringUni(pszPath);
+                }
+                catch
+                {
+                    path = null; // выбор сделан, но пути нет — второе окно не открываем
+                }
+                return true;
             }
             finally
             {
+                if (pszPath != IntPtr.Zero)
+                    Marshal.FreeCoTaskMem(pszPath);
                 // Диалог — одноразовый COM-объект: освобождаем детерминированно, не дожидаясь GC.
                 ComSafe.Release(item);
                 ComSafe.Release(folder);

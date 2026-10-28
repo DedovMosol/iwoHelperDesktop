@@ -57,6 +57,8 @@ namespace ExcelMerger
         // ---------- пустой лист и папка обёрток ----------
 
         private string _wrapDir;
+        internal string WrapperDirectory { get { return _wrapDir; } } // для тестов (TS-11), только UI-поток
+        internal PdfPageOrder PageOrder { get { return _order; } } // для тестов (TS-11), только UI-поток
         private int _wrapCounter;                                  // имена обёрток не должны совпадать
         private const string WrapperPrefix = "iwo_wrap_";
         // Имена файлов-обёрток: пустой лист и картинка (префикс + номер, см. NextWrapperPath) и
