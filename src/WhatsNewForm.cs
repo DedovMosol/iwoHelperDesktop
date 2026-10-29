@@ -310,12 +310,12 @@ namespace ExcelMerger
             panel.Controls.Add(_supportNote);
             _supportAccountLabel = Ui.Label(panel, Loc.T("about.account"), 14, 56,
                 Font, Theme.TextMuted);
-            _supportAccount = Selectable(AboutForm.DonationAccount);
+            _supportAccount = Ui.SelectableValue(AboutForm.DonationAccount, panel.BackColor, TextFont());
             _supportAccount.SetBounds(112, 54, DefaultWidth - 2 * Pad - 128, 22);
             panel.Controls.Add(_supportAccount);
             _supportBankLabel = Ui.Label(panel, Loc.T("about.bank"), 14, 88,
                 Font, Theme.TextMuted);
-            _supportBank = Selectable(AboutForm.DonationBank);
+            _supportBank = Ui.SelectableValue(AboutForm.DonationBank, panel.BackColor, TextFont());
             _supportBank.SetBounds(112, 86, DefaultWidth - 2 * Pad - 128, 22);
             panel.Controls.Add(_supportBank);
             return panel;
@@ -420,20 +420,6 @@ namespace ExcelMerger
                     _zoomTip.Dispose();
             }
             base.Dispose(disposing);
-        }
-
-        private TextBox Selectable(string text)
-        {
-            return new TextBox
-            {
-                Text = text,
-                ReadOnly = true,
-                BorderStyle = BorderStyle.None,
-                BackColor = Color.FromArgb(239, 246, 253),
-                ForeColor = Theme.TextPrimary,
-                Font = TextFont(),
-                TabStop = true
-            };
         }
 
         protected override void OnShown(EventArgs e)

@@ -99,6 +99,31 @@ namespace ExcelMerger
             parent.Controls.Add(l);
             return l;
         }
+        /// <summary>
+        /// Заголовок окна под цветной полосой (Настройки, История, Статистика, «О программе»):
+        /// один кегль и цвет на все, а не копия в каждом окне (UI-21).
+        /// </summary>
+        public static Label Title(Control parent, string text, int x, int y)
+        {
+            return Label(parent, text, x, y, Font(14f, FontStyle.Bold), Theme.TitleText);
+        }
+        /// <summary>
+        /// Значение, которое выделяют и копируют (реквизиты): поле только для чтения без рамки,
+        /// на фоне своего блока и достижимое по Tab. Общее для «О программе» и «Что нового».
+        /// </summary>
+        public static TextBox SelectableValue(string text, Color back, Font font)
+        {
+            return new TextBox
+            {
+                Text = text,
+                ReadOnly = true,
+                BorderStyle = BorderStyle.None,
+                BackColor = back,
+                ForeColor = Theme.TextPrimary,
+                Font = font,
+                TabStop = true
+            };
+        }
 
         /// <summary>
         /// Подпись переменной длины (путь, текст ошибки, строка статуса) — на фиксированную

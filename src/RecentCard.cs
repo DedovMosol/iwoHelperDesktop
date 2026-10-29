@@ -17,7 +17,7 @@ namespace ExcelMerger
     /// </summary>
     internal sealed class RecentCard : PushControl
     {
-        private static readonly Color Border = Color.FromArgb(226, 226, 226);
+        private static readonly Color Border = Theme.BorderLight;
         private static readonly Color HoverBack = Color.FromArgb(245, 248, 252);
         private static readonly Color HoverBorder = Color.FromArgb(190, 205, 225);
 

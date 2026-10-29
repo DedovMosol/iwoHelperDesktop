@@ -79,7 +79,7 @@ namespace ExcelMerger
 
             var hdr = new Label();
             hdr.Font = Ui.Font(11f, FontStyle.Bold);
-            hdr.ForeColor = Color.FromArgb(40, 40, 40);
+            hdr.ForeColor = Theme.TitleText;
             hdr.MaximumSize = new Size(textW, 0);
             hdr.AutoSize = true;
             hdr.Text = header ?? "";

@@ -815,6 +815,117 @@ namespace ExcelMerger.Tests
             AssertTrue(offenders.Count == 0, "порядок Tab хаба: " + string.Join(" | ", offenders.ToArray()));
         }
 
+        /// <summary>
+        /// Цвет палитры задаётся один раз — в Theme. Копия числами в другом файле расходится с
+        /// палитрой при первой её правке (UI-21: красный значка PDF, серые рамки, цвет
+        /// заголовков окон в пяти местах). Совпадение по смыслу разное — заведите в Theme имя.
+        /// </summary>
+        [Test("Аудит UI-21: цвета палитры не повторяются числами вне Theme")]
+        private static void AuditNoThemeColorCopies()
+        {
+            string src = SourceDir();
+            AssertTrue(src != null, "каталог src найден");
+            var palette = new Dictionary<int, string>();
+            foreach (System.Reflection.FieldInfo field in typeof(Theme).GetFields(
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                if (field.FieldType != typeof(Color))
+                    continue;
+                var color = (Color)field.GetValue(null);
+                if (color.A == 255 && !palette.ContainsKey(color.ToArgb()))
+                    palette[color.ToArgb()] = field.Name;
+            }
+            AssertTrue(palette.Count > 30, "палитра прочитана (" + palette.Count + " цветов)");
+            var literal = new System.Text.RegularExpressions.Regex(
+                @"Color\.FromArgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)");
+            var offenders = new List<string>();
+            foreach (string file in Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories))
+            {
+                if (Path.GetFileName(file) == "Theme.cs")
+                    continue;
+                string[] lines = File.ReadAllLines(file);
+                for (int i = 0; i < lines.Length; i++)
+                    foreach (System.Text.RegularExpressions.Match m in literal.Matches(lines[i]))
+                    {
+                        int argb = Color.FromArgb(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value),
+                            int.Parse(m.Groups[3].Value)).ToArgb();
+                        string name;
+                        if (palette.TryGetValue(argb, out name))
+                            offenders.Add(Path.GetFileName(file) + ":" + (i + 1) + " = Theme." + name);
+                    }
+            }
+            AssertTrue(offenders.Count == 0, "копии цветов Theme: " + string.Join(", ", offenders.ToArray()));
+            using (var host = new Panel())
+            {
+                Label title = Ui.Title(host, "Заголовок", 0, 0);
+                AssertEq(Theme.TitleText, title.ForeColor, "цвет заголовка окна");
+                AssertTrue(title.Font.Bold && Math.Abs(title.Font.SizeInPoints - 14f) < 0.01f, "кегль заголовка — 14, жирный");
+            }
+        }
+        /// <summary>
+        /// Давность автоочистки выбирают в двух окнах — истории (Настройки) и статистики. Список
+        /// «пункт — дни» один (AutoClearCombo); проверяем его и то, что оба окна им пользуются
+        /// по-настоящему: показывают сохранённое и сохраняют выбранное.
+        /// </summary>
+        [Test("Аудит UI-21: давность автоочистки — один список на Настройки и Статистику")]
+        private static void AuditAutoClearChoicesShared()
+        {
+            using (var combo = new AutoClearCombo())
+            {
+                AssertEq(4, combo.Items.Count, "пунктов");
+                AssertEq(Loc.T("stats.auto.30days"), (string)combo.Items[3], "последний пункт — 30 дней");
+                foreach (int days in new[] { 0, 1, 7, 30 })
+                {
+                    combo.Days = days;
+                    AssertEq(days, combo.Days, "давность " + days + " туда и обратно");
+                }
+                combo.Days = 5;
+                AssertEq(0, combo.SelectedIndex, "неизвестная давность — «выключена»");
+                AssertEq(0, combo.Days, "и читается как 0");
+            }
+            InIsolatedSettings("iwo_ui21_auto_", delegate
+            {
+                AssertTrue(OperationHistory.SetAutoClear(7), "давность истории сохранена");
+                AssertTrue(UsageStats.SetAutoClear(30), "давность статистики сохранена");
+                using (var settings = new SettingsForm())
+                using (var stats = new StatsForm())
+                {
+                    var history = (AutoClearCombo)typeof(SettingsForm).GetField("_historyAuto", AnyInstance).GetValue(settings);
+                    var counters = (AutoClearCombo)typeof(StatsForm).GetField("_cmbAuto", AnyInstance).GetValue(stats);
+                    AssertEq(7, history.Days, "Настройки показывают сохранённую давность истории");
+                    AssertEq(30, counters.Days, "Статистика показывает сохранённую давность счётчиков");
+                    // Дни, не равные номеру пункта: сохранить номер вместо дней — тоже ошибка.
+                    history.Days = 30;
+                    counters.Days = 7;
+                    AssertEq(30, OperationHistory.Load().AutoClearDays, "выбор в Настройках сохранён");
+                    AssertEq(7, UsageStats.Load().AutoClearDays, "выбор в Статистике сохранён");
+                }
+            });
+        }
+        /// <summary>
+        /// Реквизиты в «Что нового» и «О программе» — одно поле (Ui.SelectableValue): только
+        /// для чтения, по Tab, на фоне своего блока. Раньше у каждого окна была своя копия.
+        /// </summary>
+        [Test("Аудит UI-21: поля реквизитов одинаковы в «О программе» и «Что нового»")]
+        private static void AuditDonationFieldsShared()
+        {
+            InIsolatedSettings("iwo_ui21_don_", delegate
+            {
+                using (var about = new AboutForm())
+                using (var news = new WhatsNewForm(WhatsNewCatalog.CurrentVersion))
+                {
+                    foreach (Panel panel in new[] { about.SupportPanel, news.SupportPanel })
+                        foreach (string value in new[] { AboutForm.DonationAccount, AboutForm.DonationBank })
+                        {
+                            TextBox box = panel.Controls.OfType<TextBox>().FirstOrDefault(t => t.Text == value);
+                            string where = panel.FindForm().GetType().Name + " «" + value + "»";
+                            AssertTrue(box != null, where + ": поле есть");
+                            AssertTrue(box.ReadOnly && box.TabStop && box.BorderStyle == BorderStyle.None, where + ": только чтение, по Tab, без рамки");
+                            AssertEq(panel.BackColor, box.BackColor, where + ": фон блока");
+                        }
+                }
+            });
+        }
         /// <summary>Те же проверки целости, что у раскладочных тестов на 100 %.</summary>
         private static void CheckScaledLayout(Form f, string where, List<string> offenders)
         {
@@ -964,6 +1075,51 @@ namespace ExcelMerger.Tests
             AssertTrue(offenders.Count == 0, "масштаб окон: " + string.Join(" | ", offenders.ToArray()));
         }
 
+        /// <summary>Зонд окна заданной клиентской области с изменяемой рамкой.</summary>
+        private sealed class SizeProbe : ScaledForm
+        {
+            internal SizeProbe(Size client)
+            {
+                FormBorderStyle = FormBorderStyle.Sizable;
+                StartPosition = FormStartPosition.Manual;
+                ShowInTaskbar = false;
+                ClientSize = client;
+            }
+        }
+        /// <summary>
+        /// Окно шире предельного размера Windows (MaxWindowTrackSize) WinForms ужимает в Size ещё
+        /// до хэндла, а ClientSize оставляет заданным. FitToScreen считал рамку как Size − ClientSize,
+        /// получал отрицательную и недоужимал окно: на CI (экран 1024) «Что нового» шириной 1193
+        /// открывалось на 1044 px. Здесь предел — настоящего экрана, а рабочая область — 1024×720.
+        /// </summary>
+        [Test("Аудит UI-1: окно шире предельного размера Windows всё равно вписывается в экран")]
+        private static void AuditFitsScreenBeyondMaxTrackSize()
+        {
+            Size max = SystemInformation.MaxWindowTrackSize;
+            var area = new Rectangle(0, 0, 1024, 720);
+            ScaledForm.WorkingAreaForTests = delegate(Rectangle near) { return area; };
+            try
+            {
+                foreach (float scale in new[] { 1f, 1.5f })
+                {
+                    DpiScale.EmulatedScale = scale;
+                    try
+                    {
+                        using (var f = new SizeProbe(new Size(max.Width + 300, 300)))
+                        {
+                            AssertTrue(f.Width <= max.Width && f.ClientSize.Width > max.Width,
+                                "предпосылка: Size ужат до предела Windows, ClientSize — нет");
+                            f.Show();
+                            AssertTrue(f.Width <= area.Width && f.Height <= area.Height,
+                                "окно " + f.Size + " вписано в " + area.Size + " при " + scale);
+                            f.Close();
+                        }
+                    }
+                    finally { DpiScale.EmulatedScale = 1f; }
+                }
+            }
+            finally { ScaledForm.WorkingAreaForTests = null; }
+        }
         /// <summary>Зонд порядка: раскладка, увидевшая IsScaled раньше самого масштаба.</summary>
         private sealed class ScaleOrderProbe : ScaledForm
         {

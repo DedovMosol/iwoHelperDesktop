@@ -33,13 +33,11 @@ namespace ExcelMerger
         /// <summary>Имя кнопки «снова напоминать» — по нему её находит проверка.</summary>
         internal const string UnskipName = "unskip";
 
-        private static readonly int[] AutoDays = { 0, 1, 7, 30 }; // индекс списка -> дни (как в статистике)
-
         private readonly AccentCheckBox _checkOnStart;
         private readonly AccentCheckBox _showWhatsNew;
         private readonly RoundedButton _unskip;
         private readonly AccentCheckBox _keepHistory;
-        private readonly ComboBox _historyAuto;
+        private readonly AutoClearCombo _historyAuto;
         private readonly Label _historyCount;
         private ToolTip _tips;
         private bool _loading;
@@ -54,8 +52,7 @@ namespace ExcelMerger
             Ui.AccentBar(this, 0, Theme.HubBlue);
             // Заголовок по центру: окно узкое и без панели инструментов, и подпись у левого
             // края выглядела приклеенной к рамке.
-            Label title = Ui.Label(this, Loc.T("settings.title"), Pad, 22,
-                Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+            Label title = Ui.Title(this, Loc.T("settings.title"), Pad, 22);
             title.AutoSize = false;
             title.TextAlign = ContentAlignment.MiddleCenter;
             // Высоты и ширины по замеру — в пикселях экрана, раскладка здесь логическая (DpiScale).
@@ -118,13 +115,7 @@ namespace ExcelMerger
             _keepHistory.CheckedChanged += OnKeepHistoryChanged;
 
             Ui.Label(this, Loc.T("settings.lbl.historyAuto"), Pad, _keepHistory.Bottom + 14, Font, Theme.TextPrimary);
-            _historyAuto = new ComboBox();
-            _historyAuto.DropDownStyle = ComboBoxStyle.DropDownList;
-            _historyAuto.Items.AddRange(new object[]
-            {
-                Loc.T("stats.auto.off"), Loc.T("stats.auto.daily"),
-                Loc.T("stats.auto.7days"), Loc.T("stats.auto.30days")
-            });
+            _historyAuto = new AutoClearCombo();
             Controls.Add(_historyAuto);
             _historyAuto.SetBounds(width - Pad - 180, _keepHistory.Bottom + 10, 180, 27);
             _historyAuto.SelectedIndexChanged += OnHistoryAutoChanged;
@@ -265,8 +256,7 @@ namespace ExcelMerger
             OperationHistory.Data h = OperationHistory.Load();
             _loading = true;
             _keepHistory.Checked = h.Enabled;
-            int index = Array.IndexOf(AutoDays, h.AutoClearDays);
-            _historyAuto.SelectedIndex = index >= 0 ? index : 0;
+            _historyAuto.Days = h.AutoClearDays;
             _loading = false;
             _historyAuto.Enabled = h.Enabled; // выключенной истории нечего чистить по расписанию
             _historyCount.Text = h.Entries.Count == 0
@@ -330,7 +320,7 @@ namespace ExcelMerger
         {
             if (_loading)
                 return;
-            if (!OperationHistory.SetAutoClear(AutoDays[_historyAuto.SelectedIndex]))
+            if (!OperationHistory.SetAutoClear(_historyAuto.Days))
                 ShowSaveError();
             LoadAndShow(); // применённая давность могла убрать часть записей
         }

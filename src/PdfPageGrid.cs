@@ -52,7 +52,7 @@ namespace ExcelMerger
         private static readonly Brush ChipFill = new SolidBrush(Color.FromArgb(200, 40, 40, 40)); // hover-кнопки поворота
         private static readonly Brush BadgeFill = new SolidBrush(Color.FromArgb(190, 40, 40, 40));// бейдж угла
         private static readonly Pen PlaceholderPen = new Pen(Color.FromArgb(205, 205, 205));
-        private static readonly Pen TileBorderPen = new Pen(Color.FromArgb(200, 200, 200));
+        private static readonly Pen TileBorderPen = new Pen(Theme.Border);
         // Заливка выделения зависит от системного цвета: кэш с ленивым пересозданием
         // (сбрасывается в OnSystemColorsChanged — смена темы не заморозит старый цвет).
         private Brush _selFill;

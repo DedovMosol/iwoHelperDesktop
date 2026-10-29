@@ -78,7 +78,11 @@ namespace ExcelMerger
                 return;
             // Не FromControl: он создаёт хэндл владельца, если его ещё нет.
             Rectangle near = Owner != null ? Owner.Bounds : new Rectangle(MousePosition, Size.Empty);
-            Size frame = Size - ClientSize; // рамка и заголовок — системные, не масштабируются
+            // Рамка и заголовок — системные, не масштабируются. Не Size − ClientSize: окно шире
+            // предельного размера Windows (MaxWindowTrackSize, на экране 1024 — 1044 px) WinForms
+            // ужимает в Size ещё до хэндла, а ClientSize оставляет заданным, и разность выходила
+            // отрицательной — окно «Что нового» (1193) на таком экране не вписывалось.
+            Size frame = SizeFromClientSize(ClientSize) - ClientSize;
             Size fit = FitClient(ClientSize, MinimumSize, frame, WorkingArea(near).Size, DpiScale.Device(this));
             if (fit != ClientSize)
                 ClientSize = fit;

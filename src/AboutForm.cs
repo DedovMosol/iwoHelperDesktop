@@ -68,8 +68,7 @@ namespace ExcelMerger
             }
             _scroll.Controls.Add(_iconBox);
 
-            _product = Ui.Label(_scroll, "iwo Helper Desktop", 0, 0,
-                Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+            _product = Ui.Title(_scroll, "iwo Helper Desktop", 0, 0);
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             _version = Ui.Label(_scroll, string.Format(Loc.T("about.version"), version.ToString(3)),
                 0, 0, Font, Theme.TextMuted);
@@ -154,12 +153,12 @@ namespace ExcelMerger
             _supportPanel = new Panel { Name = SupportSectionName + "Panel", BackColor = Color.White, Visible = false };
             _scroll.Controls.Add(_supportPanel); // до подписей — см. BuildPrimaryActions
             Label account = Ui.Label(_supportPanel, Loc.T("about.account"), 12, 10, Font, Theme.TextPrimary);
-            TextBox accountValue = SelectableText(DonationAccount);
+            TextBox accountValue = Ui.SelectableValue(DonationAccount, _supportPanel.BackColor, Font);
             accountValue.Name = "aboutAccount";
             accountValue.SetBounds(108, account.Top - 1, WidthPx - 2 * Pad - 120, 22);
             _supportPanel.Controls.Add(accountValue);
             Label bank = Ui.Label(_supportPanel, Loc.T("about.bank"), 12, DpiScale.LogicalBottom(account) + 12, Font, Theme.TextPrimary);
-            TextBox bankValue = SelectableText(DonationBank);
+            TextBox bankValue = Ui.SelectableValue(DonationBank, _supportPanel.BackColor, Font);
             bankValue.Name = "aboutBank";
             bankValue.SetBounds(108, bank.Top - 1, WidthPx - 2 * Pad - 120, 22);
             _supportPanel.Controls.Add(bankValue);
@@ -251,22 +250,6 @@ namespace ExcelMerger
             _ok.SetBounds(width - pad - d(100), clientH - d(52), d(100), d(36));
             _license.Location = new Point(pad,
                 _ok.Top + (_ok.Height - m(_license.PreferredHeight)) / 2);
-        }
-
-
-
-        private TextBox SelectableText(string text)
-        {
-            return new TextBox
-            {
-                Text = text,
-                ReadOnly = true,
-                BorderStyle = BorderStyle.None,
-                BackColor = Color.White,
-                ForeColor = Theme.TextPrimary,
-                Font = Font,
-                TabStop = true
-            };
         }
 
         protected override void Dispose(bool disposing)

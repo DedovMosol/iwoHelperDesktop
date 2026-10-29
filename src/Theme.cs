@@ -39,6 +39,8 @@ namespace ExcelMerger
 
         public static readonly Color TextPrimary = Color.FromArgb(45, 45, 45);
         public static readonly Color TextMuted = Color.FromArgb(115, 115, 115);
+        // Заголовок окна или сообщения — чуть темнее основного текста.
+        public static readonly Color TitleText = Color.FromArgb(40, 40, 40);
 
         public static readonly Color OkGreen = Color.FromArgb(23, 111, 44);
         public static readonly Color WarnOrange = Color.FromArgb(176, 98, 0);
@@ -54,6 +56,8 @@ namespace ExcelMerger
 
         public static readonly Color Border = Color.FromArgb(200, 200, 200);
         public static readonly Color BorderDark = Color.FromArgb(150, 150, 150);
+        // Еле заметная рамка спокойного элемента (карточка недавнего файла в покое).
+        public static readonly Color BorderLight = Color.FromArgb(226, 226, 226);
         public static readonly Color SecondaryHover = Color.FromArgb(243, 244, 246);
         public static readonly Color SecondaryPressed = Color.FromArgb(233, 234, 236);
         public static readonly Color DisabledFill = Color.FromArgb(228, 228, 228);
@@ -62,7 +66,7 @@ namespace ExcelMerger
         // только цветом надписи, и в панелях, где половина кнопок ждёт открытого документа,
         // «нельзя нажать» приходилось выяснять нажатием.
         public static readonly Color DisabledSecondaryFill = Color.FromArgb(245, 245, 245);
-        public static readonly Color DisabledBorder = Color.FromArgb(226, 226, 226);
+        public static readonly Color DisabledBorder = BorderLight;
 
         // Кнопки на тёмной подложке (полоса лупы в полноэкранном просмотре).
         public static readonly Color DarkBarFill = Color.FromArgb(62, 62, 65);

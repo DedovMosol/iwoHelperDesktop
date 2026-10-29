@@ -230,13 +230,20 @@ and released here does nothing; a held mouse button and a key never make two pre
 a separate ring (`DrawFocusRing`) that does not depend on the mouse, and the accessible object
 has the `PushButton` role and a localized “Press” default action that performs the click.
 
+A palette colour is written once, in `Theme`; a test compares every `Color.FromArgb(r, g, b)` in
+`src\` with the palette, so a copy by numbers fails the build. Two names with one value are
+fine when they mean different things (`SettingsBlue` and `HubBlue`). `AutoClearCombo` is the
+age-limit picker shared by Settings (operation history) and Statistics: one list of days and
+captions, read and written through `Days`.
+
 `Ui` also owns the pieces every window would otherwise copy: `InitDialog` (the modal-dialog
 frame — title, icon, fixed border, centring, DPI scaling), `RoundedRect` (the one
 rounded-rectangle outline behind every owner-drawn control), `Ellipsize` (a variable-length
 label that shortens with “…” instead of running off the edge), `OpenPath`/`OpenPathOrWarn`/
 `OpenUrlOrShow` (the three ways to hand something to the shell: silently for a result the
 user already has, with a dialog for an explicit action, and with the address shown for a
-browser that will not start), `SelectAllItems`, and `HeaderLastInTabOrder`. That last one is called from `OnLoad`, not at construction:
+browser that will not start), `Title` (a window title under the colour bar), `SelectableValue`
+(a read-only, copyable value such as the bank details), `SelectAllItems`, and `HeaderLastInTabOrder`. That last one is called from `OnLoad`, not at construction:
 `ControlCollection.Add` hands each new control the next free `TabIndex`, so a high index set
 on the header while building would put it *first* and land the focus on “Home”.
 

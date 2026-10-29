@@ -31,9 +31,6 @@ namespace ExcelMerger
     /// </summary>
     public class ChoiceCard : PushControl
     {
-        private static readonly Color PdfRed = Color.FromArgb(211, 47, 47);      // #D32F2F
-        private static readonly Color PdfFold = Color.FromArgb(154, 34, 34);     // #9A2222
-        // Единый шрифт заголовка карточек: создание в каждом OnPaint — лишний GDI-чурн.
         /// <summary>
         /// Шрифт заголовка — под DPI монитора карточки. Статическое поле застывало бы в том
         /// масштабе, в каком тип впервые тронули: свой Font контрола WinForms пересчитывает
@@ -217,7 +214,7 @@ namespace ExcelMerger
             else if (_glyph == CardGlyph.Pptx) { main = Theme.PowerPointOrange; fold = Theme.PowerPointOrangeDark; }
             else if (_glyph == CardGlyph.Review) { main = Theme.ReviewBlue; fold = Theme.ReviewBlueDark; }
             else if (_glyph == CardGlyph.Other) { main = Theme.HubBlue; fold = Theme.HubBlueDark; }
-            else { main = PdfRed; fold = PdfFold; }
+            else { main = Theme.PdfRed; fold = Theme.PdfRedDark; }
 
             // Координаты из примера (viewBox 24) масштабируются в прямоугольник значка.
             float s = r.Width / 24f;

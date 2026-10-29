@@ -32,8 +32,7 @@ namespace ExcelMerger
             WindowChrome.Enable(this, Theme.HubBlue);
 
             Ui.AccentBar(this, 0, Theme.HubBlue);
-            Ui.Label(this, Loc.T("history.title"), Pad, 18, Ui.Font(14f, FontStyle.Bold),
-                Color.FromArgb(40, 40, 40));
+            Ui.Title(this, Loc.T("history.title"), Pad, 18);
 
             _list = new ListView();
             _list.View = View.Details;

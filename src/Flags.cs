@@ -81,7 +81,7 @@ namespace ExcelMerger
 
         private static void Border(Graphics g)
         {
-            using (var pen = new Pen(Color.FromArgb(150, 150, 150)))
+            using (var pen = new Pen(Theme.BorderDark))
                 g.DrawRectangle(pen, 0, 0, W - 1, H - 1);
         }
     }

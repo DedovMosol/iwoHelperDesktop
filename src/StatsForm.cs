@@ -10,12 +10,10 @@ namespace ExcelMerger
     /// </summary>
     public class StatsForm : ScaledForm
     {
-        private static readonly int[] AutoDays = { 0, 1, 7, 30 }; // индекс combo -> дни
-
         private Label _since;
         private Label _excel, _merge, _extract, _ranges, _everyN, _bookmarks, _compare,
             _pdftoword, _pdftopptx, _compress, _total;
-        private ComboBox _cmbAuto;
+        private AutoClearCombo _cmbAuto;
         private ToolTip _tips;
         private bool _loading;
 
@@ -26,7 +24,7 @@ namespace ExcelMerger
             WindowChrome.Enable(this, Theme.HubBlue);
 
             Ui.AccentBar(this, 0, Theme.HubBlue);
-            Ui.Label(this, Loc.T("menu.stats"), 24, 22, Ui.Font(14f, FontStyle.Bold), Color.FromArgb(40, 40, 40));
+            Ui.Title(this, Loc.T("menu.stats"), 24, 22);
             _since = Ui.Label(this, "", 24, 56, Font, Theme.TextMuted);
 
             _excel = Row(Loc.T("stats.row.excel"), 92);
@@ -42,9 +40,7 @@ namespace ExcelMerger
             _total = Ui.Label(this, "", 24, 358, Ui.Font(10.5f, FontStyle.Bold), Theme.TextPrimary);
 
             Ui.Label(this, Loc.T("stats.autoClear"), 24, 404, Font, Theme.TextPrimary);
-            _cmbAuto = new ComboBox();
-            _cmbAuto.DropDownStyle = ComboBoxStyle.DropDownList;
-            _cmbAuto.Items.AddRange(new object[] { Loc.T("stats.auto.off"), Loc.T("stats.auto.daily"), Loc.T("stats.auto.7days"), Loc.T("stats.auto.30days") });
+            _cmbAuto = new AutoClearCombo();
             _cmbAuto.SetBounds(120, 401, 180, 27);
             _cmbAuto.SelectedIndexChanged += OnAutoChanged;
             Controls.Add(_cmbAuto);
@@ -99,7 +95,7 @@ namespace ExcelMerger
             _pdftopptx.Text = s.PdfToPptx.ToString();
             _compress.Text = s.PdfCompressions.ToString();
             _total.Text = string.Format(Loc.T("stats.total"), s.Total);
-            _cmbAuto.SelectedIndex = Array.IndexOf(AutoDays, s.AutoClearDays) >= 0 ? Array.IndexOf(AutoDays, s.AutoClearDays) : 0;
+            _cmbAuto.Days = s.AutoClearDays;
             _loading = false;
         }
 
@@ -107,8 +103,7 @@ namespace ExcelMerger
         {
             if (_loading)
                 return;
-            int days = AutoDays[_cmbAuto.SelectedIndex];
-            if (!UsageStats.SetAutoClear(days))
+            if (!UsageStats.SetAutoClear(_cmbAuto.Days))
                 ShowSaveError();
             LoadAndShow(); // применённая автоочистка могла обнулить счётчики
         }
