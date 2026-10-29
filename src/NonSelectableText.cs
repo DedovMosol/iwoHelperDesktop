@@ -20,6 +20,11 @@ namespace ExcelMerger
             SetStyle(ControlStyles.Selectable, false);
             BackColor = Color.White;
             TabStop = false;
+            // Для диктора — статический текст (UI-5): фокус сюда не приходит, но в режиме
+            // просмотра диктор читает элементы дерева, и пункт «Что нового» звучал как
+            // «клиент». Имя — сам текст: ControlAccessibleObject берёт его из Text
+            // (стиль UseTextForAccessibility), и отдельно задавать AccessibleName незачем.
+            AccessibleRole = AccessibleRole.StaticText;
         }
 
         public override string Text

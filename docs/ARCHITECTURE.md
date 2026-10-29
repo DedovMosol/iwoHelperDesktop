@@ -223,6 +223,13 @@ card, so cards with descriptions of different lengths still look alike, and `Rou
 has three looks (`Primary`, `Secondary`, `OnDark`) with a **filled** disabled state — a panel
 where half the buttons wait for an open document must show that without being clicked.
 
+`PushControl` is the base of every owner-drawn control that acts as a button (`ChoiceCard`,
+`RecentCard`, the hub's glyph buttons). It holds the one keyboard rule: Enter and Space press
+on key release, and only after a key-down seen by the same control, so a key pressed elsewhere
+and released here does nothing; a held mouse button and a key never make two presses. Focus is
+a separate ring (`DrawFocusRing`) that does not depend on the mouse, and the accessible object
+has the `PushButton` role and a localized “Press” default action that performs the click.
+
 `Ui` also owns the pieces every window would otherwise copy: `InitDialog` (the modal-dialog
 frame — title, icon, fixed border, centring, DPI scaling), `RoundedRect` (the one
 rounded-rectangle outline behind every owner-drawn control), `Ellipsize` (a variable-length

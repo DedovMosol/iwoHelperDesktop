@@ -418,6 +418,7 @@ namespace ExcelMerger
             settings.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             settings.Click += delegate { using (var f = new SettingsForm()) f.ShowDialog(this); };
             Controls.Add(settings);
+            _settingsButton = settings;
             _bottomTip = new ToolTip();
             _bottomTip.SetToolTip(settings, Loc.T("settings.title"));
 
@@ -432,9 +433,27 @@ namespace ExcelMerger
             about.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             about.Click += delegate { using (var f = new AboutForm()) f.ShowDialog(this); };
             Controls.Add(about);
+            _aboutButton = about;
             _bottomTip.SetToolTip(about, Loc.T("hub.about"));
 
             BuildRecentFiles();
+        }
+
+        private Control _settingsButton, _aboutButton; // края нижнего ряда — между ними карточки недавних
+
+        /// <summary>
+        /// Порядок Tab нижнего ряда — как на экране: настройки, карточки недавних, «О программе»,
+        /// и шапка последней. Карточки приходят после показа окна, и ControlCollection.Add
+        /// давал им индекс «после всех» — то есть после шапки (UI-6): с клавиатуры до них
+        /// добирались последними, через выбор языка.
+        /// </summary>
+        private void OrderBottomRowTabs()
+        {
+            int index = _settingsButton.TabIndex;
+            foreach (RecentCard card in _recentCards)
+                card.TabIndex = ++index;
+            _aboutButton.TabIndex = ++index;
+            Ui.HeaderLastInTabOrder(this);
         }
 
         /// <summary>Сколько последних файлов показывать карточками.</summary>
@@ -568,6 +587,7 @@ namespace ExcelMerger
             }
             PlaceRecentCards();
             LayoutLevels();   // уровень ужимается, чтобы карточки инструментов не легли под полосу
+            OrderBottomRowTabs();
         }
 
         /// <summary>Расставить карточки недавних и скрыть их, когда места для полосы нет.</summary>
@@ -650,13 +670,11 @@ namespace ExcelMerger
         /// текущего языка: он рисуется через GDI+ (Flags) и есть везде, а в самом меню
         /// выбора языка флаги и так стоят.
         /// </summary>
-        private sealed class GlyphButton : Control
+        private sealed class GlyphButton : PushControl
         {
             private readonly bool _glyphFontPresent;
 
             private readonly Func<Image> _fallback;
-
-            private bool _hover, _pressed;
 
             /// <summary>
             /// Подложка под значком при наведении и нажатии. Значок без рамки ничем не отвечает
@@ -669,24 +687,20 @@ namespace ExcelMerger
             public GlyphButton(string glyph, float size, string family, Func<Image> fallback = null)
             {
                 _fallback = fallback;
-                SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint |
-                         ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
-                BackColor = Color.Transparent;
+                BackColor = Color.Transparent; // фон родителя (градиент шапки): PushControl разрешает прозрачность
                 Font = Ui.Font(size, FontStyle.Regular, family); // кэш: глобус пересоздаётся с окном
                 _glyphFontPresent = string.Equals(Font.Name, family, StringComparison.OrdinalIgnoreCase);
                 Text = glyph;
-                Cursor = Cursors.Hand;
-                TabStop = true;
             }
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                if (HoverFill != Color.Empty && (_hover || _pressed))
+                if (HoverFill != Color.Empty && (Hover || Pressed))
                 {
                     // Круг, а не прямоугольник: значок квадратный и мелкий, прямоугольная плашка
                     // на его фоне выглядит крупнее самого значка.
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                    int alpha = _pressed ? Math.Min(255, HoverFill.A * 2) : HoverFill.A;
+                    int alpha = Pressed ? Math.Min(255, HoverFill.A * 2) : HoverFill.A;
                     using (var b = new SolidBrush(Color.FromArgb(alpha, HoverFill)))
                         e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
                     e.Graphics.SmoothingMode = SmoothingMode.Default;
@@ -715,37 +729,9 @@ namespace ExcelMerger
                     }
                     e.Graphics.TextRenderingHint = was;
                 }
-                if (Focused) // видимый фокус: иначе с клавиатуры непонятно, где ты находишься
-                    ControlPaint.DrawFocusRectangle(e.Graphics, ClientRectangle);
+                // Кольцо фокуса — цветом значка: белое на синей шапке, цветное на белом ряду.
+                DrawFocusRing(e.Graphics, new RectangleF(0, 0, Width, Height), Math.Min(Width, Height) / 2f, ForeColor);
             }
-
-            /// <summary>Enter и Пробел работают как клик — иначе с клавиатуры кнопка бесполезна.</summary>
-            protected override bool IsInputKey(Keys keyData)
-            {
-                return keyData == Keys.Enter || keyData == Keys.Space || base.IsInputKey(keyData);
-            }
-
-            protected override void OnKeyDown(KeyEventArgs e)
-            {
-                base.OnKeyDown(e);
-                if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space)
-                {
-                    e.Handled = true;
-                    InvokeOnClick(this, EventArgs.Empty);
-                }
-            }
-
-            protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
-            protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
-
-            protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); _hover = true; Invalidate(); }
-            protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); _hover = false; _pressed = false; Invalidate(); }
-            protected override void OnMouseDown(MouseEventArgs e)
-            {
-                base.OnMouseDown(e);
-                if (e.Button == MouseButtons.Left) { _pressed = true; Invalidate(); }
-            }
-            protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); _pressed = false; Invalidate(); }
         }
     }
 }

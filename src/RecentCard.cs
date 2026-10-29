@@ -15,7 +15,7 @@ namespace ExcelMerger
     /// понятно с одного взгляда. Общее у них — рисование значка (<see cref="ChoiceCard.DrawGlyph"/>),
     /// и оно взято, а не переписано.
     /// </summary>
-    internal sealed class RecentCard : Control
+    internal sealed class RecentCard : PushControl
     {
         private static readonly Color Border = Color.FromArgb(226, 226, 226);
         private static readonly Color HoverBack = Color.FromArgb(245, 248, 252);
@@ -24,7 +24,6 @@ namespace ExcelMerger
         private readonly string _path;
         private readonly CardGlyph _glyph;
         private readonly string _operation;
-        private bool _hot;
         private ToolTip _tip;
 
         public RecentCard(HistoryEntry entry)
@@ -32,12 +31,7 @@ namespace ExcelMerger
             _path = entry == null ? "" : (entry.Path ?? "");
             _operation = entry == null ? "" : Loc.T(entry.Operation ?? "");
             _glyph = GlyphFor(entry == null ? null : entry.Operation, _path);
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
-                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             BackColor = Color.White;
-            Cursor = Cursors.Hand;
-            TabStop = true;
-            AccessibleRole = AccessibleRole.PushButton;
             AccessibleName = Path.GetFileName(_path);
             AccessibleDescription = string.IsNullOrEmpty(_operation)
                 ? _path : _operation + ". " + _path;
@@ -77,32 +71,16 @@ namespace ExcelMerger
             }
         }
 
-        protected override void OnMouseEnter(EventArgs e) { _hot = true; Invalidate(); base.OnMouseEnter(e); }
-        protected override void OnMouseLeave(EventArgs e) { _hot = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnEnter(EventArgs e) { _hot = true; Invalidate(); base.OnEnter(e); }
-        protected override void OnLeave(EventArgs e) { _hot = false; Invalidate(); base.OnLeave(e); }
-
-        protected override bool IsInputKey(Keys keyData)
-        {
-            return keyData == Keys.Enter || keyData == Keys.Space || base.IsInputKey(keyData);
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space)
-            {
-                Ui.OpenPath(_path);      // карточка доступна и с клавиатуры, как остальные
-                e.Handled = true;
-            }
-            base.OnKeyDown(e);
-        }
-
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            g.Clear(_hot ? HoverBack : BackColor);
-            using (var pen = new Pen(_hot ? HoverBorder : Border))
+            // Подсветка — наведение мышью; фокус — своё кольцо (PushControl), а не та же подсветка:
+            // раньше фокус включал «наведение» и гас, едва мышь покидала карточку (UI-10).
+            bool hot = Hover || Pressed;
+            g.Clear(hot ? HoverBack : BackColor);
+            using (var pen = new Pen(hot ? HoverBorder : Border, Math.Max(1f, DpiScale.Device(this))))
                 g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+            DrawFocusRing(g, new RectangleF(0, 0, Width, Height), 0f, Theme.Accent);
 
             // Карточка стоит в нижнем ряду и потому невысока: значок и ОДНА строка — имя файла.
             // Название операции ушло в подсказку вместе с путём: в строке высотой в ряд две

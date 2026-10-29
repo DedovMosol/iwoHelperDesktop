@@ -622,6 +622,7 @@ namespace ExcelMerger
                 "No pages are selected to save.");
             A("err.export.pageFailed", "Не удалось отрисовать страницу {0}.", "Page {0} could not be rendered.");
             A("common.ok", "ОК", "OK");
+            A("common.a11y.press", "Нажать", "Press"); // действие по умолчанию для диктора (PushControl)
             A("common.busySaving", "Дождитесь завершения сохранения…", "Wait for saving to finish…");
             A("common.status.notDone", "Не выполнено.", "Failed.");
             A("common.close", "Закрыть", "Close");

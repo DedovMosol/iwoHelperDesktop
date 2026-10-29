@@ -29,7 +29,7 @@ namespace ExcelMerger
     /// описание. Состояния normal/hover/pressed/focused, активация мышью,
     /// Enter и Пробелом. Только отрисовка — поведение стандартной кнопки.
     /// </summary>
-    public class ChoiceCard : Control
+    public class ChoiceCard : PushControl
     {
         private static readonly Color PdfRed = Color.FromArgb(211, 47, 47);      // #D32F2F
         private static readonly Color PdfFold = Color.FromArgb(154, 34, 34);     // #9A2222
@@ -52,8 +52,7 @@ namespace ExcelMerger
         private readonly CardGlyph _glyph;
         private readonly string _title;
         private readonly string _description;
-        private bool _hover;
-        private bool _pressed;
+
         private string[] _acceptExtensions; // расширения принимаемых дропом файлов (null — не принимать)
         private bool _dragOk;               // текущая drag-сессия несёт подходящие файлы (решено в DragEnter)
 
@@ -133,58 +132,10 @@ namespace ExcelMerger
             _glyph = glyph;
             _title = title;
             _description = description;
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
-                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
-                     ControlStyles.Selectable, true);
-            TabStop = true;
-            Cursor = Cursors.Hand;
             BackColor = Color.White;
-            // Доступность: экранный диктор объявляет карточку как кнопку с названием.
-            AccessibleRole = AccessibleRole.PushButton;
+            // Доступность: экранный диктор объявляет карточку как кнопку (PushControl) с названием.
             AccessibleName = title;
             AccessibleDescription = description;
-        }
-
-        protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
-        protected override void OnMouseLeave(EventArgs e) { _hover = false; _pressed = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { _pressed = true; Focus(); Invalidate(); base.OnMouseDown(e); }
-
-        protected override void OnMouseUp(MouseEventArgs e)
-        {
-            _pressed = false;
-            Invalidate();
-            base.OnMouseUp(e); // Click поднимает база (ControlStyles.StandardClick) — не дублируем
-        }
-
-        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
-        protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
-
-        protected override bool IsInputKey(Keys keyData)
-        {
-            if (keyData == Keys.Enter || keyData == Keys.Space)
-                return true; // получать эти клавиши, а не отдавать форме
-            return base.IsInputKey(keyData);
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space)
-            {
-                _pressed = true;
-                Invalidate();
-            }
-            base.OnKeyDown(e);
-        }
-
-        protected override void OnKeyUp(KeyEventArgs e)
-        {
-            if ((e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) && _pressed)
-            {
-                _pressed = false;
-                Invalidate();
-                OnClick(EventArgs.Empty);
-            }
-            base.OnKeyUp(e);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -198,18 +149,20 @@ namespace ExcelMerger
             // в пикселях устройства (UI-25).
             float s = DpiScale.Device(this);
             Func<int, int> d = delegate(int v) { return DpiScale.Device(this, v); };
-            bool thick = _hover || Focused;
-            float line = (thick ? 2f : 1f) * Math.Max(1f, s);
+            // Наведение — рамка карточки; фокус — отдельное кольцо внутри (UI-10): раньше оба
+            // рисовались одной рамкой, и с клавиатуры нельзя было понять, где фокус, а где мышь.
+            float line = (Hover ? 2f : 1f) * Math.Max(1f, s);
             var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
             using (GraphicsPath card = Ui.RoundedRect(rect, 12f * s))
             {
-                Color fill = _pressed ? Theme.SecondaryPressed : (_hover ? Theme.SecondaryHover : Color.White);
+                Color fill = Pressed ? Theme.SecondaryPressed : (Hover ? Theme.SecondaryHover : Color.White);
                 using (var b = new SolidBrush(fill))
                     g.FillPath(b, card);
-                Color border = (_hover || _pressed || Focused) ? Theme.Accent : Theme.Border;
+                Color border = (Hover || Pressed) ? Theme.Accent : Theme.Border;
                 using (var pen = new Pen(border, line))
                     g.DrawPath(pen, card);
             }
+            DrawFocusRing(g, new RectangleF(0, 0, Width, Height), 12f * s, Theme.Accent);
 
             // Блок «значок + заголовок + описание» ставим по центру карточки: описания
             // разной длины, и при верхней привязке карточки с короткой подписью выглядели

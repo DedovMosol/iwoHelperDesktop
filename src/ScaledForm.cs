@@ -79,8 +79,7 @@ namespace ExcelMerger
             // Не FromControl: он создаёт хэндл владельца, если его ещё нет.
             Rectangle near = Owner != null ? Owner.Bounds : new Rectangle(MousePosition, Size.Empty);
             Size frame = Size - ClientSize; // рамка и заголовок — системные, не масштабируются
-            float factor = DeviceDpi / DpiScale.LogicalDpi * DpiScale.EmulatedScale;
-            Size fit = FitClient(ClientSize, MinimumSize, frame, WorkingArea(near).Size, factor);
+            Size fit = FitClient(ClientSize, MinimumSize, frame, WorkingArea(near).Size, DpiScale.Device(this));
             if (fit != ClientSize)
                 ClientSize = fit;
         }

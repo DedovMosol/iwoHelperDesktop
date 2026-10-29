@@ -14,7 +14,9 @@ namespace ExcelMerger
     /// <item><see cref="Px"/> — раскладка на ходу (OnLayout, рисование): константы логические,
     /// а окно до масштаба логическое, после — в пикселях устройства;</item>
     /// <item><see cref="ToLogical"/> — замер текста в конструкторе: шрифт уже в пикселях
-    /// устройства, а окно ещё логическое, и без перевода размер вырос бы дважды.</item>
+    /// устройства, а окно ещё логическое, и без перевода размер вырос бы дважды;</item>
+    /// <item><see cref="Device(Control)"/> — рисование и предпочтительный размер: они всегда
+    /// в пикселях устройства, в какой бы фазе ни было окно.</item>
     /// </list>
     /// </summary>
     internal static class DpiScale
@@ -52,10 +54,17 @@ namespace ExcelMerger
         /// </summary>
         internal static int Px(Control control, int logical)
         {
+            return BeforeScale(control) ? logical : Device(control, logical);
+        }
+
+        /// <summary>
+        /// Окно контрола ещё строится в логических единицах (масштаб не применён). Контрол вне
+        /// <see cref="ScaledForm"/> считается уже масштабированным.
+        /// </summary>
+        private static bool BeforeScale(Control control)
+        {
             var form = control as ScaledForm ?? control.FindForm() as ScaledForm;
-            if (form != null && !form.IsScaled)
-                return logical;
-            return Device(control, logical);
+            return form != null && !form.IsScaled;
         }
 
         /// <summary>
@@ -98,8 +107,7 @@ namespace ExcelMerger
         /// </summary>
         internal static int FromDevice(Control control, int device)
         {
-            var form = control as ScaledForm ?? control.FindForm() as ScaledForm;
-            return form != null && !form.IsScaled ? ToLogical(device) : device;
+            return BeforeScale(control) ? ToLogical(device) : device;
         }
 
         /// <summary>
@@ -109,8 +117,7 @@ namespace ExcelMerger
         /// </summary>
         internal static int MeasureWidth(Control control, int current)
         {
-            var form = control as ScaledForm ?? control.FindForm() as ScaledForm;
-            if (form == null || form.IsScaled)
+            if (!BeforeScale(control))
                 return current;
             return (int)Math.Floor(current * (SystemDpi / LogicalDpi * EmulatedScale) + 0.001);
         }

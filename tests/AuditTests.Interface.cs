@@ -211,6 +211,12 @@ namespace ExcelMerger.Tests
                                             offenders.Add(where + " → раскрытие секций изменило ширину: " +
                                                 width + " → " + about.ClientSize.Width);
                                         CheckScaledLayout(about, where + " (секции раскрыты)", offenders);
+                                        // Раскрытое окно растёт до рабочей области СВОЕГО экрана, дальше
+                                        // прокручивается; минимум высоты (440) — единственное исключение.
+                                        int frameH = about.Height - about.ClientSize.Height;
+                                        if (about.Height > area.Height && DpiScale.Device(about, 440) + frameH <= area.Height)
+                                            offenders.Add(where + " → раскрытое окно выше экрана: " +
+                                                about.Height + " > " + area.Height);
                                     }
                                     if (f.MinimumSize.Width > 0 && minimumFits)
                                     {
@@ -596,6 +602,217 @@ namespace ExcelMerger.Tests
             AssertEq(1f, DpiScale.MonitorRatio(system), "на системном мониторе — без пересчёта");
             AssertEq(1.5f, DpiScale.MonitorRatio(system * 3 / 2), "монитор на 50 % крупнее — кегль ×1,5");
             AssertEq(0.75f, DpiScale.MonitorRatio(system * 3 / 4), "монитор мельче — кегль меньше");
+        }
+
+        // ---------- UI-4, UI-10, UI-21: рисуемые кнопки — одно поведение ----------
+
+        private static readonly System.Reflection.BindingFlags AnyInstance =
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Public;
+
+        /// <summary>Вызвать защищённый обработчик контрола (OnKeyDown, OnMouseEnter…) как его зовёт WinForms.</summary>
+        private static void Raise(Control c, string handler, EventArgs e)
+        {
+            typeof(Control).GetMethod(handler, AnyInstance).Invoke(c, new object[] { e });
+        }
+
+        /// <summary>Три рисуемые кнопки приложения — каждая в своём хосте того размера, что на экране.</summary>
+        private static List<PushControl> NewPushControls()
+        {
+            Type glyph = typeof(StartForm).GetNestedType("GlyphButton", System.Reflection.BindingFlags.NonPublic);
+            var globe = (PushControl)Activator.CreateInstance(glyph,
+                new object[] { "", 15f, "Segoe MDL2 Assets", null });
+            globe.ForeColor = Theme.HubBlue;
+            globe.AccessibleName = "Язык";
+            globe.Size = new Size(30, 30);
+            return new List<PushControl>
+            {
+                new ChoiceCard(CardGlyph.Pdf, "Карточка", "Описание") { Size = new Size(240, 250) },
+                new RecentCard(new HistoryEntry { Operation = "pdf.merged", Path = @"C:\нет\документ.pdf" }) { Size = new Size(200, 36) },
+                globe
+            };
+        }
+
+        private static int CountDiff(Bitmap a, Bitmap b)
+        {
+            int n = 0;
+            for (int y = 0; y < a.Height; y++)
+                for (int x = 0; x < a.Width; x++)
+                    if (a.GetPixel(x, y) != b.GetPixel(x, y))
+                        n++;
+            return n;
+        }
+
+        private static Bitmap Snapshot(Control c)
+        {
+            var bmp = new Bitmap(c.Width, c.Height);
+            c.DrawToBitmap(bmp, new Rectangle(Point.Empty, c.Size));
+            return bmp;
+        }
+
+        /// <summary>
+        /// Карточка инструмента, карточка недавнего файла и кнопка-значок — одно поведение
+        /// (PushControl). До этого их было три копии, и они разошлись: кнопка-значок без роли
+        /// кнопки (диктор говорил «клиент», UI-4), нажатие по нажатию клавиши у двух и по
+        /// отпусканию у третьей (UI-21), фокус, неотличимый от наведения и гаснущий при уходе
+        /// мыши (UI-10). Проверяем по каждой: роль, имя и действие «Нажать» для диктора, причём
+        /// действие нажимает; Enter и Пробел нажимают ровно один раз и только по отпусканию;
+        /// отпускание, пришедшее после ухода фокуса, не нажимает; кольцо фокуса рисуется,
+        /// отличается от наведения и не гаснет, когда мышь уходит.
+        /// </summary>
+        [Test("Аудит UI-4/UI-10: рисуемые кнопки — роль для диктора, Enter/Пробел, кольцо фокуса")]
+        private static void AuditPushControlsBehaveAsButtons()
+        {
+            var offenders = new List<string>();
+            foreach (PushControl c in NewPushControls())
+                using (var host = new Form { ClientSize = new Size(c.Width + 40, c.Height + 40), ShowInTaskbar = false })
+                {
+                    string name = c.GetType().Name;
+                    var other = new Button { Bounds = new Rectangle(0, 0, 10, 10) };
+                    host.Controls.Add(other);
+                    c.Location = new Point(20, 20);
+                    host.Controls.Add(c);
+                    host.Show();
+                    int clicks = 0;
+                    c.Click += delegate { clicks++; };
+
+                    AccessibleObject acc = c.AccessibilityObject;
+                    if (acc.Role != AccessibleRole.PushButton) offenders.Add(name + ": роль " + acc.Role);
+                    if (string.IsNullOrEmpty(acc.Name)) offenders.Add(name + ": у диктора нет имени");
+                    if (acc.DefaultAction != Loc.T("common.a11y.press")) offenders.Add(name + ": действие «" + acc.DefaultAction + "»");
+                    acc.DoDefaultAction();
+                    if (clicks != 1) offenders.Add(name + ": действие диктора нажало " + clicks + " раз");
+
+                    foreach (Keys key in new[] { Keys.Enter, Keys.Space })
+                    {
+                        clicks = 0;
+                        Raise(c, "OnKeyDown", new KeyEventArgs(key));
+                        if (clicks != 0) offenders.Add(name + ": " + key + " нажал по нажатию клавиши");
+                        Raise(c, "OnKeyUp", new KeyEventArgs(key));
+                        if (clicks != 1) offenders.Add(name + ": " + key + " — нажатий " + clicks + " вместо одного");
+                        Raise(c, "OnKeyUp", new KeyEventArgs(key));
+                        if (clicks != 1) offenders.Add(name + ": отпускание без нажатия тоже нажало");
+                    }
+                    clicks = 0;
+                    Raise(c, "OnKeyDown", new KeyEventArgs(Keys.Space));
+                    Raise(c, "OnLostFocus", EventArgs.Empty);
+                    Raise(c, "OnKeyUp", new KeyEventArgs(Keys.Space));
+                    if (clicks != 0) offenders.Add(name + ": отпускание после ухода фокуса нажало");
+                    clicks = 0;
+                    var left = new MouseEventArgs(MouseButtons.Left, 1, 5, 5, 0);
+                    Raise(c, "OnMouseDown", left);
+                    Raise(c, "OnKeyDown", new KeyEventArgs(Keys.Space));
+                    Raise(c, "OnKeyUp", new KeyEventArgs(Keys.Space));
+                    Raise(c, "OnMouseUp", left);
+                    if (clicks != 0) offenders.Add(name + ": Пробел при зажатой мыши нажал " + clicks + " раз");
+                    Raise(c, "OnKeyDown", new KeyEventArgs(Keys.Enter));
+                    Raise(c, "OnMouseDown", left);
+                    Raise(c, "OnMouseUp", left);
+                    Raise(c, "OnKeyUp", new KeyEventArgs(Keys.Enter));
+                    if (clicks != 0) offenders.Add(name + ": Enter, перехваченный мышью, нажал " + clicks + " раз");
+                    Raise(c, "OnKeyDown", new KeyEventArgs(Keys.Space));
+                    Raise(c, "OnMouseLeave", EventArgs.Empty);
+                    Raise(c, "OnKeyUp", new KeyEventArgs(Keys.Space));
+                    if (clicks != 1) offenders.Add(name + ": уход мыши отменил нажатие Пробелом");
+                    c.AccessibleDefaultActionDescription = "Открыть";
+                    if (acc.DefaultAction != "Открыть") offenders.Add(name + ": своё описание действия заменено общим");
+                    c.AccessibleDefaultActionDescription = null;
+
+                    other.Focus();
+                    Application.DoEvents();
+                    using (Bitmap idle = Snapshot(c))
+                    {
+                        Raise(c, "OnMouseEnter", EventArgs.Empty);
+                        using (Bitmap hover = Snapshot(c))
+                        {
+                            Raise(c, "OnMouseLeave", EventArgs.Empty);
+                            c.Focus();
+                            Application.DoEvents();
+                            if (!c.Focused) { offenders.Add(name + ": не получил фокус"); continue; }
+                            using (Bitmap focused = Snapshot(c))
+                            {
+                                if (CountDiff(idle, focused) < 20) offenders.Add(name + ": фокус не виден");
+                                if (CountDiff(hover, focused) < 20) offenders.Add(name + ": фокус неотличим от наведения");
+                                Raise(c, "OnMouseEnter", EventArgs.Empty);
+                                Raise(c, "OnMouseLeave", EventArgs.Empty);
+                                using (Bitmap after = Snapshot(c))
+                                    if (CountDiff(focused, after) != 0) offenders.Add(name + ": уход мыши погасил фокус");
+                            }
+                        }
+                    }
+                    host.Close();
+                }
+            AssertTrue(offenders.Count == 0, "рисуемые кнопки: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Текст пунктов «Что нового» нарисован вручную (NonSelectableText): без имени диктор
+        /// в режиме просмотра читал пустой «клиент» (UI-5). Имя обязано идти за текстом.
+        /// </summary>
+        [Test("Аудит UI-5: текст «Что нового» доступен диктору")]
+        private static void AuditNonSelectableTextIsReadable()
+        {
+            using (var text = new NonSelectableText { Text = "Первый пункт" })
+            {
+                AssertEq(AccessibleRole.StaticText, text.AccessibilityObject.Role, "роль — статический текст");
+                AssertEq("Первый пункт", text.AccessibilityObject.Name, "имя — сам текст");
+                text.Text = "Второй";
+                AssertEq("Второй", text.AccessibilityObject.Name, "имя идёт за текстом");
+            }
+        }
+
+        /// <summary>
+        /// Порядок Tab нижнего ряда хаба — как на экране: «Настройки», карточки недавних,
+        /// «О программе», шапка последней. Карточки приходят после показа окна, и до UI-6
+        /// получали индекс после шапки — к ним шли через выбор языка.
+        /// </summary>
+        [Test("Аудит UI-6: карточки недавних в порядке Tab между настройками и «О программе»")]
+        private static void AuditRecentCardsTabOrder()
+        {
+            var offenders = new List<string>();
+            string dir = Path.Combine(Path.GetTempPath(), "iwo_ui6_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                InIsolatedSettings("iwo_ui6_s_", delegate
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        string file = Path.Combine(dir, "итог" + i + ".pdf");
+                        MakeEmptyPagesPdf(file, 1);
+                        OperationHistory.Record("pdf.merged", file);
+                    }
+                    using (var hub = new StartForm())
+                    {
+                        hub.Show();
+                        PumpUntil(delegate { return CountRecentCards(hub) >= 3; }, 15000);
+                        // Настоящий обход Tab (SelectNextControl), а не сортировка по TabIndex:
+                        // при равных индексах порядок решает z-порядок, и сортировка его не видит.
+                        var settings = (Control)typeof(StartForm).GetField("_settingsButton", AnyInstance).GetValue(hub);
+                        var about = (Control)typeof(StartForm).GetField("_aboutButton", AnyInstance).GetValue(hub);
+                        Control header = hub.Controls.Cast<Control>().First(c => c is HeaderBand);
+                        List<Control> cards = hub.Controls.OfType<RecentCard>().Where(c => c.Visible)
+                            .OrderBy(c => c.Left).Cast<Control>().ToList();
+                        if (cards.Count != 3) offenders.Add("видимых карточек " + cards.Count);
+                        Control at = settings;
+                        foreach (Control want in new List<Control>(cards) { about })
+                        {
+                            hub.SelectNextControl(at, true, true, true, true);
+                            Control got = hub.ActiveControl;
+                            if (got != want)
+                                offenders.Add("после «" + at.AccessibleName + "» Tab привёл к " +
+                                    (got == null ? "null" : got.GetType().Name + " «" + got.AccessibleName + "»") +
+                                    " вместо «" + want.AccessibleName + "»");
+                            at = want;
+                        }
+                        if (hub.Controls.Cast<Control>().Any(c => c != header && c.TabIndex >= header.TabIndex))
+                            offenders.Add("шапка не последняя");
+                        hub.Close();
+                    }
+                });
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
+            AssertTrue(offenders.Count == 0, "порядок Tab хаба: " + string.Join(" | ", offenders.ToArray()));
         }
 
         /// <summary>Те же проверки целости, что у раскладочных тестов на 100 %.</summary>

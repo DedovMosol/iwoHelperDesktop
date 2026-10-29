@@ -240,7 +240,8 @@ namespace ExcelMerger
                 y = _supportPanel.Bottom + d(8);
             }
 
-            int maxClient = Math.Max(d(440), m(Screen.PrimaryScreen.WorkingArea.Height) - d(100));
+            // Экран окна, а не основной: на втором мониторе другого размера потолок был чужим.
+            int maxClient = Math.Max(d(440), m(ScaledForm.WorkingArea(Bounds).Height) - d(100));
             int desired = y + d(FooterH) + d(10);
             int clientH = Math.Min(maxClient, desired);
             ClientSize = new Size(width, clientH);
