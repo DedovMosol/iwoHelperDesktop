@@ -18,9 +18,9 @@ tests\build_tests.cmd x86  # the same tests as a 32-bit process (cache sizes bra
 tests\run_all.cmd          # full pyramid: build, units, GUI smoke, integration (needs Excel/Word)
 ```
 
-Requirements: Windows 10/11 x64 and the `dotnet` SDK. Microsoft Office is needed only
-for the integration scripts (`tests\verify*.ps1`) and for using the Excel Digest and
-PDF → Word tools themselves.
+Requirements: Windows 10/11 x64, the .NET SDK 8 or newer and Python 3.6+ (the commit hook
+and the link check). Microsoft Office is needed only for the Excel and Word integration
+scripts (`tests\verify*.ps1`) and for using the Merge Excel and PDF → Word tools themselves.
 
 Some checks build real windows on an STA thread — they open, resize and close actual
 forms, so a windowless session cannot run them.
@@ -47,8 +47,10 @@ The history holds commits by the maintainer only, with no `Co-authored-by` or ot
 attribution lines: GitHub builds the contributors list from them, and the only way to
 correct it afterwards is rewriting history. Accepted pull requests are therefore landed by
 the maintainer. `tools/check_commit_metadata.py` holds the rules; CI checks every commit and
-tag with it, and the `commit-msg` hook applies the same rules before a commit exists — it
-drops attribution lines from the message and refuses a foreign author. Enable it once per
+tag pushed to `main` with it (not on pull requests: the maintainer lands accepted ones), and
+the `commit-msg` hook applies the same rules before a commit exists — it drops attribution
+lines from the message and refuses a foreign author. The hook needs Python 3.6+ on `PATH`;
+without it every commit is refused. Enable it once per
 clone:
 
 ```
@@ -58,8 +60,8 @@ git config core.hooksPath tools/githooks
 ## Pull requests
 
 - Branch from `main`, keep the diff focused, add tests for new logic.
-- CI must be green: build, unit tests, GUI smoke, dependency probes, installer check,
-  README links and commit metadata.
+- CI must be green: build, unit tests, GUI smoke, dependency probes, installer check and
+  README links (commit metadata is checked after landing).
 - Describe the user-visible change in the PR text — it becomes a
   [CHANGELOG](docs/CHANGELOG.md) entry at release time.
 

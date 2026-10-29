@@ -13,7 +13,7 @@ if /I not "%ARCH%"=="x64" if /I not "%ARCH%"=="x86" (
 )
 where dotnet >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: dotnet SDK not found. Install .NET SDK 6+ to build.
+    echo ERROR: dotnet SDK not found. Install .NET SDK 8+ to build.
     exit /b 1
 )
 

@@ -2,8 +2,9 @@
 
 Releases are cut **locally**, because both artifacts are signed with a self-signed
 certificate that lives only on the maintainer's machine (`Cert:\CurrentUser\My`).
-CI (`.github/workflows/ci.yml`) builds, tests and validates the installer on every
-push, but does **not** create GitHub Releases.
+CI (`.github/workflows/ci.yml`) builds, tests and validates the installer on pushes to
+`main`, on `v*` tags, on pull requests and on manual dispatch, but does **not** create
+GitHub Releases.
 
 Each release publishes four assets — the same tool set for both architectures. **Every
 file name carries the version** so a downloaded file is self-identifying (the portable
@@ -29,26 +30,39 @@ assets of the still-unpublished `AssemblyInfo` version are reported as pending.
 
 ## Prerequisites (maintainer machine)
 
-- .NET SDK (build), [Inno Setup 6/7](https://jrsoftware.org/isdl.php) (installer),
+- .NET SDK 8+ (build), [Inno Setup 6.6 or newer](https://jrsoftware.org/isdl.php) (installer;
+  the script uses the four-argument `CreateCustomForm`; CI uses 6.7.1),
   Ghostscript **10.08.0 or newer** in **both bitnesses** — the w64 and w32 builds installed
   side by side (`tools\stage_gs.ps1 -Arch x64|x86` copies the matching subset into
   `installer\gs\` and `installer\gs32\`). Staging picks the newest installed engine by its
   file version and refuses anything older than `-MinVersion` (10.8.0: earlier builds are
   exposed to CVE-2026-39919 through crafted PDFs) or without its AGPL license file.
 - [GitHub CLI](https://cli.github.com/) authenticated (`gh auth login`) with push access.
+- A git remote named `origin` pointing to github.com/DedovMosol/iwoHelperDesktop
+  (`git remote add origin https://github.com/DedovMosol/iwoHelperDesktop.git`): the script
+  pushes the tag to `origin`. If that push fails, delete the local tag
+  (`git tag -d vX.Y.Z`) before retrying.
 
 ## Steps
 
 1. Bump the version in `src/AssemblyInfo.cs` — all three attributes: `AssemblyVersion`,
    `AssemblyFileVersion` and `AssemblyInformationalVersion`.
-2. Add a `## [X.Y.Z] — <date>` section to `docs/CHANGELOG.md` (its text becomes the
+2. Add a `## [X.Y.Z] — unreleased` section to `docs/CHANGELOG.md` (its text becomes the
    release notes verbatim). Work finished before the tag exists goes straight into that
    section: the version in `AssemblyInfo.cs` is the *pending* one until then, so there is
-   no need for an “Unreleased” heading and no reason to bump again.
-3. Update the four download buttons and the version note in the README (see above) — in
-   the same commit that is about to be tagged, after everything else is final. For 1.18.5
-   the portable buttons change from `.exe` to `.zip`, and so does the README wording that
-   calls the portable build a single `.exe` (the intro and the download notes).
+   no need for an “Unreleased” heading and no reason to bump again. Also keep
+   `docs/whatsnew.json` (both languages) in step: it is embedded in the exe and read from
+   `main` by installed copies for the update summary.
+3. In the release commit, after everything else is final:
+   - put the release date into the CHANGELOG heading;
+   - update the four download buttons and the version note in the README (see above). For
+     1.18.5 the portable buttons change from `.exe` to `.zip`, and so does the README wording
+     that calls the portable build a single `.exe` (the intro, the download notes and the
+     Ghostscript note under compression);
+   - if docs/PRIVACY.md changed in this cycle, update its “Last updated” date;
+   - if the UI or features changed, rebuild both user manuals (`tools\manual\build_manual.py`)
+     and commit the `.docx` files;
+   - install the newest Ghostscript in both bitnesses, so the installers bundle it.
 4. Run the full local pyramid (`tests\run_all.cmd`). CI cannot run the parts that need
    Excel and Word, so this is the last chance to catch them. For a public release, also run
    `--selftest`, `--thumbcheck` and one PDF operation in the maintained Windows 8.1/10 VM:

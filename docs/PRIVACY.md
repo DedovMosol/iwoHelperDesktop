@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Application:** iwo Helper Desktop
-**Last updated:** 2026-08-27
+**Last updated:** 2026-10-29
 
 ## Summary
 
@@ -18,35 +18,35 @@ turned off.
 
 The tools read the files you choose and write results to the folders you choose:
 
-- **PDF Merge** — build one PDF out of several,
-- **PDF Split** — extract or split pages,
-- **PDF Compare (beta)** — compare the trusted text layers of an earlier and a later
-  born-digital PDF while showing the original pages side by side,
-- **PDF → Word** — turn the text layer of a born‑digital PDF into a `.docx`,
-- **PDF → PowerPoint** — turn the pages of a born‑digital PDF into a `.pptx`,
+- **Merge PDF** — build one PDF out of several,
+- **Split PDF** — extract or split pages,
+- **Compare PDF (beta)** — compare the trusted text layers of an earlier and a later
+  born-digital PDF and show the changes over the later page or the two pages side by side,
+- **PDF → Word (beta)** — turn the text layer of a born‑digital PDF into a `.docx`,
+- **PDF → PowerPoint (beta)** — turn the pages of a born‑digital PDF into a `.pptx`,
 - **More operations** — assemble a document from its pages and from images you add, save it
   as a PDF, compress, save pages as images, extract text to `.txt`, print, convert
   to grayscale, repair a damaged file, view and edit document properties,
-- **Excel Digest** — combine sheets from several workbooks, with an optional Word cover note.
+- **Merge Excel** — combine sheets from several workbooks, with an optional Word cover note.
 
 This processing runs entirely on your machine using local components:
 
-- Microsoft Excel / Word automation (COM) for the Excel Digest and its Word cover note,
+- Microsoft Excel / Word automation (COM) for Merge Excel and its Word cover note,
   and for writing the `.docx` in PDF → Word,
 - the embedded PdfSharp library for reading and writing PDFs (merge, split, blank pages,
   document properties),
 - the embedded PdfPig library for extracting the text layer of born‑digital PDFs
-  (PDF → Word, PDF Compare, and “extract text to `.txt`”),
+  (PDF → Word, Compare PDF, and “extract text to `.txt`”),
 - Ghostscript, run as a separate local process, for compression, grayscale conversion,
   repairing damaged files, and for rendering the picture regions that PDF → Word puts
   into the `.docx`,
 - the built‑in Windows PDF engine (`Windows.Data.Pdf`) for rendering page thumbnails,
-  the full‑size preview, PDF Compare's original page views and bounded visual confirmation,
+  the full‑size preview, Compare PDF's original page views and bounded visual confirmation,
   and the images produced by “save pages as images,”
 - the Windows imaging library (GDI+) for reading the images you add as pages — they are
   read from your disk, laid onto a page and never sent anywhere.
 
-**PDF Compare scope.** Comparison runs locally over text that is already decoded from the
+**Compare PDF scope.** Comparison runs locally over text that is already decoded from the
 PDF text layer. It does not use OCR, send pages to an OCR service, or derive copied text or
 whitespace from pixels and visual gaps. Its page renderer may only conservatively suppress an
 existing word-change candidate; it cannot invent text or a semantic match. Image-only and
@@ -77,8 +77,13 @@ as soon as they are no longer needed — successfully or not:
   window does — they *are* the pages you see in it — and the folder is deleted when the
   window closes. A folder left behind by a crash is swept the next time images are added.
 - **An action over an assembled document** (More operations) first writes that document to a
-  temporary PDF in the same directory when the pages have been reordered, rotated or removed,
-  and deletes it as soon as the action finishes. Untouched pages need no such file.
+  temporary PDF in your system temp directory when the pages have been reordered, rotated or
+  removed, and deletes it as soon as the action finishes. Untouched pages need no such file.
+- **Password-protected pages rendered through Ghostscript** (page backgrounds, raster
+  fallbacks) are first saved as a decrypted copy `iwo_pg_dec_….pdf` in your system temp
+  directory, because Ghostscript cannot take the password. The copy is deleted as soon as
+  rendering ends, and a copy left behind by a crash is removed at the next start. The
+  password itself is kept in memory only and is never saved.
 - **A document that can replace an existing destination** is first written to a uniquely
   named `.iwo-<random>` neighbour. During a non-NTFS fallback swap, the full original name is
   retained in a recoverable `.bak` file and an empty `.txn` recovery marker is held open. A
@@ -107,7 +112,7 @@ The app keeps a small amount of data **locally**, under
 - `stats.txt` — local counters of how many operations you have run (no file names,
   no content), these exist only for your own reference and can be cleared manually or
   automatically from the app’s **Statistics** window,
-- `reports\` — text reports of the three most recent Excel Digest runs; command-line
+- `reports\` — text reports of the three most recent Merge Excel runs; command-line
   runs instead write `<output>.report.txt` beside the chosen digest,
 - `settings.txt.lock`, `stats.txt.lock`, and `history.txt.lock` — empty lock files used only
   to serialize state updates across processes and Windows sessions; they contain no data,
@@ -117,8 +122,8 @@ The app keeps a small amount of data **locally**, under
   it exists so **you** can attach it to a bug report if you choose to,
 - `setup-language.txt` — one word, `ru` or `en`: the language you picked in the installer.
   The app applies it at the first start and deletes the file,
-- `Инструкция пользователя.docx` — the user guide, unpacked from the program itself when you
-  open it from **About**. It is a copy of what already sits inside the `.exe`, nothing is
+- `Инструкция пользователя.docx`, or `User manual.docx` with the English interface — the
+  user guide, unpacked from the program itself when you open it from **About**. It is a copy of what already sits inside the `.exe`, nothing is
   downloaded,
 - `THIRD-PARTY-NOTICES.txt` — the embedded PDFsharp/PdfPig licenses and attribution notices,
   unpacked locally only when you open **About → Third-party licenses**,
@@ -129,7 +134,8 @@ The app keeps a small amount of data **locally**, under
   does not scrub paths that may have reached `crash.log` through the text of an error
   message: the .NET message for a missing or locked file contains the path itself.
 
-You can delete this folder at any time, the app recreates only what it needs.
+You can delete this folder at any time, the app recreates only what it needs. Uninstalling
+the app does not remove it: delete it yourself if you want no trace left.
 
 ## Network use
 
@@ -137,10 +143,14 @@ The single network feature is the **update check**. It runs when you click “Ch
 updates”, and once when the app starts:
 
 - It sends an HTTPS request to the GitHub Releases API
-  (`https://api.github.com/repos/DedovMosol/iwoHelperDesktop/releases/latest`) with a
-  generic `User-Agent` header and reads the latest published version tag.
+  (`https://api.github.com/repos/DedovMosol/iwoHelperDesktop/releases/latest`) and reads
+  the latest published version tag.
 - Only if that tag is newer than the installed version, it also reads the short localized
-  change summary from the project's public `docs/whatsnew.json` on GitHub. If the summary
+  change summary from the project's public `docs/whatsnew.json`
+  (`https://raw.githubusercontent.com/DedovMosol/iwoHelperDesktop/main/docs/whatsnew.json`).
+- Both requests carry only `User-Agent: iwoHelperDesktop` and an `Accept` header, plus what
+  Windows itself adds. Behind an authenticating corporate proxy they use your Windows sign-in
+  for that proxy, as a browser does. If the summary
   is unavailable, the version check still works and shows its ordinary message.
 - No file contents, file names, document identifiers, account identifiers, or personal data
   are included in either request.
@@ -148,7 +158,7 @@ updates”, and once when the app starts:
   it asks first and only then opens the release page in **your** browser.
 - The **startup** check says nothing unless a newer version exists: no network, no answer
   and “you are up to date” are all silent, because you did not ask the question. When it
-  does have news, the notice carries a “Don't remind me about this version” box, and the
+  does have news, the notice carries a “Don't ask again” box, which skips only that version, and the
   check itself can be switched off — the setting is stored in `settings.txt`
   (`updateCheckOnStart`), together with the version you asked to skip (`skippedVersion`).
 
