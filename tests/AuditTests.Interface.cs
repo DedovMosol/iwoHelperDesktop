@@ -167,11 +167,10 @@ namespace ExcelMerger.Tests
                                     if (f.Width > area.Width || f.Height > area.Height)
                                     {
                                         // Больше экрана законно только тогда, когда экрану не хватает
-                                        // минимума окна. «Свод Excel» растит высоту по своему содержимому
-                                        // (ClampToLayout) — оно на 1080p при 150 % выше рабочей области.
+                                        // минимума окна. «Свод Excel» выше экрана прокручивается (UI-24).
                                         // Диалоги с неизменяемой рамкой не ужимаются (ScaledForm.FitToScreen).
                                         bool sizable = f.FormBorderStyle == FormBorderStyle.Sizable;
-                                        if (sizable && minimumFits && !(f is MainForm))
+                                        if (sizable && minimumFits)
                                             offenders.Add(where + " → окно " + f.Size + " больше рабочей области " +
                                                 area.Size + ", хотя минимум " + f.MinimumSize + " в неё помещается");
                                         else
@@ -181,6 +180,7 @@ namespace ExcelMerger.Tests
                                     }
                                     checkedCount++;
                                     CheckScaledLayout(f, where, offenders);
+                                    CheckScrollReachesEnd(f, where, offenders);
                                     CheckButtonCaptionsFit(f, where, offenders);
                                     if (CheckGrewWithScale(f, baseline[name], scale, area, where, offenders))
                                         CheckEdgesScaled(f, edges[name], scale, where, offenders);
@@ -201,6 +201,23 @@ namespace ExcelMerger.Tests
                                         f.Size = f.MinimumSize;
                                         f.PerformLayout();
                                         CheckScaledLayout(f, where + " MIN", offenders);
+                                        CheckScrollReachesEnd(f, where + " MIN", offenders);
+                                    }
+                                    // Развёрнутое окно размер не выбирает: раскладке, которой не
+                                    // хватает экрана, остаётся только прокрутка (UI-24).
+                                    if (f.FormBorderStyle == FormBorderStyle.Sizable && f.MaximizeBox)
+                                    {
+                                        Size normal = f.Size;
+                                        f.WindowState = FormWindowState.Maximized;
+                                        f.PerformLayout();
+                                        CheckScaledLayout(f, where + " MAX", offenders);
+                                        CheckScrollReachesEnd(f, where + " MAX", offenders);
+                                        f.WindowState = FormWindowState.Normal;
+                                        // Раскладка развёрнутого окна не трогает размер, к которому
+                                        // оно вернётся: иначе «Восстановить» открывало бы другое окно.
+                                        if (f.Size != normal)
+                                            offenders.Add(where + " → после развёртывания размер " +
+                                                f.Size + " вместо " + normal);
                                     }
                                     f.Close();
                                 }
@@ -214,6 +231,155 @@ namespace ExcelMerger.Tests
                 Console.WriteLine("      UI-1: экран мал для " + string.Join(", ", notChecked.ToArray()));
             AssertTrue(checkedCount >= 8, "под масштабом проверено окон: " + checkedCount);
             AssertTrue(offenders.Count == 0, "под масштабом экрана: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        /// <summary>
+        /// Прокручиваемое окно обязано докручиваться до своего нижнего ряда: после прокрутки
+        /// до конца ни один видимый контрол не ниже клиентской области. Так ловится холст,
+        /// заданный короче раскладки, — привязанный к низу ряд тогда остаётся недостижимым.
+        /// </summary>
+        private static void CheckScrollReachesEnd(Form f, string where, List<string> offenders)
+        {
+            if (!f.AutoScroll || f.AutoScrollMinSize.IsEmpty)
+                return;
+            f.AutoScrollPosition = new Point(0, f.AutoScrollMinSize.Height);
+            f.PerformLayout();
+            // Прокрученное окно — та же раскладка: холст не должен ужаться на сдвиг прокрутки.
+            CheckScaledLayout(f, where + " (прокручено)", offenders);
+            foreach (Control c in f.Controls)
+                if (c.Visible && c.Bottom > f.ClientSize.Height)
+                    offenders.Add(where + " → прокрутка до конца не достаёт " + Describe(c) + " (низ " +
+                        c.Bottom + " при клиенте " + f.ClientSize.Height + ")");
+            f.AutoScrollPosition = Point.Empty;
+            f.PerformLayout();
+            // С клавиатуры: фокус на самом нижнем доступном контроле прокручивает окно к нему.
+            Control lowest = f.Controls.Cast<Control>()
+                .Where(c => c.Visible && c.CanSelect && c.TabStop)
+                .OrderByDescending(c => c.Bottom).FirstOrDefault();
+            if (lowest != null)
+            {
+                f.ActiveControl = lowest;
+                if (lowest.Top < 0 || lowest.Bottom > f.ClientSize.Height)
+                    offenders.Add(where + " → фокус на " + Describe(lowest) + " не прокрутил к нему окно (" +
+                        lowest.Bounds + " при клиенте " + f.ClientSize + ")");
+                f.AutoScrollPosition = Point.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Константы, которые работают уже после показа окна и потому мимо автомасштаба:
+        /// поля вокруг страницы в «вписать» сравнения и линия вставки при перетаскивании файлов
+        /// в «Своде Excel». При 150 % обе обязаны вырасти в полтора раза — найдены перепроверкой
+        /// шага 2 UI-1, раскладочные тесты их не видят (они меряют контролы, а не масштаб
+        /// страницы и не временную линию).
+        /// </summary>
+        [Test("Аудит UI-1: поля «вписать» и линия вставки растут с масштабом экрана")]
+        private static void AuditRuntimeConstantsFollowScale()
+        {
+            foreach (float scale in new[] { 1f, 1.5f })
+            {
+                DpiScale.EmulatedScale = scale;
+                try
+                {
+                    using (var dir = new TempDir("iwo_dpi_fit_"))
+                    {
+                        PdfReviewResult result = AuditLiveResult(dir);
+                        InIsolatedSettings("iwo_dpi_fit_s_", delegate
+                        {
+                            using (var form = new PdfReviewForm(null))
+                            {
+                                form.Show();
+                                Application.DoEvents();
+                                InvokeReviewApplyResult(form, result);
+                                PdfReviewPageView view = form.UnifiedSourceView;
+                                AssertTrue(WaitFor(delegate { return AuditViewIdle(view); }), "страница отрисована");
+                                Button fit = view.Controls.OfType<Button>().First(b => b.Text == Loc.T("preview.fit"));
+                                fit.PerformClick();
+                                Image image = view.ViewportPanel.Controls.OfType<PictureBox>().Single().Image;
+                                int margin = (int)Math.Round(24 * scale);
+                                Size area = view.ViewportPanel.ClientSize;
+                                double expected = PreviewZoom.Fit(image.Size,
+                                    new Size(area.Width - margin, area.Height - margin));
+                                AssertTrue(Math.Abs(view.ZoomScale - expected) < 1e-9,
+                                    "«вписать» при " + scale + ": масштаб " + view.ZoomScale + ", ждали " + expected +
+                                    " (поля " + margin + " px)");
+                                form.Close();
+                            }
+                        });
+                    }
+                    InIsolatedSettings("iwo_dpi_drop_", delegate
+                    {
+                        using (var form = new MainForm(delegate { }))
+                        {
+                            form.Show();
+                            const System.Reflection.BindingFlags Any =
+                                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                            typeof(MainForm).GetMethod("ShowDropLine", Any).Invoke(form, new object[] { 0 });
+                            var line = (Control)typeof(MainForm).GetField("_dropLine", Any).GetValue(form);
+                            var list = (Control)typeof(MainForm).GetField("_list", Any).GetValue(form);
+                            int inset = (int)Math.Round(2 * scale);
+                            AssertEq(inset, line.Height, "толщина линии вставки при " + scale);
+                            AssertEq(list.Left + inset, line.Left, "отступ линии слева при " + scale);
+                            AssertEq(list.Width - 2 * inset, line.Width, "ширина линии при " + scale);
+                            form.Close();
+                        }
+                    });
+                }
+                finally { DpiScale.EmulatedScale = 1f; }
+            }
+        }
+
+        /// <summary>
+        /// Нижний ряд «Свода Excel»: ссылки на результат и «Повторить пропущенные» появляются
+        /// только после свода, поэтому раскладочные тесты их не видят (скрытые ссылки не
+        /// проверяет никто, а ссылка — не кнопка). Ширину минимума окна держат именно они:
+        /// на минимальной ширине, при каждом масштабе, на обоих языках и с полосой прокрутки,
+        /// когда экрану не хватает высоты, ни одна ссылка не заходит под кнопку.
+        /// </summary>
+        [Test("Аудит UI-24: нижние ссылки «Свода Excel» не заходят под «Повторить» на минимальной ширине")]
+        private static void AuditExcelBottomRowFitsAtMinimumWidth()
+        {
+            var offenders = new List<string>();
+            Lang was = Loc.Current;
+            const System.Reflection.BindingFlags Any =
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            try
+            {
+                foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                    foreach (float scale in new[] { 1f, 1.25f, 1.5f })
+                    {
+                        Loc.Init(lang);
+                        DpiScale.EmulatedScale = scale;
+                        try
+                        {
+                            InIsolatedSettings("iwo_ui24_row_", delegate
+                            {
+                                using (var form = new MainForm(delegate { }))
+                                {
+                                    form.Show();
+                                    form.Size = form.MinimumSize;
+                                    form.PerformLayout();
+                                    string where = lang + " @" + (int)Math.Round(scale * 100) + "% " +
+                                        form.ClientSize + (form.AutoScroll ? " (прокрутка)" : "");
+                                    var retry = (Control)typeof(MainForm).GetField("_btnRetry", Any).GetValue(form);
+                                    retry.Visible = true;
+                                    foreach (string name in new[] { "_lnkOpenFile", "_lnkOpenFolder", "_lnkOpenReport", "_lnkNote" })
+                                    {
+                                        var link = (Control)typeof(MainForm).GetField(name, Any).GetValue(form);
+                                        link.Visible = true;
+                                        if (link.Bounds.IntersectsWith(retry.Bounds))
+                                            offenders.Add(where + " → «" + link.Text + "» " + link.Bounds +
+                                                " под «" + retry.Text + "» " + retry.Bounds);
+                                    }
+                                    form.Close();
+                                }
+                            });
+                        }
+                        finally { DpiScale.EmulatedScale = 1f; }
+                    }
+            }
+            finally { Loc.Init(was); }
+            AssertTrue(offenders.Count == 0, "нижний ряд свода: " + string.Join(" | ", offenders.ToArray()));
         }
 
         /// <summary>Те же проверки целости, что у раскладочных тестов на 100 %.</summary>

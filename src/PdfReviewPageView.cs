@@ -1298,9 +1298,10 @@ namespace ExcelMerger
         private void Fit()
         {
             if (_bitmap == null) return;
+            int margin = DpiScale.Px(this, 24); // поля вокруг страницы растут с масштабом экрана
             double fit = PreviewZoom.Fit(_bitmap.Size,
-                new Size(Math.Max(1, _viewport.ClientSize.Width - 24),
-                         Math.Max(1, _viewport.ClientSize.Height - 24)));
+                new Size(Math.Max(1, _viewport.ClientSize.Width - margin),
+                         Math.Max(1, _viewport.ClientSize.Height - margin)));
             _scale = fit;
             _viewport.AutoScrollPosition = Point.Empty;
             PlacePicture();

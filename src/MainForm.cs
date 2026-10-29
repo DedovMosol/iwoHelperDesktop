@@ -829,13 +829,16 @@ namespace ExcelMerger
         {
             // y — в координатах клиента списка; переносим в координаты формы (+_list.Top).
             int y;
+            // Линия рисуется после масштаба окна: её толщина и отступы — через Px.
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
             if (_list.Items.Count == 0)
-                y = 4;
+                y = d(4);
             else if (target >= _list.Items.Count)
                 y = _list.Items[_list.Items.Count - 1].Bounds.Bottom;
             else
                 y = _list.Items[target].Bounds.Top;
-            _dropLine.SetBounds(_list.Left + 2, _list.Top + y - 1, _list.Width - 4, 2);
+            int thick = d(2);
+            _dropLine.SetBounds(_list.Left + d(2), _list.Top + y - thick / 2, _list.Width - 2 * d(2), thick);
             _dropLine.Visible = true;
             _dropLine.BringToFront();
         }
@@ -1331,21 +1334,63 @@ namespace ExcelMerger
         /// растим клиентскую область, а получившуюся внешнюю высоту запоминаем как минимум,
         /// чтобы дальше рамку останавливал сам WinForms, а не этот обработчик.
         /// Повторно не срабатывает: кнопка прижата к верху, её низ от высоты окна не зависит.
+        ///
+        /// Экрану может не хватить раскладки: 758 логических пикселей клиента против 667 на
+        /// 1080p при 150 % и 689 на 1366×768 при 100 % (UI-24). Тогда окно растёт только до
+        /// рабочей области, а остальное прокручивается: AutoScrollMinSize — полная высота
+        /// раскладки, и привязанный к низу ряд стоит у низа этой высоты, а не видимой части.
+        /// Развёрнутое окно размер не выбирает — ему прокрутка нужна, как только раскладка
+        /// выше клиентской области. Свёрнутое не трогаем: его клиент крошечный.
         /// </summary>
         private void ClampToLayout()
         {
             if (_btnUncheckAll == null)
                 return; // раскладка ещё строится
-            if (WindowState != FormWindowState.Normal)
-                return; // свёрнутое окно имеет крошечный клиент, а развёрнутое размер не выбирает:
-                        // в обоих случаях правка размера боролась бы с самим Windows
-            // Константы логические, окно после масштаба — в пикселях экрана (см. ScaledForm).
-            int needed = _btnUncheckAll.Bottom + DpiScale.Px(this, RowGap + BottomRowHeight);
-            if (ClientSize.Height >= needed)
+            if (WindowState == FormWindowState.Minimized)
                 return;
-            ClientSize = new Size(ClientSize.Width, needed);
+            // Константы логические, окно после масштаба — в пикселях экрана (см. ScaledForm).
+            // Низ кнопки — от начала прокручиваемой области: DisplayRectangle.Y — это минус
+            // текущий сдвиг прокрутки, иначе прокрученное окно «нуждалось» бы в меньшем.
+            int needed = _btnUncheckAll.Bottom - DisplayRectangle.Y +
+                DpiScale.Px(this, RowGap + BottomRowHeight);
+            bool canGrow = WindowState == FormWindowState.Normal;
+            int available = canGrow ? AvailableClientHeight() : ClientSize.Height;
+            // Прокрутку включаем только после масштаба: до него окно логическое, а
+            // AutoScrollMinSize WinForms при масштабе не пересчитывает вместе с контролами.
+            bool scroll = IsScaled && needed > available;
+            Size canvas = scroll ? new Size(0, needed) : Size.Empty;
+            if (AutoScrollMinSize != canvas)
+                AutoScrollMinSize = canvas;
+            if (AutoScroll != scroll)
+                AutoScroll = scroll;
+            if (!canGrow)
+                return;
+            int target = Math.Min(needed, available);
+            // С прокруткой окно не выше экрана — даже на пиксель, набежавший при переводе
+            // логической высоты в пиксели экрана во время масштаба.
+            bool tooTall = scroll && ClientSize.Height > available;
+            if (ClientSize.Height >= target && !tooTall)
+                return;
+            if (tooTall)
+                MinimumSize = new Size(MinimumSize.Width, 0); // старый минимум не дал бы ужать
+            ClientSize = new Size(ClientSize.Width, target);
+            // Полоса прокрутки отнимает у клиента ширину, но запаса нижнего ряда хватает:
+            // минимум на 15 логических px уже нынешнего ещё проходит тест UI-24 при 150 % с
+            // прокруткой, на 25 px — нет (замерено мутацией). Тест стережёт этот запас.
             if (MinimumSize.Height != Height)
                 MinimumSize = new Size(DpiScale.Px(this, MinWidth), Height); // рамка теперь известна по факту
+        }
+
+        /// <summary>
+        /// Высота клиентской области, при которой окно целиком на рабочей области своего экрана,
+        /// в единицах окна сейчас (до масштаба — логических). FromRectangle, а не FromControl:
+        /// тот создаёт хэндл, а раскладка идёт и в конструкторе (см. ScaledForm).
+        /// </summary>
+        private int AvailableClientHeight()
+        {
+            int frame = Height - ClientSize.Height; // рамка и заголовок — всегда пиксели экрана
+            int area = Screen.FromRectangle(Bounds).WorkingArea.Height;
+            return DpiScale.FromDevice(this, Math.Max(0, area - frame));
         }
 
         // Только OnLayout: раскладка идёт и при изменении размера окна, и при масштабировании

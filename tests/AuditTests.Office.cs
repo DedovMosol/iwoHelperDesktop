@@ -1231,6 +1231,13 @@ namespace ExcelMerger.Tests
                 AssertTrue(watchdog != null && watchdog.Message.StartsWith("Office не ответил", StringComparison.Ordinal),
                     "сторож сработал: " + (watchdog == null ? "нет" : watchdog.Message));
                 AssertTrue(human != null && humanUpBeforeTimeout, "Excel человека запущен до срабатывания сторожа");
+                // Сторож завершает процесс через Kill, а у такого процесса код выхода -1.
+                // Процесс, запущенный «как человек» (excel.exe /x через оболочку), может закрыться
+                // и сам — под нагрузкой полного прогона так и случилось однажды; тогда проверять
+                // нечего, и это пропуск, а не вина сторожа.
+                if (human.HasExited && human.ExitCode != -1)
+                    SkipMissing("office", "Excel человека закрылся сам (код " + human.ExitCode +
+                        ") — проверить сторожа не на чем");
                 AssertTrue(!human.HasExited, "Excel, открытый не автоматизацией, сторож не трогает");
                 AssertTrue(!AuditBAlive(automationPid), "экземпляр автоматизации завершён");
             }

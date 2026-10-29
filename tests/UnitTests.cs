@@ -19394,6 +19394,14 @@ namespace ExcelMerger.Tests
         private static void CheckFits(System.Windows.Forms.Control parent, string where, List<string> offenders)
         {
             System.Drawing.Rectangle box = parent.ClientRectangle;
+            // Прокручиваемое окно (экран ниже раскладки, UI-24): холст — заданная им полная
+            // высота раскладки от начала прокрутки, а не видимая часть. Ширина — видимая:
+            // горизонтальной прокрутки у окон нет, вылезти вбок по-прежнему нельзя.
+            var scroller = parent as System.Windows.Forms.ScrollableControl;
+            if (scroller != null && !(parent is System.Windows.Forms.Panel) && scroller.AutoScroll &&
+                !scroller.AutoScrollMinSize.IsEmpty)
+                box = new System.Drawing.Rectangle(0, scroller.DisplayRectangle.Y, box.Width,
+                    Math.Max(box.Height, scroller.AutoScrollMinSize.Height));
             foreach (System.Windows.Forms.Control c in parent.Controls)
             {
                 // Скроллящиеся панели (AutoScroll) по определению вмещают контент больше

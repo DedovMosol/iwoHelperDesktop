@@ -151,7 +151,11 @@ Excel and Word are **optional**: PDF Merge, Split, Compare, More operations and 
   `LogicalBottom` (or `FromDevice` in code that runs in both phases), measured only after
   the control is parented — before that it has the default font, not the window's.
   Constructors must not create a handle (`Screen.FromControl` does): the window would be
-  scaled half-built.
+  scaled half-built. A layout taller than the screen scrolls instead of growing past it
+  (Excel Digest, `MainForm.ClampToLayout`): `AutoScroll` is switched on only after the
+  scale — enabled earlier, WinForms keeps bottom-anchored controls at distances from the
+  unscaled canvas — and `AutoScrollMinSize` is the full layout height measured from the
+  scroll origin (`DisplayRectangle.Y`).
 - **Office through `dynamic`** (late binding, `Microsoft.CSharp`): no PIA/interop
   packages, builds on machines without Office, works with any Office version. The price
   is a set of strict usage rules — see [Office COM layer](#office-com-layer).
