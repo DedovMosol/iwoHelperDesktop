@@ -81,12 +81,16 @@ namespace ExcelMerger
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
 
         /// <summary>
-        /// Радиус скругления по высоте кнопки: пропорция вместо ступеньки. Чистая — под тест.
+        /// Радиус скругления по высоте кнопки: пропорция вместо ступеньки. Пределы — логические
+        /// и растут с масштабом экрана (scale — <see cref="DpiScale.Device(Control)"/>): иначе
+        /// кнопка высотой 45 px при 150 % упиралась в те же 10 px, что и 38 px при 100 %, и
+        /// выглядела рубленее. Чистая — под тест.
         /// </summary>
-        internal static float RadiusFor(int height)
+        internal static float RadiusFor(int height, float scale = 1f)
         {
             float r = height / 4f;
-            return r < MinRadius ? MinRadius : (r > MaxRadius ? MaxRadius : r);
+            float min = MinRadius * scale, max = MaxRadius * scale;
+            return r < min ? min : (r > max ? max : r);
         }
 
         /// <summary>
@@ -94,10 +98,11 @@ namespace ExcelMerger
         /// у квадратной кнопки лупы (32 px) под текст оставалось 12 px, и «+» с «−»
         /// обрезались многоточием. Поэтому поле привязано к ширине. Чистая — под тест.
         /// </summary>
-        internal static int TextPadFor(int width)
+        internal static int TextPadFor(int width, float scale = 1f)
         {
             int pad = width / 8;
-            return pad < TextPad ? pad : TextPad;
+            int cap = (int)Math.Round(TextPad * scale); // поле растёт вместе с подписью
+            return pad < cap ? pad : cap;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -109,14 +114,17 @@ namespace ExcelMerger
             Color fill, text, border;
             Colors(out fill, out text, out border);
 
-            float radius = RadiusFor(Height);
-            var rect = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
+            // Рисование — всегда после масштаба окна, в пикселях устройства (UI-25).
+            float s = DpiScale.Device(this);
+            float radius = RadiusFor(Height, s);
+            float line = Math.Max(1f, s);           // рамка: 1 px при 100 %, толще с масштабом
+            var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
             using (GraphicsPath path = Ui.RoundedRect(rect, radius))
             {
                 using (var b = new SolidBrush(fill))
                     g.FillPath(b, path);
                 if (border != Color.Empty)
-                    using (var p = new Pen(border, 1f))
+                    using (var p = new Pen(border, line))
                         g.DrawPath(p, path);
             }
 
@@ -125,15 +133,16 @@ namespace ExcelMerger
             // отвечает на вопрос «где я сейчас нахожусь».
             if (Focused && Enabled)
             {
-                var inner = new RectangleF(3f, 3f, Width - 6f, Height - 6f);
+                float inset = 3f * s;
+                var inner = new RectangleF(inset, inset, Width - 2 * inset, Height - 2 * inset);
                 Color ring = _look == ButtonLook.Secondary && !_selected
                     ? Theme.Accent : Color.White;
-                using (GraphicsPath ringPath = Ui.RoundedRect(inner, radius - 2f))
-                using (var p = new Pen(ring, 1.6f))
+                using (GraphicsPath ringPath = Ui.RoundedRect(inner, radius - 2f * s))
+                using (var p = new Pen(ring, 1.6f * s))
                     g.DrawPath(p, ringPath);
             }
 
-            int pad = TextPadFor(Width);
+            int pad = TextPadFor(Width, s);
             var textArea = new Rectangle(pad, 0, Math.Max(1, Width - 2 * pad), Height);
             TextRenderer.DrawText(g, Text, Font, textArea, text,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |

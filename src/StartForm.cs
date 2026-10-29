@@ -694,7 +694,10 @@ namespace ExcelMerger
                 Image fallback = _glyphFontPresent || _fallback == null ? null : _fallback();
                 if (fallback != null)
                 {
-                    e.Graphics.DrawImage(fallback, (Width - fallback.Width) / 2, (Height - fallback.Height) / 2);
+                    // Флаг-картинка нарисована под 100 %: растягиваем её вместе с кнопкой.
+                    int w = DpiScale.Device(this, fallback.Width), h = DpiScale.Device(this, fallback.Height);
+                    e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    e.Graphics.DrawImage(fallback, new Rectangle((Width - w) / 2, (Height - h) / 2, w, h));
                 }
                 else
                 {

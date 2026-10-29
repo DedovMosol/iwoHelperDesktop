@@ -55,7 +55,40 @@ namespace ExcelMerger
             var form = control as ScaledForm ?? control.FindForm() as ScaledForm;
             if (form != null && !form.IsScaled)
                 return logical;
-            return (int)Math.Round(logical * (control.DeviceDpi / LogicalDpi * EmulatedScale));
+            return Device(control, logical);
+        }
+
+        /// <summary>
+        /// Во сколько раз пиксель устройства мельче логического для этого контрола. Для кода,
+        /// который всегда работает в пикселях устройства, независимо от фазы окна: рисование
+        /// (OnPaint идёт только после масштаба) и предпочтительный размер рядом с замером
+        /// текста (GetPreferredSize меряет шрифт — значит, и всё остальное в нём в тех же).
+        /// </summary>
+        internal static float Device(Control control)
+        {
+            return control.DeviceDpi / LogicalDpi * EmulatedScale;
+        }
+
+        /// <summary>
+        /// DPI монитора контрола против системного (в нём GDI рисует шрифты в пунктах). 1 на
+        /// основном мониторе и везде до создания хэндла; на мониторе 150 % при системных 100 % —
+        /// 1,5. Округление до сотых держит кэш шрифтов конечным (ключ — итоговый кегль).
+        /// </summary>
+        internal static float MonitorRatio(Control control)
+        {
+            return MonitorRatio(control.DeviceDpi);
+        }
+
+        /// <summary>То же по DPI монитора. Чистая (кроме системного DPI) — под тест.</summary>
+        internal static float MonitorRatio(int deviceDpi)
+        {
+            return (float)Math.Round(deviceDpi / (double)SystemDpi, 2);
+        }
+
+        /// <summary>Логическая длина → пиксели устройства этого контрола (см. <see cref="Device(Control)"/>).</summary>
+        internal static int Device(Control control, int logical)
+        {
+            return (int)Math.Round(logical * Device(control));
         }
 
         /// <summary>

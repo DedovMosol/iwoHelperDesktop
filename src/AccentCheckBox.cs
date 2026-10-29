@@ -33,9 +33,19 @@ namespace ExcelMerger
 
         public override Size GetPreferredSize(Size proposedSize)
         {
+            // Всё в пикселях устройства, как и замер текста: вызывающий переводит размер целиком
+            // (DpiScale.ToLogical), и логический квадрат рядом с экранным текстом ужался бы.
             Size text = TextRenderer.MeasureText(Text, Font);
-            return new Size(BoxSize + TextGap + text.Width + 4, Math.Max(BoxSize + 4, text.Height + 6));
+            int box = Box, gap = Gap;
+            return new Size(box + gap + text.Width + DpiScale.Device(this, 4),
+                Math.Max(box + DpiScale.Device(this, 4), text.Height + DpiScale.Device(this, 6)));
         }
+
+        /// <summary>Сторона квадрата в пикселях устройства (UI-25: при 150 % — 27, а не 18).</summary>
+        private int Box { get { return DpiScale.Device(this, BoxSize); } }
+
+        /// <summary>Просвет между квадратом и подписью в пикселях устройства.</summary>
+        private int Gap { get { return DpiScale.Device(this, TextGap); } }
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -43,9 +53,13 @@ namespace ExcelMerger
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Parent != null ? Parent.BackColor : Color.White);
 
-            int boxTop = (Height - BoxSize) / 2;
-            var rect = new RectangleF(0.5f, boxTop + 0.5f, BoxSize - 1, BoxSize - 1);
-            using (GraphicsPath box = Ui.RoundedRect(rect, 4f))
+            // Рисование — всегда после масштаба окна: квадрат, галочка, рамки — в пикселях устройства.
+            float s = DpiScale.Device(this);
+            int side = Box;
+            int boxTop = (Height - side) / 2;
+            float line = Math.Max(1f, s);
+            var rect = new RectangleF(line / 2, boxTop + line / 2, side - line, side - line);
+            using (GraphicsPath box = Ui.RoundedRect(rect, 4f * s))
             {
                 if (Checked)
                 {
@@ -55,17 +69,19 @@ namespace ExcelMerger
                         g.FillPath(b, box);
 
                     Color mark = Enabled ? Color.White : Theme.DisabledText;
-                    using (var pen = new Pen(mark, 2f))
+                    using (var pen = new Pen(mark, 2f * s))
                     {
                         pen.StartCap = LineCap.Round;
                         pen.EndCap = LineCap.Round;
                         pen.LineJoin = LineJoin.Round;
                         float y = boxTop;
+                        // Галочка в координатах квадрата 18×18, растянутых под его сторону.
+                        float k = side / (float)BoxSize;
                         g.DrawLines(pen, new[]
                         {
-                            new PointF(4.5f, y + 9.5f),
-                            new PointF(7.5f, y + 12.5f),
-                            new PointF(13.5f, y + 5.5f)
+                            new PointF(4.5f * k, y + 9.5f * k),
+                            new PointF(7.5f * k, y + 12.5f * k),
+                            new PointF(13.5f * k, y + 5.5f * k)
                         });
                     }
                 }
@@ -75,23 +91,23 @@ namespace ExcelMerger
                         g.FillPath(b, box);
                     Color border = !Enabled ? Theme.Border
                         : (_hover ? Theme.BorderDark : Theme.Border);
-                    using (var pen = new Pen(border, 1f))
+                    using (var pen = new Pen(border, line))
                         g.DrawPath(pen, box);
                 }
 
                 if (Focused && Enabled)
                 {
-                    using (var pen = new Pen(Color.FromArgb(120, Theme.Accent), 1.5f))
+                    using (var pen = new Pen(Color.FromArgb(120, Theme.Accent), 1.5f * s))
                     {
-                        var focus = new RectangleF(rect.X - 0.5f, rect.Y - 0.5f, rect.Width + 1, rect.Height + 1);
-                        using (GraphicsPath ring = Ui.RoundedRect(focus, 5f))
+                        var focus = new RectangleF(rect.X - line / 2, rect.Y - line / 2, rect.Width + line, rect.Height + line);
+                        using (GraphicsPath ring = Ui.RoundedRect(focus, 5f * s))
                             g.DrawPath(pen, ring);
                     }
                 }
             }
 
             Color textColor = Enabled ? Theme.TextPrimary : Theme.DisabledText;
-            var textRect = new Rectangle(BoxSize + TextGap, 0, Width - BoxSize - TextGap, Height);
+            var textRect = new Rectangle(side + Gap, 0, Width - side - Gap, Height);
             TextRenderer.DrawText(g, Text, Font, textRect, textColor,
                 // WordBreak вместо SingleLine: подпись, не влезающая в узкую колонку, переносится
                 // на вторую строку вместо того, чтобы обрезаться. Коротким подписям это ничего

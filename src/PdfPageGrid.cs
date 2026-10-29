@@ -67,7 +67,7 @@ namespace ExcelMerger
             private static readonly Color HintColor = Color.FromArgb(120, 120, 120);
             public event EventHandler Scrolled;
             public string HintText;   // текст-подсказка пустого списка; null — не рисовать
-            public Font HintFont;     // общий кэшированный шрифт (Ui.Font) — не освобождать
+            public float HintPoints;  // кегль подсказки; 0 — шрифт списка (шрифт берётся из кэша Ui)
 
             protected override void WndProc(ref Message m)
             {
@@ -83,8 +83,8 @@ namespace ExcelMerger
                     // Пустой список: DrawItem не вызывается, база залила фон — рисуем подсказку.
                     using (var g = Graphics.FromHwnd(Handle))
                     {
-                        Rectangle r = Rectangle.Inflate(ClientRectangle, -30, 0);
-                        TextRenderer.DrawText(g, HintText, HintFont ?? Font, r, HintColor,
+                        Rectangle r = Rectangle.Inflate(ClientRectangle, -DpiScale.Device(this, 30), 0);
+                        TextRenderer.DrawText(g, HintText, HintPoints > 0 ? Ui.Font(this, HintPoints) : Font, r, HintColor,
                             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                             TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
                     }
@@ -151,8 +151,8 @@ namespace ExcelMerger
         private readonly Dictionary<string, List<ListViewItem>> _itemsByKey =
             new Dictionary<string, List<ListViewItem>>(StringComparer.OrdinalIgnoreCase);
         private int _tileWidth = ThumbZoom.DefaultWidth;
-        private Font _badgeFont;
-        private Font _hintFont;   // подсказка пустого списка (крупнее подписей)
+        // Шрифты рисования — под DPI монитора сетки (Ui.Font(Control, …)); общий кэш, не освобождать.
+        private Font BadgeFont { get { return Ui.Font(this, 7.5f, FontStyle.Bold); } }
         private bool _dropActive; // над сеткой тянут файл — рисуем акцентную рамку и меняем подсказку
         private string _emptyHint; // текст подсказки для пустого списка (задаёт форма)
         private string _dropHint;  // текст подсказки во время дропа файла (задаёт форма)
@@ -179,7 +179,7 @@ namespace ExcelMerger
         private bool _hoverMark; // метка показана как подсветка наведения (не каретка)
         // Плитка под курсором: на ней рисуются hover-кнопки поворота ↺/↻ (как в Acrobat DC).
         private int _hotIndex = -1;
-        private Font _chipFont;
+        private Font ChipFont { get { return Ui.Font(this, 9.5f, FontStyle.Regular, "Segoe UI Symbol"); } } // глифы ↺/↻
 
         // Автопрокрутка при перетаскивании у края сетки.
         private System.Windows.Forms.Timer _dragScrollTimer;
@@ -241,17 +241,13 @@ namespace ExcelMerger
             _renderTarget = _renderBase;
             _pageCache = new LruCache<CachedPage>(
                 ThumbZoom.PageCacheCapacity(PageCacheBudget, _renderTarget), OnPageEvicted); // см. SetTileWidth
-            // Общие кэшированные шрифты (Ui.Font): грид ими не владеет и не освобождает.
-            _badgeFont = Ui.Font(7.5f, FontStyle.Bold);
-            _chipFont = Ui.Font(9.5f, FontStyle.Regular, "Segoe UI Symbol"); // глифы ↺/↻ hover-кнопок
-            _hintFont = Ui.Font(11f); // подсказка пустого списка (крупнее подписей)
             // Тонкая внутренняя рамка (Padding) видна только когда закрашена акцентом при
             // дропе: список Dock.Fill занимает клиент за вычетом Padding, его частичные
             // перерисовки в неё не залезают — рамка держится без мерцания.
             BackColor = GridBack;
             Padding = new Padding(DropFramePx);
             _metrics.ColorDepth = ColorDepth.Depth32Bit;
-            _list.HintFont = _hintFont;
+            _list.HintPoints = 11f; // подсказка пустого списка крупнее подписей
             _list.Dock = DockStyle.Fill;
             _list.View = View.LargeIcon;
             _list.LargeImageList = _metrics;
@@ -571,7 +567,7 @@ namespace ExcelMerger
         /// <summary>Логические пиксели → физические (сетка живёт в физических: и ячейки, и плитки).</summary>
         private int Px(int logical)
         {
-            return (int)Math.Round(logical * (DeviceDpi / 96.0));
+            return DpiScale.Device(this, logical); // один перевод на всё приложение (DRY)
         }
 
         /// <summary>
@@ -752,7 +748,7 @@ namespace ExcelMerger
             for (int i = 0; i < 2; i++)
             {
                 g.FillEllipse(ChipFill, buttons[i]);
-                TextRenderer.DrawText(g, glyphs[i], _chipFont, buttons[i], Color.White,
+                TextRenderer.DrawText(g, glyphs[i], ChipFont, buttons[i], Color.White,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
             g.SmoothingMode = prev;
@@ -786,12 +782,13 @@ namespace ExcelMerger
         private void DrawRotationBadge(Graphics g, Rectangle tileRect, int rotation)
         {
             string text = rotation + "°";
-            Size sz = TextRenderer.MeasureText(g, text, _badgeFont, Size.Empty, TextFormatFlags.NoPadding);
+            Font badgeFont = BadgeFont;
+            Size sz = TextRenderer.MeasureText(g, text, badgeFont, Size.Empty, TextFormatFlags.NoPadding);
             int padX = Px(4), padY = Px(2);
             var badge = new Rectangle(tileRect.Right - sz.Width - 2 * padX - Px(3), tileRect.Y + Px(3),
                 sz.Width + 2 * padX, sz.Height + 2 * padY);
             g.FillRectangle(BadgeFill, badge);
-            TextRenderer.DrawText(g, text, _badgeFont, badge, Color.White,
+            TextRenderer.DrawText(g, text, badgeFont, badge, Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
 
@@ -1627,9 +1624,10 @@ namespace ExcelMerger
         private void UpdateDragScroll(int clientY)
         {
             int dir = 0;
-            if (clientY < DragEdgePx)
+            int edge = Px(DragEdgePx); // зона автопрокрутки растёт вместе с плитками
+            if (clientY < edge)
                 dir = -1;
-            else if (clientY > _list.ClientSize.Height - DragEdgePx)
+            else if (clientY > _list.ClientSize.Height - edge)
                 dir = 1;
             _dragScrollDir = dir;
             if (dir != 0)
@@ -1656,7 +1654,7 @@ namespace ExcelMerger
                 return;
             }
             Size cell = ThumbZoom.CellSize(_tileWidth);
-            int step = Math.Max(24, Px(cell.Height) / 3);
+            int step = Math.Max(Px(24), Px(cell.Height) / 3);
             SendMessage(_list.Handle, LVM_SCROLL, IntPtr.Zero, (IntPtr)(_dragScrollDir * step));
             if (AllowReorder)
                 UpdateInsertionMark(_list.PointToClient(Control.MousePosition));

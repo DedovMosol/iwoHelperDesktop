@@ -24,6 +24,21 @@ namespace ExcelMerger
         /// <summary>Масштаб применён: дальше окно и его дети — в пикселях устройства.</summary>
         internal bool IsScaled { get { return _scaled; } }
 
+        /// <summary>
+        /// Шов для тестов: рабочая область экрана вместо настоящей (null — настоящая). Так
+        /// маленький экран CI (1024×768) проверяется на любой машине.
+        /// </summary>
+        internal static Func<Rectangle, Rectangle> WorkingAreaForTests { get; set; }
+
+        /// <summary>Рабочая область экрана, на котором лежит прямоугольник (не создаёт хэндлов).</summary>
+        internal static Rectangle WorkingArea(Rectangle bounds)
+        {
+            return WorkingAreaForTests != null ? WorkingAreaForTests(bounds)
+                : Screen.FromRectangle(bounds).WorkingArea;
+        }
+
+
+
         protected override void CreateHandle()
         {
             if (!_scaled)
@@ -62,10 +77,10 @@ namespace ExcelMerger
                 (FormBorderStyle != FormBorderStyle.Sizable && FormBorderStyle != FormBorderStyle.SizableToolWindow))
                 return;
             // Не FromControl: он создаёт хэндл владельца, если его ещё нет.
-            Screen screen = Owner != null ? Screen.FromRectangle(Owner.Bounds) : Screen.FromPoint(MousePosition);
+            Rectangle near = Owner != null ? Owner.Bounds : new Rectangle(MousePosition, Size.Empty);
             Size frame = Size - ClientSize; // рамка и заголовок — системные, не масштабируются
             float factor = DeviceDpi / DpiScale.LogicalDpi * DpiScale.EmulatedScale;
-            Size fit = FitClient(ClientSize, MinimumSize, frame, screen.WorkingArea.Size, factor);
+            Size fit = FitClient(ClientSize, MinimumSize, frame, WorkingArea(near).Size, factor);
             if (fit != ClientSize)
                 ClientSize = fit;
         }

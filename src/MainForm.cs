@@ -258,8 +258,8 @@ namespace ExcelMerger
             // Файлы: порядок и состав до слияния; после — результат в тех же строках
             AddSectionLabel(Loc.T("excel.sec.files"), 508);
             _list = new ListView();
-            _list.SetBounds(20, 528, right - 20 - 150, ClientSize.Height - 528 - 44);
-            _list.Anchor = stretch | AnchorStyles.Bottom;
+            _list.SetBounds(20, 528, right - 20 - 150, ClientSize.Height - 528 - ListBottomGap);
+            _list.Anchor = stretch; // низ — PlaceBottomOfLayout, а не привязка (см. там)
             _list.View = View.Details;
             _list.FullRowSelect = true;
             _list.CheckBoxes = true; // снятая галочка исключает файл из свода
@@ -318,7 +318,7 @@ namespace ExcelMerger
             _dropLine.BringToFront();
 
             _btnRetry = AddButton(Loc.T("excel.btn.retry"), false, right - 200, ClientSize.Height - 40, 200, 30);
-            _btnRetry.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            _btnRetry.Anchor = AnchorStyles.Top | AnchorStyles.Right; // высота — PlaceBottomOfLayout
             _btnRetry.Visible = false;
             _btnRetry.Click += OnRetryClick;
             _tips.SetToolTip(_btnRetry, Loc.T("excel.tip.retry"));
@@ -346,6 +346,8 @@ namespace ExcelMerger
         private const int MinWidth = 760;       // ширина: нижние ссылки не лезут под «Повторить»
         private const int RowGap = 8;           // просвет между колонкой списка и нижним рядом
         private const int BottomRowHeight = 40; // нижний ряд отсчитывается от низа клиентской области
+        private const int ListBottomGap = 44;   // от низа списка файлов до низа раскладки
+
 
         private void BuildMenu()
         {
@@ -413,7 +415,7 @@ namespace ExcelMerger
         private LinkLabel AddBottomLink(string text, int x)
         {
             LinkLabel l = Ui.Link(this, text, x, ClientSize.Height - 32);
-            l.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            l.Anchor = AnchorStyles.Top | AnchorStyles.Left; // высота — PlaceBottomOfLayout
             l.Visible = false;
             return l;
         }
@@ -1338,47 +1340,94 @@ namespace ExcelMerger
         /// Экрану может не хватить раскладки: 758 логических пикселей клиента против 667 на
         /// 1080p при 150 % и 689 на 1366×768 при 100 % (UI-24). Тогда окно растёт только до
         /// рабочей области, а остальное прокручивается: AutoScrollMinSize — полная высота
-        /// раскладки, и привязанный к низу ряд стоит у низа этой высоты, а не видимой части.
+        /// раскладки, и нижний ряд стоит у низа этой высоты (PlaceBottomOfLayout), а не видимой части.
         /// Развёрнутое окно размер не выбирает — ему прокрутка нужна, как только раскладка
         /// выше клиентской области. Свёрнутое не трогаем: его клиент крошечный.
         /// </summary>
         private void ClampToLayout()
         {
-            if (_btnUncheckAll == null)
+            if (_btnUncheckAll == null || _lnkNote == null)
                 return; // раскладка ещё строится
             if (WindowState == FormWindowState.Minimized)
                 return;
             // Константы логические, окно после масштаба — в пикселях экрана (см. ScaledForm).
             // Низ кнопки — от начала прокручиваемой области: DisplayRectangle.Y — это минус
             // текущий сдвиг прокрутки, иначе прокрученное окно «нуждалось» бы в меньшем.
-            int needed = _btnUncheckAll.Bottom - DisplayRectangle.Y +
-                DpiScale.Px(this, RowGap + BottomRowHeight);
+            int origin = DisplayRectangle.Y;
+            int needed = _btnUncheckAll.Bottom - origin + DpiScale.Px(this, RowGap + BottomRowHeight);
             bool canGrow = WindowState == FormWindowState.Normal;
             int available = canGrow ? AvailableClientHeight() : ClientSize.Height;
-            // Прокрутку включаем только после масштаба: до него окно логическое, а
-            // AutoScrollMinSize WinForms при масштабе не пересчитывает вместе с контролами.
-            bool scroll = IsScaled && needed > available;
+            // До масштаба холст логический; после масштаба раскладка повторяется и ставит его
+            // заново в пикселях экрана (низ ряда — явно, см. PlaceBottomOfLayout).
+            bool scroll = needed > available;
             Size canvas = scroll ? new Size(0, needed) : Size.Empty;
             if (AutoScrollMinSize != canvas)
                 AutoScrollMinSize = canvas;
             if (AutoScroll != scroll)
                 AutoScroll = scroll;
-            if (!canGrow)
-                return;
-            int target = Math.Min(needed, available);
-            // С прокруткой окно не выше экрана — даже на пиксель, набежавший при переводе
-            // логической высоты в пиксели экрана во время масштаба.
-            bool tooTall = scroll && ClientSize.Height > available;
-            if (ClientSize.Height >= target && !tooTall)
-                return;
-            if (tooTall)
-                MinimumSize = new Size(MinimumSize.Width, 0); // старый минимум не дал бы ужать
-            ClientSize = new Size(ClientSize.Width, target);
-            // Полоса прокрутки отнимает у клиента ширину, но запаса нижнего ряда хватает:
-            // минимум на 15 логических px уже нынешнего ещё проходит тест UI-24 при 150 % с
-            // прокруткой, на 25 px — нет (замерено мутацией). Тест стережёт этот запас.
-            if (MinimumSize.Height != Height)
-                MinimumSize = new Size(DpiScale.Px(this, MinWidth), Height); // рамка теперь известна по факту
+            if (canGrow)
+            {
+                int target = Math.Min(needed, available);
+                // С прокруткой окно не выше экрана — даже на пиксель, набежавший при переводе
+                // логической высоты в пиксели экрана во время масштаба.
+                bool tooTall = scroll && ClientSize.Height > available;
+                if (ClientSize.Height < target || tooTall)
+                {
+                    if (tooTall)
+                        MinimumSize = new Size(MinimumSize.Width, 0); // старый минимум не дал бы ужать
+                    // Меняем только высоту — через внешний размер: ClientSize с видимой полосой
+                    // прокрутки её ширину не включает, и присваивание (ClientSize.Width, …)
+                    // сузило бы окно на полосу при каждом вызове.
+                    Height += target - ClientSize.Height;
+                    // Полоса прокрутки отнимает у клиента ширину, но запаса нижнего ряда хватает:
+                    // минимум на 15 логических px уже нынешнего ещё проходит тест UI-24 при 150 %
+                    // с прокруткой, на 25 px — нет (замерено мутацией). Тест стережёт этот запас.
+                    if (MinimumSize.Height != Height)
+                        MinimumSize = new Size(DpiScale.Px(this, MinWidth), Height); // рамка теперь известна по факту
+                }
+            }
+            PlaceBottomOfLayout(origin + Math.Max(ClientSize.Height - origin, canvas.Height));
+        }
+
+        /// <summary>
+        /// Низ списка и нижний ряд — от низа раскладки (bottom, в координатах клиента): без
+        /// прокрутки это низ клиента, с прокруткой — низ холста. Явно, а не привязками к низу:
+        /// те считаются от DisplayRectangle по последнему известному размеру, а Windows ужимает
+        /// выросшее при масштабе окно до экрана, не сообщая привязкам, — после чего включённая
+        /// прокрутка сдвигала нижний ряд за холст на эту разницу (CI на 85fd589, экран 1024×768).
+        /// </summary>
+        private Control _scrolledTo; // к какому контролу окно в последний раз прокручивалось само
+
+        /// <summary>
+        /// Прокрутка «к контролу с фокусом» — только когда фокус перешёл на ДРУГОЙ контрол
+        /// (Tab, клик). WinForms зовёт это и на каждой раскладке прокручиваемого окна, и без
+        /// этой проверки человек, прокрутивший окно колесом вниз, при любой перераскладке
+        /// (свод закончился — показались ссылки на результат) возвращался бы к полю папки
+        /// наверху: фокус остаётся там. Поймано проверкой «прокрутка до конца» (UI-24).
+        /// </summary>
+        protected override Point ScrollToControl(Control activeControl)
+        {
+            if (ReferenceEquals(activeControl, _scrolledTo))
+                return DisplayRectangle.Location;
+            _scrolledTo = activeControl;
+            return base.ScrollToControl(activeControl);
+        }
+
+        private void PlaceBottomOfLayout(int bottom)
+        {
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
+            // До масштаба окно может быть ужато по экрану ниже списка — тогда высота нулевая,
+            // а после масштаба её восстанавливает следующая раскладка (с прокруткой).
+            int listHeight = Math.Max(0, bottom - d(ListBottomGap) - _list.Top);
+            if (_list.Height != listHeight)
+                _list.Height = listHeight;
+            int retryTop = bottom - d(40);
+            if (_btnRetry.Top != retryTop)
+                _btnRetry.Top = retryTop;
+            int linkTop = bottom - d(32);
+            foreach (Control link in new Control[] { _lnkOpenFile, _lnkOpenFolder, _lnkOpenReport, _lnkNote })
+                if (link.Top != linkTop)
+                    link.Top = linkTop;
         }
 
         /// <summary>
@@ -1389,9 +1438,10 @@ namespace ExcelMerger
         private int AvailableClientHeight()
         {
             int frame = Height - ClientSize.Height; // рамка и заголовок — всегда пиксели экрана
-            int area = Screen.FromRectangle(Bounds).WorkingArea.Height;
+            int area = WorkingArea(Bounds).Height;
             return DpiScale.FromDevice(this, Math.Max(0, area - frame));
         }
+
 
         // Только OnLayout: раскладка идёт и при изменении размера окна, и при масштабировании
         // под экран, а OnResize приходил бы ещё и посреди масштабирования — окно уже выросло,

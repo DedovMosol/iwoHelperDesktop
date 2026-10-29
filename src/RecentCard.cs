@@ -107,15 +107,17 @@ namespace ExcelMerger
             // Карточка стоит в нижнем ряду и потому невысока: значок и ОДНА строка — имя файла.
             // Название операции ушло в подсказку вместе с путём: в строке высотой в ряд две
             // строки текста читались бы хуже, чем одна, а имя файла здесь главное.
-            int side = Math.Min(Height - 8, 24);
-            var glyphBox = new Rectangle(7, (Height - side) / 2, side, side);
+            // Рисование — после масштаба окна: значок и поля в пикселях устройства (UI-25).
+            Func<int, int> d = delegate(int v) { return DpiScale.Device(this, v); };
+            int side = Math.Min(Height - d(8), d(24));
+            var glyphBox = new Rectangle(d(7), (Height - side) / 2, side, side);
             ChoiceCard.DrawGlyph(g, _glyph, glyphBox);
 
-            int textLeft = glyphBox.Right + 8;
-            int textWidth = Width - textLeft - 8;
+            int textLeft = glyphBox.Right + d(8);
+            int textWidth = Width - textLeft - d(8);
             if (textWidth <= 0)
                 return;
-            Font nameFont = Ui.Font(9f);
+            Font nameFont = Ui.Font(this, 9f);
             TextRenderer.DrawText(g, Path.GetFileName(_path), nameFont,
                 new Rectangle(textLeft, 0, textWidth, Height), Theme.TextPrimary,
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix |

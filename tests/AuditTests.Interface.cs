@@ -129,6 +129,17 @@ namespace ExcelMerger.Tests
             var edges = new Dictionary<string, Dictionary<string, int[]>>();
             var minimum = new Dictionary<string, Size>();
             int checkedCount = 0;
+            // Дважды: на настоящем экране и на экране CI (1024×768, панель задач 48 px). Окно,
+            // которому маленького экрана не хватает, ведёт себя иначе (прокрутка, ужатие) —
+            // эту ветку CI однажды и уронил, хотя здесь, на 1080p, всё проходило.
+            foreach (Rectangle? fake in new Rectangle?[] { null, new Rectangle(0, 0, 1024, 720) })
+            {
+            ScaledForm.WorkingAreaForTests = fake == null ? (Func<Rectangle, Rectangle>)null
+                : delegate(Rectangle near) { return fake.Value; };
+            string screenName = fake == null ? "" : " [экран 1024×768]";
+            baseline.Clear(); edges.Clear(); minimum.Clear();
+            try
+            {
             foreach (float scale in new[] { 1f, 1.25f, 1.5f })
             {
                 DpiScale.EmulatedScale = scale;
@@ -144,20 +155,25 @@ namespace ExcelMerger.Tests
                             {
                                 // Один тип окна бывает в списке дважды (короткая и длинная подпись).
                                 string name = f.GetType().Name + "#" + index;
-                                string where = name + " @" + (int)Math.Round(scale * 100) + "%";
+                                string where = name + " @" + (int)Math.Round(scale * 100) + "%" + screenName;
                                 try
                                 {
+                                    // Минимум — заданный конструктором (замысел окна), до показа: «Свод
+                                    // Excel» после показа сам ставит минимумом свою высоту по факту, и
+                                    // такой «минимум» на маленьком экране не помещался бы никогда —
+                                    // окно, вылезшее за экран, тогда молча уходило бы в «экран мал».
+                                    Size designMinimum = f.MinimumSize;
                                     f.Show();
                                     f.PerformLayout();
                                     if (scale == 1f)
                                     {
                                         baseline[name] = f.ClientSize;
-                                        minimum[name] = f.MinimumSize;
+                                        minimum[name] = designMinimum;
                                         edges[name] = CollectEdges(f);
                                         f.Close();
                                         continue;
                                     }
-                                    Rectangle area = Screen.FromRectangle(f.Bounds).WorkingArea;
+                                    Rectangle area = ScaledForm.WorkingArea(f.Bounds);
                                     // Помещается ли минимум — по минимуму 100 %, умноженному на масштаб:
                                     // MinimumSize живого окна Windows сам ужимает до размеров экрана
                                     // (на CI 1024×768 он «помещался» всегда).
@@ -227,6 +243,9 @@ namespace ExcelMerger.Tests
                 }
                 finally { DpiScale.EmulatedScale = 1f; }
             }
+            }
+            finally { ScaledForm.WorkingAreaForTests = null; }
+            }
             if (notChecked.Count > 0)
                 Console.WriteLine("      UI-1: экран мал для " + string.Join(", ", notChecked.ToArray()));
             AssertTrue(checkedCount >= 8, "под масштабом проверено окон: " + checkedCount);
@@ -258,10 +277,29 @@ namespace ExcelMerger.Tests
                 .OrderByDescending(c => c.Bottom).FirstOrDefault();
             if (lowest != null)
             {
+                // Как Tab: фокус приходит с другого контрола (верхнего), а не «остаётся» на нём.
+                Control upper = f.Controls.Cast<Control>()
+                    .Where(c => c.Visible && c.CanSelect && c.TabStop && !ReferenceEquals(c, lowest))
+                    .OrderBy(c => c.Top).FirstOrDefault();
+                if (upper != null)
+                    f.ActiveControl = upper;
                 f.ActiveControl = lowest;
                 if (lowest.Top < 0 || lowest.Bottom > f.ClientSize.Height)
                     offenders.Add(where + " → фокус на " + Describe(lowest) + " не прокрутил к нему окно (" +
                         lowest.Bounds + " при клиенте " + f.ClientSize + ")");
+                // Раскладка не отбирает прокрутку у человека: прокрутили вниз колесом, фокус
+                // остался наверху, окно перераскладывается (появились ссылки результата) — вид
+                // остаётся там, куда его прокрутили.
+                if (upper != null)
+                {
+                    f.ActiveControl = upper;
+                    f.AutoScrollPosition = new Point(0, f.AutoScrollMinSize.Height);
+                    Point scrolled = f.AutoScrollPosition;
+                    f.PerformLayout();
+                    if (f.AutoScrollPosition != scrolled)
+                        offenders.Add(where + " → раскладка вернула прокрутку к фокусу: " + scrolled +
+                            " → " + f.AutoScrollPosition);
+                }
                 f.AutoScrollPosition = Point.Empty;
             }
         }
@@ -380,6 +418,184 @@ namespace ExcelMerger.Tests
             }
             finally { Loc.Init(was); }
             AssertTrue(offenders.Count == 0, "нижний ряд свода: " + string.Join(" | ", offenders.ToArray()));
+        }
+
+        // ---------- UI-25: детали рисованных контролов растут с масштабом ----------
+
+        /// <summary>
+        /// Прямоугольник пикселей, нарисованных контролом и прошедших фильтр цвета, внутри
+        /// области region (пусто — весь контрол). Область нужна там, где рядом текст: каймы
+        /// ClearType у тёмных букв цветные и прошли бы фильтр «красного» значка.
+        /// </summary>
+        private static Rectangle InkBounds(Control c, Func<Color, bool> ink, Rectangle region = default(Rectangle))
+        {
+            using (var bmp = new Bitmap(c.Width, c.Height))
+            {
+                c.DrawToBitmap(bmp, new Rectangle(Point.Empty, c.Size));
+                Rectangle area = region.IsEmpty ? new Rectangle(Point.Empty, c.Size)
+                    : Rectangle.Intersect(region, new Rectangle(Point.Empty, c.Size));
+                int left = int.MaxValue, top = int.MaxValue, right = -1, bottom = -1;
+                for (int y = area.Top; y < area.Bottom; y++)
+                    for (int x = area.Left; x < area.Right; x++)
+                        if (ink(bmp.GetPixel(x, y)))
+                        {
+                            left = Math.Min(left, x); top = Math.Min(top, y);
+                            right = Math.Max(right, x); bottom = Math.Max(bottom, y);
+                        }
+                return right < 0 ? Rectangle.Empty : Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+            }
+        }
+
+        /// <summary>
+        /// Корень из числа «пустых» пикселей в левом верхнем квадрате side×side: срезанный
+        /// скруглением угол — это r²·(1 − π/4), так что корень пропорционален радиусу. Площадь
+        /// меряется устойчивее, чем край дуги, — тот на радиусе 10 px ловит ±1 px сглаживания.
+        /// </summary>
+        private static double CornerCut(Control c, int side, Func<Color, bool> ink)
+        {
+            using (var bmp = new Bitmap(c.Width, c.Height))
+            {
+                c.DrawToBitmap(bmp, new Rectangle(Point.Empty, c.Size));
+                int empty = 0;
+                for (int y = 0; y < side; y++)
+                    for (int x = 0; x < side; x++)
+                        if (!ink(bmp.GetPixel(x, y)))
+                            empty++;
+                return Math.Sqrt(empty);
+            }
+        }
+
+        private static bool IsAccentInk(Color c) { return c.G - c.R > 40 && c.G - c.B > 20; }
+        private static bool IsRedInk(Color c) { return c.R > 150 && c.G < 120 && c.B < 120; }
+        private static bool IsWhiteInk(Color c) { return c.R > 225 && c.G > 225 && c.B > 225; }
+
+        /// <summary>
+        /// Детали, которые контролы рисуют сами, растут вместе с масштабом экрана: квадрат
+        /// флажка, скругление кнопки, значок карточки инструмента и карточки недавнего файла,
+        /// поля заголовка шапки, значок сообщения, запасной флаг глобуса, единицы сетки
+        /// страниц. До UI-25 при 150 % текст вырастал, а всё это оставалось размером 100 %.
+        /// Меряем по пикселям: контрол рисуется в картинку размером, который ему дал бы
+        /// автомасштаб окна, и сравниваются размеры нарисованного при 100 % и при 150 %.
+        /// </summary>
+        [Test("Аудит UI-25: рисованные детали контролов растут с масштабом экрана")]
+        private static void AuditOwnerDrawnDetailsFollowScale()
+        {
+            var measured = new Dictionary<string, double[]>();
+            Action<string, int, double> put = delegate(string what, int index, double value)
+            {
+                double[] pair;
+                if (!measured.TryGetValue(what, out pair))
+                    measured[what] = pair = new double[2];
+                pair[index] = value;
+            };
+            Type glyphType = typeof(StartForm).GetNestedType("GlyphButton", System.Reflection.BindingFlags.NonPublic);
+            using (var flag = new Bitmap(20, 14))
+            {
+                using (Graphics g = Graphics.FromImage(flag))
+                    g.Clear(Color.FromArgb(220, 20, 20));
+                float[] scales = { 1f, 1.5f };
+                for (int i = 0; i < scales.Length; i++)
+                {
+                    float s = scales[i];
+                    Func<int, int> d = delegate(int v) { return (int)Math.Round(v * s); };
+                    DpiScale.EmulatedScale = s;
+                    try
+                    {
+                        using (var box = new AccentCheckBox { Text = "Флажок", Checked = true, Size = new Size(d(200), d(30)) })
+                            put("квадрат флажка", i, InkBounds(box, IsAccentInk).Width);
+                        using (var button = new RoundedButton(true) { Text = "", Size = new Size(d(120), d(38)) })
+                            put("скругление кнопки", i, CornerCut(button, d(16), IsAccentInk));
+                        // Значок — в верхней половине карточки, текст под ним в замер не попадает.
+                        using (var card = new ChoiceCard(CardGlyph.Pdf, "Карточка", "Описание") { Size = new Size(d(240), d(250)) })
+                            put("значок карточки", i, InkBounds(card, IsRedInk, new Rectangle(0, 0, card.Width, card.Height * 55 / 100)).Width);
+                        using (var recent = new RecentCard(new HistoryEntry { Operation = "pdf.merged", Path = @"C:\нет\документ.pdf", WhenUtc = DateTime.UtcNow }))
+                        {
+                            recent.Size = new Size(d(200), d(36));
+                            // Значок — у левого края (до 7 + 24 + 4 логических px), правее — имя файла.
+                            put("значок недавнего", i, InkBounds(recent, IsRedInk, new Rectangle(0, 0, d(35), recent.Height)).Width);
+                        }
+                        using (var header = new HeaderBand("Заголовок", "", Theme.HubBlue, Theme.HubBlueDark) { Size = new Size(d(780), d(76)) })
+                        {
+                            // Поле — от края шапки до начала текста; собственный отступ первой буквы
+                            // (он нелинеен из-за хинтинга) меряем тем же шрифтом с нуля и вычитаем.
+                            Font title = Ui.Font(header, 15f, FontStyle.Bold);
+                            int bearing;
+                            using (var probe = new Bitmap(d(400), d(60)))
+                            {
+                                using (Graphics g = Graphics.FromImage(probe))
+                                {
+                                    g.Clear(Theme.HubBlue);
+                                    TextRenderer.DrawText(g, "Заголовок", title, Point.Empty, Color.White,
+                                        TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                                }
+                                bearing = int.MaxValue;
+                                for (int y = 0; y < probe.Height; y++)
+                                    for (int x = 0; x < probe.Width; x++)
+                                        if (IsWhiteInk(probe.GetPixel(x, y)))
+                                            bearing = Math.Min(bearing, x);
+                            }
+                            Rectangle ink = InkBounds(header, IsWhiteInk);
+                            put("поле заголовка шапки", i, ink.Left - bearing);
+                            put("высота заголовка шапки", i, ink.Height);
+                        }
+                        // Поле подписи: длинная подпись обрезается многоточием и занимает всю
+                        // ширину между полями. Знак узкий («|»), чтобы недобор до края при
+                        // обрезке был меньше пикселя-двух, — тогда левый край чернил и есть поле.
+                        using (var button = new RoundedButton(false) { Text = new string('|', 200), Size = new Size(d(120), d(30)) })
+                            put("поле подписи кнопки", i, InkBounds(button,
+                                // ClearType красит узкие штрихи в цветные субпиксели, поэтому «чернила» —
+                                // любой заметно не белый канал; рамку кнопки отрезает область замера.
+                                c => Math.Min(c.R, Math.Min(c.G, c.B)) < 200,
+                                new Rectangle(d(4), button.Height / 3, button.Width - d(8), button.Height / 3)).Left);
+                        // Предпочтительный размер флажка: место под квадрат и просвет до подписи.
+                        using (var box = new AccentCheckBox { Text = "Флажок" })
+                            put("место квадрата в размере флажка", i,
+                                box.GetPreferredSize(Size.Empty).Width - TextRenderer.MeasureText(box.Text, box.Font).Width);
+                        using (var glyph = (Control)Activator.CreateInstance(glyphType,
+                            new object[] { "", 15f, "IwoNoSuchFontFamily", (Func<Image>)delegate { return flag; } }))
+                        {
+                            glyph.Size = new Size(d(30), d(30));
+                            put("запасной флаг глобуса", i, InkBounds(glyph, IsRedInk).Width);
+                        }
+                        using (var message = (Form)Construct(typeof(MessageForm)))
+                        {
+                            var icon = (Image)typeof(MessageForm).GetField("_icon",
+                                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(message);
+                            put("значок сообщения", i, icon.Width);
+                        }
+                        using (var grid = new PdfPageGrid())
+                            put("единица сетки страниц", i, (int)typeof(PdfPageGrid).GetMethod("Px",
+                                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                                .Invoke(grid, new object[] { 20 }));
+                    }
+                    finally { DpiScale.EmulatedScale = 1f; }
+                }
+            }
+            var offenders = new List<string>();
+            foreach (KeyValuePair<string, double[]> m in measured)
+            {
+                double ratio = m.Value[0] > 0 ? m.Value[1] / m.Value[0] : 0;
+                if (ratio < 1.35 || ratio > 1.65)
+                    offenders.Add(m.Key + ": " + m.Value[0] + " → " + m.Value[1] + " (×" + ratio.ToString("0.00") + ")");
+            }
+            AssertEq(11, measured.Count, "измерено деталей");
+            AssertTrue(offenders.Count == 0, "при 150 % не выросло в 1,5 раза: " + string.Join(" | ", offenders.ToArray()));
+
+            // Пределы скругления и поле подписи растут с масштабом, а без него — прежние.
+            AssertEq(9.5f, RoundedButton.RadiusFor(38), "радиус кнопки 38 px при 100 %");
+            AssertEq(14.25f, RoundedButton.RadiusFor(57, 1.5f), "та же кнопка при 150 % — пропорционально");
+            AssertEq(15f, RoundedButton.RadiusFor(200, 1.5f), "верхний предел при 150 % — 15");
+            AssertEq(10, RoundedButton.TextPadFor(160), "поле подписи при 100 %");
+            AssertEq(15, RoundedButton.TextPadFor(240, 1.5f), "поле подписи при 150 %");
+
+            // Шрифт рисования на мониторе с другим DPI (PerMonitorV2): одного монитора у этой
+            // машины не хватает, поэтому проверяем сам пересчёт от системного DPI.
+            int system;
+            using (var probe = new Label())
+                system = probe.DeviceDpi; // без хэндла — системный
+            AssertEq(1f, DpiScale.MonitorRatio(system), "на системном мониторе — без пересчёта");
+            AssertEq(1.5f, DpiScale.MonitorRatio(system * 3 / 2), "монитор на 50 % крупнее — кегль ×1,5");
+            AssertEq(0.75f, DpiScale.MonitorRatio(system * 3 / 4), "монитор мельче — кегль меньше");
         }
 
         /// <summary>Те же проверки целости, что у раскладочных тестов на 100 %.</summary>

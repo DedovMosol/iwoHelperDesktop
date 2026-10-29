@@ -34,7 +34,12 @@ namespace ExcelMerger
         private static readonly Color PdfRed = Color.FromArgb(211, 47, 47);      // #D32F2F
         private static readonly Color PdfFold = Color.FromArgb(154, 34, 34);     // #9A2222
         // Единый шрифт заголовка карточек: создание в каждом OnPaint — лишний GDI-чурн.
-        private static readonly Font TitleFont = Ui.Font(12.5f, FontStyle.Bold);
+        /// <summary>
+        /// Шрифт заголовка — под DPI монитора карточки. Статическое поле застывало бы в том
+        /// масштабе, в каком тип впервые тронули: свой Font контрола WinForms пересчитывает
+        /// при переходе окна на монитор с другим DPI, а нарисованный вручную заголовок — нет.
+        /// </summary>
+        private Font TitleFont { get { return Ui.Font(this, 12.5f, FontStyle.Bold); } }
 
         // Ритм содержимого: значок, отступ, заголовок в одну строку, отступ, описание с переносами.
         private const int GlyphSize = 60, GlyphGap = 12, TitleGap = 6, MinTop = 18;
@@ -189,42 +194,53 @@ namespace ExcelMerger
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
             g.Clear(Parent != null ? Parent.BackColor : Color.White);
 
-            var rect = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
-            using (GraphicsPath card = Ui.RoundedRect(rect, 12f))
+            // Рисование — всегда после масштаба окна: размеры значка, поля, рамки и скругление
+            // в пикселях устройства (UI-25).
+            float s = DpiScale.Device(this);
+            Func<int, int> d = delegate(int v) { return DpiScale.Device(this, v); };
+            bool thick = _hover || Focused;
+            float line = (thick ? 2f : 1f) * Math.Max(1f, s);
+            var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
+            using (GraphicsPath card = Ui.RoundedRect(rect, 12f * s))
             {
                 Color fill = _pressed ? Theme.SecondaryPressed : (_hover ? Theme.SecondaryHover : Color.White);
                 using (var b = new SolidBrush(fill))
                     g.FillPath(b, card);
                 Color border = (_hover || _pressed || Focused) ? Theme.Accent : Theme.Border;
-                using (var pen = new Pen(border, (_hover || Focused) ? 2f : 1f))
+                using (var pen = new Pen(border, line))
                     g.DrawPath(pen, card);
             }
 
             // Блок «значок + заголовок + описание» ставим по центру карточки: описания
             // разной длины, и при верхней привязке карточки с короткой подписью выглядели
             // пустыми снизу. Высоту меряем теми же флагами, какими рисуем.
-            int titleW = Width - 2 * TitlePad, descW = Width - 2 * DescPad;
+            int glyph = d(GlyphSize), glyphGap = d(GlyphGap), titleGap = d(TitleGap);
+            int titlePad = d(TitlePad), descPad = d(DescPad);
+            int titleW = Width - 2 * titlePad, descW = Width - 2 * descPad;
             int titleH = TextRenderer.MeasureText(g, _title, TitleFont,
                 new Size(titleW, int.MaxValue), TitleFlags).Height;
             int descH = TextRenderer.MeasureText(g, _description, Font,
                 new Size(descW, int.MaxValue), DescFlags).Height;
-            int top = ContentTop(Height, GlyphSize + GlyphGap + titleH + TitleGap + descH);
+            int top = ContentTop(Height, glyph + glyphGap + titleH + titleGap + descH, d(MinTop));
 
-            var glyphRect = new Rectangle((Width - GlyphSize) / 2, top, GlyphSize, GlyphSize);
+            var glyphRect = new Rectangle((Width - glyph) / 2, top, glyph, glyph);
             DrawGlyph(g, glyphRect);
 
-            var titleRect = new Rectangle(TitlePad, glyphRect.Bottom + GlyphGap, titleW, titleH);
+            var titleRect = new Rectangle(titlePad, glyphRect.Bottom + glyphGap, titleW, titleH);
             TextRenderer.DrawText(g, _title, TitleFont, titleRect, Theme.TextPrimary, TitleFlags);
 
-            var descRect = new Rectangle(DescPad, titleRect.Bottom + TitleGap, descW, descH);
+            var descRect = new Rectangle(descPad, titleRect.Bottom + titleGap, descW, descH);
             TextRenderer.DrawText(g, _description, Font, descRect, Theme.TextMuted, DescFlags);
         }
 
-        /// <summary>Верх блока содержимого, центрированного по высоте карточки. Чистая — под тест.</summary>
-        internal static int ContentTop(int cardHeight, int blockHeight)
+        /// <summary>
+        /// Верх блока содержимого, центрированного по высоте карточки; minTop — нижний предел
+        /// в тех же единицах (по умолчанию логический). Чистая — под тест.
+        /// </summary>
+        internal static int ContentTop(int cardHeight, int blockHeight, int minTop = MinTop)
         {
             int top = (cardHeight - blockHeight) / 2;
-            return top < MinTop ? MinTop : top; // очень длинное описание прижимаем к верху, а не режем сверху
+            return top < minTop ? minTop : top; // очень длинное описание прижимаем к верху, а не режем сверху
         }
 
         // Значок-документ с загнутым уголком (стиль file-excel): единое семейство

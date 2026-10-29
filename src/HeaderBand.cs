@@ -18,7 +18,8 @@ namespace ExcelMerger
         private string _subtitle;
         private readonly Color _top;
         private readonly Color _bottom;
-        private static readonly Font TitleFont = Ui.Font(15f, FontStyle.Bold);
+        /// <summary>Шрифт заголовка — под DPI монитора шапки (см. <see cref="Ui.Font(Control, float, FontStyle)"/>).</summary>
+        private Font TitleFont { get { return Ui.Font(this, 15f, FontStyle.Bold); } }
         private static readonly Color SubtitleColor = Color.FromArgb(233, 238, 242); // нейтрально-белая: читаема на любом фоне
 
         /// <summary>Центрировать заголовок и подпись по ширине (для стартового экрана без кнопок).</summary>
@@ -63,7 +64,8 @@ namespace ExcelMerger
             base.OnLayout(e);
             if (_aligned.Count == 0)
                 return;
-            int center = TextBlockCenter(Height, TitleFont.Height, Font.Height);
+            // Раскладка идёт и до масштаба окна, поэтому просвет — через Px, а не Device.
+            int center = TextBlockCenter(Height, TitleFont.Height, Font.Height, DpiScale.Px(this, RowGap));
             foreach (Control child in _aligned)
             {
                 if (child.IsDisposed)
@@ -98,20 +100,24 @@ namespace ExcelMerger
 
             // Высоты строк — РЕАЛЬНЫЕ высоты шрифтов: они заданы в пунктах и растут вместе с
             // масштабом экрана, поэтому фиксированные прямоугольники срезали бы низ букв.
-            int titleH = TitleFont.Height, subtitleH = _subtitle.Length > 0 ? Font.Height : 0;
+            // Рисование — после масштаба окна: поля и просветы в пикселях устройства (UI-25).
+            Func<int, int> d = delegate(int v) { return DpiScale.Device(this, v); };
+            Font titleFont = TitleFont;
+            int titleH = titleFont.Height, subtitleH = _subtitle.Length > 0 ? Font.Height : 0;
+            int rowGap = d(RowGap);
             int titleY, subtitleY;
-            TextRows(Height, titleH, subtitleH, out titleY, out subtitleY);
+            TextRows(Height, titleH, subtitleH, out titleY, out subtitleY, rowGap);
             TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis |
                 TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
 
             if (Centered)
             {
                 flags |= TextFormatFlags.HorizontalCenter;
-                TextRenderer.DrawText(e.Graphics, _title, TitleFont,
-                    new Rectangle(10, titleY, Width - 20, titleH), Color.White, flags);
+                TextRenderer.DrawText(e.Graphics, _title, titleFont,
+                    new Rectangle(d(10), titleY, Width - d(20), titleH), Color.White, flags);
                 if (_subtitle.Length > 0)
                     TextRenderer.DrawText(e.Graphics, _subtitle, Font,
-                        new Rectangle(10, subtitleY, Width - 20, subtitleH), SubtitleColor, flags);
+                        new Rectangle(d(10), subtitleY, Width - d(20), subtitleH), SubtitleColor, flags);
                 return;
             }
 
@@ -123,9 +129,9 @@ namespace ExcelMerger
                     if (c.Left < leftmostChild) leftmostChild = c.Left;
                     if (c.Bottom > childBottom) childBottom = c.Bottom;
                 }
-            int rightBound = TextRightBound(Width, leftmostChild);
-            TextRenderer.DrawText(e.Graphics, _title, TitleFont,
-                new Rectangle(18, titleY, rightBound - 18, titleH), Color.White, flags);
+            int rightBound = TextRightBound(Width, leftmostChild, d(20), d(12));
+            TextRenderer.DrawText(e.Graphics, _title, titleFont,
+                new Rectangle(d(18), titleY, rightBound - d(18), titleH), Color.White, flags);
 
             if (_subtitle.Length > 0)
             {
@@ -133,13 +139,13 @@ namespace ExcelMerger
                 // текст режется у левого края кнопки. Если под кнопкой не помещается по высоте —
                 // остаёмся на прежнем месте, обрезая многоточием у кнопки.
                 int subY = subtitleY, subRight = rightBound;
-                if (childBottom + RowGap + subtitleH <= Height)
+                if (childBottom + rowGap + subtitleH <= Height)
                 {
-                    subY = Math.Max(subtitleY, childBottom + RowGap);
-                    subRight = Width - 20;
+                    subY = Math.Max(subtitleY, childBottom + rowGap);
+                    subRight = Width - d(20);
                 }
                 TextRenderer.DrawText(e.Graphics, _subtitle, Font,
-                    new Rectangle(20, subY, subRight - 20, subtitleH), SubtitleColor, flags);
+                    new Rectangle(d(20), subY, subRight - d(20), subtitleH), SubtitleColor, flags);
             }
         }
 
@@ -155,9 +161,9 @@ namespace ExcelMerger
         /// Чистая — под тест.
         /// </summary>
         internal static void TextRows(int bandHeight, int titleHeight, int subtitleHeight,
-            out int titleY, out int subtitleY)
+            out int titleY, out int subtitleY, int rowGap = RowGap)
         {
-            int gap = subtitleHeight > 0 ? RowGap : 0;
+            int gap = subtitleHeight > 0 ? rowGap : 0;
             int blockHeight = titleHeight + gap + subtitleHeight;
             titleY = (bandHeight - blockHeight) / 2;
             if (titleY < 0)
@@ -169,10 +175,10 @@ namespace ExcelMerger
         /// Правая граница текста шапки: не заходить под левый край дочерних
         /// контролов (кнопки «Назад»), но и не за правый край панели. Чистая — под тест.
         /// </summary>
-        internal static int TextRightBound(int bandWidth, int leftmostChildLeft)
+        internal static int TextRightBound(int bandWidth, int leftmostChildLeft, int edge = 20, int gap = 12)
         {
-            int bound = leftmostChildLeft < int.MaxValue ? leftmostChildLeft - 12 : bandWidth - 20;
-            return Math.Min(bound, bandWidth - 20);
+            int bound = leftmostChildLeft < int.MaxValue ? leftmostChildLeft - gap : bandWidth - edge;
+            return Math.Min(bound, bandWidth - edge);
         }
 
         /// <summary>
@@ -180,10 +186,10 @@ namespace ExcelMerger
         /// По нему выравнивается <see cref="TextAlignedIcon"/> — иначе иконка висит выше
         /// текста и выглядит забытой в углу. Чистая — под тест.
         /// </summary>
-        internal static int TextBlockCenter(int bandHeight, int titleHeight, int subtitleHeight)
+        internal static int TextBlockCenter(int bandHeight, int titleHeight, int subtitleHeight, int rowGap = RowGap)
         {
             int titleY, subtitleY;
-            TextRows(bandHeight, titleHeight, subtitleHeight, out titleY, out subtitleY);
+            TextRows(bandHeight, titleHeight, subtitleHeight, out titleY, out subtitleY, rowGap);
             return (titleY + subtitleY + subtitleHeight) / 2;
         }
     }

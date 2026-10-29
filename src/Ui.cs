@@ -38,6 +38,19 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Шрифт для рисования внутри контрола: кегль в пунктах переводится под DPI его монитора.
+        /// Шрифт в пунктах GDI рисует в системном DPI, поэтому на мониторе с другим масштабом
+        /// (PerMonitorV2) нарисованный текст вышел бы чужого размера; свой Font контрола WinForms
+        /// пересчитывает сам, а этот — нет. До создания хэндла DeviceDpi — системный, и это
+        /// тот же <see cref="Font(float, FontStyle, string)"/>.
+        /// </summary>
+        public static Font Font(Control control, float size, FontStyle style = FontStyle.Regular,
+            string family = UiFontFamily)
+        {
+            return Font(size * DpiScale.MonitorRatio(control), style, family);
+        }
+
+        /// <summary>
         /// Кегль basis (± delta пунктов) другим начертанием — из того же кэша. basis.Size уже
         /// включает масштаб теста (<see cref="DpiScale.EmulatedScale"/>), поэтому берём номинал:
         /// иначе шрифт вырос бы дважды. Вне тестов это деление на 1.

@@ -18887,7 +18887,7 @@ namespace ExcelMerger.Tests
                     {
                         if (b.Top != row[0].Top)
                             offenders.Add("«" + b.Text + "» не в одном ряду с остальными");
-                        int room = b.Width - 2 * RoundedButton.TextPadFor(b.Width);
+                        int room = b.Width - 2 * RoundedButton.TextPadFor(b.Width, DpiScale.Device(b));
                         int need = System.Windows.Forms.TextRenderer.MeasureText(b.Text, b.Font).Width;
                         if (need > room)
                             offenders.Add("«" + b.Text + "» не помещается: нужно " + need + ", есть " + room);
@@ -19502,7 +19502,8 @@ namespace ExcelMerger.Tests
                 // Флажок рисует квадрат слева от подписи, а не заливку под ней — своя ширина.
                 if (b is System.Windows.Forms.CheckBox || b is System.Windows.Forms.RadioButton)
                     continue;
-                int pad = b is RoundedButton ? RoundedButton.TextPadFor(b.Width) : 4;
+                // Поле — тем же масштабом, каким кнопка рисует (RoundedButton.OnPaint).
+                int pad = b is RoundedButton ? RoundedButton.TextPadFor(b.Width, DpiScale.Device(b)) : 4;
                 int need = Ui.TextWidth(b.Text, b.Font) + 2 * pad; // тем же замером, что и окна
                 if (need > b.Width)
                     offenders.Add(where + " → «" + b.Text + "» не помещается: нужно " + need +

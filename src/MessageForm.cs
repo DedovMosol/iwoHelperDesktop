@@ -68,8 +68,11 @@ namespace ExcelMerger
             int textLeft = Pad + IconSize + 16;
             int textW = W - textLeft - Pad;
 
-            _icon = MakeIcon(kind, IconSize);
+            // Значок рисуется сразу в пикселях экрана, а рамка под него — логическая и вырастет
+            // с окном (UI-25); Zoom вписывает картинку в рамку, если монитор окна иной.
+            _icon = MakeIcon(kind, DpiScale.Device(this, IconSize));
             var iconBox = new PictureBox();
+            iconBox.SizeMode = PictureBoxSizeMode.Zoom;
             iconBox.Image = _icon;
             iconBox.SetBounds(Pad, Pad, IconSize, IconSize);
             Controls.Add(iconBox);

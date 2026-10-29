@@ -152,10 +152,23 @@ Excel and Word are **optional**: PDF Merge, Split, Compare, More operations and 
   the control is parented — before that it has the default font, not the window's.
   Constructors must not create a handle (`Screen.FromControl` does): the window would be
   scaled half-built. A layout taller than the screen scrolls instead of growing past it
-  (Excel Digest, `MainForm.ClampToLayout`): `AutoScroll` is switched on only after the
-  scale — enabled earlier, WinForms keeps bottom-anchored controls at distances from the
-  unscaled canvas — and `AutoScrollMinSize` is the full layout height measured from the
-  scroll origin (`DisplayRectangle.Y`).
+  (Excel Digest, `MainForm.ClampToLayout`): `AutoScrollMinSize` is the full layout height
+  measured from the scroll origin (`DisplayRectangle.Y`), and the list height and bottom row
+  are placed explicitly from the bottom of that canvas (`PlaceBottomOfLayout`) instead of
+  bottom anchors — Windows shrinks a window that outgrew the screen during scaling without
+  telling the anchors, and turning scrolling on then pushed the bottom row past the canvas.
+  `ScrollToControl` scrolls only when focus moves to another control: WinForms also calls it
+  on every layout of a scrolling form, which snapped a wheel-scrolled view back to the
+  focused field. `ScaledForm.WorkingAreaForTests` lets the tests run the CI screen
+  (1024×768) on any machine.
+- **Owner-drawn details in device pixels.** `OnPaint` always runs after the scale, so
+  hand-drawn sizes (check box square, button radius and caption padding, card glyph, header
+  paddings, recent-file glyph, message icon, page-grid units) go through `DpiScale.Device`,
+  and so does `AccentCheckBox.GetPreferredSize`, which sits next to a text measurement.
+  Fonts used only for drawing come from `Ui.Font(control, points)`, which converts points to
+  the control's monitor DPI (`DpiScale.MonitorRatio`): GDI renders point sizes at the system
+  DPI, and on a PerMonitorV2 monitor with another scale WinForms rescales a control's own
+  `Font` but not a font a control draws with.
 - **Office through `dynamic`** (late binding, `Microsoft.CSharp`): no PIA/interop
   packages, builds on machines without Office, works with any Office version. The price
   is a set of strict usage rules — see [Office COM layer](#office-com-layer).
