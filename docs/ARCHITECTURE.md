@@ -230,6 +230,15 @@ and released here does nothing; a held mouse button and a key never make two pre
 a separate ring (`DrawFocusRing`) that does not depend on the mouse, and the accessible object
 has the `PushButton` role and a localized “Press” default action that performs the click.
 
+High contrast: `Theme.HighContrast` is read at every paint, and drawn controls then use system
+colour pairs (`Theme.HighContrastPush`: Control/ControlText, Highlight/HighlightText,
+GrayText). Ordinary controls are handled by `HighContrastColors`, attached to every
+`ScaledForm`: while the mode is on, any non-system back, fore or link colour is reset to the
+system default, including colours set later (it listens to `BackColorChanged`,
+`ForeColorChanged`, `ControlAdded`); when the mode goes off, the last colours the window set come
+back. There is no `SystemEvents` subscription: switching the mode sends `WM_SYSCOLORCHANGE`, and
+WinForms repaints through `OnSystemColorsChanged`.
+
 A palette colour is written once, in `Theme`; a test compares every `Color.FromArgb(r, g, b)` in
 `src\` with the palette, so a copy by numbers fails the build. Two names with one value are
 fine when they mean different things (`SettingsBlue` and `HubBlue`). `AutoClearCombo` is the

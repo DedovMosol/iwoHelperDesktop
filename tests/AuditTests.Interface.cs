@@ -926,6 +926,209 @@ namespace ExcelMerger.Tests
                 }
             });
         }
+        /// <summary>Цвета фона, текста и ссылки каждого контрола окна — по самому контролу.</summary>
+        private static Dictionary<Control, Color[]> ColorsOf(Control root)
+        {
+            var into = new Dictionary<Control, Color[]>();
+            var stack = new Stack<Control>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                Control c = stack.Pop();
+                var link = c as LinkLabel;
+                into[c] = new[] { c.BackColor, c.ForeColor, link == null ? Color.Empty : link.LinkColor };
+                foreach (Control child in c.Controls)
+                    stack.Push(child);
+            }
+            return into;
+        }
+        /// <summary>В высоком контрасте у каждого контрола окна фон, текст и ссылка — системные.</summary>
+        private static void CheckSystemColors(Control root, string where, List<string> offenders)
+        {
+            int reported = 0;
+            foreach (KeyValuePair<Control, Color[]> c in ColorsOf(root))
+                for (int k = 0; k < 3; k++)
+                    if (!c.Value[k].IsEmpty && !c.Value[k].IsSystemColor && reported++ < 3)
+                        offenders.Add(where + " → " + c.Key.GetType().Name + " «" + c.Key.Text + "»: " +
+                            new[] { "фон", "текст", "ссылка" }[k] + " " + c.Value[k]);
+        }
+        /// <summary>
+        /// Высокий контраст (UI-7). Окна задают цвета явно, а явный цвет в WinForms главнее
+        /// системного: в чёрной теме окно оставалось белым. Проверяем каждое окно приложения:
+        /// режим, включённый при открытом окне, делает все цвета системными — и у контрола,
+        /// добавленного позже, и у подписи, перекрашенной позже; выключенный режим возвращает
+        /// окну его цвета, причём перекрашенной подписи — последний заданный. И окно, открытое
+        /// уже в режиме, сразу системное.
+        /// </summary>
+        [Test("Аудит UI-7: в высоком контрасте окна берут системные цвета и возвращают свои после")]
+        private static void AuditWindowsFollowHighContrast()
+        {
+            var offenders = new List<string>();
+            InIsolatedSettings("iwo_ui7_", delegate
+            {
+                foreach (Form f in ScaledWindows(offenders))
+                    using (f)
+                    {
+                        string name = f.GetType().Name;
+                        try
+                        {
+                            f.Show();
+                            Dictionary<Control, Color[]> was = ColorsOf(f);
+                            Label repainted = was.Keys.OfType<Label>().FirstOrDefault(l => !(l is LinkLabel));
+                            Theme.HighContrastForTests = true;
+                            Raise(f, "OnSystemColorsChanged", EventArgs.Empty);
+                            CheckSystemColors(f, name + " (режим включён)", offenders);
+                            var late = new Label { Text = "добавлена в режиме", ForeColor = Theme.ErrRed, BackColor = Color.White };
+                            f.Controls.Add(late);
+                            if (repainted != null)
+                                repainted.ForeColor = Theme.OkGreen;
+                            CheckSystemColors(f, name + " (после добавления и перекраски)", offenders);
+                            Theme.HighContrastForTests = false;
+                            Raise(f, "OnSystemColorsChanged", EventArgs.Empty);
+                            foreach (KeyValuePair<Control, Color[]> c in ColorsOf(f))
+                            {
+                                Color[] before;
+                                if (c.Key == late || c.Key == repainted || !was.TryGetValue(c.Key, out before))
+                                    continue;
+                                if (!before.SequenceEqual(c.Value))
+                                {
+                                    offenders.Add(name + " → " + c.Key.GetType().Name + " «" + c.Key.Text +
+                                        "»: после режима " + string.Join("/", c.Value.Select(v => v.Name).ToArray()) +
+                                        " вместо " + string.Join("/", before.Select(v => v.Name).ToArray()));
+                                    break;
+                                }
+                            }
+                            if (late.ForeColor != Theme.ErrRed || late.BackColor != Color.White)
+                                offenders.Add(name + ": добавленная в режиме подпись не вернула свои цвета");
+                            if (repainted != null && repainted.ForeColor != Theme.OkGreen)
+                                offenders.Add(name + ": перекрашенная в режиме подпись вернула не последний цвет, а " + repainted.ForeColor);
+                        }
+                        catch (Exception ex) { offenders.Add(name + " — " + Root(ex).Message); }
+                        finally { Theme.HighContrastForTests = null; f.Close(); }
+                    }
+                Theme.HighContrastForTests = true;
+                try
+                {
+                    foreach (Form f in ScaledWindows(offenders))
+                        using (f)
+                        {
+                            f.Show();
+                            CheckSystemColors(f, f.GetType().Name + " (открыто в режиме)", offenders);
+                            f.Close();
+                        }
+                }
+                finally { Theme.HighContrastForTests = null; }
+            });
+            AssertTrue(offenders.Count == 0, "высокий контраст окон: " + string.Join(" | ", offenders.ToArray()));
+        }
+        /// <summary>
+        /// Рисованные контролы в высоком контрасте рисуют только системными цветами (UI-7):
+        /// палитра приложения — акцентный зелёный, серые рамки, тёмно-серый текст — уступает
+        /// цветам, которые выбрал человек. Каждый контрол рисуется дважды, без режима и в нём.
+        /// Цвета, занявшие заметную долю картинки без режима и не системные (заливки, рамки и
+        /// их сглаживание, текст палитры), в режиме встречаться не должны. Сравнивать с
+        /// перечнем системных цветов напрямую нельзя: серая рамка палитры лежит на той же
+        /// прямой, что и сглаживание чёрного по светлому. Значок документа на карточках —
+        /// рисунок содержимого и остаётся в своих цветах.
+        /// </summary>
+        [Test("Аудит UI-7: рисованные контролы в высоком контрасте — только системные цвета")]
+        private static void AuditOwnerDrawnFollowHighContrast()
+        {
+            var offenders = new List<string>();
+            var allowed = new HashSet<int>(new[]
+            {
+                SystemColors.Control, SystemColors.ControlText, SystemColors.Window, SystemColors.WindowText,
+                SystemColors.Highlight, SystemColors.HighlightText, SystemColors.GrayText
+            }.Select(c => c.ToArgb()));
+            var glyphInk = new HashSet<int>(new[] { Theme.PdfRed, Theme.PdfRedDark, Color.White }.Select(c => c.ToArgb()));
+            Type glyphType = typeof(StartForm).GetNestedType("GlyphButton", System.Reflection.BindingFlags.NonPublic);
+            Func<Control> globe = delegate
+            {
+                var g = (Control)Activator.CreateInstance(glyphType, new object[] { "A", 15f, "Segoe UI", null });
+                g.ForeColor = Theme.SettingsBlue; // как значок настроек: цвет и подложка наведения
+                glyphType.GetField("HoverFill").SetValue(g, Color.FromArgb(30, Theme.SettingsBlue));
+                g.Size = new Size(30, 30);
+                return g;
+            };
+            Action<Control> idle = delegate { };
+            Action<Control> hover = delegate(Control c) { Raise(c, "OnMouseEnter", EventArgs.Empty); };
+            Action<Control> focus = delegate(Control c) { c.Focus(); };
+            Action<Control> disabled = delegate(Control c) { c.Enabled = false; };
+            var subjects = new List<Tuple<string, Func<Control>, Action<Control>, bool>>
+            {
+                Tuple.Create("главная кнопка", (Func<Control>)(() => new RoundedButton(ButtonLook.Primary) { Text = "Сохранить", Size = new Size(140, 36) }), idle, false),
+                Tuple.Create("главная кнопка под мышью", (Func<Control>)(() => new RoundedButton(ButtonLook.Primary) { Text = "Сохранить", Size = new Size(140, 36) }), hover, false),
+                Tuple.Create("обычная кнопка в фокусе", (Func<Control>)(() => new RoundedButton(ButtonLook.Secondary) { Text = "Открыть", Size = new Size(140, 36) }), focus, false),
+                Tuple.Create("недоступная кнопка", (Func<Control>)(() => new RoundedButton(ButtonLook.Secondary) { Text = "Открыть", Size = new Size(140, 36) }), disabled, false),
+                Tuple.Create("кнопка на тёмном", (Func<Control>)(() => new RoundedButton(ButtonLook.OnDark) { Text = "+", Size = new Size(36, 36) }), idle, false),
+                Tuple.Create("флажок", (Func<Control>)(() => new AccentCheckBox { Text = "Флажок", Size = new Size(160, 30) }), idle, false),
+                Tuple.Create("отмеченный флажок в фокусе", (Func<Control>)(() => new AccentCheckBox { Text = "Флажок", Checked = true, Size = new Size(160, 30) }), focus, false),
+                Tuple.Create("карточка инструмента", (Func<Control>)(() => new ChoiceCard(CardGlyph.Pdf, "Карточка", "Описание карточки") { Size = new Size(240, 250) }), idle, true),
+                Tuple.Create("карточка под мышью в фокусе", (Func<Control>)(() => new ChoiceCard(CardGlyph.Pdf, "Карточка", "Описание карточки") { Size = new Size(240, 250) }),
+                    (Action<Control>)(c => { focus(c); hover(c); }), true),
+                Tuple.Create("карточка недавнего", (Func<Control>)(() => new RecentCard(new HistoryEntry { Operation = "pdf.merged", Path = @"C:\нет\документ.pdf" }) { Size = new Size(200, 36) }), hover, true),
+                Tuple.Create("кнопка-значок под мышью", globe, hover, false),
+                Tuple.Create("кнопка-значок в фокусе", globe, focus, false),
+                Tuple.Create("шапка", (Func<Control>)(() => new HeaderBand("Заголовок окна", "Подпись", Theme.HubBlue, Theme.HubBlueDark) { Size = new Size(400, 70) }), idle, false)
+            };
+            try
+            {
+                foreach (var subject in subjects)
+                {
+                    Theme.HighContrastForTests = false;
+                    Dictionary<int, int> normal = DominantInks(subject.Item2, subject.Item3);
+                    Theme.HighContrastForTests = true;
+                    Dictionary<int, int> contrast = DominantInks(subject.Item2, subject.Item3);
+                    bool any = false;
+                    foreach (KeyValuePair<int, int> ink in contrast)
+                    {
+                        if (allowed.Contains(ink.Key) && ink.Key != SystemColors.Control.ToArgb())
+                            any = true; // нарисовано хоть что-то системным цветом, кроме фона
+                        if (normal.ContainsKey(ink.Key) && !allowed.Contains(ink.Key) &&
+                            !(subject.Item4 && glyphInk.Contains(ink.Key)))
+                            offenders.Add(subject.Item1 + ": цвет палитры " + Color.FromArgb(ink.Key) + " × " + ink.Value);
+                    }
+                    if (!any)
+                        offenders.Add(subject.Item1 + ": в режиме нет ни одного системного цвета, кроме фона");
+                }
+            }
+            finally { Theme.HighContrastForTests = null; }
+            AssertTrue(offenders.Count == 0, "рисованные контролы в высоком контрасте: " + string.Join(" | ", offenders.ToArray()));
+        }
+        /// <summary>
+        /// Цвета, занявшие заметную долю картинки контрола (не меньше 0,5 % и не меньше 12 px):
+        /// заливки, рамки, кольца, текст. Контрол стоит в окне приложения (ScaledForm) с фоном
+        /// системного цвета, и рисуется в нужном состоянии. Фон один и тот же в обоих режимах:
+        /// полупрозрачная подложка палитры над разным фоном дала бы разные смеси, и сравнение
+        /// не узнало бы в смеси режима ту же подложку (сброс белого фона окна проверяет тест окон).
+        /// </summary>
+        private static Dictionary<int, int> DominantInks(Func<Control> make, Action<Control> state)
+        {
+            Control c = make();
+            using (var host = new ScaledForm { ClientSize = new Size(c.Width + 40, c.Height + 40), ShowInTaskbar = false })
+            {
+                c.Location = new Point(20, 20);
+                host.Controls.Add(c);
+                host.Show();
+                state(c);
+                Application.DoEvents();
+                var counts = new Dictionary<int, int>();
+                using (Bitmap bmp = Snapshot(c))
+                {
+                    for (int y = 0; y < bmp.Height; y++)
+                        for (int x = 0; x < bmp.Width; x++)
+                        {
+                            int argb = bmp.GetPixel(x, y).ToArgb();
+                            int n;
+                            counts.TryGetValue(argb, out n);
+                            counts[argb] = n + 1;
+                        }
+                    int least = Math.Max(12, bmp.Width * bmp.Height / 200);
+                    host.Close();
+                    return counts.Where(p => p.Value >= least).ToDictionary(p => p.Key, p => p.Value);
+                }
+            }
+        }
         /// <summary>Те же проверки целости, что у раскладочных тестов на 100 %.</summary>
         private static void CheckScaledLayout(Form f, string where, List<string> offenders)
         {

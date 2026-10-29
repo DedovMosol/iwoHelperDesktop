@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Windows.Forms;
 
 namespace ExcelMerger
 {
@@ -85,6 +86,44 @@ namespace ExcelMerger
         public static int ToBgr(Color c)
         {
             return c.R | (c.G << 8) | (c.B << 16);
+        }
+
+        /// <summary>Шов для тестов: режим высокого контраста вместо настоящего (null — настоящий).</summary>
+        internal static bool? HighContrastForTests { get; set; }
+
+        /// <summary>
+        /// Включён высокий контраст Windows (UI-7). Тогда палитра приложения уступает системным
+        /// цветам — их выбрал человек, которому иначе не прочитать экран. Читается на каждой
+        /// отрисовке: включение режима на ходу присылает WM_SYSCOLORCHANGE, и WinForms
+        /// перерисовывает окна сам (OnSystemColorsChanged).
+        /// </summary>
+        public static bool HighContrast
+        {
+            get { return HighContrastForTests ?? SystemInformation.HighContrast; }
+        }
+
+        /// <summary>
+        /// Цвета рисованной кнопки в высоком контрасте — системные пары, как у кнопки Windows:
+        /// обычная — Control/ControlText (в Win32 — BTNFACE/BTNTEXT) с рамкой цвета текста; под мышью, нажатая или выбранная —
+        /// Highlight/HighlightText; недоступная — GrayText. Одна таблица на все рисованные кнопки.
+        /// </summary>
+        internal static void HighContrastPush(bool enabled, bool hot, out Color fill, out Color text, out Color border)
+        {
+            if (!enabled)
+            {
+                fill = SystemColors.Control;
+                text = border = SystemColors.GrayText;
+            }
+            else if (hot)
+            {
+                fill = border = SystemColors.Highlight;
+                text = SystemColors.HighlightText;
+            }
+            else
+            {
+                fill = SystemColors.Control;
+                text = border = SystemColors.ControlText;
+            }
         }
     }
 }

@@ -84,7 +84,8 @@ namespace ExcelMerger
                     using (var g = Graphics.FromHwnd(Handle))
                     {
                         Rectangle r = Rectangle.Inflate(ClientRectangle, -DpiScale.Device(this, 30), 0);
-                        TextRenderer.DrawText(g, HintText, HintPoints > 0 ? Ui.Font(this, HintPoints) : Font, r, HintColor,
+            TextRenderer.DrawText(g, HintText, HintPoints > 0 ? Ui.Font(this, HintPoints) : Font, r,
+                Theme.HighContrast ? SystemColors.GrayText : HintColor,
                             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                             TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
                     }
@@ -385,7 +386,7 @@ namespace ExcelMerger
         /// <summary>Рамка-подсветка при дропе рисуется закраской Padding (список поверх оставляет только рамку).</summary>
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            e.Graphics.Clear(_dropActive ? Theme.Accent : BackColor);
+            e.Graphics.Clear(_dropActive ? (Theme.HighContrast ? SystemColors.Highlight : Theme.Accent) : BackColor);
         }
 
         /// <summary>Заменить содержимое сетки списком страниц (в этом порядке).</summary>
@@ -657,7 +658,10 @@ namespace ExcelMerger
             Rectangle tileRect, cell;
             ItemGeometry(e.ItemIndex, out tileRect, out cell);
 
-            g.FillRectangle(BackBrush, cell);
+            // Высокий контраст (UI-7): фон, приглушение, бейджи и заглушка — системными цветами;
+            // сами страницы — содержимое документа и остаются как есть.
+            bool hc = Theme.HighContrast;
+            g.FillRectangle(hc ? SystemBrushes.Window : BackBrush, cell);
 
             bool selected = e.Item.Selected;
             if (selected)
@@ -671,10 +675,16 @@ namespace ExcelMerger
             if (tile != null)
                 g.DrawImage(tile, tileRect.Location); // плитка составлена ровно под tileRect
             else
-                DrawPlaceholder(g, tileRect);
+                DrawPlaceholder(g, tileRect, hc);
 
             if (page != null && _cutRefs.Contains(page))
-                g.FillRectangle(DimBrush, tileRect); // вырезанные приглушены до вставки (Esc — отмена)
+            {
+                if (hc)
+                    using (var dim = new SolidBrush(Color.FromArgb(150, SystemColors.Window)))
+                        g.FillRectangle(dim, tileRect);
+                else
+                    g.FillRectangle(DimBrush, tileRect); // вырезанные приглушены до вставки (Esc — отмена)
+            }
 
             if (page != null && page.Rotation != 0)
                 DrawRotationBadge(g, tileRect, page.Rotation);
@@ -747,8 +757,9 @@ namespace ExcelMerger
             g.SmoothingMode = SmoothingMode.AntiAlias;
             for (int i = 0; i < 2; i++)
             {
-                g.FillEllipse(ChipFill, buttons[i]);
-                TextRenderer.DrawText(g, glyphs[i], ChipFont, buttons[i], Color.White,
+                g.FillEllipse(Theme.HighContrast ? SystemBrushes.Highlight : ChipFill, buttons[i]);
+                TextRenderer.DrawText(g, glyphs[i], ChipFont, buttons[i],
+                    Theme.HighContrast ? SystemColors.HighlightText : Color.White,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             }
             g.SmoothingMode = prev;
@@ -787,12 +798,13 @@ namespace ExcelMerger
             int padX = Px(4), padY = Px(2);
             var badge = new Rectangle(tileRect.Right - sz.Width - 2 * padX - Px(3), tileRect.Y + Px(3),
                 sz.Width + 2 * padX, sz.Height + 2 * padY);
-            g.FillRectangle(BadgeFill, badge);
-            TextRenderer.DrawText(g, text, badgeFont, badge, Color.White,
+            g.FillRectangle(Theme.HighContrast ? SystemBrushes.Highlight : BadgeFill, badge);
+            TextRenderer.DrawText(g, text, badgeFont, badge,
+                Theme.HighContrast ? SystemColors.HighlightText : Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
 
-        private static void DrawPlaceholder(Graphics g, Rectangle tileRect)
+        private static void DrawPlaceholder(Graphics g, Rectangle tileRect, bool highContrast)
         {
             int w = (int)((tileRect.Height - 24) * 0.72f);
             int h = tileRect.Height - 24;
@@ -800,8 +812,8 @@ namespace ExcelMerger
                 return;
             int x = tileRect.X + (tileRect.Width - w) / 2;
             int y = tileRect.Y + 12;
-            g.FillRectangle(Brushes.White, x, y, w, h);
-            g.DrawRectangle(PlaceholderPen, x, y, w, h);
+            g.FillRectangle(highContrast ? SystemBrushes.Window : Brushes.White, x, y, w, h);
+            g.DrawRectangle(highContrast ? SystemPens.WindowText : PlaceholderPen, x, y, w, h);
         }
 
         /// <summary>Заливка выделения (SystemColors.Highlight с прозрачностью) — лениво, до смены темы.</summary>
@@ -1401,7 +1413,7 @@ namespace ExcelMerger
                 after = e.Location.X > bounds.Left + bounds.Width / 2;
             }
             _hoverMark = true;
-            ShowMark(index, after, HoverMarkColor);
+            ShowMark(index, after, Theme.HighContrast ? SystemColors.GrayText : HoverMarkColor);
         }
 
         private void ShowMark(int index, bool after, Color color)

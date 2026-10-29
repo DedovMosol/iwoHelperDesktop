@@ -695,13 +695,18 @@ namespace ExcelMerger
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                if (HoverFill != Color.Empty && (Hover || Pressed))
+                // Высокий контраст (UI-7): под мышью — круг Highlight и значок HighlightText,
+                // иначе значок цветом текста окна (ForeColor уже системный, см. HighContrastColors).
+                bool hc = Theme.HighContrast;
+                bool hot = (Hover || Pressed) && (hc || HoverFill != Color.Empty);
+                Color glyph = hc && hot ? SystemColors.HighlightText : ForeColor;
+                if (hot)
                 {
                     // Круг, а не прямоугольник: значок квадратный и мелкий, прямоугольная плашка
                     // на его фоне выглядит крупнее самого значка.
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     int alpha = Pressed ? Math.Min(255, HoverFill.A * 2) : HoverFill.A;
-                    using (var b = new SolidBrush(Color.FromArgb(alpha, HoverFill)))
+                    using (var b = new SolidBrush(hc ? SystemColors.Highlight : Color.FromArgb(alpha, HoverFill)))
                         e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
                     e.Graphics.SmoothingMode = SmoothingMode.Default;
                 }
@@ -720,7 +725,7 @@ namespace ExcelMerger
                     // хотя он одноцветный.
                     TextRenderingHint was = e.Graphics.TextRenderingHint;
                     e.Graphics.TextRenderingHint = TextRenderingHint.AntiAlias;
-                    using (var brush = new SolidBrush(ForeColor))
+                    using (var brush = new SolidBrush(glyph))
                     using (var format = new StringFormat())
                     {
                         format.Alignment = StringAlignment.Center;
@@ -730,7 +735,7 @@ namespace ExcelMerger
                     e.Graphics.TextRenderingHint = was;
                 }
                 // Кольцо фокуса — цветом значка: белое на синей шапке, цветное на белом ряду.
-                DrawFocusRing(e.Graphics, new RectangleF(0, 0, Width, Height), Math.Min(Width, Height) / 2f, ForeColor);
+                DrawFocusRing(e.Graphics, new RectangleF(0, 0, Width, Height), Math.Min(Width, Height) / 2f, glyph);
             }
         }
     }

@@ -71,6 +71,7 @@ namespace ExcelMerger
             AutoScaleMode = AutoScaleMode.None; // размер задаём в пикселях под рабочую область
             ClientSize = target;
             BackColor = Color.FromArgb(37, 37, 38); // тёмная подложка — страница читается контрастно
+            HighContrastColors.Attach(this); // в высоком контрасте — системные цвета (UI-7)
             KeyPreview = true;
 
             // Область просмотра с прокруткой: при увеличении страница больше окна, и её

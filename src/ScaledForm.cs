@@ -21,6 +21,11 @@ namespace ExcelMerger
     {
         private bool _scaled;
 
+        public ScaledForm()
+        {
+            HighContrastColors.Attach(this); // UI-7: системные цвета в высоком контрасте
+        }
+
         /// <summary>Масштаб применён: дальше окно и его дети — в пикселях устройства.</summary>
         internal bool IsScaled { get { return _scaled; } }
 

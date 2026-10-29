@@ -77,10 +77,19 @@ namespace ExcelMerger
             // Подсветка — наведение мышью; фокус — своё кольцо (PushControl), а не та же подсветка:
             // раньше фокус включал «наведение» и гас, едва мышь покидала карточку (UI-10).
             bool hot = Hover || Pressed;
-            g.Clear(hot ? HoverBack : BackColor);
-            using (var pen = new Pen(hot ? HoverBorder : Border, Math.Max(1f, DpiScale.Device(this))))
+            Color fill, border, text;
+            if (Theme.HighContrast) // UI-7: системные цвета кнопки
+                Theme.HighContrastPush(Enabled, hot, out fill, out text, out border);
+            else
+            {
+                fill = hot ? HoverBack : BackColor;
+                border = hot ? HoverBorder : Border;
+                text = Theme.TextPrimary;
+            }
+            g.Clear(fill);
+            using (var pen = new Pen(border, Math.Max(1f, DpiScale.Device(this))))
                 g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
-            DrawFocusRing(g, new RectangleF(0, 0, Width, Height), 0f, Theme.Accent);
+            DrawFocusRing(g, new RectangleF(0, 0, Width, Height), 0f, Theme.HighContrast ? text : Theme.Accent);
 
             // Карточка стоит в нижнем ряду и потому невысока: значок и ОДНА строка — имя файла.
             // Название операции ушло в подсказку вместе с путём: в строке высотой в ряд две
@@ -97,7 +106,7 @@ namespace ExcelMerger
                 return;
             Font nameFont = Ui.Font(this, 9f);
             TextRenderer.DrawText(g, Path.GetFileName(_path), nameFont,
-                new Rectangle(textLeft, 0, textWidth, Height), Theme.TextPrimary,
+                new Rectangle(textLeft, 0, textWidth, Height), text,
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix |
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
         }

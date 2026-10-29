@@ -135,8 +135,8 @@ namespace ExcelMerger
             {
                 float inset = 3f * s;
                 var inner = new RectangleF(inset, inset, Width - 2 * inset, Height - 2 * inset);
-                Color ring = _look == ButtonLook.Secondary && !_selected
-                    ? Theme.Accent : Color.White;
+                Color ring = Theme.HighContrast ? text
+                    : _look == ButtonLook.Secondary && !_selected ? Theme.Accent : Color.White;
                 using (GraphicsPath ringPath = Ui.RoundedRect(inner, radius - 2f * s))
                 using (var p = new Pen(ring, 1.6f * s))
                     g.DrawPath(p, ringPath);
@@ -152,6 +152,12 @@ namespace ExcelMerger
         /// <summary>Цвета текущего состояния: заливка, подпись, рамка (Empty — без рамки).</summary>
         private void Colors(out Color fill, out Color text, out Color border)
         {
+            if (Theme.HighContrast)
+            {
+                // Все три вида — как кнопка Windows в этом режиме; главная отличается местом в окне.
+                Theme.HighContrastPush(Enabled, _hover || _pressed || _selected, out fill, out text, out border);
+                return;
+            }
             border = Color.Empty;
             switch (_look)
             {

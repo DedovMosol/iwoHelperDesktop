@@ -150,16 +150,24 @@ namespace ExcelMerger
             // рисовались одной рамкой, и с клавиатуры нельзя было понять, где фокус, а где мышь.
             float line = (Hover ? 2f : 1f) * Math.Max(1f, s);
             var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
+            Color fill, border, title = Theme.TextPrimary, description = Theme.TextMuted;
+            if (Theme.HighContrast) // UI-7: системные цвета кнопки; описание — тем же текстом
+                Theme.HighContrastPush(Enabled, Hover || Pressed, out fill, out title, out border);
+            else
+            {
+                fill = Pressed ? Theme.SecondaryPressed : (Hover ? Theme.SecondaryHover : Color.White);
+                border = (Hover || Pressed) ? Theme.Accent : Theme.Border;
+            }
+            if (Theme.HighContrast)
+                description = title;
             using (GraphicsPath card = Ui.RoundedRect(rect, 12f * s))
             {
-                Color fill = Pressed ? Theme.SecondaryPressed : (Hover ? Theme.SecondaryHover : Color.White);
                 using (var b = new SolidBrush(fill))
                     g.FillPath(b, card);
-                Color border = (Hover || Pressed) ? Theme.Accent : Theme.Border;
                 using (var pen = new Pen(border, line))
                     g.DrawPath(pen, card);
             }
-            DrawFocusRing(g, new RectangleF(0, 0, Width, Height), 12f * s, Theme.Accent);
+            DrawFocusRing(g, new RectangleF(0, 0, Width, Height), 12f * s, Theme.HighContrast ? title : Theme.Accent);
 
             // Блок «значок + заголовок + описание» ставим по центру карточки: описания
             // разной длины, и при верхней привязке карточки с короткой подписью выглядели
@@ -177,10 +185,10 @@ namespace ExcelMerger
             DrawGlyph(g, glyphRect);
 
             var titleRect = new Rectangle(titlePad, glyphRect.Bottom + glyphGap, titleW, titleH);
-            TextRenderer.DrawText(g, _title, TitleFont, titleRect, Theme.TextPrimary, TitleFlags);
+            TextRenderer.DrawText(g, _title, TitleFont, titleRect, title, TitleFlags);
 
             var descRect = new Rectangle(descPad, titleRect.Bottom + titleGap, descW, descH);
-            TextRenderer.DrawText(g, _description, Font, descRect, Theme.TextMuted, DescFlags);
+            TextRenderer.DrawText(g, _description, Font, descRect, description, DescFlags);
         }
 
         /// <summary>

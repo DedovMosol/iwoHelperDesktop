@@ -92,10 +92,17 @@ namespace ExcelMerger
         protected override void OnPaint(PaintEventArgs e)
         {
             Rectangle r = ClientRectangle;
-            using (var brush = new LinearGradientBrush(r, _top, _bottom, LinearGradientMode.Vertical))
-                e.Graphics.FillRectangle(brush, r);
+            // Высокий контраст (UI-7): шапка — системного цвета окна, отделена линией текста.
+            bool hc = Theme.HighContrast;
+            Color titleColor = hc ? SystemColors.ControlText : Color.White;
+            Color subtitleColor = hc ? SystemColors.ControlText : SubtitleColor;
+            if (hc)
+                e.Graphics.Clear(SystemColors.Control);
+            else
+                using (var brush = new LinearGradientBrush(r, _top, _bottom, LinearGradientMode.Vertical))
+                    e.Graphics.FillRectangle(brush, r);
             // Тонкая нижняя грань отделяет шапку от тела окна.
-            using (var pen = new Pen(Color.FromArgb(60, 0, 0, 0)))
+            using (var pen = new Pen(hc ? SystemColors.ControlText : Color.FromArgb(60, 0, 0, 0)))
                 e.Graphics.DrawLine(pen, 0, r.Height - 1, r.Width, r.Height - 1);
 
             // Высоты строк — РЕАЛЬНЫЕ высоты шрифтов: они заданы в пунктах и растут вместе с
@@ -114,10 +121,10 @@ namespace ExcelMerger
             {
                 flags |= TextFormatFlags.HorizontalCenter;
                 TextRenderer.DrawText(e.Graphics, _title, titleFont,
-                    new Rectangle(d(10), titleY, Width - d(20), titleH), Color.White, flags);
+                    new Rectangle(d(10), titleY, Width - d(20), titleH), titleColor, flags);
                 if (_subtitle.Length > 0)
                     TextRenderer.DrawText(e.Graphics, _subtitle, Font,
-                        new Rectangle(d(10), subtitleY, Width - d(20), subtitleH), SubtitleColor, flags);
+                        new Rectangle(d(10), subtitleY, Width - d(20), subtitleH), subtitleColor, flags);
                 return;
             }
 
@@ -131,7 +138,7 @@ namespace ExcelMerger
                 }
             int rightBound = TextRightBound(Width, leftmostChild, d(20), d(12));
             TextRenderer.DrawText(e.Graphics, _title, titleFont,
-                new Rectangle(d(18), titleY, rightBound - d(18), titleH), Color.White, flags);
+                new Rectangle(d(18), titleY, rightBound - d(18), titleH), titleColor, flags);
 
             if (_subtitle.Length > 0)
             {
@@ -145,7 +152,7 @@ namespace ExcelMerger
                     subRight = Width - d(20);
                 }
                 TextRenderer.DrawText(e.Graphics, _subtitle, Font,
-                    new Rectangle(d(20), subY, subRight - d(20), subtitleH), SubtitleColor, flags);
+                    new Rectangle(d(20), subY, subRight - d(20), subtitleH), subtitleColor, flags);
             }
         }
 

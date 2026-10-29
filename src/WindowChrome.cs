@@ -15,6 +15,8 @@ namespace ExcelMerger
     {
         private const int DWMWA_CAPTION_COLOR = 35; // Windows 11 22000+
         private const int DWMWA_TEXT_COLOR = 36;
+        // DWMWA_COLOR_DEFAULT: вернуть заголовку цвета системы (dwmapi.h, DWMWINDOWATTRIBUTE).
+        private const int ColorDefault = unchecked((int)0xFFFFFFFF);
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
@@ -23,6 +25,8 @@ namespace ExcelMerger
         public static void Enable(Form form, Color captionColor)
         {
             form.HandleCreated += delegate { Apply(form.Handle, captionColor); };
+            // Высокий контраст включают и выключают на ходу: заголовок следует за ним (UI-7).
+            form.SystemColorsChanged += delegate { if (form.IsHandleCreated) Apply(form.Handle, captionColor); };
             if (form.IsHandleCreated)
                 Apply(form.Handle, captionColor);
         }
@@ -33,8 +37,10 @@ namespace ExcelMerger
                 return;
             try
             {
-                int caption = ColorRef(captionColor);
-                int text = ColorRef(Color.White);
+                // В высоком контрасте — цвета заголовка системы (DWMWA_COLOR_DEFAULT), а не свои.
+                bool system = Theme.HighContrast;
+                int caption = system ? ColorDefault : ColorRef(captionColor);
+                int text = system ? ColorDefault : ColorRef(Color.White);
                 DwmSetWindowAttribute(handle, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
                 DwmSetWindowAttribute(handle, DWMWA_TEXT_COLOR, ref text, sizeof(int));
             }

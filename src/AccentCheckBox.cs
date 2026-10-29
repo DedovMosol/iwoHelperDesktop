@@ -52,6 +52,9 @@ namespace ExcelMerger
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Parent != null ? Parent.BackColor : Color.White);
+            // Высокий контраст (UI-7): квадрат — как поле ввода (Window/WindowText), отмеченный —
+            // Highlight/HighlightText, недоступный — GrayText; подпись — текст окна.
+            bool hc = Theme.HighContrast;
 
             // Рисование — всегда после масштаба окна: квадрат, галочка, рамки — в пикселях устройства.
             float s = DpiScale.Device(this);
@@ -63,12 +66,14 @@ namespace ExcelMerger
             {
                 if (Checked)
                 {
-                    Color fill = !Enabled ? Theme.DisabledFill
+                    Color fill = hc ? (Enabled ? SystemColors.Highlight : SystemColors.Control)
+                        : !Enabled ? Theme.DisabledFill
                         : (_hover ? Theme.AccentHover : Theme.Accent);
                     using (var b = new SolidBrush(fill))
                         g.FillPath(b, box);
 
-                    Color mark = Enabled ? Color.White : Theme.DisabledText;
+                    Color mark = hc ? (Enabled ? SystemColors.HighlightText : SystemColors.GrayText)
+                        : Enabled ? Color.White : Theme.DisabledText;
                     using (var pen = new Pen(mark, 2f * s))
                     {
                         pen.StartCap = LineCap.Round;
@@ -87,9 +92,10 @@ namespace ExcelMerger
                 }
                 else
                 {
-                    using (var b = new SolidBrush(Color.White))
+                    using (var b = new SolidBrush(hc ? SystemColors.Window : Color.White))
                         g.FillPath(b, box);
-                    Color border = !Enabled ? Theme.Border
+                    Color border = hc ? (Enabled ? SystemColors.WindowText : SystemColors.GrayText)
+                        : !Enabled ? Theme.Border
                         : (_hover ? Theme.BorderDark : Theme.Border);
                     using (var pen = new Pen(border, line))
                         g.DrawPath(pen, box);
@@ -97,7 +103,7 @@ namespace ExcelMerger
 
                 if (Focused && Enabled)
                 {
-                    using (var pen = new Pen(Color.FromArgb(120, Theme.Accent), 1.5f * s))
+                    using (var pen = new Pen(hc ? SystemColors.ControlText : Color.FromArgb(120, Theme.Accent), 1.5f * s))
                     {
                         var focus = new RectangleF(rect.X - line / 2, rect.Y - line / 2, rect.Width + line, rect.Height + line);
                         using (GraphicsPath ring = Ui.RoundedRect(focus, 5f * s))
@@ -106,7 +112,8 @@ namespace ExcelMerger
                 }
             }
 
-            Color textColor = Enabled ? Theme.TextPrimary : Theme.DisabledText;
+            Color textColor = hc ? (Enabled ? SystemColors.ControlText : SystemColors.GrayText)
+                : Enabled ? Theme.TextPrimary : Theme.DisabledText;
             var textRect = new Rectangle(side + Gap, 0, Width - side - Gap, Height);
             TextRenderer.DrawText(g, Text, Font, textRect, textColor,
                 // WordBreak вместо SingleLine: подпись, не влезающая в узкую колонку, переносится
