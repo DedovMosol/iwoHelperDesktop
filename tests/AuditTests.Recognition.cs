@@ -12,6 +12,55 @@ namespace ExcelMerger.Tests
     /// </summary>
     internal static partial class UnitTests
     {
+        /// <summary>
+        /// Страница A4 (595 × 842 pt) — Я. ист PdfSharp по умолчанию берётся из региона системы:
+        /// в en-US это Letter 612 × 792 (проба 30.10.2026), а раннер CI работает в en-US. ез явного
+        /// размера геометрия тестов (поля, CropBox, «за краем листа») зависела бы от машины.
+        /// </summary>
+        private static PdfSharp.Pdf.PdfPage A4(PdfSharp.Pdf.PdfDocument pdf)
+        {
+            PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+            page.Width = 595;
+            page.Height = 842;
+            return page;
+        }
+
+        [Test("Аудит: тесты распознавания не зависят от региона системы (en-US, как на раннере CI)")]
+        private static void AuditRecognitionTestsRegionIndependent()
+        {
+            System.Globalization.CultureInfo saved = System.Threading.Thread.CurrentThread.CurrentCulture;
+            try
+            {
+                System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("en-US");
+                System.Globalization.CultureInfo.CurrentCulture.ClearCachedData();
+                using (var pdf = new PdfSharp.Pdf.PdfDocument())
+                {
+                    PdfSharp.Pdf.PdfPage plain = pdf.AddPage(); // нарочно без размера — воспроизвести ловушку
+                    // Ловушка воспроизводится: без явного размера лист — Letter.
+                    AssertTrue(Math.Abs(plain.Height.Point - 792) < 1, "en-US: AddPage() даёт Letter: " + plain.Height.Point);
+                    PdfSharp.Pdf.PdfPage a4 = A4(pdf);
+                    AssertTrue(Math.Abs(a4.Width.Point - 595) < 1 && Math.Abs(a4.Height.Point - 842) < 1, "A4() — A4 в любом регионе");
+                }
+                // Геометрические тесты распознавания под en-US: RC-19 до правки здесь падал.
+                AuditRc19OffPage();
+                AuditRc15RightAlignment();
+                AuditRc1WhiteOnFills();
+            }
+            finally
+            {
+                System.Threading.Thread.CurrentThread.CurrentCulture = saved;
+                System.Globalization.CultureInfo.CurrentCulture.ClearCachedData();
+            }
+            // Страницы тестов — только через A4(): AddPage() в этом файле разрешён ровно в двух
+            // местах — в самой A4() (размер задаётся сразу) и выше, где ловушка воспроизводится
+            // нарочно. Третий вызов — новый тест, рисующий лист региона машины.
+            string root = RepoRoot();
+            AssertTrue(root != null, "корень репозитория найден");
+            string source = File.ReadAllText(Path.Combine(root, "tests", "AuditTests.Recognition.cs"));
+            int calls = System.Text.RegularExpressions.Regex.Matches(source, @"\.AddPage\(\)").Count;
+            AssertEq(2, calls, "AddPage() только в A4() и в воспроизведении ловушки");
+        }
+
         // ---------- RC-1: белый текст на светлой цветной заливке ----------
 
         [Test("Аудит RC-1: контраст с белым по WCAG — эталонные значения")]
@@ -46,7 +95,7 @@ namespace ExcelMerger.Tests
                 };
                 using (var pdf = new PdfSharp.Pdf.PdfDocument())
                 {
-                    PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+                    PdfSharp.Pdf.PdfPage page = A4(pdf);
                     using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
                     {
                         g.DrawString("Обычный текст страницы", font, PdfSharp.Drawing.XBrushes.Black, 72, 80);
@@ -90,7 +139,7 @@ namespace ExcelMerger.Tests
                 const double left = 72, right = 523;
                 using (var pdf = new PdfSharp.Pdf.PdfDocument())
                 {
-                    PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+                    PdfSharp.Pdf.PdfPage page = A4(pdf);
                     using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
                     {
                         Action<string, double> atRight = (s, y) => g.DrawString(s, font, PdfSharp.Drawing.XBrushes.Black, right - g.MeasureString(s, font).Width, y);
@@ -161,7 +210,9 @@ namespace ExcelMerger.Tests
                 var font = new PdfSharp.Drawing.XFont("Arial", 11);
                 using (var pdf = new PdfSharp.Pdf.PdfDocument())
                 {
-                    PdfSharp.Pdf.PdfPage page = pdf.AddPage(); // 595 × 842, видимая часть — 36…559 × 36…806
+                    // A4 явно: на Letter (en-US, раннер CI) CropBox 36…806 обрезался бы MediaBox 792,
+                    // и надпись «на поле» оказалась бы в видимой части — так тест и упал на CI.
+                    PdfSharp.Pdf.PdfPage page = A4(pdf); // видимая часть — 36…559 × 36…806
                     using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
                     {
                         g.DrawString("Видимый текст страницы", font, PdfSharp.Drawing.XBrushes.Black, 72, 100);
@@ -264,7 +315,7 @@ namespace ExcelMerger.Tests
                 };
                 using (var pdf = new PdfSharp.Pdf.PdfDocument())
                 {
-                    PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+                    PdfSharp.Pdf.PdfPage page = A4(pdf);
                     using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
                     {
                         double y = 100;
@@ -338,7 +389,7 @@ namespace ExcelMerger.Tests
             var text = new PdfSharp.Drawing.XFont("Arial", 12, PdfSharp.Drawing.XFontStyle.Regular, unicode);
             using (var pdf = new PdfSharp.Pdf.PdfDocument())
             {
-                PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+                PdfSharp.Pdf.PdfPage page = A4(pdf);
                 using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
                 {
                     var items = new[] { new { M = "\uF0B7", F = "Symbol", X = 72.0 }, new { M = "o", F = "Courier New", X = 96.0 }, new { M = "\uF0A7", F = "Wingdings", X = 120.0 } };
@@ -404,7 +455,7 @@ namespace ExcelMerger.Tests
                 var font = new PdfSharp.Drawing.XFont("Arial", 14);
                 for (int i = 0; i < 3; i++)
                 {
-                    PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+                    PdfSharp.Pdf.PdfPage page = A4(pdf);
                     if (i == 1) { page.Width = 842; page.Height = 595; }
                     using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
                     {
