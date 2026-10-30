@@ -195,7 +195,7 @@ namespace ExcelMerger
             _body.SplitterWidth = 8;
             _body.SplitterIncrement = 1;
             _body.SplitterDistance = 250;
-            _body.BackColor = SystemInformation.HighContrast
+            _body.BackColor = Theme.HighContrast
                 ? SystemColors.ControlDark : Theme.Border;
             _body.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(_body);
@@ -247,7 +247,7 @@ namespace ExcelMerger
         /// </summary>
         private static void ApplyInputColors(TextBox box)
         {
-            ApplyInputColors(box, SystemInformation.HighContrast);
+            ApplyInputColors(box, Theme.HighContrast);
         }
 
         /// <summary>Режим контрастности передаётся явно — так ветку проверяет тест.</summary>
@@ -303,7 +303,7 @@ namespace ExcelMerger
             {
                 Dock = DockStyle.Top,
                 Height = 44,
-                BackColor = SystemInformation.HighContrast
+                BackColor = Theme.HighContrast
                     ? SystemColors.Control : Color.White
             };
             _unifiedModeButton = new RoundedButton(false);
@@ -343,7 +343,7 @@ namespace ExcelMerger
                 SplitterDistance = 300,
                 Panel1MinSize = 220,
                 Panel2MinSize = 220,
-                BackColor = SystemInformation.HighContrast
+                BackColor = Theme.HighContrast
                     ? SystemColors.ControlDark : Theme.Border
             };
             _leftSource = new PdfReviewPageView { Dock = DockStyle.Fill, RenderSession = _renderSession };
@@ -391,7 +391,7 @@ namespace ExcelMerger
                 Dock = DockStyle.Top,
                 Size = new Size(600, 72),
                 Height = 72,
-                BackColor = SystemInformation.HighContrast
+                BackColor = Theme.HighContrast
                     ? SystemColors.Window : Color.White
             };
             Label title = Ui.Label(legend, Loc.T("review.unified.legend"), 10, 8,
@@ -473,7 +473,7 @@ namespace ExcelMerger
                 ColumnCount = 1,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty,
-                BackColor = SystemInformation.HighContrast
+                BackColor = Theme.HighContrast
                     ? SystemColors.Window : Color.White,
                 TabStop = false
             };
@@ -501,7 +501,7 @@ namespace ExcelMerger
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = Font,
-                ForeColor = SystemInformation.HighContrast
+                ForeColor = Theme.HighContrast
                     ? SystemColors.WindowText : Theme.TextPrimary,
                 Margin = new Padding(0, 3, 6, 0),
                 TabStop = false
@@ -524,7 +524,7 @@ namespace ExcelMerger
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = Font,
-                ForeColor = SystemInformation.HighContrast
+                ForeColor = Theme.HighContrast
                     ? SystemColors.WindowText : Theme.TextMuted,
                 Margin = new Padding(0, 3, 0, 0),
                 TabStop = false
@@ -573,9 +573,9 @@ namespace ExcelMerger
 
         private TableLayoutPanel BuildLegend(bool leftSide, out Label ownership)
         {
-            Color background = SystemInformation.HighContrast
+            Color background = Theme.HighContrast
                 ? SystemColors.Window : Color.White;
-            Color foreground = SystemInformation.HighContrast
+            Color foreground = Theme.HighContrast
                 ? SystemColors.WindowText
                 : (leftSide ? Theme.ReviewDeleteMarker : Theme.ReviewInsertMarker);
             var legend = new TableLayoutPanel

@@ -227,7 +227,7 @@ namespace ExcelMerger
                 return;
             Color color, edge;
             PdfReviewPageView.ResolveHighlightColors(deleted,
-                SystemInformation.HighContrast, out color, out edge);
+                Theme.HighContrast, out color, out edge);
             var carets = new List<RectangleF>();
             foreach (PdfReviewBox box in deleted.Boxes)
             {

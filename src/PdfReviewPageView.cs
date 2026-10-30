@@ -573,7 +573,7 @@ namespace ExcelMerger
                     rendered.Dispose();
                     return null;
                 }
-                Bitmap drawn = DrawHighlight(bitmap, highlight, SystemInformation.HighContrast,
+                Bitmap drawn = DrawHighlight(bitmap, highlight, Theme.HighContrast,
                     out outcome.Bars);
                 if (drawn == null)
                 {

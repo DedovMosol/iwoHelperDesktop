@@ -1129,6 +1129,28 @@ namespace ExcelMerger.Tests
                 }
             }
         }
+        /// <summary>
+        /// Режим высокого контраста спрашивается у Windows в одном месте — `Theme.HighContrast`.
+        /// Окно сравнения спрашивало само, мимо шва: его ветки высокого контраста не видел ни
+        /// один тест, и источник истины был не один.
+        /// </summary>
+        [Test("Аудит UI-7: режим высокого контраста читается только через Theme")]
+        private static void AuditHighContrastHasOneSource()
+        {
+            string src = SourceDir();
+            AssertTrue(src != null, "каталог src найден");
+            var offenders = new List<string>();
+            foreach (string file in Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories))
+            {
+                if (Path.GetFileName(file) == "Theme.cs")
+                    continue;
+                string[] lines = File.ReadAllLines(file);
+                for (int i = 0; i < lines.Length; i++)
+                    if (lines[i].Contains("SystemInformation.HighContrast"))
+                        offenders.Add(Path.GetFileName(file) + ":" + (i + 1));
+            }
+            AssertTrue(offenders.Count == 0, "мимо Theme.HighContrast: " + string.Join(", ", offenders.ToArray()));
+        }
         /// <summary>Те же проверки целости, что у раскладочных тестов на 100 %.</summary>
         private static void CheckScaledLayout(Form f, string where, List<string> offenders)
         {

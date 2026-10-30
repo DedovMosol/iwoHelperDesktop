@@ -329,7 +329,7 @@ namespace ExcelMerger
             if (_selection != null && _selection.HasSelection)
             {
                 EnsureRectangleCache();
-                bool highContrast = SystemInformation.HighContrast;
+                bool highContrast = Theme.HighContrast;
                 Color outline = SystemColors.Highlight;
                 using (var pen = new Pen(outline, highContrast ? 3f : 2f))
                 {
