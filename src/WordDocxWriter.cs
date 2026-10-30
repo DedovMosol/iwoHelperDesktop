@@ -263,8 +263,9 @@ namespace ExcelMerger
             /// <summary>
             /// Шаг для пункта kind/number на уровне level (0-базный, уже в пределах).
             ///  • Нумерованный продолжает список, если его номер на 1 больше последнего на ЭТОМ
-            ///    уровне, или если это «1» подсписка сразу под пунктом верхнего уровня (Word
-            ///    сам начинает уровень заново после пункта уровнем выше).
+            ///    уровне, или если это «1» подсписка под открытым пунктом уровнем выше — сразу
+            ///    под ним или после его текста («1. пункт», абзац пункта, «1) 2)»): Word сам
+            ///    начинает уровень заново после пункта уровнем выше.
             ///  • Маркированный продолжается, пока маркеры идут подряд, на любом уровне.
             /// </summary>
             public ListStep Decide(ListKind kind, int number, int level)
@@ -272,7 +273,7 @@ namespace ExcelMerger
                 bool continuePrev;
                 if (kind == ListKind.Numbered)
                     continuePrev = (LastNumber[level] > 0 && number == LastNumber[level] + 1) ||
-                        (number == 1 && PrevKind == ListKind.Numbered && level > PrevLevel);
+                        (number == 1 && level > 0 && LastNumber[level - 1] > 0);
                 else
                     continuePrev = PrevKind == ListKind.Bulleted;
                 if (!continuePrev)
@@ -360,6 +361,13 @@ namespace ExcelMerger
             try
             {
                 sel.Range.ListFormat.ApplyListTemplateWithLevel(tmpl, continuePrev, WdListApplyToWholeList, WdWord10ListBehavior, wordLevel);
+                // ApplyLevel выбирает, КАКОЙ уровень шаблона применить, но абзац остаётся на
+                // первом уровне (проверено живым Word: пункт «1)» нового или продолженного после
+                // текста списка выходил уровнем 0). Уровень абзаца задаёт ListLevelNumber.
+                if (wordLevel > 1)
+                    try { sel.Range.ListFormat.ListLevelNumber = wordLevel; }
+                    catch { } // не вышло — пункт останется в списке, но мельче
+
                 // Список, начинающийся НЕ с «1.» («5. 6. 7.» — продолжение из другого
                 // документа): Word при рестарте всегда нумерует с единицы, поэтому стартовый
                 // номер задаётся явно. Правится шаблон ПРИМЕНЁННОГО списка (его копия в

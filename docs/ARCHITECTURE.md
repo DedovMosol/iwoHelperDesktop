@@ -891,16 +891,22 @@ The pyramid, bottom-up:
    local files exist and skips explicitly when they do not.
 
    The **layout corpus** (`tests/Corpus.*.cs`, `AuditTests.Corpus.cs`) checks recognition
-   (PDF → Word/PowerPoint) on 288 generated documents: 24 families (columns, lists, Word
-   bullet fonts, tables, underline and strike, white text on fills, rotated labels, a scan
-   with an invisible text layer, headers and footers, …) times 12 variants of font, size,
-   language, paper and line spacing. One document model (`Corpus.Spec.cs`) drives both the
-   PdfSharp drawing (`Corpus.Render.cs`) and the expectations (`Corpus.Check.cs`), so the two
-   cannot drift apart. The check compares the layout model, not `.docx` bytes: words
-   aligned by LCS, paragraph bounds, alignment, list kind/level/number, table shape, cells
-   and spans, and per-word bold/italic/underline/colour/size; for PowerPoint, the package
-   built by `PptxWriter.BuildPackage` is validated with OpenXml and read back. Neither
-   needs Office. Known engine defects live in `Corpus.Known.cs` with an `audit.md` ID and
+   (PDF → Word/PowerPoint) on 300 generated documents: 25 families (columns, lists, Word
+   bullet fonts, tables with spans and wrapped cells, underline and strike, white text on
+   fills, rotated labels, a scan with an invisible text layer, headers and footers, …) times
+   12 variants of font, size, language, paper and line spacing. One document model
+   (`Corpus.Spec.cs`) drives both the PdfSharp drawing (`Corpus.Render.cs`) and the
+   expectations (`Corpus.Check.cs`), so the two cannot drift apart. The check compares the
+   layout model, not `.docx` bytes: words aligned by LCS, paragraph bounds, alignment, list
+   kind/level/number, table shape, cells and spans, and per-word bold/italic/underline/
+   colour/size. For PowerPoint, the package built by `PptxWriter.BuildPackage` is validated
+   with OpenXml and read back: words per `a:p`, markers, per-word format including colour
+   and size times the page-to-slide scale, and `a:tbl` grids. Neither needs Office. The
+   Word writer is checked separately and live (`Corpus.Docx.cs`, skipped as `office`
+   without Word): one document per family is written by real Word and the `.docx` is read
+   back against the layout model it was written from — paragraphs, `w:jc`, list kind and
+   `w:ilvl` through `numbering.xml`, table grids with `gridSpan`/`vMerge`, per-word format
+   resolved through styles and document defaults. Known engine defects live in `Corpus.Known.cs` with an `audit.md` ID and
    the exact number of documents and cases per family and aspect; any change in either
    direction fails the test, so a fix or a regression always shows up as a reviewed edit
    of that registry. `IWO_CORPUS_FULL=1` prints the whole report and ready registry lines,

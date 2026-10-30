@@ -24,6 +24,7 @@ namespace ExcelMerger.Tests
     /// <summary>Документ корпуса: семейство, вариант и сама модель. Известные дефекты — в CorpusKnown.</summary>
     internal sealed class CCase
     {
+        public int Id; // порядковый номер в корпусе: стабильное имя файла
         public string Family;
         public CVariant Variant;
         public CDoc Doc;
@@ -64,7 +65,10 @@ namespace ExcelMerger.Tests
             Family("колонтитулы и номера страниц", HeaderFooter),
             Family("разный кегль в абзаце", MixedSizes),
             Family("две колонки с разным интервалом", UnevenColumns),
-            Family("абзацы с полной последней строкой и малой отбивкой", FullLastLine)
+            Family("абзацы с полной последней строкой и малой отбивкой", FullLastLine),
+            // Новые семейства — только в конец: номер семейства входит в сид и шрифт варианта,
+            // вставка в середину пересоздала бы все последующие документы и весь реестр.
+            Family("таблица с переносом строк в ячейках", WrappedTable)
         };
 
         private static KeyValuePair<string, Builder> Family(string name, Builder b)
@@ -80,7 +84,7 @@ namespace ExcelMerger.Tests
                 for (int i = 0; i < perFamily; i++)
                 {
                     CVariant v = Variant(f, i);
-                    var c = new CCase { Family = Families[f].Key, Variant = v, Doc = NewDoc(v) };
+                    var c = new CCase { Id = result.Count, Family = Families[f].Key, Variant = v, Doc = NewDoc(v) };
                     c.Doc.Name = c.Name;
                     Families[f].Value(c, new CText(v.Seed, v.Russian));
                     result.Add(c);
@@ -322,6 +326,28 @@ namespace ExcelMerger.Tests
                 table.HeaderFill = 0xD9E2F3;
             c.Doc.Blocks.Add(table);
             c.Doc.Blocks.Add(Para(c, t.Text(1), CAlign.Left));
+        }
+
+        /// <summary>
+        /// Таблица с переносом текста в ячейках (описание, условие, примечание — обычная таблица
+        /// договора): несколько строк в одной ячейке должны остаться одной ячейкой, а на слайде —
+        /// разными строками одной ячейки, а не одним склеенным словом на стыке строк.
+        /// </summary>
+        private static void WrappedTable(CCase c, CText t)
+        {
+            int cols = Math.Min(3, MaxColumns(c));
+            var table = new CTable { Ruled = true, SpaceAfter = c.Variant.Size, ColWidths = new double[cols] };
+            for (int k = 0; k < cols; k++)
+                table.ColWidths[k] = 100;
+            for (int r = 0; r < t.Next(3, 5); r++)
+            {
+                var row = new CCell[cols];
+                for (int k = 0; k < cols; k++)
+                    row[k] = Cell(r == 0 ? t.Phrase(t.Next(1, 3)) : t.Phrase(t.Next(6, 13)),
+                        r == 0 ? Body(c).WithBold() : Body(c));
+                table.Rows.Add(row);
+            }
+            c.Doc.Blocks.Add(table);
         }
 
         private static void SpannedTable(CCase c, CText t)

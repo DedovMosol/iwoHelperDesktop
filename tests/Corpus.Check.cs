@@ -238,7 +238,7 @@ namespace ExcelMerger.Tests
         /// сохраняется в <see cref="CFinding.Count"/>: реестр сверяет и его, чтобы регрессия
         /// внутри уже затронутого документа не пряталась за той же записью.
         /// </summary>
-        private static List<CFinding> Dedup(List<CFinding> findings)
+        internal static List<CFinding> Dedup(List<CFinding> findings)
         {
             var seen = new Dictionary<string, int>(StringComparer.Ordinal);   // записей вида
             var total = new Dictionary<string, int>(StringComparer.Ordinal);  // случаев вида
@@ -279,7 +279,7 @@ namespace ExcelMerger.Tests
             string where = "стр. " + (index + 1);
 
             CompareParagraphs(eParas, aParas, aTables, where, findings);
-            CompareTables(eTables, aTables, where, findings);
+            CompareGrids("", eTables.Select(t => CGrid.Of(t)).ToList(), aTables.Select(t => CGrid.Of(t)).ToList(), where, findings);
 
             if (rotated.Count > 0)
             {
@@ -293,10 +293,23 @@ namespace ExcelMerger.Tests
                         break;
                     }
             }
-            if (scan && images.Count > 0 && eParas.Count > 0)
+            // Дубль скана — картинка И текст её слоя в абзацах. Одна картинка без текста —
+            // это потеря текста (вид «lost»), а не дубль.
+            if (scan && images.Count > 0 && ScanTextShown(eParas, aParas))
                 findings.Add(new CFinding("scan-duplicate", where + ": текстовый слой скана выведен и текстом, и картинкой"));
             else if (!scan && images.Count > 0)
                 findings.Add(new CFinding("image-extra", where + ": " + images.Count + " картинок там, где их не рисовали"));
+        }
+
+        /// <summary>Есть ли среди разобранных абзацев хоть одно слово слоя скана.</summary>
+        private static bool ScanTextShown(List<EPara> eParas, List<APara> aParas)
+        {
+            var words = new HashSet<string>(StringComparer.Ordinal);
+            foreach (EPara e in eParas)
+                if (e.LooseBounds)
+                    foreach (Tok t in e.Tokens)
+                        words.Add(t.Text);
+            return aParas.Any(a => a.Tokens.Any(t => words.Contains(t.Text)));
         }
 
         // ---------- абзацы ----------
@@ -501,7 +514,7 @@ namespace ExcelMerger.Tests
             return sb.ToString();
         }
 
-        private static string FontKey(string font)
+        internal static string FontKey(string font)
         {
             return (font ?? "").Replace(" ", "").ToLowerInvariant();
         }
@@ -567,48 +580,134 @@ namespace ExcelMerger.Tests
             return Norm(string.Join(" ", parts.ToArray()));
         }
 
-        private static string Norm(string s)
+        internal static string Norm(string s)
         {
             return string.Join(" ", (s ?? "").Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries));
         }
 
-        private static void CompareTables(List<CTable> expected, List<OcrTable> actual, string where, List<CFinding> findings)
+        /// <summary>
+        /// Таблица как сетка ячеек — общая форма для модели, для разобранной <see cref="OcrTable"/>
+        /// (DOCX) и для таблицы слайда <c>a:tbl</c> (PPTX): одна сверка на оба вывода.
+        /// </summary>
+        internal sealed class CGrid
+        {
+            public readonly int Rows, Cols;
+            public bool Ruled;
+            public readonly string[,] Text;     // null — позиция накрыта объединением
+            public readonly int[,] ColSpan, RowSpan;
+
+            internal CGrid(int rows, int cols)
+            {
+                Rows = rows; Cols = cols;
+                Text = new string[rows, cols];
+                ColSpan = new int[rows, cols];
+                RowSpan = new int[rows, cols];
+                for (int r = 0; r < rows; r++)
+                    for (int c = 0; c < cols; c++) { ColSpan[r, c] = 1; RowSpan[r, c] = 1; }
+            }
+
+            public static CGrid Of(CTable t)
+            {
+                var g = new CGrid(t.Rows.Count, t.ColWidths.Length) { Ruled = t.Ruled };
+                for (int r = 0; r < g.Rows; r++)
+                    for (int c = 0; c < g.Cols; c++)
+                    {
+                        CCell cell = c < t.Rows[r].Length ? t.Rows[r][c] : null;
+                        if (cell == null) continue;
+                        g.Text[r, c] = Norm(string.Join(" ", cell.Runs.Select(x => x.Text).ToArray()));
+                        g.ColSpan[r, c] = cell.ColSpan;
+                        g.RowSpan[r, c] = cell.RowSpan;
+                    }
+                return g;
+            }
+
+            public static CGrid Of(OcrTable t)
+            {
+                var g = new CGrid(t.Rows.Count, t.ColumnCount) { Ruled = !t.Borderless };
+                for (int r = 0; r < g.Rows; r++)
+                    for (int c = 0; c < g.Cols; c++)
+                    {
+                        List<OcrTableCell> cells = t.Rows[r] != null ? t.Rows[r].Cells : null;
+                        OcrTableCell cell = cells != null && c < cells.Count ? cells[c] : null;
+                        // Накрытая объединением позиция — null, как в модели: её текст не сверяется.
+                        g.Text[r, c] = cell == null ? "" : (cell.Covered ? null : CellText(cell));
+                        if (cell == null) continue;
+                        g.ColSpan[r, c] = cell.ColSpan;
+                        g.RowSpan[r, c] = cell.RowSpan;
+                    }
+                return g;
+            }
+
+            /// <summary>Таблица слайда: накрытые объединением ячейки (hMerge/vMerge) — null.</summary>
+            public static CGrid Of(XElement tbl)
+            {
+                List<XElement> rows = tbl.Elements(A + "tr").ToList();
+                int cols = tbl.Element(A + "tblGrid") != null ? tbl.Element(A + "tblGrid").Elements(A + "gridCol").Count() : 0;
+                var g = new CGrid(rows.Count, cols)
+                {
+                    // Линия ячейки нарисована, если у границы есть заливка (а не a:noFill).
+                    Ruled = tbl.Descendants(A + "lnL").Any(l => l.Element(A + "solidFill") != null)
+                };
+                for (int r = 0; r < rows.Count; r++)
+                {
+                    List<XElement> tcs = rows[r].Elements(A + "tc").ToList();
+                    for (int c = 0; c < cols && c < tcs.Count; c++)
+                    {
+                        XElement tc = tcs[c];
+                        if ((string)tc.Attribute("hMerge") == "1" || (string)tc.Attribute("vMerge") == "1")
+                            continue;
+                        g.Text[r, c] = Norm(TextOf(tc));
+                        g.ColSpan[r, c] = (int?)tc.Attribute("gridSpan") ?? 1;
+                        g.RowSpan[r, c] = (int?)tc.Attribute("rowSpan") ?? 1;
+                    }
+                }
+                return g;
+            }
+        }
+
+        /// <summary>Видимый текст фрагмента слайда — его слова через пробел (см. <see cref="SlideWords"/>).</summary>
+        private static string TextOf(XElement root)
+        {
+            return string.Join(" ", SlideWords(root).Select(w => w.Tok.Text).ToArray());
+        }
+
+        /// <summary>
+        /// Сверка таблиц страницы: число, форма, линовка, текст и объединения ячеек. prefix —
+        /// приставка вида («» для DOCX, «pptx-» для слайда): один и тот же дефект в двух выводах
+        /// считается в реестре отдельно, ведь и чинится он порой в разных местах.
+        /// </summary>
+        internal static void CompareGrids(string prefix, List<CGrid> expected, List<CGrid> actual, string where, List<CFinding> findings)
         {
             if (actual.Count > expected.Count)
-                findings.Add(new CFinding("table-extra", where + ": таблиц " + actual.Count + " вместо " + expected.Count +
-                    (actual.Any(t => t.Borderless) ? " (лишняя — без линовки)" : "")));
+                findings.Add(new CFinding(prefix + "table-extra", where + ": таблиц " + actual.Count + " вместо " + expected.Count +
+                    (actual.Any(t => !t.Ruled) ? " (лишняя — без линовки)" : ""), actual.Count - expected.Count));
             else if (actual.Count < expected.Count)
-                findings.Add(new CFinding("table-lost", where + ": таблиц " + actual.Count + " вместо " + expected.Count));
+                findings.Add(new CFinding(prefix + "table-lost", where + ": таблиц " + actual.Count + " вместо " + expected.Count,
+                    expected.Count - actual.Count));
             if (actual.Count != expected.Count)
                 return; // какая с какой — не сказать: ячейки сверяются только при равном числе
-            for (int t = 0; t < expected.Count && t < actual.Count; t++)
+            for (int t = 0; t < expected.Count; t++)
             {
-                CTable e = expected[t];
-                OcrTable a = actual[t];
+                CGrid e = expected[t], a = actual[t];
                 string name = where + ", таблица " + (t + 1);
-                int cols = e.ColWidths.Length;
-                if (a.Rows.Count != e.Rows.Count || a.ColumnCount != cols)
+                if (a.Rows != e.Rows || a.Cols != e.Cols)
                 {
-                    findings.Add(new CFinding("table-shape", name + ": " + a.Rows.Count + "×" + a.ColumnCount +
-                        " вместо " + e.Rows.Count + "×" + cols));
+                    findings.Add(new CFinding(prefix + "table-shape", name + ": " + a.Rows + "×" + a.Cols + " вместо " + e.Rows + "×" + e.Cols));
                     continue;
                 }
-                if (a.Borderless == e.Ruled)
-                    findings.Add(new CFinding("table-ruling", name + (e.Ruled ? ": линованная стала безлиновочной" : ": безлиновочная стала линованной")));
-                for (int r = 0; r < e.Rows.Count; r++)
-                    for (int c = 0; c < cols; c++)
+                if (a.Ruled != e.Ruled)
+                    findings.Add(new CFinding(prefix + "table-ruling", name + (e.Ruled ? ": линованная стала безлиновочной" : ": безлиновочная стала линованной")));
+                for (int r = 0; r < e.Rows; r++)
+                    for (int c = 0; c < e.Cols; c++)
                     {
-                        CCell ec = e.Rows[r][c];
-                        if (ec == null)
+                        if (e.Text[r, c] == null)
                             continue;
-                        OcrTableCell ac = a.Rows[r].Cells[c];
-                        string want = Norm(string.Join(" ", ec.Runs.Select(x => x.Text).ToArray()));
-                        string got = CellText(ac);
-                        if (want != got)
-                            findings.Add(new CFinding("table-cell", name + " [" + r + "," + c + "]: «" + got + "» вместо «" + want + "»"));
-                        if (ac.ColSpan != ec.ColSpan || ac.RowSpan != ec.RowSpan)
-                            findings.Add(new CFinding("table-span", name + " [" + r + "," + c + "]: объединение " +
-                                ac.ColSpan + "×" + ac.RowSpan + " вместо " + ec.ColSpan + "×" + ec.RowSpan));
+                        string got = a.Text[r, c] ?? "";
+                        if (got != e.Text[r, c])
+                            findings.Add(new CFinding(prefix + "table-cell", name + " [" + r + "," + c + "]: «" + got + "» вместо «" + e.Text[r, c] + "»"));
+                        if (a.ColSpan[r, c] != e.ColSpan[r, c] || a.RowSpan[r, c] != e.RowSpan[r, c])
+                            findings.Add(new CFinding(prefix + "table-span", name + " [" + r + "," + c + "]: объединение " +
+                                a.ColSpan[r, c] + "×" + a.RowSpan[r, c] + " вместо " + e.ColSpan[r, c] + "×" + e.RowSpan[r, c]));
                     }
             }
         }
@@ -633,10 +732,12 @@ namespace ExcelMerger.Tests
                 findings.Add(new CFinding("pptx-invalid", problem));
                 break;
             }
+            double scale = SlideScale(package, drawn.PageW, drawn.PageH);
             for (int page = 0; page < drawn.Pages; page++)
             {
                 var expected = new List<Tok>();
                 var markers = new List<string>();
+                var tables = new List<CGrid>();
                 bool scan = false;
                 foreach (CDrawn d in drawn.Drawn)
                 {
@@ -649,41 +750,51 @@ namespace ExcelMerger.Tests
                     }
                     var t = d.Block as CTable;
                     if (t != null)
+                    {
+                        tables.Add(CGrid.Of(t));
                         foreach (CCell[] row in t.Rows)
                             foreach (CCell cell in row)
                                 if (cell != null) expected.AddRange(Tokens(cell.Runs));
+                    }
                     var r = d.Block as CRotated;
                     if (r != null) expected.AddRange(Tokens(new[] { new CRun(r.Text, r.Style) }));
                     if (d.Block is CScan) scan = true;
                     if (d.Text != null) expected.AddRange(Tokens(new[] { new CRun(d.Text, d.Style) }));
                 }
-                SlidePage(drawn, package, page, expected, markers, scan, findings);
+                SlidePage(drawn, package, page, expected, markers, tables, scan, scale, findings);
             }
             return Dedup(findings);
         }
 
+        /// <summary>
+        /// Масштаб вписывания страницы в слайд: целиком и без искажения пропорций (меньшее из
+        /// двух отношений), лист того же размера — 1. Считается здесь независимо от писателя:
+        /// кегль слайда обязан быть кеглем источника, умноженным именно на это число.
+        /// </summary>
+        private static double SlideScale(OoxmlPackage package, double pageW, double pageH)
+        {
+            XElement size = PartXml(package, "ppt/presentation.xml").Descendants()
+                .First(e => e.Name.LocalName == "sldSz");
+            double slideW = (double)size.Attribute("cx") / 12700, slideH = (double)size.Attribute("cy") / 12700;
+            if (Math.Abs(slideW - pageW) < 0.5 && Math.Abs(slideH - pageH) < 0.5)
+                return 1;
+            return Math.Min(slideW / pageW, slideH / pageH);
+        }
+
         private static void SlidePage(CRendered drawn, OoxmlPackage package, int page, List<Tok> expected,
-            List<string> markers, bool scan, List<CFinding> findings)
+            List<string> markers, List<CGrid> tables, bool scan, double scale, List<CFinding> findings)
         {
             string where = "слайд " + (page + 1);
             XDocument xml = SlideXml(package, page + 1);
+            CompareGrids("pptx-", tables, xml.Descendants(A + "tbl").Select(t => CGrid.Of(t)).ToList(), where, findings);
             var actual = new List<Tok>();
             var seenMarkers = new List<string>();
             bool visibleOcr = false;
-            foreach (XElement run in xml.Descendants(A + "r"))
+            foreach (SlideWord w in SlideWords(xml))
             {
-                XElement rPr = run.Element(A + "rPr");
-                string text = (string)run.Element(A + "t") ?? "";
-                bool bold = rPr != null && (string)rPr.Attribute("b") == "1";
-                bool italic = rPr != null && (string)rPr.Attribute("i") == "1";
-                bool underline = rPr != null && rPr.Attribute("u") != null && (string)rPr.Attribute("u") != "none";
-                bool noFill = rPr != null && rPr.Element(A + "noFill") != null;
-                foreach (string word in text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    if (drawn.Markers.Contains(word)) { seenMarkers.Add(word); continue; }
-                    actual.Add(new Tok { Text = word, Bold = bold, Italic = italic, Underline = underline });
-                    if (scan && !noFill) visibleOcr = true;
-                }
+                if (drawn.Markers.Contains(w.Tok.Text)) { seenMarkers.Add(w.Tok.Text); continue; }
+                actual.Add(w.Tok);
+                if (scan && !w.NoFill) visibleOcr = true;
             }
             var want = Count(expected, t => t.Text);
             var got = Count(actual, t => t.Text);
@@ -700,19 +811,158 @@ namespace ExcelMerger.Tests
             CompareFormat("pptx-bold", "полужирный", expected, actual, t => t.Bold, where, findings);
             CompareFormat("pptx-italic", "курсив", expected, actual, t => t.Italic, where, findings);
             CompareFormat("pptx-underline", "подчёркивание", expected, actual, t => t.Underline, where, findings);
+            CompareKeyed("pptx-color", "цвет", expected, actual, t => t.Color != 0 ? t.Text + " #" + t.Color.ToString("X6") : null, where, findings);
+            CompareSizes(expected, actual, scale, where, findings);
             if (visibleOcr)
                 findings.Add(new CFinding("pptx-ocr-visible", where + ": невидимый текстовый слой скана стал видимым текстом"));
+        }
+
+        private sealed class SlideWord
+        {
+            public Tok Tok;
+            public bool NoFill;
+        }
+
+        /// <summary>
+        /// Слова слайда так, как их показывает PowerPoint: текст абзаца a:p склеивается из всех его
+        /// ранов подряд (граница рана посреди слова слово не делит), перевод строки a:br — пробел.
+        /// Читать каждый ран отдельно нельзя: пропавший a:br склеил бы на экране «конец строки» и
+        /// «начало следующей» в одно слово, а пораново слова выглядели бы целыми. Формат слова —
+        /// формат его первого знака.
+        /// </summary>
+        private static List<SlideWord> SlideWords(XContainer root)
+        {
+            var result = new List<SlideWord>();
+            foreach (XElement p in root.Descendants(A + "p"))
+            {
+                var text = new StringBuilder();
+                var props = new List<XElement>(); // rPr для каждого знака text
+                foreach (XElement e in p.Elements())
+                {
+                    if (e.Name == A + "br") { text.Append(' '); props.Add(null); }
+                    else if (e.Name == A + "r")
+                    {
+                        string t = (string)e.Element(A + "t") ?? "";
+                        text.Append(t);
+                        for (int i = 0; i < t.Length; i++) props.Add(e.Element(A + "rPr"));
+                    }
+                }
+                string s = text.ToString();
+                int from = 0;
+                while (from < s.Length)
+                {
+                    while (from < s.Length && char.IsWhiteSpace(s[from])) from++;
+                    if (from >= s.Length) break;
+                    int to = from;
+                    while (to < s.Length && !char.IsWhiteSpace(s[to])) to++;
+                    result.Add(WordOf(s.Substring(from, to - from), props[from]));
+                    from = to;
+                }
+            }
+            return result;
+        }
+
+        private static SlideWord WordOf(string word, XElement rPr)
+        {
+            XElement fill = rPr != null ? rPr.Element(A + "solidFill") : null;
+            XElement rgb = fill != null ? fill.Element(A + "srgbClr") : null;
+            return new SlideWord
+            {
+                NoFill = rPr != null && rPr.Element(A + "noFill") != null,
+                Tok = new Tok
+                {
+                    Text = word,
+                    Bold = rPr != null && (string)rPr.Attribute("b") == "1",
+                    Italic = rPr != null && (string)rPr.Attribute("i") == "1",
+                    Underline = rPr != null && rPr.Attribute("u") != null && (string)rPr.Attribute("u") != "none",
+                    Color = rgb != null ? int.Parse((string)rgb.Attribute("val"), NumberStyles.HexNumber, CultureInfo.InvariantCulture) : 0,
+                    Size = rPr != null && rPr.Attribute("sz") != null ? (double)rPr.Attribute("sz") / 100 : 0
+                }
+            };
         }
 
         private static void CompareFormat(string aspect, string what, List<Tok> expected, List<Tok> actual,
             Func<Tok, bool> flag, string where, List<CFinding> findings)
         {
-            var want = Count(expected.Where(flag), t => t.Text);
-            var got = Count(actual.Where(flag), t => t.Text);
-            List<string> lost = Diff(want, got), extra = Diff(got, want);
+            CompareKeyed(aspect, what, expected, actual, t => flag(t) ? t.Text : null, where, findings);
+        }
+
+        /// <summary>
+        /// Формат слов без опоры на порядок (порядок фигур слайда — не порядок чтения): мультимножества
+        /// ключей «слово + признак» у ожидаемых и у разобранных слов. key = null — слово не в счёт.
+        /// Недостача самого слова — это «pptx-lost», а не потеря формата: она из счёта вычитается,
+        /// иначе один дефект (слово пропало) считался бы ещё раз в каждом признаке.
+        /// </summary>
+        private static void CompareKeyed(string aspect, string what, List<Tok> expected, List<Tok> actual,
+            Func<Tok, string> key, string where, List<CFinding> findings)
+        {
+            Dictionary<string, int> wantWords = Count(expected, t => t.Text), gotWords = Count(actual, t => t.Text);
+            var want = new Dictionary<string, int>(StringComparer.Ordinal);
+            var got = new Dictionary<string, int>(StringComparer.Ordinal);
+            var textOf = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (Tok t in expected) Tally(want, textOf, key(t), t.Text);
+            foreach (Tok t in actual) Tally(got, textOf, key(t), t.Text);
+            var lost = new List<string>();
+            var extra = new List<string>();
+            foreach (KeyValuePair<string, string> k in textOf)
+            {
+                int e, a, ew, aw;
+                want.TryGetValue(k.Key, out e);
+                got.TryGetValue(k.Key, out a);
+                wantWords.TryGetValue(k.Value, out ew);
+                gotWords.TryGetValue(k.Value, out aw);
+                for (int i = 0; i < e - a - Math.Max(0, ew - aw); i++) lost.Add(k.Key);
+                for (int i = 0; i < a - e - Math.Max(0, aw - ew); i++) extra.Add(k.Key);
+            }
             if (lost.Count > 0 || extra.Count > 0)
                 findings.Add(new CFinding(aspect, where + ": " + what + (lost.Count > 0 ? " потерян у " + string.Join(" ", lost.Take(4).ToArray()) : "")
                     + (extra.Count > 0 ? " лишний у " + string.Join(" ", extra.Take(4).ToArray()) : ""), lost.Count + extra.Count));
+        }
+
+        private static void Tally(Dictionary<string, int> counts, Dictionary<string, string> textOf, string key, string text)
+        {
+            if (key == null)
+                return;
+            int n;
+            counts.TryGetValue(key, out n);
+            counts[key] = n + 1;
+            textOf[key] = text;
+        }
+
+        /// <summary>
+        /// Кегль: у каждого слова кегль слайда — кегль источника × масштаб вписывания (допуск
+        /// 0,3 pt источника, как в DOCX). Порядок фигур не влияет: одинаковые слова сопоставляются
+        /// по возрастанию кегля двумя указателями, совпавшие в допуске снимаются парой. Ошибка
+        /// кегля — только сверх недостачи слова: недостача — это «pptx-lost» (слово «при» мелкой
+        /// повёрнутой надписи пропало — его кегль не сверяется с «при» основного текста).
+        /// </summary>
+        private static void CompareSizes(List<Tok> expected, List<Tok> actual, double scale, string where, List<CFinding> findings)
+        {
+            var bad = new List<string>();
+            double tol = 0.3 * scale;
+            ILookup<string, double> sizes = actual.ToLookup(t => t.Text, t => t.Size, StringComparer.Ordinal);
+            foreach (IGrouping<string, Tok> g in expected.GroupBy(t => t.Text, StringComparer.Ordinal))
+            {
+                List<double> want = g.Select(t => t.Size * scale).OrderBy(x => x).ToList();
+                List<double> got = sizes[g.Key].OrderBy(x => x).ToList();
+                var wantLeft = new List<double>();
+                var gotLeft = new List<double>();
+                int i = 0, k = 0;
+                while (i < want.Count && k < got.Count)
+                {
+                    if (Math.Abs(got[k] - want[i]) <= tol) { i++; k++; }
+                    else if (want[i] < got[k]) wantLeft.Add(want[i++]);
+                    else gotLeft.Add(got[k++]);
+                }
+                while (i < want.Count) wantLeft.Add(want[i++]);
+                while (k < got.Count) gotLeft.Add(got[k++]);
+                // Несопоставленные пары — неверный кегль; лишние без пары — потеря или лишнее слово.
+                for (int p = 0; p < wantLeft.Count && p < gotLeft.Count; p++)
+                    bad.Add(g.Key + " " + (gotLeft[p] / scale).ToString("0.##", CultureInfo.InvariantCulture) + " вместо " +
+                        (wantLeft[p] / scale).ToString("0.##", CultureInfo.InvariantCulture));
+            }
+            if (bad.Count > 0)
+                findings.Add(new CFinding("pptx-size", where + ": кегль " + string.Join(", ", bad.Take(4).ToArray()), bad.Count));
         }
 
         private static Dictionary<string, int> Count(IEnumerable<Tok> tokens, Func<Tok, string> key)
@@ -737,11 +987,15 @@ namespace ExcelMerger.Tests
 
         private static XDocument SlideXml(OoxmlPackage package, int slide)
         {
+            return PartXml(package, "ppt/slides/slide" + slide + ".xml");
+        }
+
+        private static XDocument PartXml(OoxmlPackage package, string part)
+        {
             using (var ms = new MemoryStream(package.ToArray()))
             using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
-            using (Stream s = zip.GetEntry("ppt/slides/slide" + slide + ".xml").Open())
-            using (var reader = new StreamReader(s, Encoding.UTF8))
-                return XDocument.Parse(reader.ReadToEnd());
+            using (Stream s = zip.GetEntry(part).Open())
+                return XDocument.Load(s);
         }
     }
 }

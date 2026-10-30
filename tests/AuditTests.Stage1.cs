@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Drawing;
 using System.IO.Compression;
+using System.Linq;
 using System.Net;
 using System.Xml;
 using System.Xml.Linq;
@@ -982,6 +983,57 @@ namespace ExcelMerger.Tests
                 Stage1ListSteps(n, 1, 0, n, 2, 0, n, 3, 0, n, 1, 0), "«1.» после «3.» — новый список");
             AssertEq("Restart,SetLevel,SetLevel,Restart",
                 Stage1ListSteps(n, 1, 0, n, 1, 1, n, 2, 0, n, 2, 1), "«2)» после возврата наверх — уровень обнулён, новый подсписок");
+        }
+
+        [Test("Аудит WP-31: подсписок после текста пункта продолжает тот же список уровнем глубже")]
+        private static void AuditWp31SublistAfterText()
+        {
+            ListKind n = ListKind.Numbered;
+            AssertEq("Restart,Continue,Inherit",
+                Stage1ListSteps(n, 1, 0, null, n, 1, 1, n, 2, 1), "«1.» текст «1) 2)»: подсписок пункта 1, а не новый список");
+            AssertEq("Restart,Inherit",
+                Stage1ListSteps(n, 1, 1, n, 2, 1), "подсписок без пункта сверху — новый список (его уровень ставит ApplyList)");
+            AssertEq("Restart,Restart",
+                Stage1ListSteps(n, 1, 0, null, n, 1, 0), "«1.» текст «1.» — по-прежнему новый список");
+        }
+
+        [Test("Аудит WP-31: уровень пункта в .docx — уровень модели и при новом списке (живой Word)")]
+        private static void AuditWp31LevelLive()
+        {
+            AuditBRequireWord();
+            Func<string, double, OcrParagraph> plain = delegate(string text, double top)
+            {
+                OcrParagraph p = Stage1ListItem(text, 0, 0, top);
+                p.ListKind = ListKind.None;
+                p.ListContentStart = 0;
+                return p;
+            };
+            var cases = new[]
+            {
+                new { Name = "подсписок после текста пункта", Expect = "0,-,1,1", SameList = true, Items = new[] {
+                    Stage1ListItem("1. Первый", 1, 0, 780), plain("продолжение пункта", 760),
+                    Stage1ListItem("1) вложенный", 1, 1, 740), Stage1ListItem("2) вложенный", 2, 1, 720) } },
+                new { Name = "список, начатый вторым уровнем", Expect = "-,1,1", SameList = false, Items = new[] {
+                    plain("вводный абзац", 780), Stage1ListItem("1) глубокий", 1, 1, 760), Stage1ListItem("2) глубокий", 2, 1, 740) } }
+            };
+            using (var dir = new TempDir("iwo_wp31_"))
+                foreach (var c in cases)
+                {
+                    string path = dir.File(c.Expect.Length + ".docx");
+                    AuditBOfficeSta(180000, delegate { WordDocxWriter.Write(new List<PdfPageText> { Stage1WordPage(0, c.Items) }, path); });
+                    XmlNamespaceManager ns;
+                    XmlDocument xml;
+                    List<string> marks = Stage1DocxParagraphs(path, out ns, out xml);
+                    marks.RemoveAll(m => m.StartsWith("§", StringComparison.Ordinal));
+                    if (marks.Count > 0 && marks[marks.Count - 1] == "-") marks.RemoveAt(marks.Count - 1); // хвостовой пустой абзац
+                    string levels = string.Join(",", marks.Select(m => m == "-" ? "-" : m.Substring(0, m.IndexOf('/'))).ToArray());
+                    AssertEq(c.Expect, levels, c.Name + ": " + string.Join(" ", marks.ToArray()));
+                    if (c.SameList)
+                    {
+                        List<string> ids = marks.Where(m => m != "-").Select(m => m.Split('/')[1]).Distinct().ToList();
+                        AssertEq(1, ids.Count, c.Name + ": один список Word: " + string.Join(" ", marks.ToArray()));
+                    }
+                }
         }
 
         // ---------- WP-5/WP-6 вживую: разметка .docx ----------

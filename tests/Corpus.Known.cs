@@ -23,7 +23,7 @@ namespace ExcelMerger.Tests
     /// </summary>
     internal static class CorpusKnown
     {
-        internal const string Docx = "docx", Pptx = "pptx";
+        internal const string Docx = "docx", Pptx = "pptx", Word = "word"; // word — .docx, записанный живым Word
         private static CKnown K(string output, string family, string aspect, string id, int docs, int cases)
         {
             return new CKnown(output, family, aspect, id, docs, cases);
@@ -126,7 +126,6 @@ namespace ExcelMerger.Tests
             K(Docx, "таблица с линовкой", "underline", "RC-33", 2, 9),
 
             // ── PPTX: слайды (режим Slide + PptxWriter.BuildPackage) ──
-            K(Pptx, "белый текст на светлой цветной плашке", "pptx-bold", "RC-1", 12, 118),
             K(Pptx, "белый текст на светлой цветной плашке", "pptx-lost", "RC-1", 12, 118),
             K(Pptx, "маркеры Word: Symbol, Courier «o», Wingdings", "pptx-marker-lost", "RC-4", 12, 13),
             K(Pptx, "повёрнутая надпись на поле", "pptx-lost", "WP-3", 12, 36),
@@ -134,6 +133,22 @@ namespace ExcelMerger.Tests
             K(Pptx, "полужирные, курсивные и цветные слова", "pptx-italic", "RC-22", 2, 11),
             K(Pptx, "скан с невидимым текстовым слоем", "pptx-ocr-visible", "WP-16", 12, 12),
             K(Pptx, "таблица с линовкой", "pptx-underline", "RC-33", 2, 9),
+            // RC-22: синтезированный курсив Tahoma — кегль 11,1 вместо 10,5 и на слайде.
+            K(Pptx, "полужирные, курсивные и цветные слова", "pptx-size", "RC-22", 2, 11),
+            // RC-8: те же ложные таблицы GridDetector, что в DOCX: разбор слайда их тоже строит.
+            K(Pptx, "абзацы по ширине с красной строкой", "pptx-table-extra", "RC-8", 1, 1),
+            K(Pptx, "абзацы с полной последней строкой и малой отбивкой", "pptx-table-extra", "RC-8", 1, 1),
+            K(Pptx, "две колонки", "pptx-table-extra", "RC-8", 4, 4),
+            K(Pptx, "две колонки с разным интервалом", "pptx-table-extra", "RC-8", 4, 4),
+            K(Pptx, "зачёркнутые фразы", "pptx-table-extra", "RC-8", 1, 1),
+            K(Pptx, "колонтитулы и номера страниц", "pptx-table-extra", "RC-8", 1, 1),
+            K(Pptx, "маркированный список в два уровня", "pptx-table-extra", "RC-8", 6, 6),
+            K(Pptx, "нумерованный список в два уровня", "pptx-table-extra", "RC-8", 1, 1),
+            K(Pptx, "повёрнутая надпись на поле", "pptx-table-extra", "RC-8", 2, 2),
+            K(Pptx, "полужирные, курсивные и цветные слова", "pptx-table-extra", "RC-8", 2, 2),
+            K(Pptx, "разный кегль в абзаце", "pptx-table-extra", "RC-8", 1, 1),
+            K(Pptx, "таблица без линовки «метка — значение»", "pptx-table-shape", "RC-8", 12, 12),
+            K(Pptx, "три колонки", "pptx-table-extra", "RC-8", 11, 11),
         };
     }
 }

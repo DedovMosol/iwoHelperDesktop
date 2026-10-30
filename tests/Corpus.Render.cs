@@ -22,6 +22,7 @@ namespace ExcelMerger.Tests
     internal sealed class CRendered
     {
         public int Pages;
+        public double PageW, PageH; // размер листа (pt), у всех страниц документа один
         public readonly List<CDrawn> Drawn = new List<CDrawn>();
         public readonly HashSet<string> Markers = new HashSet<string>(StringComparer.Ordinal);
     }
@@ -72,6 +73,8 @@ namespace ExcelMerger.Tests
             MakeScanLayersInvisible();
             _pdf.Save(path);
             _out.Pages = _pdf.PageCount;
+            _out.PageW = _doc.PageW;
+            _out.PageH = _doc.PageH;
             return _out;
         }
 

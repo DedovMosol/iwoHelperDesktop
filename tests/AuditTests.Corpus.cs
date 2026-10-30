@@ -31,7 +31,7 @@ namespace ExcelMerger.Tests
         /// <summary>Нарисовать документ корпуса во временную папку.</summary>
         private static CRendered RenderCase(CCase c, TempDir dir, out string path)
         {
-            path = dir.File(Math.Abs(c.Name.GetHashCode()).ToString() + "_" + c.Variant.Index + ".pdf");
+            path = dir.File("corpus_" + c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".pdf");
             return CorpusRenderer.Write(c.Doc, path, dir.Path);
         }
 
@@ -91,8 +91,11 @@ namespace ExcelMerger.Tests
                 foreach (KeyValuePair<string, int> p in _docs.OrderBy(p => p.Key, StringComparer.Ordinal))
                 {
                     string[] parts = p.Key.Split('\u001F');
-                    string id = CorpusKnown.All.Where(k => k.Aspect == parts[1]).Select(k => k.Id).FirstOrDefault() ?? "??";
-                    Registry.Add("K(" + (_output == CorpusKnown.Docx ? "Docx" : "Pptx") + ", \"" + parts[0] + "\", \"" + parts[1] +
+                    // Подсказка ID для новой строки: та же пара «семейство, вид», иначе тот же вид.
+                    string id = CorpusKnown.All.Where(k => k.Output == _output && k.Family == parts[0] && k.Aspect == parts[1])
+                        .Concat(CorpusKnown.All.Where(k => k.Output == _output && k.Aspect == parts[1]))
+                        .Select(k => k.Id).FirstOrDefault() ?? "??";
+                    Registry.Add("K(" + char.ToUpperInvariant(_output[0]) + _output.Substring(1) + ", \"" + parts[0] + "\", \"" + parts[1] +
                         "\", \"" + id + "\", " + p.Value + ", " + _cases[p.Key] + "),");
                     if (known.Contains(p.Key))
                         continue;
@@ -299,6 +302,36 @@ namespace ExcelMerger.Tests
             AssertTrue(ledger.Report.Count == 0, summary);
         }
 
+        /// <summary>
+        /// Документы корпуса для живого Word: по одному на семейство, номер варианта сдвигается
+        /// с семейством — так в выборку попадают все шрифты, кегли, языки и форматы листа.
+        /// </summary>
+        private static List<CCase> CorpusWordSample()
+        {
+            return Corpus().Where(c => c.Variant.Index == (c.Id / CorpusPerFamily) % CorpusPerFamily).ToList();
+        }
+
+        [Test("Корпус DOCX вживую: Word записывает ровно модель разметки (живой Word)")]
+        private static void CorpusWordWriter()
+        {
+            AuditBRequireWord();
+            var ledger = new CorpusLedger(CorpusKnown.Word);
+            List<CCase> sample = CorpusWordSample();
+            Stopwatch watch = Stopwatch.StartNew();
+            using (var dir = new TempDir("iwo_corpus_word_"))
+                foreach (CCase c in sample)
+                {
+                    string path;
+                    RenderCase(c, dir, out path);
+                    List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                    string docx = Path.ChangeExtension(path, ".docx");
+                    AuditBOfficeSta(180000, delegate { WordDocxWriter.Write(pages, docx); });
+                    ledger.Reconcile(c, CorpusDocx.Compare(pages, docx));
+                }
+            string summary = CorpusReport("корпус Word", ledger, sample.Count, watch.ElapsedMilliseconds);
+            AssertTrue(ledger.Report.Count == 0, summary);
+        }
+
         [Test("Корпус: реестр известных дефектов цел и ссылается на записи audit.md")]
         private static void CorpusKnownDefectsAreAudited()
         {
@@ -312,7 +345,7 @@ namespace ExcelMerger.Tests
             {
                 if (!audit.Contains("| " + k.Id + " |"))
                     problems.Add("нет в audit.md: " + k.Id);
-                if (k.Output != CorpusKnown.Docx && k.Output != CorpusKnown.Pptx)
+                if (k.Output != CorpusKnown.Docx && k.Output != CorpusKnown.Pptx && k.Output != CorpusKnown.Word)
                     problems.Add("неизвестный вывод «" + k.Output + "»");
                 if (!families.Contains(k.Family))
                     problems.Add("нет семейства «" + k.Family + "»");
