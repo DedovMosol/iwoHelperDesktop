@@ -10,6 +10,8 @@ namespace ExcelMerger
         public int Pages;
         public int PagesWithText;
         internal BackgroundRenderReport BackgroundReport;
+        // Номера страниц результата (с 1), которые не удалось разобрать: перенесены картинкой (RC-11).
+        internal List<int> FailedPages = new List<int>();
     }
 
     /// <summary>
@@ -67,7 +69,12 @@ namespace ExcelMerger
                         Path.GetFileName(outputPath), DiskSpace.Describe(ex, outputPath)));
                 }
             }
-            return new ConvertResult { Pages = pages.Count, PagesWithText = withText };
+            return new ConvertResult
+            {
+                Pages = pages.Count,
+                PagesWithText = withText,
+                FailedPages = PdfPageExtraction.FailedPositions(pages)
+            };
         }
     }
 }

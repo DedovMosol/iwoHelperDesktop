@@ -252,10 +252,18 @@ namespace ExcelMerger.Tests
             CStyle wingdings = Body(c).WithFont("Wingdings");
             for (int i = 0; i < t.Next(2, 4); i++)
             {
-                c.Doc.Blocks.Add(Item(c, t, ListKind.Bulleted, 0, 0, "\uF0B7", symbol));
-                c.Doc.Blocks.Add(Item(c, t, ListKind.Bulleted, 1, 0, "o", courier));
-                c.Doc.Blocks.Add(Item(c, t, ListKind.Bulleted, 2, 0, "\uF0A7", wingdings));
+                // Видимые знаки — независимо от WordBullets: кодировка Adobe Symbol (0xB7 — •)
+                // и таблица Wingdings (0xA7 — ▪), «o» Courier New — пустой кружок второго уровня.
+                c.Doc.Blocks.Add(Visible(Item(c, t, ListKind.Bulleted, 0, 0, "\uF0B7", symbol), "\u2022"));
+                c.Doc.Blocks.Add(Visible(Item(c, t, ListKind.Bulleted, 1, 0, "o", courier), "\u25E6"));
+                c.Doc.Blocks.Add(Visible(Item(c, t, ListKind.Bulleted, 2, 0, "\uF0A7", wingdings), "\u25AA"));
             }
+        }
+
+        private static CParagraph Visible(CParagraph p, string markerText)
+        {
+            p.MarkerText = markerText;
+            return p;
         }
 
         private static void LetterLists(CCase c, CText t)

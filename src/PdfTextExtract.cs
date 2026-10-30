@@ -59,6 +59,9 @@ namespace ExcelMerger
         // в источнике подчёркиваний: первые на слайде — шум, вторые — текст бланка.
         // По умолчанию Document — самое осторожное предположение для страниц, собранных в коде.
         internal PageLayoutMode LayoutMode;
+        // Страницу разобрать не удалось (RC-11): причина; страница перенесена картинкой во весь
+        // лист (или пустой, если рендерить нечем). null — обычная страница.
+        internal string ExtractionError;
 
         /// <summary>Весь текст страницы: абзацы через пустую строку.</summary>
         public string Text
@@ -163,172 +166,35 @@ namespace ExcelMerger
                     // бы и все пропускаемые.
                     List<int> numbers = PageNumbersToExtract(doc.NumberOfPages, pageIndexes);
                     int pageCount = numbers.Count;
+                    Exception firstFailure = null;
                     foreach (int number in numbers)
                     {
                         Cancellation.ThrowIf(cancelled); // отмена между страницами извлечения
-                        UglyToad.PdfPig.Content.Page page = doc.GetPage(number);
-                        int rotation = PageRotation.At(rotations, page.Number - 1);
-                        // Картинки страницы перечисляются ОДИН раз (декода здесь нет): рамки
-                        // нужны фильтрам невидимого текста и наложенных картинок, а сами объекты — переносу
-                        // изображений ниже. Рамки картинок и тёмных векторных заливок — подложки,
-                        // на которых белый/невидимый текст ЛЕГИТИМЕН (светлые шапки, OCR-слой
-                        // поверх скана) и скрывать его нельзя.
-                        List<UglyToad.PdfPig.Content.IPdfImage> pageImages = ListPageImages(page);
-                        var imageRects = new List<RectPt>(pageImages.Count);
-                        foreach (UglyToad.PdfPig.Content.IPdfImage img in pageImages)
+                        int rotation = PageRotation.At(rotations, number - 1);
+                        UglyToad.PdfPig.Content.Page page = null;
+                        PdfPageText pt;
+                        try
                         {
-                            RectPt b = RectOf(img.Bounds);
-                            if (b.Right > b.Left && b.Top > b.Bottom)
-                                imageRects.Add(b);
+                            page = doc.GetPage(number);
+                            pt = ExtractPage(page, path, rotation, mode, extractImages);
                         }
-                        List<RectPt> darkFills;
-                        List<PdfLine> lines = ExtractGraphics(page, out darkFills);
-                        ClipLinesToPage(lines, page.Width, page.Height);
-                        // Какая ориентация текста станет горизонтальной после поворота страницы
-                        // пользователем: только её и пускаем в поток (при 0° — прежний фильтр).
-                        UglyToad.PdfPig.Content.TextOrientation keepOrientation = KeepOrientationFor(rotation);
-                        List<PdfSourceTextUnit> sourceUnits = SourceUnits(page.Letters,
-                            keepOrientation);
-                        Dictionary<UglyToad.PdfPig.Content.Letter, int> sourceOrdinals =
-                            SourceOrdinals(page.Letters);
-                        // Разметка структуры страницы, если автор её оставил: по ней видно, какие
-                        // строки автор считал ОДНИМ абзацем (см. StructureBlocks). Пусто — работаем
-                        // как раньше, по зазорам.
-                        Dictionary<UglyToad.PdfPig.Content.Letter, int> blocks = StructureBlocks.Map(page);
-                        var words = new List<PdfWord>();
-                        foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
+                        catch (Exception ex) when (mode != PageLayoutMode.Review && MergeException.ShouldWrap(ex))
                         {
-                            RectPt bb = RectOf(w.BoundingBox);
-                            double size = 0;
-                            bool bold = false, italic = false;
-                            int color = 0;
-                            string family = null;
-                            string text = w.Text;
-                            int sourceStart = -1, sourceEnd = -1;
-                            string sourceText = null;
-                            bool sourceTrusted = false;
-                            if (w.Letters != null && w.Letters.Count > 0)
-                            {
-                                UglyToad.PdfPig.Content.Letter first = w.Letters[0];
-                                // Повёрнутый текст (вертикальные служебные строки билетов) в поток
-                                // не пускаем: построчная сборка рассыпала бы его на посимвольные
-                                // «абзацы», вклинивающиеся между обычными строками. При повороте
-                                // страницы пользователем горизонтальным станет боковой текст — его
-                                // и берём, а прежде-горизонтальный станет боковым и отсеется.
-                                if (first.TextOrientation != keepOrientation)
-                                    continue;
-                                // Невидимый текст (белая заливка или режим «не рисовать») ВНЕ
-                                // картинок и тёмных плашек — служебные метки («n&#» у
-                                // наложенной даты): на белом листе их не видно, в выводе — мусор.
-                                // Подложка «спасает» слово, только накрывая его хотя бы
-                                // наполовину (OCR-слой скана, белая шапка на цветной плашке);
-                                // касание кромки картинки — не подложка.
-                                if (IsInvisibleInk(first)
-                                    && !CoveredByAnyRect(bb, imageRects)
-                                    && !CoveredByAnyRect(bb, darkFills))
-                                    continue;
-                                bool pseudoBold;
-                                text = DedupDoubledGlyphs(w.Letters, text, out pseudoBold);
-                                size = first.PointSize;
-                                string fn = first.FontName ?? "";
-                                // Жирность — из имени шрифта ИЛИ из двойной отрисовки (псевдо-жирный).
-                                bold = pseudoBold || fn.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0;
-                                italic = fn.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0
-                                      || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0;
-                                color = ColorArgb(first.Color);
-                                family = FontNames.Clean(fn);
-                            }
-                            // Символы приватной зоны юникода (заглушки полей Word, маркеры Symbol)
-                            // не имеют смысла вне своего шрифта — в выводе это «□». Пропускаем.
-                            if (IsPrivateUseOnly(text))
-                                continue;
-                            // Слово, накрытое НИЗКОЙ наложенной картинкой (впечатанные дата и номер
-                            // поверх пустой формы «____№____»), текстом не выводим: его вид уже
-                            // несёт картинка, а текст рядом с ней давал бы кашу из двух слоёв.
-                            if (CoveredByLowImage(bb, imageRects))
-                                continue;
-                            sourceTrusted = TrySourceSpan(w.Letters, sourceOrdinals,
-                                sourceUnits, out sourceStart, out sourceEnd, out sourceText) &&
-                                string.Equals(sourceText, text, StringComparison.Ordinal);
-                            // Виртуальная высота прочерков применяется ПОСЛЕ поворота страницы
-                            // (ApplyUnderscoreHeights): рамка прочерка осмысленна в выправленном
-                            // пространстве, а при 0° результат прежний.
-                            double baseX, baseY;
-                            BaselineOf(w.Letters, out baseX, out baseY);
-                            int blockId = StructureBlocks.Of(blocks, w.Letters);
-                            words.Add(new PdfWord
-                            {
-                                Text = text,
-                                Left = bb.Left,
-                                Right = bb.Right,
-                                Bottom = bb.Bottom,
-                                Top = bb.Top,
-                                BaselineXPt = baseX,
-                                BaselineYPt = baseY,
-                                BlockId = blockId,
-                                SourceStart = sourceTrusted ? sourceStart : -1,
-                                SourceEnd = sourceTrusted ? sourceEnd : -1,
-                                SourceText = sourceTrusted ? sourceText : null,
-                                SourceTrusted = sourceTrusted,
-                                FontSizePt = size,
-                                Bold = bold,
-                                Italic = italic,
-                                ColorArgb = color,
-                                FontName = family
-                            });
+                            // RC-11: одна сбойная страница не роняет весь файл — она переносится
+                            // картинкой, а итог называет её. «Сравнение» (Review) остаётся строгим:
+                            // пустая страница там читалась бы как «весь текст удалён».
+                            pt = FailedPage(path, number, page, rotation, mode, ex);
+                            if (firstFailure == null)
+                                firstFailure = ex;
                         }
-                        AssignHyperlinks(words, page); // рамки ссылок — в исходном пространстве, до поворота
-                        // Изображения извлекаются ДО поворота: их PNG и фолбэк-кропы Ghostscript
-                        // живут в исходном пространстве страницы. Поворот ниже развернёт и рамки,
-                        // и сами пиксели.
-                        List<OcrImage> images = extractImages
-                            ? ExtractImages(pageImages, page, path)
-                            : new List<OcrImage>();
-                        double pageW = page.Width, pageH = page.Height;
-                        PageRotation.RotatePage(words, lines, images, rotation, ref pageW, ref pageH);
-                        ApplyUnderscoreHeights(words);
-                        // Текстовый штамп → переносим картинкой (рендер-кроп), а его слова убираем
-                        // из потока (иначе штамп задвоится: картинка + те же строки текстом).
-                        // Печать, нарисованную ТЕКСТОМ, потоковый вывод переносит картинкой: в
-                        // строку её иначе не поставить. Slide сохраняет текст для редактирования,
-                        // Review — потому что видимые слова являются семантикой сравнения.
-                        OcrImage stampImage = mode == PageLayoutMode.Document
-                            ? ExtractTextStamp(words, page, path, rotation, pageW, pageH)
-                            : null;
-                        // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
-                        TableDetectResult det = TableDetector.Detect(lines, words, pageW, pageH);
-                        HashSet<PdfLine> underlines = UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке
-                        // Одиночные линии, не ставшие ни таблицей, ни подчёркиванием, — прочерки
-                        // полей («______ №»): переносим текстом-заполнителем, иначе строка
-                        // полей теряет прочерки и разваливается.
-                        // Линии-заполнители нужны только потоковому выводу: см. PageLayoutMode.
-                        if (mode == PageLayoutMode.Document)
-                            AddRuleWords(det.RemainingWords, det.LoneLines, underlines);
-                        // Сетки без линовки (чеки, формы «метка … значение») — таблицей без границ.
-                        GridDetectResult grids = GridDetector.Detect(det.RemainingWords);
-                        det.Tables.AddRange(grids.Tables);
-                        OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(grids.RemainingWords, mode);
-                        var pt = new PdfPageText
-                        {
-                            PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
-                            Paragraphs = layout.Paragraphs,
-                            FirstLineIndentPt = layout.FirstLineIndentPt,
-                            WidthPt = pageW,
-                            HeightPt = pageH,
-                            Lines = lines,
-                            Tables = det.Tables,
-                            Words = words,
-                            SourceUnits = sourceUnits,
-                            LayoutMode = mode
-                        };
-                        pt.Images = images;
-                        if (stampImage != null)
-                            pt.Images.Add(stampImage); // штамп — в общий поток изображений (порядок по TopPt)
-                        SetMargins(pt, words, pt.Images, pageW, pageH);
                         pages.Add(pt);
                         if (progress != null)
                             progress(pages.Count, pageCount);
                     }
+                    // Не разобралась НИ одна страница — это уже не «сбойная страница», а битый
+                    // файл: прежняя понятная ошибка, а не документ из одних картинок.
+                    if (firstFailure != null && pages.TrueForAll(p => p.ExtractionError != null))
+                        System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(firstFailure).Throw();
                     return pages;
                 }
             }
@@ -336,6 +202,267 @@ namespace ExcelMerger
             {
                 throw new MergeException(string.Format(Loc.T("err.ocr.extractFailed"), Path.GetFileName(path), ex.Message));
             }
+        }
+
+        /// <summary>
+        /// Страница, которую разобрать не удалось (RC-11): пустая разметка и сама страница
+        /// картинкой во весь лист — рендер Ghostscript (нет его — страница остаётся пустой, но
+        /// документ пишется). Размер — из PdfPig, если страница открылась, иначе из PdfSharp,
+        /// иначе A4. Пользовательский поворот применяется так же, как к обычной странице.
+        /// </summary>
+        private static PdfPageText FailedPage(string path, int number, UglyToad.PdfPig.Content.Page page,
+            int rotation, PageLayoutMode mode, Exception error)
+        {
+            double w = 595, h = 842;
+            if (page != null)
+            {
+                w = page.Width;
+                h = page.Height;
+            }
+            else
+                PdfSharpPageSize(path, number, ref w, ref h);
+            var images = new List<OcrImage>();
+            OcrImage whole = RenderWholePage(path, number, w, h);
+            if (whole != null)
+                images.Add(whole);
+            PageRotation.RotatePage(new List<PdfWord>(), new List<PdfLine>(), images, rotation, ref w, ref h);
+            var pt = new PdfPageText
+            {
+                PageIndex = number - 1,
+                WidthPt = w,
+                HeightPt = h,
+                Images = images,
+                LayoutMode = mode,
+                ExtractionError = error.Message
+            };
+            SetMargins(pt, pt.Words, pt.Images, w, h);
+            return pt;
+        }
+
+        /// <summary>Размер страницы (pt, с учётом /Rotate) по PdfSharp; не открылся — размер не меняется.</summary>
+        private static void PdfSharpPageSize(string path, int number, ref double w, ref double h)
+        {
+            try
+            {
+                using (PdfSharp.Pdf.PdfDocument doc = PdfSharp.Pdf.IO.PdfReader.Open(path, PdfPasswords.For(path),
+                    PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
+                {
+                    if (number < 1 || number > doc.PageCount)
+                        return;
+                    PdfSharp.Pdf.PdfPage p = doc.Pages[number - 1];
+                    if (p.Width.Point > 0 && p.Height.Point > 0)
+                    {
+                        w = p.Width.Point;
+                        h = p.Height.Point;
+                    }
+                }
+            }
+            catch (OutOfMemoryException) { throw; }
+            catch { } // и PdfSharp не открыл — остаётся A4: картинка страницы всё равно на месте
+        }
+
+        /// <summary>Вся страница картинкой (рамка — весь лист), null — нет Ghostscript или рендер не удался.</summary>
+        private static OcrImage RenderWholePage(string path, int number, double w, double h)
+        {
+            BudgetedBitmap owned = null;
+            try
+            {
+                owned = PageRasterizer.RenderPage(path, number, w, h);
+                if (owned == null)
+                    return null;
+                byte[] png = PageRasterizer.CropRegion(owned.Bitmap, w, h, 0, h, w, h);
+                return png == null || png.Length == 0 ? null
+                    : new OcrImage { Png = png, LeftPt = 0, TopPt = h, WidthPt = w, HeightPt = h };
+            }
+            catch (OutOfMemoryException) { throw; }
+            catch { return null; }
+            finally
+            {
+                if (owned != null) owned.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Одна страница источника, разобранная целиком (см. <see cref="ExtractCore"/>). Сбойная
+        /// страница бросает исключение; превратить ли её в картинку, решает вызывающий (RC-11).
+        /// </summary>
+        private static PdfPageText ExtractPage(UglyToad.PdfPig.Content.Page page, string path, int rotation,
+            PageLayoutMode mode, bool extractImages)
+        {
+            // Картинки страницы перечисляются ОДИН раз (декода здесь нет): рамки
+            // нужны фильтрам невидимого текста и наложенных картинок, а сами объекты — переносу
+            // изображений ниже. Рамки картинок и тёмных векторных заливок — подложки,
+            // на которых белый/невидимый текст ЛЕГИТИМЕН (светлые шапки, OCR-слой
+            // поверх скана) и скрывать его нельзя.
+            List<UglyToad.PdfPig.Content.IPdfImage> pageImages = ListPageImages(page);
+            var imageRects = new List<RectPt>(pageImages.Count);
+            foreach (UglyToad.PdfPig.Content.IPdfImage img in pageImages)
+            {
+                RectPt b = RectOf(img.Bounds);
+                if (b.Right > b.Left && b.Top > b.Bottom)
+                    imageRects.Add(b);
+            }
+            List<RectPt> darkFills;
+            List<PdfLine> lines = ExtractGraphics(page, out darkFills);
+            ClipLinesToPage(lines, page.Width, page.Height);
+            // Какая ориентация текста станет горизонтальной после поворота страницы
+            // пользователем: только её и пускаем в поток (при 0° — прежний фильтр).
+            UglyToad.PdfPig.Content.TextOrientation keepOrientation = KeepOrientationFor(rotation);
+            List<PdfSourceTextUnit> sourceUnits = SourceUnits(page.Letters,
+                keepOrientation);
+            Dictionary<UglyToad.PdfPig.Content.Letter, int> sourceOrdinals =
+                SourceOrdinals(page.Letters);
+            // Разметка структуры страницы, если автор её оставил: по ней видно, какие
+            // строки автор считал ОДНИМ абзацем (см. StructureBlocks). Пусто — работаем
+            // как раньше, по зазорам.
+            Dictionary<UglyToad.PdfPig.Content.Letter, int> blocks = StructureBlocks.Map(page);
+            var words = new List<PdfWord>();
+            foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
+            {
+                RectPt bb = RectOf(w.BoundingBox);
+                double size = 0;
+                bool bold = false, italic = false;
+                int color = 0;
+                string family = null;
+                string text = w.Text;
+                int sourceStart = -1, sourceEnd = -1;
+                string sourceText = null;
+                bool sourceTrusted = false;
+                if (w.Letters != null && w.Letters.Count > 0)
+                {
+                    UglyToad.PdfPig.Content.Letter first = w.Letters[0];
+                    // Повёрнутый текст (вертикальные служебные строки билетов) в поток
+                    // не пускаем: построчная сборка рассыпала бы его на посимвольные
+                    // «абзацы», вклинивающиеся между обычными строками. При повороте
+                    // страницы пользователем горизонтальным станет боковой текст — его
+                    // и берём, а прежде-горизонтальный станет боковым и отсеется.
+                    if (first.TextOrientation != keepOrientation)
+                        continue;
+                    // Невидимый текст (белая заливка или режим «не рисовать») ВНЕ
+                    // картинок и тёмных плашек — служебные метки («n&#» у
+                    // наложенной даты): на белом листе их не видно, в выводе — мусор.
+                    // Подложка «спасает» слово, только накрывая его хотя бы
+                    // наполовину (OCR-слой скана, белая шапка на цветной плашке);
+                    // касание кромки картинки — не подложка.
+                    if (IsInvisibleInk(first)
+                        && !CoveredByAnyRect(bb, imageRects)
+                        && !CoveredByAnyRect(bb, darkFills))
+                        continue;
+                    bool pseudoBold;
+                    text = DedupDoubledGlyphs(w.Letters, text, out pseudoBold);
+                    size = first.PointSize;
+                    string fn = first.FontName ?? "";
+                    // Жирность — из имени шрифта ИЛИ из двойной отрисовки (псевдо-жирный).
+                    bold = pseudoBold || fn.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0;
+                    italic = fn.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0
+                          || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0;
+                    color = ColorArgb(first.Color);
+                    family = FontNames.Clean(fn);
+                }
+                // Значок списка Word из Symbol/Wingdings (U+F0B7 и т.п.) — обычным знаком
+                // Юникода (RC-4), в шрифте по умолчанию: в символьном шрифте этого знака
+                // нет. «Сравнение» сверяет буквальный текстовый слой — его не трогаем.
+                if (mode != PageLayoutMode.Review)
+                {
+                    string bullet = WordBullets.FromSymbolFont(text, family);
+                    if (!ReferenceEquals(bullet, text))
+                    {
+                        text = bullet;
+                        family = null;
+                    }
+                }
+                // Прочие символы приватной зоны юникода (заглушки полей Word, значки вне
+                // таблицы WordBullets) не имеют смысла вне своего шрифта — в выводе это «□».
+                if (IsPrivateUseOnly(text))
+                    continue;
+                // Слово, накрытое НИЗКОЙ наложенной картинкой (впечатанные дата и номер
+                // поверх пустой формы «____№____»), текстом не выводим: его вид уже
+                // несёт картинка, а текст рядом с ней давал бы кашу из двух слоёв.
+                if (CoveredByLowImage(bb, imageRects))
+                    continue;
+                sourceTrusted = TrySourceSpan(w.Letters, sourceOrdinals,
+                    sourceUnits, out sourceStart, out sourceEnd, out sourceText) &&
+                    string.Equals(sourceText, text, StringComparison.Ordinal);
+                // Виртуальная высота прочерков применяется ПОСЛЕ поворота страницы
+                // (ApplyUnderscoreHeights): рамка прочерка осмысленна в выправленном
+                // пространстве, а при 0° результат прежний.
+                double baseX, baseY;
+                BaselineOf(w.Letters, out baseX, out baseY);
+                int blockId = StructureBlocks.Of(blocks, w.Letters);
+                words.Add(new PdfWord
+                {
+                    Text = text,
+                    Left = bb.Left,
+                    Right = bb.Right,
+                    Bottom = bb.Bottom,
+                    Top = bb.Top,
+                    BaselineXPt = baseX,
+                    BaselineYPt = baseY,
+                    BlockId = blockId,
+                    SourceStart = sourceTrusted ? sourceStart : -1,
+                    SourceEnd = sourceTrusted ? sourceEnd : -1,
+                    SourceText = sourceTrusted ? sourceText : null,
+                    SourceTrusted = sourceTrusted,
+                    FontSizePt = size,
+                    Bold = bold,
+                    Italic = italic,
+                    ColorArgb = color,
+                    FontName = family
+                });
+            }
+            AssignHyperlinks(words, page); // рамки ссылок — в исходном пространстве, до поворота
+            // Изображения извлекаются ДО поворота: их PNG и фолбэк-кропы Ghostscript
+            // живут в исходном пространстве страницы. Поворот ниже развернёт и рамки,
+            // и сами пиксели.
+            List<OcrImage> images = extractImages
+                ? ExtractImages(pageImages, page, path)
+                : new List<OcrImage>();
+            double pageW = page.Width, pageH = page.Height;
+            PageRotation.RotatePage(words, lines, images, rotation, ref pageW, ref pageH);
+            ApplyUnderscoreHeights(words);
+            // «o» Courier New в начале пункта — значок второго уровня Word (RC-4). После поворота:
+            // «начало строки» и «та же строка» осмысленны в выправленном пространстве.
+            if (mode != PageLayoutMode.Review)
+                WordBullets.MarkCourierBullets(words);
+            // Текстовый штамп → переносим картинкой (рендер-кроп), а его слова убираем
+            // из потока (иначе штамп задвоится: картинка + те же строки текстом).
+            // Печать, нарисованную ТЕКСТОМ, потоковый вывод переносит картинкой: в
+            // строку её иначе не поставить. Slide сохраняет текст для редактирования,
+            // Review — потому что видимые слова являются семантикой сравнения.
+            OcrImage stampImage = mode == PageLayoutMode.Document
+                ? ExtractTextStamp(words, page, path, rotation, pageW, pageH)
+                : null;
+            // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
+            TableDetectResult det = TableDetector.Detect(lines, words, pageW, pageH);
+            HashSet<PdfLine> underlines = UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке
+            // Одиночные линии, не ставшие ни таблицей, ни подчёркиванием, — прочерки
+            // полей («______ №»): переносим текстом-заполнителем, иначе строка
+            // полей теряет прочерки и разваливается.
+            // Линии-заполнители нужны только потоковому выводу: см. PageLayoutMode.
+            if (mode == PageLayoutMode.Document)
+                AddRuleWords(det.RemainingWords, det.LoneLines, underlines);
+            // Сетки без линовки (чеки, формы «метка … значение») — таблицей без границ.
+            GridDetectResult grids = GridDetector.Detect(det.RemainingWords);
+            det.Tables.AddRange(grids.Tables);
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(grids.RemainingWords, mode);
+            var pt = new PdfPageText
+            {
+                PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1
+                Paragraphs = layout.Paragraphs,
+                FirstLineIndentPt = layout.FirstLineIndentPt,
+                WidthPt = pageW,
+                HeightPt = pageH,
+                Lines = lines,
+                Tables = det.Tables,
+                Words = words,
+                SourceUnits = sourceUnits,
+                LayoutMode = mode
+            };
+            pt.Images = images;
+            if (stampImage != null)
+                pt.Images.Add(stampImage); // штамп — в общий поток изображений (порядок по TopPt)
+            SetMargins(pt, words, pt.Images, pageW, pageH);
+            return pt;
         }
 
         private const double UnderscoreMinHeightFactor = 0.35; // виртуальная высота прочерка в долях кегля

@@ -1161,6 +1161,8 @@ namespace ExcelMerger
             // Смешанный документ: часть страниц — картинка целиком (слайд, «напечатанный» в PDF
             // изображением). Молчать об этом нельзя: страница в результате есть, а текста на ней
             // нет, и выглядит это как поломка перевода, а не как отсутствие текста в источнике.
+            A("convert.status.failedPages", " Не удалось разобрать страниц: {0} ({1}) — они перенесены картинкой.",
+                " Pages that could not be read: {0} ({1}) — they were copied as pictures.");
             A("convert.status.noTextPages", " Без текста осталось страниц: {0} — там он картинкой, и вернуть его может только распознавание.",
                 " {0} page(s) have no text: there it is part of the picture, and only recognition can bring it back.");
             A("convert.status.noBackgroundEngine",

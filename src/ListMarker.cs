@@ -12,8 +12,11 @@ namespace ExcelMerger
     /// </summary>
     internal static class ListMarker
     {
-        /// <summary>Символы-буллеты в начале абзаца (маркированный список).</summary>
-        private const string Bullets = "•◦▪‣·●○*–—-";
+        /// <summary>
+        /// Символы-буллеты в начале абзаца (маркированный список): обычные и те, в которые
+        /// <see cref="WordBullets"/> переводит значки Word из Symbol, Wingdings и Courier New.
+        /// </summary>
+        private const string Bullets = "•◦▪‣·●○*–—-" + WordBullets.Glyphs;
 
         /// <summary>
         /// Буллет-тире («–», «—», «-»). Отдельно от прочих: тире — ещё и знак препинания, и

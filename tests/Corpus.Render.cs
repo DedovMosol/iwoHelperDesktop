@@ -367,6 +367,8 @@ namespace ExcelMerger.Tests
                 CStyle ms = p.MarkerStyle ?? p.Runs[0].Style;
                 _g.DrawString(p.Marker, Font(ms), Brush(ms.Color), left + p.LeftIndent, _y + lines[0].Ascent);
                 _out.Markers.Add(p.Marker);
+                if (p.MarkerText != null)
+                    _out.Markers.Add(p.MarkerText); // разбор обязан показать значок Word обычным знаком
             }
             for (int i = 0; i < lines.Count; i++)
             {

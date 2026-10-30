@@ -91,14 +91,18 @@ namespace ExcelMerger.Tests
             K(Docx, "зачёркнутые фразы", "filler", "RC-6", 12, 152),
             K(Docx, "зачёркнутые фразы", "split", "RC-6", 2, 2),
             K(Docx, "зачёркнутые фразы", "strike", "RC-6", 12, 360),
-            // RC-4: значки Symbol/Wingdings в области PUA выброшены, Courier «o» — не маркер.
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "extra", "RC-4", 4, 5),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-kind", "RC-4", 11, 24),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "marker-lost", "RC-4", 12, 59),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "merge", "RC-4", 4, 6),
+            // RC-4 исправлен (значки Symbol/Wingdings и «o» Courier New — WordBullets): было marker-lost
+            // ×12, list-kind ×11, extra ×4, merge ×4. Осталось: «o» в документах, набранных тем же
+            // Courier New, — значок неотличим от буквы (тот же шрифт у соседа), и это намеренно.
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-kind", "RC-4", 2, 4),
+            // Пункты, получившие маркер, проявили общие дефекты списков: ложную таблицу RC-8,
+            // центрирование и отрыв строк RC-3, уровень RC-9 — те же, что у остальных списков.
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "into-table", "RC-8", 4, 400),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "table-extra", "RC-8", 4, 4),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-level", "RC-9", 3, 7),
             // RC-3: строки висячего отступа отрываются от пункта, пункт по центру теряет список.
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-centered", "RC-3", 1, 1),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "split", "RC-3", 11, 45),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-centered", "RC-3", 7, 17),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "split", "RC-3", 8, 53),
             K(Docx, "маркированный список в два уровня", "list-centered", "RC-3", 6, 15),
             K(Docx, "маркированный список в два уровня", "split", "RC-3", 6, 29),
             K(Docx, "нумерованный список в два уровня", "list-centered", "RC-3", 11, 26),
@@ -127,7 +131,8 @@ namespace ExcelMerger.Tests
 
             // ── PPTX: слайды (режим Slide + PptxWriter.BuildPackage) ──
             K(Pptx, "белый текст на светлой цветной плашке", "pptx-lost", "RC-1", 12, 118),
-            K(Pptx, "маркеры Word: Symbol, Courier «o», Wingdings", "pptx-marker-lost", "RC-4", 12, 13),
+            K(Pptx, "маркеры Word: Symbol, Courier «o», Wingdings", "pptx-marker-lost", "RC-4", 2, 2), // «o» в Courier-документе, как в DOCX
+            K(Pptx, "маркеры Word: Symbol, Courier «o», Wingdings", "pptx-table-extra", "RC-8", 4, 4),
             K(Pptx, "повёрнутая надпись на поле", "pptx-lost", "WP-3", 12, 36),
             K(Pptx, "подчёркнутые фразы", "pptx-underline", "RC-5", 12, 148),
             K(Pptx, "полужирные, курсивные и цветные слова", "pptx-italic", "RC-22", 2, 11),

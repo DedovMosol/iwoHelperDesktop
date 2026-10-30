@@ -559,6 +559,7 @@ or invisible cleanup assumptions:
 | `XyCut.cs` | Recursive X-Y cut: whitespace bands split a page into floors and columns, `OrderTree` keeps side-by-side siblings marked for band layout. |
 | `TableDetector.cs` | Ruled tables: connected ruling components on a spatial grid, ≥2×2 cell lattice, colspan/rowspan from missing borders, per-cell text. Also turns lone rules into `____` placeholders and feeds `UnderlineDetector`. |
 | `GridDetector.cs` | Unruled label/value grids (receipt-style forms) → borderless tables with kept row spacing. |
+| `WordBullets.cs` | Word's bullet glyphs in the text layer: a single Symbol/Wingdings private-use code (U+F0B7, U+F0A7, …) becomes its Unicode bullet, and a Courier New "o" at the start of a line followed by text in another font becomes "◦". Export modes only; Compare keeps the literal layer. |
 | `StampDetector.cs`, `ListMarker.cs`, `UnderlineDetector.cs`, `GlyphDedup.cs`, `FontNames.cs`, `MathUtil.cs`, `OcrTable.cs`, `PdfLine.cs` | Focused helpers: stamp region, list-marker recognition, underline mapping, glyph dedup, font-name normalization, medians, table/line models. |
 | `ListNesting.cs` | Nesting level of a list item from its left edge, as a **stack of open indents** — the same trick used to parse indentation-based syntax. A level is therefore the *depth* of an indent, not the ordinal of a newly seen edge: an item indented between two known levels returns to the matching one instead of claiming to be deeper than all of them, and returning to an outer indent closes the inner levels by itself (so a second list does not inherit the depth of the first, and no separate reset is needed). A step under `MinNestStepPt` (12 pt, against Word's 18 pt list step) counts as the same level, which is what keeps a flat list with a ragged left edge from being emitted as spurious nesting. One instance per layout region; `WordDocxWriter.WordListLevel` maps 0-based depth onto Word's 1-based levels with the clamp. |
 | `WordDocxWriter.cs` | Writes the `.docx` through Word COM: a section per PDF page (size, orientation, margins), zeroed Normal style, `OrderTree`-driven side-by-side bands and `PageBlocks.CoalesceRowBands` rows as borderless tables, native Word lists (start value set on the document's own list template; continuation and numbering are tracked per nesting level, so a sublist is the same list one level deeper, and a list paragraph's inherited format is cleared before a page's section break), fonts from `FontResolver` (an installed font or Times New Roman, which keeps Cyrillic off the East-Asian justification path), source vertical rhythm with a `FitSpacingToPages` pagination guard. |
@@ -817,6 +818,12 @@ Late-bound COM is powerful and unforgiving, these rules are load-bearing:
   silent entry otherwise, `crash.log` rotates by size.
 - External results validated before commit: compression output must parse as PDF and be
   smaller, reports rotate (3 latest), low-disk-space stops a merge up front.
+- One unreadable page does not abort PDF → Word or PDF → PowerPoint:
+  `PdfTextExtract.ExtractCore` turns it into a page with `ExtractionError` set and the whole
+  page as one Ghostscript picture (size from PdfPig, else PdfSharp, else A4; user rotation
+  applied), and the done status names those pages. A file where every requested page fails
+  still gets the old "cannot extract" error, and Compare (`PageLayoutMode.Review`) and text
+  export stay strict: an empty page there would read as "all text removed".
 
 ## Persistence and privacy
 

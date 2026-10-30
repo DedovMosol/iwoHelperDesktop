@@ -279,7 +279,16 @@ namespace ExcelMerger
         internal static string DoneStatus(ConvertResult result, string doneFormat)
         {
             string status = string.Format(doneFormat, result.Pages);
-            int without = result.Pages - result.PagesWithText;
+            int failed = result.FailedPages == null ? 0 : result.FailedPages.Count;
+            if (failed > 0)
+            {
+                // Номера — чтобы было видно, какие страницы проверить; длинный список обрезается.
+                const int shown = 10;
+                string numbers = string.Join(", ", result.FailedPages.GetRange(0, Math.Min(shown, failed))) + (failed > shown ? ", …" : "");
+                status += string.Format(Loc.T("convert.status.failedPages"), failed, numbers);
+            }
+            // Несобранная страница тоже без текста, но о ней уже сказано выше.
+            int without = result.Pages - result.PagesWithText - failed;
             if (without > 0)
                 status += string.Format(Loc.T("convert.status.noTextPages"), without);
             BackgroundRenderReport backgrounds = result.BackgroundReport;

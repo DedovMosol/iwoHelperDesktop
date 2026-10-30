@@ -62,7 +62,8 @@ namespace ExcelMerger
             {
                 Pages = pages.Count,
                 PagesWithText = withText,
-                BackgroundReport = backgroundReport
+                BackgroundReport = backgroundReport,
+                FailedPages = PdfPageExtraction.FailedPositions(pages)
             };
         }
 

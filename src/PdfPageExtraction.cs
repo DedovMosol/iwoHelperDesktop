@@ -111,9 +111,24 @@ namespace ExcelMerger
                 if (HasExtractableContent(page))
                     pagesWithText++;
 
-            if (pagesWithText == 0)
+            // «Скан» — только когда текста нет нигде И ничего не сломалось: страница, которую не
+            // удалось разобрать (RC-11), несёт текст картинкой, и сообщение «это скан» было бы ложью.
+            if (pagesWithText == 0 && FailedPositions(pages).Count == 0)
                 throw new MergeException(Loc.T("err.ocr.scanned"));
             return pages;
+        }
+
+        /// <summary>
+        /// Номера (с 1, в порядке результата) страниц, которые разобрать не удалось и которые
+        /// перенесены картинкой (<see cref="PdfPageText.ExtractionError"/>). Чистая — под тест.
+        /// </summary>
+        internal static List<int> FailedPositions(IList<PdfPageText> pages)
+        {
+            var result = new List<int>();
+            for (int i = 0; i < pages.Count; i++)
+                if (pages[i] != null && pages[i].ExtractionError != null)
+                    result.Add(i + 1);
+            return result;
         }
 
         /// <summary>Есть ли на странице извлекаемый текст: абзацы вне таблиц ИЛИ текст в ячейках таблиц.</summary>

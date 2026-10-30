@@ -746,7 +746,7 @@ namespace ExcelMerger.Tests
                     if (p != null)
                     {
                         expected.AddRange(Tokens(p.Runs));
-                        if (p.Marker != null) markers.Add(p.Marker);
+                        if (p.Marker != null) markers.Add(p.MarkerText ?? p.Marker);
                     }
                     var t = d.Block as CTable;
                     if (t != null)

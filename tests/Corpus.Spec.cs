@@ -65,6 +65,7 @@ namespace ExcelMerger.Tests
         public int Level;
         public int Number;
         public string Marker;
+        public string MarkerText;    // как маркер видит читатель (знак Юникода значка Word); null — как Marker
         public CStyle MarkerStyle;   // null — стиль первого рана
         public double Hang = 18;
     }
