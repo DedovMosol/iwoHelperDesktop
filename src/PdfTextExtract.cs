@@ -62,6 +62,9 @@ namespace ExcelMerger
         // Страницу разобрать не удалось (RC-11): причина; страница перенесена картинкой во весь
         // лист (или пустой, если рендерить нечем). null — обычная страница.
         internal string ExtractionError;
+        // Надписи под углом (WP-3): боковой текст полей, вертикальные шапки, водяной знак. В поток
+        // абзацев не входят; писатели ставят их повёрнутыми надписями. Только режимы вывода.
+        internal List<OcrRotatedText> RotatedTexts = new List<OcrRotatedText>();
 
         /// <summary>Весь текст страницы: абзацы через пустую строку.</summary>
         public string Text
@@ -203,6 +206,46 @@ namespace ExcelMerger
             {
                 throw new MergeException(string.Format(Loc.T("err.ocr.extractFailed"), Path.GetFileName(path), ex.Message));
             }
+        }
+
+        /// <summary>
+        /// Буквы НЕ того направления, что поток страницы, — с теми же фильтрами видимости, что у
+        /// слов потока: за краем видимой страницы, невидимые (белые без подложки, режим «не
+        /// рисовать») и знаки частной области отбрасываются. Порядок — порядок букв в потоке
+        /// содержимого: так их собирает в строки <see cref="RotatedText.Group"/>.
+        /// </summary>
+        private static List<RotatedLetter> RotatedLetters(UglyToad.PdfPig.Content.Page page,
+            UglyToad.PdfPig.Content.TextOrientation keepOrientation, List<RectPt> imageRects, List<RectPt> backdrops)
+        {
+            var result = new List<RotatedLetter>();
+            foreach (UglyToad.PdfPig.Content.Letter l in page.Letters)
+            {
+                if (l == null || l.TextOrientation == keepOrientation || string.IsNullOrEmpty(l.Value))
+                    continue;
+                bool space = string.IsNullOrWhiteSpace(l.Value);
+                if (!space)
+                {
+                    RectPt bb = RectOf(l.GlyphRectangle);
+                    if (!CenterOnPage(bb, page.Width, page.Height) || IsPrivateUseOnly(l.Value))
+                        continue;
+                    if (IsInvisibleInk(l) && !CoveredByAnyRect(bb, imageRects) && !CoveredByAnyRect(bb, backdrops))
+                        continue;
+                }
+                string fn = l.FontName ?? "";
+                result.Add(new RotatedLetter
+                {
+                    Value = l.Value,
+                    StartX = l.StartBaseLine.X, StartY = l.StartBaseLine.Y,
+                    EndX = l.EndBaseLine.X, EndY = l.EndBaseLine.Y,
+                    SizePt = l.PointSize,
+                    FontName = FontNames.Clean(fn),
+                    Bold = fn.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0,
+                    Italic = fn.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0
+                          || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0,
+                    ColorArgb = ColorArgb(l.Color)
+                });
+            }
+            return result;
         }
 
         /// <summary>
@@ -474,6 +517,12 @@ namespace ExcelMerger
             List<OcrImage> images = extractImages
                 ? ExtractImages(pageImages, page, path)
                 : new List<OcrImage>();
+            // Текст другого направления, чем поток (WP-3): «Сравнение» сверяет только поток —
+            // ему надписи не нужны; выводам — нужны, иначе боковой текст пропадает целиком.
+            List<OcrRotatedText> rotatedTexts = mode == PageLayoutMode.Review
+                ? new List<OcrRotatedText>()
+                : RotatedText.Group(RotatedLetters(page, keepOrientation, imageRects, backdrops));
+            RotatedText.Rotate(rotatedTexts, rotation, page.Width, page.Height);
             double pageW = page.Width, pageH = page.Height;
             PageRotation.RotatePage(words, lines, images, rotation, ref pageW, ref pageH);
             ApplyUnderscoreHeights(words);
@@ -516,6 +565,7 @@ namespace ExcelMerger
                 LayoutMode = mode
             };
             pt.Images = images;
+            pt.RotatedTexts = rotatedTexts;
             if (stampImage != null)
                 pt.Images.Add(stampImage); // штамп — в общий поток изображений (порядок по TopPt)
             SetMargins(pt, words, pt.Images, pageW, pageH);

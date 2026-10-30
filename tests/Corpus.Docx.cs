@@ -22,6 +22,17 @@ namespace ExcelMerger.Tests
     {
         private static readonly XNamespace W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
         private static readonly XNamespace Dml = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        private static readonly XNamespace Mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+
+        /// <summary>
+        /// Узел внутри плавающей фигуры (надписи): w:drawing, w:pict или mc:AlternateContent. Текст
+        /// надписи лежит в якорном абзаце потока, но к нему не относится; к тому же Word пишет
+        /// его дважды — в mc:Choice (DrawingML) и в mc:Fallback (VML).
+        /// </summary>
+        private static bool InFloatingShape(XElement e)
+        {
+            return e.Ancestors().Any(a => a.Name == W + "drawing" || a.Name == W + "pict" || a.Name == Mc + "AlternateContent");
+        }
 
         /// <summary>Абзац для сверки: текст, выключка в терминах w:jc, список и слова с форматом.</summary>
         private sealed class WPara
@@ -268,8 +279,11 @@ namespace ExcelMerger.Tests
         {
             var chars = new StringBuilder();
             var owners = new List<XElement>();
+            bool floating = InFloatingShape(p);
             foreach (XElement e in p.Descendants())
             {
+                if (!floating && InFloatingShape(e))
+                    continue; // текст надписи — не текст якорного абзаца
                 if (e.Name == W + "t") { chars.Append(e.Value); for (int i = 0; i < e.Value.Length; i++) owners.Add(e.Parent); }
                 else if (e.Name == W + "tab" || e.Name == W + "br") { chars.Append(' '); owners.Add(e.Parent); }
             }
@@ -375,7 +389,9 @@ namespace ExcelMerger.Tests
             List<WPara> expected = Expected(pages, eTables);
             var pkg = new Package(docxPath);
             XElement body = pkg.Document.Root.Element(W + "body");
-            List<WPara> actual = body.Descendants(W + "p").Select(p => Actual(pkg, p)).Where(p => p.Text.Length > 0).ToList();
+            List<WPara> actual = body.Descendants(W + "p").Where(p => !InFloatingShape(p))
+                .Select(p => Actual(pkg, p)).Where(p => p.Text.Length > 0).ToList();
+            CompareRotated(pages, body, findings);
 
             // Абзацы — по тексту целиком: LCS тем же сопоставлением, что у слов корпуса.
             List<CorpusCheck.Tok> et = expected.Select(p => new CorpusCheck.Tok { Text = p.Text }).ToList();
@@ -409,6 +425,44 @@ namespace ExcelMerger.Tests
                 CorpusCheck.CompareGrids("word-", e, a, "docx", findings);
             }
             return CorpusCheck.Dedup(findings);
+        }
+
+        /// <summary>
+        /// Надписи под углом (WP-3): каждая надпись модели — ровно одна плавающая надпись Word
+        /// (только mc:Choice — копию mc:Fallback не считаем) тем же текстом и с тем же поворотом
+        /// по часовой (a:xfrm/@rot в 60000-х градуса, ±1°).
+        /// </summary>
+        private static void CompareRotated(List<PdfPageText> pages, XElement body, List<CFinding> findings)
+        {
+            var actual = new List<KeyValuePair<string, string>>();
+            foreach (XElement box in body.Descendants(W + "txbxContent").Where(b => !b.Ancestors(Mc + "Fallback").Any()))
+            {
+                string text = CorpusCheck.Norm(string.Join(" ", box.Descendants(W + "t").Select(t => t.Value).ToArray()));
+                XElement shape = box.Ancestors().FirstOrDefault(a => a.Name.LocalName == "wsp");
+                XElement bodyPr = shape == null ? null : shape.Elements().FirstOrDefault(e => e.Name.LocalName == "bodyPr");
+                actual.Add(new KeyValuePair<string, string>(text, bodyPr == null ? null : (string)bodyPr.Attribute("vert")));
+            }
+            foreach (PdfPageText page in pages)
+                foreach (OcrRotatedText t in page.RotatedTexts)
+                {
+                    string text = CorpusCheck.Norm(t.Text);
+                    int i = actual.FindIndex(a => a.Key == text);
+                    if (i < 0)
+                    {
+                        findings.Add(new CFinding("word-rotated-lost", "надпись «" + Head(text) + "» не найдена в .docx"));
+                        continue;
+                    }
+                    // DrawingML: vert270 — снизу вверх (наш угол 90°), vert — сверху вниз (270°);
+                    // прочие углы Word через COM не ставит — надпись горизонтальная.
+                    double angle = RotatedText.Normalize(t.AngleDeg);
+                    string want = Math.Abs(angle - 90) <= 2 ? "vert270" : (Math.Abs(angle - 270) <= 2 ? "vert" : null);
+                    string got = actual[i].Value == "horz" ? null : actual[i].Value;
+                    if (got != want)
+                        findings.Add(new CFinding("word-rotated-angle", "надпись «" + Head(text) + "»: vert=" + (got ?? "—") + " вместо " + (want ?? "—")));
+                    actual.RemoveAt(i);
+                }
+            foreach (KeyValuePair<string, string> extra in actual)
+                findings.Add(new CFinding("word-rotated-extra", "лишняя надпись «" + Head(extra.Key) + "»"));
         }
 
         private static string Head(string s)

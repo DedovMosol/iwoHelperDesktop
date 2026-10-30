@@ -146,6 +146,8 @@ namespace ExcelMerger
         {
             if (page.Paragraphs != null && page.Paragraphs.Count > 0)
                 return true;
+            if (page.RotatedTexts != null && page.RotatedTexts.Count > 0)
+                return true; // боковой текст — тоже текст (WP-3)
             if (page.Tables != null)
                 foreach (OcrTable table in page.Tables)
                     foreach (OcrTableRow row in table.Rows)

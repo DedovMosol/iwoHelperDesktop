@@ -77,7 +77,7 @@ namespace ExcelMerger.Tests
         }
 
         private static void Expected(CRendered drawn, int page, List<EPara> paras, List<CTable> tables,
-            List<Tok> rotated, out bool scan)
+            List<CRotated> rotated, out bool scan)
         {
             scan = false;
             foreach (CDrawn d in drawn.Drawn)
@@ -99,7 +99,7 @@ namespace ExcelMerger.Tests
                 var r = d.Block as CRotated;
                 if (r != null)
                 {
-                    rotated.AddRange(Tokens(new[] { new CRun(r.Text, r.Style) }));
+                    rotated.Add(r);
                     continue;
                 }
                 if (d.Block is CScan)
@@ -269,7 +269,7 @@ namespace ExcelMerger.Tests
         {
             var eParas = new List<EPara>();
             var eTables = new List<CTable>();
-            var rotated = new List<Tok>();
+            var rotated = new List<CRotated>();
             bool scan;
             Expected(drawn, index, eParas, eTables, rotated, out scan);
             var aParas = new List<APara>();
@@ -281,18 +281,7 @@ namespace ExcelMerger.Tests
             CompareParagraphs(eParas, aParas, aTables, where, findings);
             CompareGrids("", eTables.Select(t => CGrid.Of(t)).ToList(), aTables.Select(t => CGrid.Of(t)).ToList(), where, findings);
 
-            if (rotated.Count > 0)
-            {
-                var all = new HashSet<string>(StringComparer.Ordinal);
-                foreach (PdfWord w in page.Words)
-                    all.Add(w.Text);
-                foreach (Tok t in rotated)
-                    if (!all.Contains(t.Text))
-                    {
-                        findings.Add(new CFinding("rotated-lost", where + ": повёрнутая надпись " + Short(rotated) + " пропала"));
-                        break;
-                    }
-            }
+            CompareRotated(rotated, page.RotatedTexts, drawn.PageH, where, findings);
             // Дубль скана — картинка И текст её слоя в абзацах. Одна картинка без текста —
             // это потеря текста (вид «lost»), а не дубль.
             if (scan && images.Count > 0 && ScanTextShown(eParas, aParas))
@@ -310,6 +299,42 @@ namespace ExcelMerger.Tests
                     foreach (Tok t in e.Tokens)
                         words.Add(t.Text);
             return aParas.Any(a => a.Tokens.Any(t => words.Contains(t.Text)));
+        }
+
+        /// <summary>
+        /// Повёрнутые надписи (WP-3): каждая нарисованная — ровно одна в разборе, тем же текстом,
+        /// с тем же направлением (±2°), начата там же (±0,5 кегля) и тем же кеглем и цветом.
+        /// Направление и начало считаются из модели независимо от разбора: PdfSharp поворачивает
+        /// по часовой в координатах листа (Y вниз), PDF — против часовой (Y вверх).
+        /// </summary>
+        private static void CompareRotated(List<CRotated> expected, List<OcrRotatedText> actual, double pageH,
+            string where, List<CFinding> findings)
+        {
+            var left = new List<OcrRotatedText>(actual ?? new List<OcrRotatedText>());
+            foreach (CRotated e in expected)
+            {
+                string text = Norm(e.Text);
+                OcrRotatedText a = left.FirstOrDefault(x => Norm(x.Text) == text);
+                if (a == null)
+                {
+                    findings.Add(new CFinding("rotated-lost", where + ": повёрнутая надпись «" + text + "» пропала"));
+                    continue;
+                }
+                left.Remove(a);
+                double want = RotatedText.Normalize(-e.Angle), turn = Math.Abs(RotatedText.Normalize(a.AngleDeg - want));
+                if (Math.Min(turn, 360 - turn) > 2)
+                    findings.Add(new CFinding("rotated-angle", where + ": «" + text + "» под углом " + a.AngleDeg.ToString("0.#", CultureInfo.InvariantCulture) + " вместо " + want));
+                double sx, sy;
+                RotatedText.BaselineStart(a, out sx, out sy);
+                double dist = Math.Sqrt((sx - e.X) * (sx - e.X) + (sy - (pageH - e.Y)) * (sy - (pageH - e.Y)));
+                if (dist > 0.5 * e.Style.Size)
+                    findings.Add(new CFinding("rotated-place", where + ": «" + text + "» начата в " + dist.ToString("0.#", CultureInfo.InvariantCulture) + " pt от места"));
+                if (Math.Abs(a.FontSizePt - e.Style.Size) > 0.3 || (a.ColorArgb & 0xFFFFFF) != e.Style.Color || a.Bold != e.Style.Bold || a.Italic != e.Style.Italic)
+                    findings.Add(new CFinding("rotated-format", where + ": «" + text + "» — кегль " + a.FontSizePt.ToString("0.#", CultureInfo.InvariantCulture)
+                        + ", цвет " + (a.ColorArgb & 0xFFFFFF).ToString("X6") + ", ж/к " + a.Bold + "/" + a.Italic));
+            }
+            foreach (OcrRotatedText a in left)
+                findings.Add(new CFinding("rotated-extra", where + ": лишняя повёрнутая надпись «" + a.Text + "»"));
         }
 
         // ---------- абзацы ----------

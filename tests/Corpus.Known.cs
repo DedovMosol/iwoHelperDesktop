@@ -112,8 +112,6 @@ namespace ExcelMerger.Tests
             K(Docx, "списки с буквами, римскими и составными номерами", "extra", "RC-10", 7, 10),
             K(Docx, "списки с буквами, римскими и составными номерами", "list-kind", "RC-10", 12, 84),
             K(Docx, "списки с буквами, римскими и составными номерами", "merge", "RC-10", 6, 10),
-            // WP-3: повёрнутый текст потерян.
-            K(Docx, "повёрнутая надпись на поле", "rotated-lost", "WP-3", 11, 11),
             // RC-5: подчёркнутая фраза — подчёркнуто только первое слово, остальное — заполнитель.
             K(Docx, "подчёркнутые фразы", "filler", "RC-5", 6, 9),
             K(Docx, "подчёркнутые фразы", "underline", "RC-5", 12, 148),
@@ -125,7 +123,6 @@ namespace ExcelMerger.Tests
             // ── PPTX: слайды (режим Slide + PptxWriter.BuildPackage) ──
             K(Pptx, "маркеры Word: Symbol, Courier «o», Wingdings", "pptx-marker-lost", "RC-4", 2, 2), // «o» в Courier-документе, как в DOCX
             K(Pptx, "маркеры Word: Symbol, Courier «o», Wingdings", "pptx-table-extra", "RC-8", 4, 4),
-            K(Pptx, "повёрнутая надпись на поле", "pptx-lost", "WP-3", 12, 36),
             K(Pptx, "подчёркнутые фразы", "pptx-underline", "RC-5", 12, 148),
             K(Pptx, "скан с невидимым текстовым слоем", "pptx-ocr-visible", "WP-16", 12, 12),
             K(Pptx, "таблица с линовкой", "pptx-underline", "RC-33", 2, 9),

@@ -198,6 +198,185 @@ namespace ExcelMerger.Tests
             AssertEq(100.0, WordDocxWriter.RightEdgeIndent(423, 523), "край текста левее поля — отступ справа");
         }
 
+        // ---------- WP-3: повёрнутый текст ----------
+
+        /// <summary>
+        /// Повёрнутые надписи: снизу вверх, сверху вниз, по диагонали, вверх ногами — и две,
+        /// которых не видно: белая без подложки и за краем страницы. PdfSharp поворачивает по
+        /// часовой в координатах листа (Y вниз): −90 — снизу вверх.
+        /// </summary>
+        private static string Wp3Pdf(string dir)
+        {
+            string path = Path.Combine(dir, "rotated.pdf");
+            var font = new PdfSharp.Drawing.XFont("Arial", 10, PdfSharp.Drawing.XFontStyle.Bold,
+                new PdfSharp.Drawing.XPdfFontOptions(PdfSharp.Pdf.PdfFontEncoding.Unicode));
+            using (var pdf = new PdfSharp.Pdf.PdfDocument())
+            {
+                PdfSharp.Pdf.PdfPage page = A4(pdf);
+                using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
+                {
+                    g.DrawString("Основной текст страницы", font, PdfSharp.Drawing.XBrushes.Black, 72, 100);
+                    Action<string, double, double, double, PdfSharp.Drawing.XBrush> label = (s, angle, x, y, brush) =>
+                    {
+                        PdfSharp.Drawing.XGraphicsState st = g.Save();
+                        g.RotateAtTransform(angle, new PdfSharp.Drawing.XPoint(x, y));
+                        g.DrawString(s, font, brush, x, y);
+                        g.Restore(st);
+                    };
+                    label("Снизу вверх", -90, 30, 500, PdfSharp.Drawing.XBrushes.DarkRed);
+                    label("Сверху вниз", 90, 570, 300, PdfSharp.Drawing.XBrushes.Black);
+                    label("По диагонали", -45, 200, 700, PdfSharp.Drawing.XBrushes.Black);
+                    label("Вверх ногами", 180, 400, 780, PdfSharp.Drawing.XBrushes.Black);
+                    label("Невидимая", -90, 60, 500, PdfSharp.Drawing.XBrushes.White);
+                    label("За краем", -90, -30, 500, PdfSharp.Drawing.XBrushes.Black);
+                }
+                pdf.Save(path);
+            }
+            return path;
+        }
+
+        [Test("Аудит WP-3: повёрнутые надписи найдены с текстом, углом и местом; невидимые — нет")]
+        private static void AuditWp3RotatedExtracted()
+        {
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_wp3_"))
+            {
+                string path = Wp3Pdf(dir.Path);
+                foreach (PageLayoutMode mode in new[] { PageLayoutMode.Document, PageLayoutMode.Slide })
+                {
+                    PdfPageText page = PdfTextExtract.Extract(path, null, null, null, mode)[0];
+                    string all = string.Join(" | ", page.RotatedTexts.Select(t => t.Text + "@" + t.AngleDeg.ToString("0")).ToArray());
+                    AssertEq(4, page.RotatedTexts.Count, mode + ": четыре видимые надписи: " + all);
+                    var want = new[] { new { T = "Снизу вверх", A = 90.0, X = 30.0, Y = 500.0 }, new { T = "Сверху вниз", A = 270.0, X = 570.0, Y = 300.0 },
+                        new { T = "По диагонали", A = 45.0, X = 200.0, Y = 700.0 }, new { T = "Вверх ногами", A = 180.0, X = 400.0, Y = 780.0 } };
+                    foreach (var w in want)
+                    {
+                        OcrRotatedText t = page.RotatedTexts.FirstOrDefault(x => x.Text == w.T);
+                        AssertTrue(t != null, mode + ": «" + w.T + "» найдена: " + all);
+                        AssertTrue(Math.Abs(RotatedText.Normalize(t.AngleDeg - w.A + 180) - 180) < 1, mode + ": «" + w.T + "» под углом " + t.AngleDeg);
+                        double sx, sy;
+                        RotatedText.BaselineStart(t, out sx, out sy);
+                        AssertTrue(Math.Abs(sx - w.X) < 1 && Math.Abs(sy - (842 - w.Y)) < 1, mode + ": «" + w.T + "» начата в (" + sx + "; " + sy + ")");
+                        AssertTrue(Math.Abs(t.FontSizePt - 10) < 0.05 && t.Bold, mode + ": «" + w.T + "» — 10 pt, полужирный");
+                    }
+                    AssertEq(0x8B0000, page.RotatedTexts.First(x => x.Text == "Снизу вверх").ColorArgb & 0xFFFFFF, mode + ": цвет");
+                    AssertTrue(!page.Text.Contains("Снизу"), mode + ": в поток абзацев надписи не попали");
+                }
+                PdfPageText review = PdfTextExtract.Extract(path, null, null, null, PageLayoutMode.Review)[0];
+                AssertEq(0, review.RotatedTexts.Count, "«Сравнение» сверяет только поток — без надписей");
+            }
+        }
+
+        [Test("Аудит WP-3: поворот страницы пользователем — горизонтальный текст становится надписью, вертикальный — потоком")]
+        private static void AuditWp3UserRotation()
+        {
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_wp3_rot_"))
+            {
+                string path = Wp3Pdf(dir.Path);
+                // Поворот на 90° по часовой: «Снизу вверх» (90°) становится горизонтальной и
+                // идёт в поток; горизонтальный основной текст — надпись сверху вниз (270°).
+                PdfPageText page = PdfTextExtract.Extract(path, null, new[] { 90 }, null, PageLayoutMode.Document)[0];
+                string all = string.Join(" | ", page.RotatedTexts.Select(t => t.Text + "@" + t.AngleDeg.ToString("0")).ToArray());
+                AssertTrue(page.Text.Contains("Снизу вверх"), "вертикальная надпись — в потоке: " + page.Text);
+                AssertTrue(!page.RotatedTexts.Any(t => t.Text == "Снизу вверх"), "и не задвоена надписью: " + all);
+                AssertTrue(page.RotatedTexts.Any(t => t.Text == "Сверху вниз" && Math.Abs(t.AngleDeg - 180) < 1),
+                    "«Сверху вниз» (270°) после поворота на 90° — вверх ногами (180°): " + all);
+                OcrRotatedText main = page.RotatedTexts.FirstOrDefault(t => t.Text == "Основной текст страницы");
+                AssertTrue(main != null && Math.Abs(main.AngleDeg - 270) < 1, "основной текст — надпись под 270°: " + all);
+                double sx, sy;
+                RotatedText.BaselineStart(main, out sx, out sy);
+                // (x, y) → (y, W − x) на листе 595 × 842: начало строки (72; 842 − 100).
+                AssertTrue(Math.Abs(sx - 742) < 1 && Math.Abs(sy - (595 - 72)) < 1, "начало на месте после поворота: " + sx + "; " + sy);
+                AssertTrue(Math.Abs(page.WidthPt - 842) < 1, "лист альбомный");
+            }
+        }
+
+        [Test("Аудит WP-3: сборка букв в надписи, рамка и обратное к ней начало строки")]
+        private static void AuditWp3Grouping()
+        {
+            Func<string, double, double, double, double, RotatedLetter> up = (v, x, y0, len, size) =>
+                new RotatedLetter { Value = v, StartX = x, StartY = y0, EndX = x, EndY = y0 + len, SizePt = size };
+            var letters = new List<RotatedLetter>
+            {
+                up("A", 30, 100, 7, 10), up("B", 30, 107, 7, 10),
+                up("C", 30, 117, 7, 10),                       // зазор 3 pt > 0,2 кегля — пробел
+                up("D", 30, 200, 7, 10),                       // зазор 77 pt — другая надпись
+                up("\uF0B7", 50, 100, 7, 10),                  // одна PUA — не надпись
+                new RotatedLetter { Value = "E", StartX = 80, StartY = 100, EndX = 87, EndY = 107, SizePt = 10 }, // 45° — другое направление
+                new RotatedLetter { Value = "F", StartX = double.NaN, StartY = 0, EndX = 1, EndY = 1, SizePt = 10 }, // битая матрица
+                up("G", 30, 300, 7, 10),
+                // Начата ровно там, где кончилась «G», но под 45°: делит только направление.
+                new RotatedLetter { Value = "H", StartX = 30, StartY = 307, EndX = 35, EndY = 312, SizePt = 10 }
+            };
+            List<OcrRotatedText> texts = RotatedText.Group(letters);
+            AssertEq("AB C|D|E|G|H", string.Join("|", texts.Select(t => t.Text).ToArray()), "надписи: " + string.Join("|", texts.Select(t => t.Text).ToArray()));
+            OcrRotatedText ab = texts[0];
+            AssertTrue(Math.Abs(ab.AngleDeg - 90) < 1e-9 && Math.Abs(ab.LengthPt - 24) < 1e-9, "направление и длина");
+            double sx, sy;
+            RotatedText.BaselineStart(ab, out sx, out sy);
+            AssertTrue(Math.Abs(sx - 30) < 1e-9 && Math.Abs(sy - 100) < 1e-9, "начало строки восстанавливается: " + sx + "; " + sy);
+            AssertEq(270.0, RotatedText.ClockwiseDegrees(ab), "по часовой — 270°");
+            AssertEq(0.0, RotatedText.Normalize(360), "360 — это 0");
+            AssertEq(0.0, RotatedText.Normalize(-0.01), "−0,01 — это 0, а не 359,99");
+
+            var list = new List<OcrRotatedText> { new OcrRotatedText { CenterXPt = 72, CenterYPt = 742, AngleDeg = 0 } };
+            RotatedText.Rotate(list, 90, 595, 842);
+            AssertTrue(Math.Abs(list[0].CenterXPt - 742) < 1e-9 && Math.Abs(list[0].CenterYPt - 523) < 1e-9 && list[0].AngleDeg == 270,
+                "поворот страницы на 90° по часовой: центр как точка, направление на 90° по часовой");
+
+            AssertEq(2, WordDocxWriter.WordTextOrientation(90), "90° — снизу вверх");
+            AssertEq(3, WordDocxWriter.WordTextOrientation(271.5), "270° ±2 — сверху вниз");
+            AssertEq(1, WordDocxWriter.WordTextOrientation(45), "прочие — горизонтальная");
+        }
+
+        [Test("Аудит WP-3: надписи в .docx — плавающие надписи Word, вертикальные — вертикальной ориентацией (живой Word)")]
+        private static void AuditWp3WordLive()
+        {
+            AuditBRequireWord();
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_wp3_docx_"))
+            {
+                string path = Wp3Pdf(dir.Path), docx = dir.File("rotated.docx");
+                List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                AuditBOfficeSta(180000, delegate { WordDocxWriter.Write(pages, docx); });
+                // Та же сверка, что у живого корпуса: поток абзацев, надписи (текст и vert).
+                List<CFinding> findings = CorpusDocx.Compare(pages, docx);
+                AssertTrue(findings.Count == 0, string.Join("; ", findings.Select(f => f.ToString()).ToArray()));
+            }
+        }
+
+        [Test("Аудит WP-3: надписи на слайде — повёрнутая рамка a:xfrm/@rot, пакет валиден")]
+        private static void AuditWp3Slide()
+        {
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_wp3_pptx_"))
+            {
+                string path = Wp3Pdf(dir.Path);
+                OoxmlPackage package = PptxWriter.BuildPackage(PdfTextExtract.Extract(path, null, null, null, PageLayoutMode.Slide), PptxStamp);
+                string pptx = dir.File("rotated.pptx");
+                package.Save(pptx);
+                AssertTrue(PptxValidationProblems(pptx).Count == 0, "пакет валиден");
+                string slide;
+                using (System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(pptx))
+                using (var reader = new StreamReader(zip.GetEntry("ppt/slides/slide1.xml").Open()))
+                    slide = reader.ReadToEnd();
+                var x = System.Xml.Linq.XDocument.Parse(slide);
+                System.Xml.Linq.XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+                Func<string, string> rotOf = s =>
+                {
+                    System.Xml.Linq.XElement sp = x.Descendants().First(e => e.Name.LocalName == "sp" && e.Descendants(a + "t").Any(t => t.Value == s));
+                    System.Xml.Linq.XAttribute rot = sp.Descendants(a + "xfrm").First().Attribute("rot");
+                    return rot == null ? "0" : rot.Value;
+                };
+                AssertEq("16200000", rotOf("Снизу вверх"), "снизу вверх — 270° по часовой");
+                AssertEq("5400000", rotOf("Сверху вниз"), "сверху вниз — 90°");
+                AssertEq("18900000", rotOf("По диагонали"), "диагональ 45° против часовой — 315° по часовой");
+                AssertEq("10800000", rotOf("Вверх ногами"), "вверх ногами — 180°");
+                AssertEq("0", rotOf("Основной текст страницы"), "поток — без поворота");
+            }
+        }
+
         // ---------- RC-19: невидимое за краем страницы ----------
 
         [Test("Аудит RC-19: текст и метки обреза за CropBox не попадают в вывод")]
@@ -459,6 +638,9 @@ namespace ExcelMerger.Tests
                     if (i == 1) { page.Width = 842; page.Height = 595; }
                     using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
                     {
+                        // Цветная плашка: подложка слайда (страница без текста) тогда не пустая,
+                        // и проверка «картинка сбойной страницы на месте» идёт вместе с подложками.
+                        g.DrawRectangle(PdfSharp.Drawing.XBrushes.LightSteelBlue, 400, 480, 120, 60);
                         if (i == 0 && blankFirst)
                             g.DrawRectangle(PdfSharp.Drawing.XPens.Black, 72, 72, 200, 100);
                         else
@@ -605,6 +787,67 @@ namespace ExcelMerger.Tests
                 AssertEq(1, xml.SelectNodes("//w:drawing", ns).Count, "одна картинка — сбойная страница");
                 AssertEq(3, xml.SelectNodes("//w:sectPr", ns).Count, "три раздела — три страницы");
             }
+        }
+
+        [Test("Аудит RC-11: настоящая конвертация в PowerPoint (с подложками) — на слайде сбойной страницы её картинка")]
+        private static void AuditRc11PptxServiceWithBackgrounds()
+        {
+            if (!Ghostscript.Available)
+                Skip("Ghostscript не найден");
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc11_svc_"))
+            {
+                string path = Rc11Pdf(dir.Path, "broken.pdf", 1);
+                string pptx = dir.File("broken.pptx");
+                var order = Enumerable.Range(0, 3).Select(i => new PdfPageRef { SourcePath = path, PageIndex = i }).ToList();
+                ConvertResult result = PdfToPptxService.Convert(order, pptx);
+                AssertEq("2", string.Join(",", result.FailedPages), "сбойная — вторая");
+                Func<int, string> slide = n =>
+                {
+                    using (System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(pptx))
+                    using (var reader = new StreamReader(zip.GetEntry("ppt/slides/slide" + n + ".xml").Open()))
+                        return reader.ReadToEnd();
+                };
+                string s1 = slide(1), s2 = slide(2);
+                AssertTrue(s1.Contains("<p:bg>") && s1.Contains("Page 1"), "исправный слайд: подложка и текст");
+                // Подложка снята БЕЗ текста: у сбойной страницы весь текст — в её картинке, и
+                // подложка вместо картинки оставила бы слайд без текста.
+                AssertTrue(s2.Contains("<p:pic>"), "на сбойном слайде — картинка страницы");
+                AssertTrue(!s2.Contains("<a:blip") || !s2.Contains("<p:bg>"), "и без второй, бестекстовой подложки под ней");
+                AssertTrue(PptxValidationProblems(pptx).Count == 0, "пакет валиден");
+            }
+        }
+
+        [Test("Аудит RC-11: подложка без текста не заменяет картинку сбойной страницы на слайде")]
+        private static void AuditRc11BackgroundDoesNotHidePicture()
+        {
+            byte[] png;
+            using (var bmp = new System.Drawing.Bitmap(4, 4))
+            using (var ms = new MemoryStream())
+            {
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                png = ms.ToArray();
+            }
+            Func<string, PdfPageText> page = error => new PdfPageText
+            {
+                WidthPt = 595, HeightPt = 842, ExtractionError = error,
+                Images = { new OcrImage { Png = png, LeftPt = 0, TopPt = 842, WidthPt = 595, HeightPt = 842 } }
+            };
+            // Ghostscript мог отрисовать страницу, которую PdfPig не разобрал: подложка есть.
+            var backgrounds = new[] { new Background { Data = png }, new Background { Data = png } };
+            OoxmlPackage package = PptxWriter.BuildPackage(new List<PdfPageText> { page("broken"), page(null) }, PptxStamp, null, null, backgrounds);
+            Func<int, string> slide = n =>
+            {
+                using (var ms = new MemoryStream(package.ToArray()))
+                using (var zip = new System.IO.Compression.ZipArchive(ms))
+                using (var reader = new StreamReader(zip.GetEntry("ppt/slides/slide" + n + ".xml").Open()))
+                    return reader.ReadToEnd();
+            };
+            string failed = slide(1), normal = slide(2);
+            AssertTrue(failed.Contains("<p:pic>") && !failed.Contains("<p:bg>"),
+                "сбойная страница: её картинка (в ней и текст), а не бестекстовая подложка");
+            AssertTrue(normal.Contains("<p:bg>") && !normal.Contains("<p:pic>"),
+                "обычная: подложка, картинки в ней уже есть (прежнее правило)");
         }
 
         [Test("Аудит RC-11: поворот пользователя применяется к сбойной странице")]

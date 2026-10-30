@@ -559,6 +559,7 @@ or invisible cleanup assumptions:
 | `XyCut.cs` | Recursive X-Y cut: whitespace bands split a page into floors and columns, `OrderTree` keeps side-by-side siblings marked for band layout. |
 | `TableDetector.cs` | Ruled tables: connected ruling components on a spatial grid, ≥2×2 cell lattice, colspan/rowspan from missing borders, per-cell text. Also turns lone rules into `____` placeholders and feeds `UnderlineDetector`. |
 | `GridDetector.cs` | Unruled label/value grids (receipt-style forms) → borderless tables with kept row spacing. |
+| `RotatedText.cs` | Text at an angle (`OcrRotatedText`): letters of another direction than the page flow grouped into labels, their frame and turn shared by both writers, user page rotation applied as to points and angles. Pure, under test. |
 | `WordBullets.cs` | Word's bullet glyphs in the text layer: a single Symbol/Wingdings private-use code (U+F0B7, U+F0A7, …) becomes its Unicode bullet, and a Courier New "o" at the start of a line followed by text in another font becomes "◦". Export modes only; Compare keeps the literal layer. |
 | `StampDetector.cs`, `ListMarker.cs`, `UnderlineDetector.cs`, `GlyphDedup.cs`, `FontNames.cs`, `MathUtil.cs`, `OcrTable.cs`, `PdfLine.cs` | Focused helpers: stamp region, list-marker recognition, underline mapping, glyph dedup, font-name normalization, medians, table/line models. |
 | `ListNesting.cs` | Nesting level of a list item from its left edge, as a **stack of open indents** — the same trick used to parse indentation-based syntax. A level is therefore the *depth* of an indent, not the ordinal of a newly seen edge: an item indented between two known levels returns to the matching one instead of claiming to be deeper than all of them, and returning to an outer indent closes the inner levels by itself (so a second list does not inherit the depth of the first, and no separate reset is needed). A step under `MinNestStepPt` (12 pt, against Word's 18 pt list step) counts as the same level, which is what keeps a flat list with a ragged left edge from being emitted as spurious nesting. One instance per layout region; `WordDocxWriter.WordListLevel` maps 0-based depth onto Word's 1-based levels with the clamp. |
@@ -690,6 +691,12 @@ Two decisions define this pipeline:
   ruling lines lying wholly off the page (crop marks in the bleed) are dropped too. White
   text survives only on a backdrop that contrasts with white by at least 1.5:1 (WCAG 2.x
   relative luminance; any filled shape — rectangle, stroked, curved — or an image).
+  Text running in another direction than the page flow (margin notes, vertical headers,
+  watermarks) is not part of the paragraph flow: `RotatedText` groups those letters into
+  labels with text, angle, baseline start and format, and the writers place them as rotated
+  text boxes — PowerPoint by `a:xfrm/@rot`, Word as floating text boxes with vertical text
+  orientation for 90°/270° (Word's COM leaves `Shape.Rotation` at 0 for text boxes, so other
+  angles stay horizontal in place). Compare does not get them.
   Synthesised italic (an upright face slanted by the text matrix, as Word and PdfSharp do
   for fonts without an italic) is recognised by the slant of the glyph box, and its size is
   corrected for that slant. Paragraph alignment is Left, Justify, Center or Right; Right

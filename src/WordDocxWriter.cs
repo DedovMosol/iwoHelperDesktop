@@ -65,6 +65,10 @@ namespace ExcelMerger
                             sel.InsertBreak(WdSectionBreakNextPage); // новый раздел = свой размер листа
                         }
                         ApplySectionSetup(sel, pages[p]); // размер и поля страницы из источника
+                        // Повёрнутые надписи (WP-3) — до содержимого страницы: якорь — её первый
+                        // абзац, он всегда на этой странице (раздел начинается с новой).
+                        foreach (OcrRotatedText t in pages[p].RotatedTexts)
+                            InsertRotatedText(doc, sel, t, pages[p].HeightPt);
                         // Текстовая область страницы (pt): в неё Word укладывает абзацы, от неё
                         // считаются отступы конфайна центрированной колонки (см. WriteParagraphInto).
                         double textLeft = pages[p].LeftMarginPt;
@@ -760,6 +764,90 @@ namespace ExcelMerger
                 return true;
             }
             catch { return false; } // одна картинка не должна сорвать конвертацию
+        }
+
+        private const int MsoTextOrientationHorizontal = 1;
+        private const int MsoTextOrientationUpward = 2;   // снизу вверх: базовая линия смотрит вверх (90° против часовой)
+        private const int MsoTextOrientationDownward = 3; // сверху вниз (270°)
+        private const double VerticalSnapDeg = 2;
+
+        /// <summary>
+        /// Ориентация надписи Word для угла надписи (против часовой): 90° — снизу вверх, 270° —
+        /// сверху вниз (±2°), иначе горизонтальная. Word 2013 не поворачивает надпись через COM
+        /// (Shape.Rotation и IncrementRotation остаются 0 — проверено пробой 30.10.2026), а
+        /// вертикальная ориентация — родная для Word и редактируема. Чистая — под тест.
+        /// </summary>
+        internal static int WordTextOrientation(double angleDeg)
+        {
+            double a = RotatedText.Normalize(angleDeg);
+            if (Math.Abs(a - 90) <= VerticalSnapDeg) return MsoTextOrientationUpward;
+            if (Math.Abs(a - 270) <= VerticalSnapDeg) return MsoTextOrientationDownward;
+            return MsoTextOrientationHorizontal;
+        }
+        private const int WdRelativePositionPage = 1;   // wdRelativeHorizontal/VerticalPositionPage
+        private const int WdWrapFront = 3;              // wdWrapNone: перед текстом, поток не двигает
+        private const int MsoFalse = 0;
+
+        /// <summary>
+        /// Надпись под углом (WP-3) — плавающая надпись Word относительно страницы, поверх текста
+        /// без обтекания, без рамки, заливки и полей; рамка — та же, что на слайде
+        /// (<see cref="RotatedText"/>, DRY). Вертикальная надпись (90°/270°) — вертикальной
+        /// ориентацией текста: рамка повёрнута на четверть круга вокруг того же центра. Иные углы
+        /// Word через COM не поворачивает (<see cref="WordTextOrientation"/>): надпись остаётся
+        /// горизонтальной на своём месте — текст не теряется, угол не сохраняется. Сбой одной
+        /// надписи не срывает документ (как у картинок).
+        /// </summary>
+        private static void InsertRotatedText(dynamic doc, dynamic sel, OcrRotatedText t, double pageHeightPt)
+        {
+            if (string.IsNullOrWhiteSpace(t.Text))
+                return;
+            dynamic shape = null;
+            try
+            {
+                int orientation = WordTextOrientation(t.AngleDeg);
+                double w = RotatedText.FrameWidth(t), h = RotatedText.FrameHeight(t);
+                if (orientation != MsoTextOrientationHorizontal)
+                {
+                    double swap = w;
+                    w = h;
+                    h = swap;
+                }
+                double left = t.CenterXPt - w / 2, top = t.CenterYPt + h / 2;
+                shape = doc.Shapes.AddTextbox(orientation, left, pageHeightPt - top, w, h, sel.Range);
+                shape.RelativeHorizontalPosition = WdRelativePositionPage;
+                shape.RelativeVerticalPosition = WdRelativePositionPage;
+                shape.Left = (float)left;
+                shape.Top = (float)(pageHeightPt - top);
+                shape.LockAnchor = -1; // msoTrue: якорь не уезжает при правке текста
+                shape.WrapFormat.Type = WdWrapFront;
+                shape.Line.Visible = MsoFalse;
+                shape.Fill.Visible = MsoFalse;
+                dynamic frame = shape.TextFrame;
+                frame.MarginLeft = 0;
+                frame.MarginRight = 0;
+                frame.MarginTop = 0;
+                frame.MarginBottom = 0;
+                frame.WordWrap = MsoFalse;
+                frame.AutoSize = MsoFalse;
+                dynamic range = frame.TextRange;
+                range.Text = t.Text;
+                range.ParagraphFormat.SpaceBefore = 0;
+                range.ParagraphFormat.SpaceAfter = 0;
+                range.ParagraphFormat.Alignment = WdAlignLeft;
+                range.ParagraphFormat.FirstLineIndent = 0;
+                range.ParagraphFormat.LeftIndent = 0;
+                dynamic font = range.Font;
+                font.Name = FontResolver.Resolve(t.FontName, t.Text);
+                font.Size = FontResolver.ClampSizePt(t.FontSizePt);
+                font.Bold = t.Bold ? 1 : 0;
+                font.Italic = t.Italic ? 1 : 0;
+                font.Color = ToBgr(t.ColorArgb);
+            }
+            catch
+            {
+                // Недостроенную фигуру убираем: пустая рамка на странице хуже пропущенной надписи.
+                try { if (shape != null) shape.Delete(); } catch { }
+            }
         }
 
         /// <summary>

@@ -242,7 +242,10 @@ namespace ExcelMerger
             {
                 _page = page ?? new PdfPageText();
                 _media = media;
-                _background = background;
+                // Сбойная страница (RC-11) — это её картинка ВМЕСТЕ с текстом. Подложка снята без
+                // текста, и с ней картинку пришлось бы опустить («картинки уже в подложке»): слайд
+                // остался бы без текста. Ghostscript терпимее PdfPig и такую подложку отрисовать может.
+                _background = _page.ExtractionError != null ? null : background;
                 _fit = PptxGeometry.Fit(_page.WidthPt, _page.HeightPt, slideWidthPt, slideHeightPt);
             }
 
@@ -269,6 +272,10 @@ namespace ExcelMerger
                     else if (block.Table != null)
                         AppendTable(block.Table);
                 }
+                // Повёрнутые надписи (WP-3) — поверх: подложка снята без текста, и в ней их нет.
+                if (_page.RotatedTexts != null)
+                    foreach (OcrRotatedText t in _page.RotatedTexts)
+                        AppendRotated(t);
 
                 var sb = new StringBuilder(_shapes.Length + 1024);
                 sb.Append(PptxParts.XmlHeader);
@@ -805,6 +812,38 @@ namespace ExcelMerger
             }
 
             // ---------- общее ----------
+
+            /// <summary>
+            /// Надпись под углом (WP-3): неповёрнутая рамка с центром надписи и поворот вокруг
+            /// центра (`rot` — 60000-е доли градуса по часовой, ECMA-376 ST_Angle). Без переноса
+            /// и автоподбора, без полей: текст стоит у начала рамки, где начиналась строка.
+            /// </summary>
+            private void AppendRotated(OcrRotatedText t)
+            {
+                string text = XmlText.Sanitize(t.Text);
+                if (text.Trim().Length == 0)
+                    return;
+                double left, top;
+                RotatedText.FrameTopLeft(t, out left, out top);
+                long rot = (long)Math.Round(RotatedText.ClockwiseDegrees(t) * 60000);
+                var sb = new StringBuilder(512);
+                sb.Append("<p:sp><p:nvSpPr><p:cNvPr id=\"").Append(PptxParts.Num(_shapeId))
+                  .Append("\" name=\"TextBox ").Append(PptxParts.Num(_shapeId)).Append("\"/>");
+                sb.Append("<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr><p:spPr>");
+                var frame = new StringBuilder(160);
+                AppendFrame(frame, left, top, RotatedText.FrameWidth(t), RotatedText.FrameHeight(t));
+                if (rot > 0)
+                    frame.Replace("<a:xfrm>", "<a:xfrm rot=\"" + PptxParts.Num(rot) + "\">");
+                sb.Append(frame);
+                sb.Append("<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>");
+                sb.Append("<p:txBody><a:bodyPr wrap=\"none\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" anchor=\"t\">"
+                    + "<a:noAutofit/></a:bodyPr><a:lstStyle/><a:p><a:pPr algn=\"l\"/>");
+                sb.Append("<a:r>").Append(RunProps(RotatedText.AsRun(t), text))
+                  .Append("<a:t xml:space=\"preserve\">").Append(XmlText.Escape(text)).Append("</a:t></a:r>");
+                sb.Append("</a:p></p:txBody></p:sp>");
+                _shapes.Append(sb);
+                _shapeId++;
+            }
 
             /// <summary>
             /// Рамка фигуры: положение и размер в EMU. Нулевой размер разметка запрещает,
