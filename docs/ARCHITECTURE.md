@@ -890,6 +890,22 @@ The pyramid, bottom-up:
    root-fixture regression calls the same public service for `1.pdf`/`2.pdf` when those untouched
    local files exist and skips explicitly when they do not.
 
+   The **layout corpus** (`tests/Corpus.*.cs`, `AuditTests.Corpus.cs`) checks recognition
+   (PDF → Word/PowerPoint) on 288 generated documents: 24 families (columns, lists, Word
+   bullet fonts, tables, underline and strike, white text on fills, rotated labels, a scan
+   with an invisible text layer, headers and footers, …) times 12 variants of font, size,
+   language, paper and line spacing. One document model (`Corpus.Spec.cs`) drives both the
+   PdfSharp drawing (`Corpus.Render.cs`) and the expectations (`Corpus.Check.cs`), so the two
+   cannot drift apart. The check compares the layout model, not `.docx` bytes: words
+   aligned by LCS, paragraph bounds, alignment, list kind/level/number, table shape, cells
+   and spans, and per-word bold/italic/underline/colour/size; for PowerPoint, the package
+   built by `PptxWriter.BuildPackage` is validated with OpenXml and read back. Neither
+   needs Office. Known engine defects live in `Corpus.Known.cs` with an `audit.md` ID and
+   the exact number of documents and cases per family and aspect; any change in either
+   direction fails the test, so a fix or a regression always shows up as a reviewed edit
+   of that registry. `IWO_CORPUS_FULL=1` prints the whole report and ready registry lines,
+   `IWO_CORPUS_DUMP=<name prefixes, |-separated>` prints the parsed model of those documents.
+
    The checks around Ghostscript are pinned by the measurements they came from, so a later
    "simplification" has to argue with a number rather than with an opinion: that PdfSharp
    cannot open a 1.5 file the engine itself produces (hence PdfPig for counting pages),
