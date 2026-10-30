@@ -167,6 +167,7 @@ namespace ExcelMerger
                     List<int> numbers = PageNumbersToExtract(doc.NumberOfPages, pageIndexes);
                     int pageCount = numbers.Count;
                     Exception firstFailure = null;
+                    var sizeHints = new PageSizeHints(path); // откроется, только если страница не разберётся
                     foreach (int number in numbers)
                     {
                         Cancellation.ThrowIf(cancelled); // отмена между страницами извлечения
@@ -183,7 +184,7 @@ namespace ExcelMerger
                             // RC-11: одна сбойная страница не роняет весь файл — она переносится
                             // картинкой, а итог называет её. «Сравнение» (Review) остаётся строгим:
                             // пустая страница там читалась бы как «весь текст удалён».
-                            pt = FailedPage(path, number, page, rotation, mode, ex);
+                            pt = FailedPage(path, number, page, rotation, mode, ex, sizeHints);
                             if (firstFailure == null)
                                 firstFailure = ex;
                         }
@@ -207,22 +208,25 @@ namespace ExcelMerger
         /// <summary>
         /// Страница, которую разобрать не удалось (RC-11): пустая разметка и сама страница
         /// картинкой во весь лист — рендер Ghostscript (нет его — страница остаётся пустой, но
-        /// документ пишется). Размер — из PdfPig, если страница открылась, иначе из PdfSharp,
-        /// иначе A4. Пользовательский поворот применяется так же, как к обычной странице.
+        /// документ пишется). Размер — из PdfPig, если страница открылась. Иначе его даёт сам
+        /// рендер (пиксели × 72 / dpi: видимая страница с CropBox и /Rotate, как у PdfPig), а
+        /// подсказка PdfSharp (MediaBox) или A4 нужна лишь для выбора dpi под бюджет памяти.
+        /// Пользовательский поворот применяется так же, как к обычной странице.
         /// </summary>
         private static PdfPageText FailedPage(string path, int number, UglyToad.PdfPig.Content.Page page,
-            int rotation, PageLayoutMode mode, Exception error)
+            int rotation, PageLayoutMode mode, Exception error, PageSizeHints hints)
         {
-            double w = 595, h = 842;
-            if (page != null)
+            double w, h;
+            bool sizeKnown = page != null;
+            if (sizeKnown)
             {
                 w = page.Width;
                 h = page.Height;
             }
             else
-                PdfSharpPageSize(path, number, ref w, ref h);
+                hints.Get(number, out w, out h);
             var images = new List<OcrImage>();
-            OcrImage whole = RenderWholePage(path, number, w, h);
+            OcrImage whole = RenderWholePage(path, number, sizeKnown, ref w, ref h);
             if (whole != null)
                 images.Add(whole);
             PageRotation.RotatePage(new List<PdfWord>(), new List<PdfLine>(), images, rotation, ref w, ref h);
@@ -239,37 +243,79 @@ namespace ExcelMerger
             return pt;
         }
 
-        /// <summary>Размер страницы (pt, с учётом /Rotate) по PdfSharp; не открылся — размер не меняется.</summary>
-        private static void PdfSharpPageSize(string path, int number, ref double w, ref double h)
+        /// <summary>
+        /// Размеры страниц по PdfSharp (MediaBox с /Rotate) — подсказка для страницы, которую
+        /// PdfPig не открыл. Файл читается ОДИН раз на извлечение и только при первой сбойной
+        /// странице: десятки сбойных страниц не должны стоить десятков разборов файла, а
+        /// исправные — ни одного. Не открылся — A4. Только для одного потока извлечения.
+        /// </summary>
+        private sealed class PageSizeHints
         {
-            try
+            private readonly string _path;
+            private double[] _widths, _heights; // null — ещё не читали; пустые — не открылся
+
+            public PageSizeHints(string path) { _path = path; }
+
+            public void Get(int number, out double w, out double h)
             {
-                using (PdfSharp.Pdf.PdfDocument doc = PdfSharp.Pdf.IO.PdfReader.Open(path, PdfPasswords.For(path),
-                    PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
+                w = 595;
+                h = 842;
+                if (_widths == null)
+                    Load();
+                if (number >= 1 && number <= _widths.Length && _widths[number - 1] > 0 && _heights[number - 1] > 0)
                 {
-                    if (number < 1 || number > doc.PageCount)
-                        return;
-                    PdfSharp.Pdf.PdfPage p = doc.Pages[number - 1];
-                    if (p.Width.Point > 0 && p.Height.Point > 0)
-                    {
-                        w = p.Width.Point;
-                        h = p.Height.Point;
-                    }
+                    w = _widths[number - 1];
+                    h = _heights[number - 1];
                 }
             }
-            catch (OutOfMemoryException) { throw; }
-            catch { } // и PdfSharp не открыл — остаётся A4: картинка страницы всё равно на месте
+
+            private void Load()
+            {
+                _widths = _heights = new double[0];
+                try
+                {
+                    using (PdfSharp.Pdf.PdfDocument doc = PdfSharp.Pdf.IO.PdfReader.Open(_path, PdfPasswords.For(_path),
+                        PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
+                    {
+                        var widths = new double[doc.PageCount];
+                        var heights = new double[doc.PageCount];
+                        for (int i = 0; i < doc.PageCount; i++)
+                        {
+                            try
+                            {
+                                widths[i] = doc.Pages[i].Width.Point;
+                                heights[i] = doc.Pages[i].Height.Point;
+                            }
+                            catch (OutOfMemoryException) { throw; }
+                            catch { } // у этой страницы и PdfSharp не видит размера — A4
+                        }
+                        _widths = widths;
+                        _heights = heights;
+                    }
+                }
+                catch (OutOfMemoryException) { throw; }
+                catch { } // и PdfSharp не открыл — A4: картинка страницы всё равно на месте
+            }
         }
 
-        /// <summary>Вся страница картинкой (рамка — весь лист), null — нет Ghostscript или рендер не удался.</summary>
-        private static OcrImage RenderWholePage(string path, int number, double w, double h)
+        /// <summary>
+        /// Вся страница картинкой (рамка — весь лист), null — нет Ghostscript или рендер не удался.
+        /// sizeKnown=false — w/h только подсказка: настоящий размер берётся из растра.
+        /// </summary>
+        private static OcrImage RenderWholePage(string path, int number, bool sizeKnown, ref double w, ref double h)
         {
             BudgetedBitmap owned = null;
             try
             {
-                owned = PageRasterizer.RenderPage(path, number, w, h);
+                int dpi;
+                owned = PageRasterizer.RenderPage(path, number, w, h, out dpi);
                 if (owned == null)
                     return null;
+                if (!sizeKnown && dpi > 0)
+                {
+                    w = owned.Bitmap.Width * 72.0 / dpi;
+                    h = owned.Bitmap.Height * 72.0 / dpi;
+                }
                 byte[] png = PageRasterizer.CropRegion(owned.Bitmap, w, h, 0, h, w, h);
                 return png == null || png.Length == 0 ? null
                     : new OcrImage { Png = png, LeftPt = 0, TopPt = h, WidthPt = w, HeightPt = h };
@@ -302,9 +348,10 @@ namespace ExcelMerger
                 if (b.Right > b.Left && b.Top > b.Bottom)
                     imageRects.Add(b);
             }
-            List<RectPt> darkFills;
-            List<PdfLine> lines = ExtractGraphics(page, out darkFills);
+            List<RectPt> backdrops;
+            List<PdfLine> lines = ExtractGraphics(page, out backdrops);
             ClipLinesToPage(lines, page.Width, page.Height);
+            DropLinesOffPage(lines, page.Width, page.Height); // метки обреза за CropBox — не «____» (RC-19)
             // Какая ориентация текста станет горизонтальной после поворота страницы
             // пользователем: только её и пускаем в поток (при 0° — прежний фильтр).
             UglyToad.PdfPig.Content.TextOrientation keepOrientation = KeepOrientationFor(rotation);
@@ -320,6 +367,11 @@ namespace ExcelMerger
             foreach (UglyToad.PdfPig.Content.Word w in page.GetWords())
             {
                 RectPt bb = RectOf(w.BoundingBox);
+                // Слово, чей центр вне видимой страницы (CropBox: в координатах PdfPig это
+                // [0; W] × [0; H]), на экране и на печати не видно — служебные надписи
+                // на полях под обрез, текст за краем листа. RC-19.
+                if (!CenterOnPage(bb, page.Width, page.Height))
+                    continue;
                 double size = 0;
                 bool bold = false, italic = false;
                 int color = 0;
@@ -346,16 +398,21 @@ namespace ExcelMerger
                     // касание кромки картинки — не подложка.
                     if (IsInvisibleInk(first)
                         && !CoveredByAnyRect(bb, imageRects)
-                        && !CoveredByAnyRect(bb, darkFills))
+                        && !CoveredByAnyRect(bb, backdrops))
                         continue;
                     bool pseudoBold;
                     text = DedupDoubledGlyphs(w.Letters, text, out pseudoBold);
-                    size = first.PointSize;
+                    // Синтезированный курсив (у шрифта нет начертания — Tahoma, Verdana: Word и
+                    // PdfSharp наклоняют прямое матрицей текста) виден только по наклону рамки
+                    // буквы, а кегль PdfPig меряет по наклонённой оси — длиннее в √(1+k²). RC-22.
+                    double slant = Slant(w.Letters);
+                    size = first.PointSize / Math.Sqrt(1 + slant * slant);
                     string fn = first.FontName ?? "";
                     // Жирность — из имени шрифта ИЛИ из двойной отрисовки (псевдо-жирный).
                     bold = pseudoBold || fn.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0;
                     italic = fn.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0
-                          || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0;
+                          || fn.IndexOf("Oblique", StringComparison.OrdinalIgnoreCase) >= 0
+                          || Math.Abs(slant) >= SyntheticSlantMin;
                     color = ColorArgb(first.Color);
                     family = FontNames.Clean(fn);
                 }
@@ -1035,10 +1092,89 @@ namespace ExcelMerger
         private const double LineAxisTol = 1.0; // |dy| для горизонтали / |dx| для вертикали
         private const double MinLineLen = 2.0;  // короче — графический шум, не линовка
         private const double ThinFillMax = 2.5; // залитая полоска тоньше этого — это линия, не фон
-        // Тёмная векторная плашка: заливка темнее этого порога (сумма RGB) и крупнее пары em² —
-        // подложка, на которой белый текст легитимен (тёмные шапки таблиц).
-        private const double DarkFillMaxRgbSum = 1.5;
-        private const double DarkFillMinSidePt = 6.0;
+        // Подложка белого текста (RC-1): векторная заливка, на которой белый текст ВИДЕН —
+        // контраст с белым не ниже порога (WCAG 2.x: (L1 + 0,05) / (L2 + 0,05), L — относительная
+        // яркость sRGB). Прежнее правило «сумма RGB ≤ 1,5» теряло белые шапки на «акцентных»
+        // цветах Word (#5B9BD5 — 2,9:1, #ED7D31 — 2,8:1, #A5A5A5 — 2,5:1). Порог 1,5:1 — ниже
+        // него белое на заливке не читается (#D9D9D9 — 1,4:1, жёлтый #FFFF00 — 1,07:1), и такой
+        // текст по-прежнему считается невидимым. Мельче пары кеглей — не подложка, а линия.
+        internal const double BackdropMinContrast = 1.5;
+
+        // Наклон матрицы текста (тангенс), с которого прямое начертание считается курсивом.
+        // Синтезированный курсив Word и PdfSharp — около 20° (0,34–0,36), настоящие курсивные
+        // шрифты наклона матрицы не имеют (наклон — в самих контурах). 0,1 — около 6°: это не
+        // шум округления, но и не самый пологий синтез.
+        internal const double SyntheticSlantMin = 0.1;
+
+        /// <summary>
+        /// Наклон рамки буквы: тангенс угла между её «верхом» (BottomLeft → TopLeft) и нормалью к
+        /// базовой линии (BottomLeft → BottomRight). Не зависит от поворота и масштаба текста.
+        /// Вырожденная рамка (пробел, нулевая высота или ширина) — 0. Чистая — под тест.
+        /// </summary>
+        internal static double SlantOf(double blX, double blY, double brX, double brY, double tlX, double tlY)
+        {
+            double dx = brX - blX, dy = brY - blY, ux = tlX - blX, uy = tlY - blY;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-6)
+                return 0;
+            dx /= len;
+            dy /= len;
+            double along = ux * dx + uy * dy;   // смещение верха вдоль строки
+            double across = dx * uy - dy * ux;  // высота поперёк строки
+            return Math.Abs(across) < 1e-6 ? 0 : along / across;
+        }
+
+        /// <summary>Наклон слова — по его буквам (см. <see cref="WordSlant"/>).</summary>
+        private static double Slant(IReadOnlyList<UglyToad.PdfPig.Content.Letter> letters)
+        {
+            return WordSlant(Boxes(letters));
+        }
+
+        /// <summary>Рамки букв лениво: WordSlant обычно останавливается на первой.</summary>
+        private static IEnumerable<double[]> Boxes(IReadOnlyList<UglyToad.PdfPig.Content.Letter> letters)
+        {
+            foreach (UglyToad.PdfPig.Content.Letter l in letters)
+            {
+                UglyToad.PdfPig.Core.PdfRectangle r = l.GlyphRectangle;
+                yield return new[] { r.BottomLeft.X, r.BottomLeft.Y, r.BottomRight.X, r.BottomRight.Y, r.TopLeft.X, r.TopLeft.Y };
+            }
+        }
+
+        /// <summary>
+        /// Наклон слова — по первой букве с невырожденной рамкой (у слова одна матрица): у
+        /// пробела нулевой ширины или точки рамка бывает вырожденной, и её «0» спрятал бы
+        /// наклон всего слова. boxes — {blX, blY, brX, brY, tlX, tlY} по буквам; нет годных — 0.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static double WordSlant(IEnumerable<double[]> boxes)
+        {
+            foreach (double[] b in boxes)
+            {
+                double w = Math.Sqrt((b[2] - b[0]) * (b[2] - b[0]) + (b[3] - b[1]) * (b[3] - b[1]));
+                double h = Math.Sqrt((b[4] - b[0]) * (b[4] - b[0]) + (b[5] - b[1]) * (b[5] - b[1]));
+                if (w <= 0.01 || h <= 0.01)
+                    continue;
+                return SlantOf(b[0], b[1], b[2], b[3], b[4], b[5]);
+            }
+            return 0;
+        }
+        private const double BackdropMinSidePt = 6.0;
+
+        /// <summary>
+        /// Контраст белого с цветом (r, g, b в 0…1) по WCAG 2.x: 1 — белый, 21 — чёрный.
+        /// Компоненты — sRGB с гамма-коррекцией (порог 0,04045). Чистая — под тест.
+        /// </summary>
+        internal static double ContrastWithWhite(double r, double g, double b)
+        {
+            double lum = 0.2126 * Linear(r) + 0.7152 * Linear(g) + 0.0722 * Linear(b);
+            return 1.05 / (lum + 0.05);
+        }
+
+        private static double Linear(double c)
+        {
+            c = c < 0 ? 0 : (c > 1 ? 1 : c);
+            return c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
+        }
 
         /// <summary>Прямоугольник в координатах PDF (ось Y вверх) — рамки картинок/плашек.</summary>
         internal struct RectPt
@@ -1187,10 +1323,10 @@ namespace ExcelMerger
         /// и крупные заливки (фон ячеек) в линовку не идут. Сбой одной фигуры не срывает
         /// остальные и текст. Вызывать из ядра (после Ensure) — тело ссылается на типы PdfPig.
         /// </summary>
-        private static List<PdfLine> ExtractGraphics(UglyToad.PdfPig.Content.Page page, out List<RectPt> darkFills)
+        private static List<PdfLine> ExtractGraphics(UglyToad.PdfPig.Content.Page page, out List<RectPt> backdrops)
         {
             var result = new List<PdfLine>();
-            darkFills = new List<RectPt>();
+            backdrops = new List<RectPt>();
             System.Collections.Generic.IReadOnlyList<UglyToad.PdfPig.Graphics.PdfPath> paths;
             try { paths = page.ExperimentalAccess.Paths; }
             catch { return result; }
@@ -1217,10 +1353,11 @@ namespace ExcelMerger
                         else if (stroked)
                             AddLineCommands(result, sub, thickness);
                         else if (sub.IsDrawnAsRectangle) // filled, не stroked
-                        {
                             AddThinFilledRect(result, sub);
-                            AddDarkFill(darkFills, path, sub);
-                        }
+                        // Подложка — любая залитая фигура: и с обводкой (плашка в рамке), и
+                        // скруглённая (её рамка — описанный прямоугольник кривой). RC-1.
+                        if (filled)
+                            AddBackdrop(backdrops, path, sub);
                     }
                 }
                 catch { } // одна битая фигура не ломает остальные
@@ -1228,23 +1365,28 @@ namespace ExcelMerger
             return result;
         }
 
-        /// <summary>Крупная ТЁМНАЯ заливка → подложка (на ней белый текст легитимен).</summary>
-        private static void AddDarkFill(List<RectPt> darkFills, UglyToad.PdfPig.Graphics.PdfPath path, UglyToad.PdfPig.Core.PdfSubpath sub)
+        /// <summary>
+        /// Крупная заливка, на которой белый текст виден (<see cref="BackdropMinContrast"/>), →
+        /// подложка. Рамка — прямоугольник подпути или описанный прямоугольник кривой. Узор и
+        /// неразобранный цвет — не подложка (PdfPig бросает на ToRGBValues узора): белый текст
+        /// на них по-прежнему считается невидимым, как и раньше.
+        /// </summary>
+        private static void AddBackdrop(List<RectPt> backdrops, UglyToad.PdfPig.Graphics.PdfPath path, UglyToad.PdfPig.Core.PdfSubpath sub)
         {
             try
             {
-                UglyToad.PdfPig.Core.PdfRectangle? r = sub.GetDrawnRectangle();
+                UglyToad.PdfPig.Core.PdfRectangle? r = sub.IsDrawnAsRectangle ? sub.GetDrawnRectangle() : sub.GetBoundingRectangle();
                 if (r == null)
                     return;
                 UglyToad.PdfPig.Core.PdfRectangle rect = r.Value;
-                if (rect.Width < DarkFillMinSidePt || rect.Height < DarkFillMinSidePt)
+                if (rect.Width < BackdropMinSidePt || rect.Height < BackdropMinSidePt)
                     return; // мелочь/линии — не подложка
                 var fill = path.FillColor;
-                if (fill == null)
+                if (fill == null || fill is UglyToad.PdfPig.Graphics.Colors.PatternColor)
                     return;
                 var rgb = fill.ToRGBValues();
-                if (rgb.r + rgb.g + rgb.b <= DarkFillMaxRgbSum)
-                    darkFills.Add(RectOf(rect));
+                if (ContrastWithWhite(rgb.r, rgb.g, rgb.b) >= BackdropMinContrast)
+                    backdrops.Add(RectOf(rect));
             }
             catch { }
         }
@@ -1301,6 +1443,35 @@ namespace ExcelMerger
         /// нехватка памяти. Линия целиком вне окрестности или NaN — выбрасывается, торчащая —
         /// укорачивается. Чистая — под тест.
         /// </summary>
+        /// <summary>Центр рамки внутри видимой страницы [0; W] × [0; H] (граница — внутри). Чистая — под тест.</summary>
+        internal static bool CenterOnPage(RectPt r, double pageW, double pageH)
+        {
+            double x = (r.Left + r.Right) / 2, y = (r.Bottom + r.Top) / 2;
+            return x >= 0 && x <= pageW && y >= 0 && y <= pageH;
+        }
+
+        // Допуск видимости линии у края листа: линия ровно по кромке (рамка страницы) видна.
+        private const double OffPageTolPt = 0.5;
+
+        /// <summary>
+        /// Убрать линии, целиком лежащие вне видимой страницы (RC-19): метки обреза и приводки
+        /// под обрез рисуются за CropBox, не видны и не должны становиться ни прочерком «____»,
+        /// ни границей таблицы. Линия, хоть частью заходящая на лист, остаётся как есть
+        /// (длину ей ограничивает <see cref="ClipLinesToPage"/>). Чистая — под тест.
+        /// </summary>
+        internal static void DropLinesOffPage(List<PdfLine> lines, double pageW, double pageH)
+        {
+            if (lines == null || !(pageW > 0) || !(pageH > 0))
+                return;
+            lines.RemoveAll(delegate(PdfLine l)
+            {
+                bool horizontal = l.Orientation == LineOrientation.Horizontal;
+                double pos = l.Position, from = horizontal ? l.MinX : l.MinY, to = horizontal ? l.MaxX : l.MaxY;
+                double across = horizontal ? pageH : pageW, along = horizontal ? pageW : pageH;
+                return pos < -OffPageTolPt || pos > across + OffPageTolPt || to < -OffPageTolPt || from > along + OffPageTolPt;
+            });
+        }
+
         internal static void ClipLinesToPage(List<PdfLine> lines, double pageW, double pageH)
         {
             if (lines == null || !(pageW > 0) || !(pageH > 0))

@@ -995,6 +995,12 @@ namespace ExcelMerger.Tests
                 Stage1ListSteps(n, 1, 1, n, 2, 1), "подсписок без пункта сверху — новый список (его уровень ставит ApplyList)");
             AssertEq("Restart,Restart",
                 Stage1ListSteps(n, 1, 0, null, n, 1, 0), "«1.» текст «1.» — по-прежнему новый список");
+            AssertEq("Restart,SetLevel,Inherit,Restart",
+                Stage1ListSteps(n, 1, 0, n, 1, 1, n, 2, 1, null, n, 1, 1),
+                "«1.» «1) 2)» текст «1)» — новый подсписок, а не продолжение «3)»");
+            AssertEq("Restart,SetLevel,SetLevel,Continue",
+                Stage1ListSteps(n, 1, 0, n, 1, 1, n, 2, 0, null, n, 1, 1),
+                "после пункта «2.» его подсписок «1)» после текста — снова продолжение");
         }
 
         [Test("Аудит WP-31: уровень пункта в .docx — уровень модели и при новом списке (живой Word)")]
@@ -1014,7 +1020,10 @@ namespace ExcelMerger.Tests
                     Stage1ListItem("1. Первый", 1, 0, 780), plain("продолжение пункта", 760),
                     Stage1ListItem("1) вложенный", 1, 1, 740), Stage1ListItem("2) вложенный", 2, 1, 720) } },
                 new { Name = "список, начатый вторым уровнем", Expect = "-,1,1", SameList = false, Items = new[] {
-                    plain("вводный абзац", 780), Stage1ListItem("1) глубокий", 1, 1, 760), Stage1ListItem("2) глубокий", 2, 1, 740) } }
+                    plain("вводный абзац", 780), Stage1ListItem("1) глубокий", 1, 1, 760), Stage1ListItem("2) глубокий", 2, 1, 740) } },
+                new { Name = "второй подсписок после текста", Expect = "0,1,1,-,1", SameList = false, Items = new[] {
+                    Stage1ListItem("1. Первый", 1, 0, 780), Stage1ListItem("1) а", 1, 1, 760), Stage1ListItem("2) б", 2, 1, 740),
+                    plain("текст", 720), Stage1ListItem("1) новый", 1, 1, 700) } }
             };
             using (var dir = new TempDir("iwo_wp31_"))
                 foreach (var c in cases)
@@ -1028,11 +1037,12 @@ namespace ExcelMerger.Tests
                     if (marks.Count > 0 && marks[marks.Count - 1] == "-") marks.RemoveAt(marks.Count - 1); // хвостовой пустой абзац
                     string levels = string.Join(",", marks.Select(m => m == "-" ? "-" : m.Substring(0, m.IndexOf('/'))).ToArray());
                     AssertEq(c.Expect, levels, c.Name + ": " + string.Join(" ", marks.ToArray()));
+                    List<string> ids = marks.Where(m => m != "-").Select(m => m.Split('/')[1]).ToList();
                     if (c.SameList)
-                    {
-                        List<string> ids = marks.Where(m => m != "-").Select(m => m.Split('/')[1]).Distinct().ToList();
-                        AssertEq(1, ids.Count, c.Name + ": один список Word: " + string.Join(" ", marks.ToArray()));
-                    }
+                        AssertEq(1, ids.Distinct().Count(), c.Name + ": один список Word: " + string.Join(" ", marks.ToArray()));
+                    else if (c.Expect.Length > 6)
+                        // Новый подсписок — свой список Word: в продолженном Word считал бы «3)».
+                        AssertTrue(ids[ids.Count - 1] != ids[1], c.Name + ": новый список Word: " + string.Join(" ", marks.ToArray()));
                 }
         }
 

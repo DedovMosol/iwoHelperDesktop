@@ -424,8 +424,12 @@ namespace ExcelMerger.Tests
                 {
                     string[] sources = Xl3Sources(dir);
                     var service = new MergeService();
-                    // Окно ждали бы минуту — значит, сработать может только предел шага (2 с).
-                    service.WatchdogLimits = Xl3MergeLimits(60000, 500, 2000);
+                    // Окно ждали бы минуту — значит, сработать может только предел шага. Предел
+                    // действует на КАЖДЫЙ шаг, не только на «трудный» файл: при 2 с полный прогон
+                    // на загруженной машине (x86, 30.10.2026) превысил его на обычном шаге вне
+                    // файла, и тест упал гонкой таймера со скоростью Excel. 10 с — с запасом выше
+                    // обычных шагов под нагрузкой и всё ещё ниже десятков секунд счёта в хуке.
+                    service.WatchdogLimits = Xl3MergeLimits(60000, 500, 10000);
                     service.StepHookForTests = delegate(object excel, string path)
                     {
                         if (path == null || !path.EndsWith("b.xlsx", StringComparison.OrdinalIgnoreCase))

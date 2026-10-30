@@ -442,6 +442,7 @@ namespace ExcelMerger
                 {
                     case OcrAlignment.Center: align = "ctr"; break;
                     case OcrAlignment.Justify: align = "just"; break;
+                    case OcrAlignment.Right: align = "r"; break;
                     default: align = "l"; break;
                 }
                 var sb = new StringBuilder(128);

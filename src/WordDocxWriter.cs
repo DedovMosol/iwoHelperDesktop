@@ -13,6 +13,7 @@ namespace ExcelMerger
     {
         private const int WdAlignLeft = 0;
         private const int WdAlignCenter = 1;
+        private const int WdAlignRight = 2; // wdAlignParagraphRight
         private const int WdAlignJustify = 3;
         private const int WdSectionBreakNextPage = 2; // каждая PDF-страница — свой раздел (свой размер листа)
         private const int WdCollapseStart = 1;
@@ -273,7 +274,11 @@ namespace ExcelMerger
                 bool continuePrev;
                 if (kind == ListKind.Numbered)
                     continuePrev = (LastNumber[level] > 0 && number == LastNumber[level] + 1) ||
-                        (number == 1 && level > 0 && LastNumber[level - 1] > 0);
+                        // «1» подсписка — продолжение, только если под открытым пунктом уровнем выше
+                        // на ЭТОМ уровне ещё не было пунктов (Record обнуляет глубокие уровни при
+                        // каждом пункте выше). Иначе Word продолжил бы старый подсписок: «1) 2)»,
+                        // текст, «1)» вышло бы как «3)».
+                        (number == 1 && level > 0 && LastNumber[level - 1] > 0 && LastNumber[level] == 0);
                 else
                     continuePrev = PrevKind == ListKind.Bulleted;
                 if (!continuePrev)
@@ -454,6 +459,16 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Отступ справа для абзаца вправо (pt): расстояние от его правого края до правого поля
+        /// текстовой области; мельче <see cref="MinConfineIndentPt"/> — шум, 0. Чистая — под тест.
+        /// </summary>
+        internal static double RightEdgeIndent(double paragraphRightPt, double textRightPt)
+        {
+            double ri = textRightPt - paragraphRightPt;
+            return ri > MinConfineIndentPt ? ri : 0;
+        }
+
+        /// <summary>
         /// Отступы для конфайна центрированного абзаца в его колонку (pt). Возвращает false и
         /// нулевые отступы, если конфайн не нужен: не центрированный/в ячейке (eligible=false),
         /// вырожденная область, или колонка почти во всю ширину (полноширинный текст — титул на
@@ -493,6 +508,7 @@ namespace ExcelMerger
             {
                 case OcrAlignment.Center: align = WdAlignCenter; indent = 0; break;
                 case OcrAlignment.Left: align = WdAlignLeft; indent = firstLineIndent; break;
+                case OcrAlignment.Right: align = WdAlignRight; indent = 0; break;
                 default: align = inCell ? WdAlignLeft : WdAlignJustify; indent = inCell ? 0 : firstLineIndent; break;
             }
 
@@ -507,7 +523,11 @@ namespace ExcelMerger
             // Привязка НЕцентрированного абзаца по факту первой строки: красная строка — только
             // если она реально отступала, глубокий старт — позиция колонки (боковая метка). В ячейке
             // (textLeft/Right нулевые) и у пунктов списка (anchor=false) не применяется.
-            if (anchor && !inCell && paragraph.Alignment != OcrAlignment.Center)
+            // Вправо: правый край — тот же, что в источнике (отступ справа от поля), без привязки
+            // слева — она лишь сузила бы строку и при метриках Word шире измеренных перенесла бы её.
+            if (paragraph.Alignment == OcrAlignment.Right && !inCell && textRightPt > textLeftPt)
+                rightIndent = RightEdgeIndent(paragraph.RightPt, textRightPt);
+            if (anchor && !inCell && paragraph.Alignment != OcrAlignment.Center && paragraph.Alignment != OcrAlignment.Right)
             {
                 double anchorFli, anchorLeft;
                 AnchorIndents(paragraph.LeftPt - textLeftPt, textRightPt - textLeftPt, indent,

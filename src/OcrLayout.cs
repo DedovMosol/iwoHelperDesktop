@@ -46,7 +46,7 @@ namespace ExcelMerger
     }
 
     /// <summary>Выравнивание абзаца в выводе.</summary>
-    public enum OcrAlignment { Left, Justify, Center }
+    public enum OcrAlignment { Left, Justify, Center, Right }
 
     /// <summary>Ран — отрезок абзаца с единым форматом (кегль, полужирный, курсив, цвет).</summary>
     public class OcrRun
@@ -496,7 +496,7 @@ namespace ExcelMerger
                     LineLeftsPt = lineLefts,
                     LineBaselinesPt = lineBaselines,
                     // Центрированность решена на уровне прогона; иначе — выключка или левый край.
-                    Alignment = groupCentered[gi] ? OcrAlignment.Center : DetectAlignment(g, bodyRight, em),
+                    Alignment = groupCentered[gi] ? OcrAlignment.Center : DetectAlignment(g, bodyLeft, bodyRight, em, width),
                     TopPt = g[0].Top,
                     LeftPt = g[0].Left,
                     RightPt = right,
@@ -514,7 +514,13 @@ namespace ExcelMerger
                     // Детекция уровня вложенности списка (v1.18.4): стековый трекер держит
                     // открытые уровни, присваивая их по величине отступа — не по порядку встречи.
                     if (para.ListKind != ListKind.None)
+                    {
                         para.ListLevel = listNesting.LevelFor(para.LeftPt);
+                        // Пункт глубокого уровня, дотянувшийся до поля, — всё равно пункт с
+                        // висячим отступом, а не текст вправо: Word прижал бы маркер к правому краю.
+                        if (para.Alignment == OcrAlignment.Right)
+                            para.Alignment = OcrAlignment.Left;
+                    }
                 }
                 paragraphs.Add(para);
                 // Красную строку меряем ТОЛЬКО по нецентрированным абзацам: у центрированного блока
@@ -892,12 +898,18 @@ namespace ExcelMerger
         /// <summary>
         /// Выравнивание НЕцентрированного абзаца из геометрии (центрирование решено раньше — на
         /// уровне прогона по общей оси, см. <see cref="CenteredRuns"/>):
+        ///  • Right (RC-15) — КАЖДАЯ строка дотянулась до правого поля и начата глубже зоны
+        ///    отступов (<see cref="MaxIndentFraction"/> ширины): так стоят дата, подпись, номер
+        ///    страницы справа. Красная строка (отступ в пределах зоны) и выключка по ширине (её
+        ///    строки начаты у левого поля) под правило не попадают;
         ///  • Justify — многострочный абзац, где НЕпоследние строки достают до правого поля
         ///    (последняя строка justified-абзаца всегда рваная, её не учитываем);
         ///  • иначе Left (рваный справа / одиночная строка — визуально как по левому краю).
         /// </summary>
-        private static OcrAlignment DetectAlignment(List<Line> group, double bodyRight, double em)
+        private static OcrAlignment DetectAlignment(List<Line> group, double bodyLeft, double bodyRight, double em, double width)
         {
+            if (IsRightAligned(group, bodyLeft, bodyRight, em, width))
+                return OcrAlignment.Right;
             if (group.Count >= 2)
             {
                 double reachTol = 0.5 * em;
@@ -908,6 +920,21 @@ namespace ExcelMerger
                     return OcrAlignment.Justify;
             }
             return OcrAlignment.Left;
+        }
+
+        /// <summary>
+        /// Строки группы прижаты вправо: каждая дотянулась до правого поля (допуск 0,5 кегля, как
+        /// у выключки) и каждая начата глубже <see cref="MaxIndentFraction"/> ширины колонки. Чистая — под тест.
+        /// </summary>
+        internal static bool IsRightAligned(List<Line> group, double bodyLeft, double bodyRight, double em, double width)
+        {
+            if (group.Count == 0 || width <= 0)
+                return false;
+            double reachTol = 0.5 * em, minInset = MaxIndentFraction * width;
+            foreach (Line ln in group)
+                if (ln.Right < bodyRight - reachTol || ln.Left - bodyLeft <= minInset)
+                    return false;
+            return true;
         }
 
         internal sealed class Line

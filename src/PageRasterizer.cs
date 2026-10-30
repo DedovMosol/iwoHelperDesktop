@@ -33,6 +33,20 @@ namespace ExcelMerger
         internal static BudgetedBitmap RenderPage(string pdfPath, int pageNumber,
             double pageWidthPt, double pageHeightPt)
         {
+            int dpi;
+            return RenderPage(pdfPath, pageNumber, pageWidthPt, pageHeightPt, out dpi);
+        }
+
+        /// <summary>
+        /// То же, плюс разрешение рендера. Размер страницы здесь — только подсказка для выбора
+        /// dpi под бюджет памяти: Ghostscript рисует ВИДИМУЮ страницу (CropBox, /Rotate), и её
+        /// настоящий размер — пиксели растра × 72 / dpi (так его берёт страница, которую PdfPig
+        /// не разобрал, RC-11). dpi = 0, если рендера нет.
+        /// </summary>
+        internal static BudgetedBitmap RenderPage(string pdfPath, int pageNumber,
+            double pageWidthPt, double pageHeightPt, out int dpiUsed)
+        {
+            dpiUsed = 0;
             if (!Ghostscript.Available || string.IsNullOrEmpty(pdfPath) || pageNumber < 1)
                 return null;
             string outPng = Path.Combine(Path.GetTempPath(), RenderPrefix +
@@ -80,6 +94,7 @@ namespace ExcelMerger
                 var owned = new BudgetedBitmap(result, working);
                 result = null;
                 working = null;
+                dpiUsed = dpi;
                 return owned;
             }
             catch (OutOfMemoryException)

@@ -685,6 +685,16 @@ Two decisions define this pipeline:
   paragraphs, tables, alignment — is *re-derived from coordinates* (X-Y cut, gap
   statistics, edge alignment), with thresholds expressed in em/font-size units so they
   scale with the document.
+- **What counts as visible, and how it is styled.** A word whose centre lies outside the
+  visible page (`[0; W] × [0; H]` in PdfPig coordinates, i.e. the CropBox) is dropped, and
+  ruling lines lying wholly off the page (crop marks in the bleed) are dropped too. White
+  text survives only on a backdrop that contrasts with white by at least 1.5:1 (WCAG 2.x
+  relative luminance; any filled shape — rectangle, stroked, curved — or an image).
+  Synthesised italic (an upright face slanted by the text matrix, as Word and PdfSharp do
+  for fonts without an italic) is recognised by the slant of the glyph box, and its size is
+  corrected for that slant. Paragraph alignment is Left, Justify, Center or Right; Right
+  means every line reaches the right edge and starts deeper than the indent zone (25 % of
+  the column), and a list item is never Right.
 - **Word writes the document.** The `.docx` is produced by Word itself (COM), not by
   emitting OOXML: Word owns list numbering, spacing and font substitution, so the result
   behaves natively when edited — and the app needs no OOXML library.
@@ -820,8 +830,10 @@ Late-bound COM is powerful and unforgiving, these rules are load-bearing:
   smaller, reports rotate (3 latest), low-disk-space stops a merge up front.
 - One unreadable page does not abort PDF → Word or PDF → PowerPoint:
   `PdfTextExtract.ExtractCore` turns it into a page with `ExtractionError` set and the whole
-  page as one Ghostscript picture (size from PdfPig, else PdfSharp, else A4; user rotation
-  applied), and the done status names those pages. A file where every requested page fails
+  page as one Ghostscript picture (size from PdfPig when the page opened, otherwise from the
+  raster itself — pixels × 72 / dpi, i.e. the visible CropBox page; PdfSharp sizes, read once
+  per extraction, only pick the dpi; user rotation applied), and the done status names those
+  pages, saying explicitly when they stayed blank because Ghostscript is missing. A file where every requested page fails
   still gets the old "cannot extract" error, and Compare (`PageLayoutMode.Review`) and text
   export stay strict: an empty page there would read as "all text removed".
 

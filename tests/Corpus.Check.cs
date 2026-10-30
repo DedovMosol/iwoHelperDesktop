@@ -463,8 +463,11 @@ namespace ExcelMerger.Tests
             {
                 if (s.Align == CAlign.Center && p.Alignment != OcrAlignment.Center)
                     findings.Add(new CFinding("align-center", name + " — " + p.Alignment + " вместо Center"));
-                else if (s.Align == CAlign.Right)
-                    findings.Add(new CFinding("align-right", name + " — " + p.Alignment + " вместо Right (в модели нет Right)"));
+                else if (s.Align == CAlign.Right && p.Alignment != OcrAlignment.Right)
+                    findings.Add(new CFinding("align-right", name + " — " + p.Alignment + " вместо Right"));
+                else if (s.Align != CAlign.Right && p.Alignment == OcrAlignment.Right)
+                    // Ложная выключка вправо проверяется и у однострочных: Word прижал бы строку к полю.
+                    findings.Add(new CFinding("align-false-right", name + " — Right вместо " + s.Align));
                 else if ((s.Align == CAlign.Justify || s.Align == CAlign.Distribute) && e.Lines >= 2 && p.Alignment != OcrAlignment.Justify)
                     findings.Add(new CFinding("align-justify", name + " — " + p.Alignment + " вместо Justify"));
                 else if (s.Align == CAlign.Left && e.Lines >= 2 && p.Alignment != OcrAlignment.Left)

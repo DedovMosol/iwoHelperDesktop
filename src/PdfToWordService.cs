@@ -12,6 +12,8 @@ namespace ExcelMerger
         internal BackgroundRenderReport BackgroundReport;
         // Номера страниц результата (с 1), которые не удалось разобрать: перенесены картинкой (RC-11).
         internal List<int> FailedPages = new List<int>();
+        // Из них — оставшиеся пустыми: картинку снять не удалось (нет Ghostscript, сбой рендера).
+        internal int FailedBlank;
     }
 
     /// <summary>
@@ -73,7 +75,8 @@ namespace ExcelMerger
             {
                 Pages = pages.Count,
                 PagesWithText = withText,
-                FailedPages = PdfPageExtraction.FailedPositions(pages)
+                FailedPages = PdfPageExtraction.FailedPositions(pages),
+                FailedBlank = PdfPageExtraction.FailedBlankCount(pages)
             };
         }
     }

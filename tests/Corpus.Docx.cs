@@ -41,6 +41,7 @@ namespace ExcelMerger.Tests
             {
                 case OcrAlignment.Center: return "center";
                 case OcrAlignment.Justify: return inCell ? "left" : "both";
+                case OcrAlignment.Right: return "right";
                 default: return "left";
             }
         }

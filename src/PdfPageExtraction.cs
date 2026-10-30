@@ -131,6 +131,16 @@ namespace ExcelMerger
             return result;
         }
 
+        /// <summary>Сколько несобранных страниц осталось и без картинки (рендер не удался). Чистая — под тест.</summary>
+        internal static int FailedBlankCount(IList<PdfPageText> pages)
+        {
+            int n = 0;
+            foreach (PdfPageText page in pages)
+                if (page != null && page.ExtractionError != null && (page.Images == null || page.Images.Count == 0))
+                    n++;
+            return n;
+        }
+
         /// <summary>Есть ли на странице извлекаемый текст: абзацы вне таблиц ИЛИ текст в ячейках таблиц.</summary>
         internal static bool HasExtractableContent(PdfPageText page)
         {

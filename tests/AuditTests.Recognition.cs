@@ -12,6 +12,281 @@ namespace ExcelMerger.Tests
     /// </summary>
     internal static partial class UnitTests
     {
+        // ---------- RC-1: белый текст на светлой цветной заливке ----------
+
+        [Test("Аудит RC-1: контраст с белым по WCAG — эталонные значения")]
+        private static void AuditRc1Contrast()
+        {
+            Func<int, double> of = rgb => PdfTextExtract.ContrastWithWhite(((rgb >> 16) & 0xFF) / 255.0, ((rgb >> 8) & 0xFF) / 255.0, (rgb & 0xFF) / 255.0);
+            AssertTrue(Math.Abs(of(0x000000) - 21) < 0.01, "чёрный — 21:1");
+            AssertTrue(Math.Abs(of(0xFFFFFF) - 1) < 0.01, "белый — 1:1");
+            // Справочные значения WCAG-калькуляторов (WebAIM): серый #767676 — 4,54:1.
+            AssertTrue(Math.Abs(of(0x767676) - 4.54) < 0.01, "#767676 — 4,54:1: " + of(0x767676));
+            foreach (int accent in new[] { 0x5B9BD5, 0xED7D31, 0xA5A5A5, 0x70AD47, 0x4472C4 })
+                AssertTrue(of(accent) >= PdfTextExtract.BackdropMinContrast, "акцент Word #" + accent.ToString("X6") + " — подложка: " + of(accent));
+            foreach (int pale in new[] { 0xFFFF00, 0xD9D9D9, 0xF2F2F2 })
+                AssertTrue(of(pale) < PdfTextExtract.BackdropMinContrast, "#" + pale.ToString("X6") + " — белое не видно: " + of(pale));
+        }
+
+        [Test("Аудит RC-1: белый текст виден на акцентной, обведённой и скруглённой плашке, не виден на жёлтой")]
+        private static void AuditRc1WhiteOnFills()
+        {
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc1_"))
+            {
+                string path = dir.File("fills.pdf");
+                var font = new PdfSharp.Drawing.XFont("Arial", 12, PdfSharp.Drawing.XFontStyle.Bold,
+                    new PdfSharp.Drawing.XPdfFontOptions(PdfSharp.Pdf.PdfFontEncoding.Unicode));
+                var cases = new[]
+                {
+                    new { Word = "Синяя", Fill = 0x5B9BD5, Kind = "plain" },
+                    new { Word = "Оранжевая", Fill = 0xED7D31, Kind = "stroked" },
+                    new { Word = "Серая", Fill = 0xA5A5A5, Kind = "rounded" },
+                    new { Word = "Жёлтая", Fill = 0xFFFF00, Kind = "plain" }
+                };
+                using (var pdf = new PdfSharp.Pdf.PdfDocument())
+                {
+                    PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+                    using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
+                    {
+                        g.DrawString("Обычный текст страницы", font, PdfSharp.Drawing.XBrushes.Black, 72, 80);
+                        double y = 120;
+                        foreach (var c in cases)
+                        {
+                            var brush = new PdfSharp.Drawing.XSolidBrush(PdfSharp.Drawing.XColor.FromArgb((c.Fill >> 16) & 0xFF, (c.Fill >> 8) & 0xFF, c.Fill & 0xFF));
+                            if (c.Kind == "stroked")
+                                g.DrawRectangle(PdfSharp.Drawing.XPens.Black, brush, 66, y - 16, 300, 24);
+                            else if (c.Kind == "rounded")
+                                g.DrawRoundedRectangle(brush, 66, y - 16, 300, 24, 10, 10);
+                            else
+                                g.DrawRectangle(brush, 66, y - 16, 300, 24);
+                            g.DrawString(c.Word + " плашка", font, PdfSharp.Drawing.XBrushes.White, 72, y);
+                            y += 40;
+                        }
+                    }
+                    pdf.Save(path);
+                }
+                foreach (PageLayoutMode mode in new[] { PageLayoutMode.Document, PageLayoutMode.Slide })
+                {
+                    string text = PdfTextExtract.Extract(path, null, null, null, mode)[0].Text;
+                    foreach (var c in cases)
+                        AssertTrue(text.Contains(c.Word) == (c.Fill != 0xFFFF00),
+                            mode + ": «" + c.Word + "» " + (c.Fill != 0xFFFF00 ? "виден" : "не виден (белое на жёлтом)") + ": " + text);
+                }
+            }
+        }
+
+        // ---------- RC-15: выключка вправо ----------
+
+        [Test("Аудит RC-15: дата и подпись справа — вправо; красная строка, выключка и глубокий пункт — нет")]
+        private static void AuditRc15RightAlignment()
+        {
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc15_"))
+            {
+                string path = dir.File("right.pdf");
+                var font = new PdfSharp.Drawing.XFont("Arial", 11, PdfSharp.Drawing.XFontStyle.Regular,
+                    new PdfSharp.Drawing.XPdfFontOptions(PdfSharp.Pdf.PdfFontEncoding.Unicode));
+                const double left = 72, right = 523;
+                using (var pdf = new PdfSharp.Pdf.PdfDocument())
+                {
+                    PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+                    using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
+                    {
+                        Action<string, double> atRight = (s, y) => g.DrawString(s, font, PdfSharp.Drawing.XBrushes.Black, right - g.MeasureString(s, font).Width, y);
+                        atRight("Москва, 30 октября 2026 г.", 90);
+                        // Полная строка с красной строкой 36 pt, дотянутая до поля выключкой.
+                        string[] words = "Настоящим сообщаем что работы по договору выполнены полностью и в срок".Split(' ');
+                        double natural = words.Sum(w => g.MeasureString(w, font).Width);
+                        double gap = (right - left - 36 - natural) / (words.Length - 1), x = left + 36;
+                        foreach (string w in words) { g.DrawString(w, font, PdfSharp.Drawing.XBrushes.Black, x, 130); x += g.MeasureString(w, font).Width + gap; }
+                        // Вторая строка абзаца — у левого поля: она задаёт поле колонки. Без неё
+                        // все строки начаты с отступа, и поле колонки уехало бы к красной строке.
+                        g.DrawString("без замечаний.", font, PdfSharp.Drawing.XBrushes.Black, left, 145);
+                        atRight("Директор И. И. Иванов", 200);
+                        // Пункт глубокого уровня, дотянутый до поля: список, а не текст вправо.
+                        atRight("1. Пункт на глубоком уровне вложенности", 240);
+                    }
+                    pdf.Save(path);
+                }
+                List<OcrParagraph> paras = PdfTextExtract.Extract(path)[0].Paragraphs;
+                string all = string.Join(" | ", paras.Select(p => p.Alignment + ":" + p.Text).ToArray());
+                Func<string, OcrParagraph> find = s => paras.First(p => p.Text.Contains(s));
+                AssertEq(OcrAlignment.Right, find("Москва").Alignment, "дата справа: " + all);
+                AssertEq(OcrAlignment.Right, find("Директор").Alignment, "подпись справа: " + all);
+                AssertTrue(find("Настоящим").Alignment != OcrAlignment.Right, "красная строка — не вправо: " + all);
+                OcrParagraph item = find("Пункт");
+                AssertTrue(item.ListKind == ListKind.Numbered && item.Alignment == OcrAlignment.Left, "глубокий пункт — пункт влево: " + all);
+
+                // PowerPoint: в ячейке и в рамке без левых краёв строк — «r».
+                OoxmlPackage package = PptxWriter.BuildPackage(PdfTextExtract.Extract(path, null, null, null, PageLayoutMode.Slide), PptxStamp);
+                string pptx = dir.File("right.pptx");
+                package.Save(pptx);
+                AssertTrue(PptxValidationProblems(pptx).Count == 0, "пакет валиден");
+            }
+        }
+
+        [Test("Аудит RC-15: строки вправо — правило по каждой строке, отступ Word справа — до края текста")]
+        private static void AuditRc15Rules()
+        {
+            Func<double, double, OcrLayout.Line> line = (l, r) =>
+            {
+                var ln = new OcrLayout.Line { MidY = 100 };
+                ln.Words.Add(new PdfWord { Text = "x", Left = l, Right = r, Bottom = 95, Top = 105 });
+                return ln;
+            };
+            Func<OcrLayout.Line[], bool> right = g => OcrLayout.IsRightAligned(g.ToList(), 0, 400, 10, 400);
+            AssertTrue(right(new[] { line(250, 400) }), "строка справа");
+            AssertTrue(right(new[] { line(250, 396) }), "до поля в пределах 0,5 кегля");
+            AssertTrue(!right(new[] { line(250, 394) }), "не дотянулась до поля");
+            AssertTrue(!right(new[] { line(100, 400) }), "начата в зоне отступов (≤ 25 % ширины)");
+            AssertTrue(right(new[] { line(250, 400), line(300, 400) }), "две строки вправо");
+            AssertTrue(!right(new[] { line(250, 400), line(0, 400) }), "вторая строка у левого поля — выключка, не вправо");
+            AssertTrue(!OcrLayout.IsRightAligned(new List<OcrLayout.Line>(), 0, 400, 10, 400), "пусто");
+
+            AssertEq(0.0, WordDocxWriter.RightEdgeIndent(523, 523), "у поля — без отступа");
+            AssertEq(0.0, WordDocxWriter.RightEdgeIndent(520, 523), "3 pt — шум");
+            AssertEq(100.0, WordDocxWriter.RightEdgeIndent(423, 523), "край текста левее поля — отступ справа");
+        }
+
+        // ---------- RC-19: невидимое за краем страницы ----------
+
+        [Test("Аудит RC-19: текст и метки обреза за CropBox не попадают в вывод")]
+        private static void AuditRc19OffPage()
+        {
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc19_"))
+            {
+                string raw = dir.File("raw.pdf"), path = dir.File("bleed.pdf");
+                var font = new PdfSharp.Drawing.XFont("Arial", 11);
+                using (var pdf = new PdfSharp.Pdf.PdfDocument())
+                {
+                    PdfSharp.Pdf.PdfPage page = pdf.AddPage(); // 595 × 842, видимая часть — 36…559 × 36…806
+                    using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
+                    {
+                        g.DrawString("Видимый текст страницы", font, PdfSharp.Drawing.XBrushes.Black, 72, 100);
+                        g.DrawString("Служебная надпись на поле под обрез", font, PdfSharp.Drawing.XBrushes.Black, 72, 20);
+                        g.DrawString("Справа", font, PdfSharp.Drawing.XBrushes.Black, 565, 400);
+                        var pen = new PdfSharp.Drawing.XPen(PdfSharp.Drawing.XColors.Black, 0.5);
+                        // Метки обреза в каждом углу: по горизонтали и по вертикали, за CropBox.
+                        foreach (double x in new[] { 36.0, 559.0 })
+                            foreach (double y in new[] { 36.0, 806.0 })
+                            {
+                                double hx = x < 300 ? 4 : 565, vy = y < 400 ? 4 : 812;
+                                g.DrawLine(pen, hx, y, hx + 26, y);
+                                g.DrawLine(pen, x, vy, x, vy + 26);
+                            }
+                    }
+                    pdf.Save(raw);
+                }
+                using (PdfSharp.Pdf.PdfDocument pdf = PdfSharp.Pdf.IO.PdfReader.Open(raw, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Modify))
+                {
+                    pdf.Pages[0].CropBox = new PdfSharp.Pdf.PdfRectangle(new PdfSharp.Drawing.XPoint(36, 36), new PdfSharp.Drawing.XPoint(559, 806));
+                    pdf.Save(path);
+                }
+                foreach (PageLayoutMode mode in new[] { PageLayoutMode.Document, PageLayoutMode.Slide, PageLayoutMode.Review })
+                {
+                    PdfPageText page = PdfTextExtract.Extract(path, null, null, null, mode)[0];
+                    string words = string.Join(" ", page.Words.Select(w => w.Text).ToArray());
+                    AssertTrue(words.Contains("Видимый"), mode + ": видимый текст на месте: " + words);
+                    AssertTrue(!words.Contains("Служебная") && !words.Contains("Справа"), mode + ": текст за CropBox отсечён: " + words);
+                    // Прочерки из одиночных линий (AddRuleWords) попадают в абзацы, а не в Words.
+                    AssertTrue(!page.Text.Contains("_"), mode + ": метки обреза — не прочерки: " + page.Text);
+                    AssertEq(0, page.Lines.Count, mode + ": линий на видимой странице нет: " + page.Lines.Count);
+                }
+            }
+        }
+
+        private static PdfLine Rc19Line(bool horizontal, double pos, double from, double to)
+        {
+            return horizontal
+                ? new PdfLine { Orientation = LineOrientation.Horizontal, X1 = from, X2 = to, Y1 = pos, Y2 = pos }
+                : new PdfLine { Orientation = LineOrientation.Vertical, X1 = pos, X2 = pos, Y1 = from, Y2 = to };
+        }
+
+        [Test("Аудит RC-19: границы видимости слова и линии")]
+        private static void AuditRc19Rules()
+        {
+            Func<double, double, bool> word = (x, y) => PdfTextExtract.CenterOnPage(new PdfTextExtract.RectPt { Left = x - 5, Right = x + 5, Bottom = y - 3, Top = y + 3 }, 600, 800);
+            AssertTrue(word(300, 400) && word(0, 400) && word(600, 800), "внутри и на кромке");
+            AssertTrue(!word(-1, 400) && !word(601, 400) && !word(300, -1) && !word(300, 801), "центр за краем");
+            var lines = new List<PdfLine>
+            {
+                Rc19Line(true, 0, 0, 600),      // кромка листа — видна
+                Rc19Line(true, 100, -50, 10),   // заходит на лист — видна
+                Rc19Line(true, -10, 0, 600),    // под листом
+                Rc19Line(true, 100, -40, -5),   // левее листа
+                Rc19Line(false, 610, 0, 800),   // правее листа
+                Rc19Line(false, 300, 805, 830), // выше листа
+                Rc19Line(false, 600.3, 0, 800)  // в допуске кромки — видна
+            };
+            PdfTextExtract.DropLinesOffPage(lines, 600, 800);
+            AssertEq("0,100,600.3", string.Join(",", lines.Select(l => l.Position.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToArray()),
+                "остались только видимые линии");
+        }
+
+        // ---------- RC-22: синтезированный курсив ----------
+
+        [Test("Аудит RC-22: наклон рамки буквы не зависит от поворота и масштаба")]
+        private static void AuditRc22SlantGeometry()
+        {
+            AssertTrue(Math.Abs(PdfTextExtract.SlantOf(0, 0, 10, 0, 0, 8)) < 1e-9, "прямая буква — 0");
+            AssertTrue(Math.Abs(PdfTextExtract.SlantOf(0, 0, 10, 0, 2.8, 8) - 0.35) < 1e-9, "наклон 0,35");
+            // Та же буква, повёрнутая на 90° против часовой: строка идёт вверх, «верх» — влево.
+            AssertTrue(Math.Abs(PdfTextExtract.SlantOf(0, 0, 0, 10, -8, 2.8) - 0.35) < 1e-9, "поворот не меняет наклон");
+            AssertTrue(Math.Abs(PdfTextExtract.SlantOf(0, 0, 30, 0, 8.4, 24) - 0.35) < 1e-9, "масштаб не меняет наклон");
+            AssertTrue(PdfTextExtract.SlantOf(0, 0, 10, 0, -2.8, 8) < 0, "обратный наклон — отрицательный");
+            AssertEq(0.0, PdfTextExtract.SlantOf(5, 5, 5, 5, 5, 9), "вырожденная рамка — 0");
+            AssertEq(0.0, PdfTextExtract.SlantOf(0, 0, 10, 0, 3, 0), "нулевая высота — 0");
+            var slanted = new double[] { 0, 0, 10, 0, 2.8, 8 };
+            AssertTrue(Math.Abs(PdfTextExtract.WordSlant(new List<double[]> { new double[] { 4, 4, 4, 4, 4, 4 }, slanted }) - 0.35) < 1e-9,
+                "вырожденная первая буква не прячет наклон слова");
+            AssertTrue(Math.Abs(PdfTextExtract.WordSlant(new List<double[]> { new double[] { 0, 0, 0.005, 0, 2, 8 }, slanted }) - 0.35) < 1e-9,
+                "буква нулевой ширины тоже пропускается");
+            AssertEq(0.0, PdfTextExtract.WordSlant(new List<double[]>()), "без букв — 0");
+        }
+
+        [Test("Аудит RC-22: синтезированный курсив Tahoma и Verdana — курсив с настоящим кеглем; прямой и настоящий курсив не тронуты")]
+        private static void AuditRc22SyntheticItalic()
+        {
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc22_"))
+            {
+                string path = dir.File("italic.pdf");
+                var opt = new PdfSharp.Drawing.XPdfFontOptions(PdfSharp.Pdf.PdfFontEncoding.Unicode);
+                var cases = new[]
+                {
+                    new { Word = "Прямой", Font = "Tahoma", Style = PdfSharp.Drawing.XFontStyle.Regular, Size = 10.5, Italic = false, Bold = false },
+                    new { Word = "Наклонный", Font = "Tahoma", Style = PdfSharp.Drawing.XFontStyle.Italic, Size = 10.5, Italic = true, Bold = false },
+                    new { Word = "Широкий", Font = "Verdana", Style = PdfSharp.Drawing.XFontStyle.Italic, Size = 14.0, Italic = true, Bold = false },
+                    new { Word = "Жирнокурсив", Font = "Tahoma", Style = PdfSharp.Drawing.XFontStyle.BoldItalic, Size = 9.0, Italic = true, Bold = true },
+                    new { Word = "Настоящий", Font = "Arial", Style = PdfSharp.Drawing.XFontStyle.Italic, Size = 12.0, Italic = true, Bold = false }
+                };
+                using (var pdf = new PdfSharp.Pdf.PdfDocument())
+                {
+                    PdfSharp.Pdf.PdfPage page = pdf.AddPage();
+                    using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
+                    {
+                        double y = 100;
+                        foreach (var c in cases)
+                        {
+                            g.DrawString(c.Word, new PdfSharp.Drawing.XFont(c.Font, c.Size, c.Style, opt), PdfSharp.Drawing.XBrushes.Black, 72, y);
+                            y += 40;
+                        }
+                    }
+                    pdf.Save(path);
+                }
+                List<PdfWord> words = PdfTextExtract.Extract(path)[0].Words;
+                foreach (var c in cases)
+                {
+                    PdfWord w = words.First(x => x.Text == c.Word);
+                    AssertEq(c.Italic, w.Italic, c.Word + ": курсив");
+                    AssertEq(c.Bold, w.Bold, c.Word + ": полужирный");
+                    AssertTrue(Math.Abs(w.FontSizePt - c.Size) < 0.05, c.Word + ": кегль " + w.FontSizePt + " вместо " + c.Size);
+                }
+            }
+        }
+
         // ---------- RC-4: значки списков Word из Symbol, Wingdings и Courier New ----------
 
         [Test("Аудит RC-4: значок Symbol/Wingdings — знак Юникода, прочие символы шрифтов не трогаются")]
@@ -180,6 +455,104 @@ namespace ExcelMerger.Tests
                 package.Save(pptx);
                 List<string> problems = PptxValidationProblems(pptx);
                 AssertTrue(problems.Count == 0, "пакет валиден: " + string.Join("; ", problems.ToArray()));
+            }
+        }
+
+        [Test("Аудит RC-11: размер сбойной страницы — видимый (CropBox), а не MediaBox")]
+        private static void AuditRc11CropBoxSize()
+        {
+            if (!Ghostscript.Available)
+                Skip("Ghostscript не найден");
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc11_crop_"))
+            {
+                string path = Rc11Pdf(dir.Path, "crop.pdf", 1);
+                // Обрезать ВТОРУЮ (альбомную, сбойную) страницу до 500×300: так PdfPig меряет
+                // видимую часть исправной страницы, и Ghostscript (-dUseCropBox) рисует её же.
+                string cropped = dir.File("cropped.pdf");
+                using (PdfSharp.Pdf.PdfDocument pdf = PdfSharp.Pdf.IO.PdfReader.Open(path, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Modify))
+                {
+                    pdf.Pages[1].CropBox = new PdfSharp.Pdf.PdfRectangle(new PdfSharp.Drawing.XPoint(100, 100), new PdfSharp.Drawing.XPoint(600, 400));
+                    pdf.Save(cropped);
+                }
+                PdfPageText bad = PdfTextExtract.Extract(cropped)[1];
+                AssertTrue(bad.ExtractionError != null, "сбойная");
+                AssertTrue(Math.Abs(bad.WidthPt - 500) < 1 && Math.Abs(bad.HeightPt - 300) < 1,
+                    "размер — CropBox 500×300: " + bad.WidthPt + "×" + bad.HeightPt);
+                OcrImage img = bad.Images[0];
+                AssertTrue(Math.Abs(img.WidthPt - bad.WidthPt) < 0.01 && Math.Abs(img.HeightPt - bad.HeightPt) < 0.01,
+                    "картинка — ровно лист");
+            }
+        }
+
+        [Test("Аудит RC-11: без Ghostscript сбойная страница пустая, и итог говорит это, а не «картинкой»")]
+        private static void AuditRc11NoGhostscript()
+        {
+            EmbeddedAssemblies.Ensure();
+            Ghostscript.ResetResolutionForTests();
+            Ghostscript.ResolveForTests = delegate { return null; };
+            try
+            {
+                using (var dir = new TempDir("iwo_rc11_nogs_"))
+                {
+                    string path = Rc11Pdf(dir.Path, "broken.pdf", 1);
+                    List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                    AssertEq(3, pages.Count, "документ всё равно разобран");
+                    AssertTrue(pages[1].ExtractionError != null && pages[1].Images.Count == 0, "страница пустая");
+                    AssertTrue(Math.Abs(pages[1].WidthPt - 842) < 1, "размер — подсказка PdfSharp: " + pages[1].WidthPt);
+                    AssertEq(1, PdfPageExtraction.FailedBlankCount(pages), "пустых — одна");
+                }
+            }
+            finally
+            {
+                Ghostscript.ResetResolutionForTests();
+            }
+            Lang before = Loc.Current;
+            try
+            {
+                foreach (Lang lang in new[] { Lang.Ru, Lang.En })
+                {
+                    Loc.Init(lang);
+                    var blank = new ConvertResult { Pages = 3, PagesWithText = 2, FailedPages = new List<int> { 2 }, FailedBlank = 1 };
+                    string status = PdfConvertFormBase.DoneStatus(blank, "Done {0}.");
+                    AssertTrue(status.Contains("Ghostscript") && !status.Contains(string.Format(Loc.T("convert.status.failedPages"), 1, "2")),
+                        lang + ": пустая страница не названа «картинкой»: " + status);
+                }
+            }
+            finally
+            {
+                Loc.Init(before);
+            }
+        }
+
+        [Test("Аудит RC-11: сбойная страница — картинка на слайде и в .docx (живой Word)")]
+        private static void AuditRc11WritersCarryPicture()
+        {
+            if (!Ghostscript.Available)
+                Skip("Ghostscript не найден");
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc11_out_"))
+            {
+                string path = Rc11Pdf(dir.Path, "broken.pdf", 1);
+                OoxmlPackage package = PptxWriter.BuildPackage(PdfTextExtract.Extract(path, null, null, null, PageLayoutMode.Slide), PptxStamp);
+                string slide;
+                using (var ms = new MemoryStream(package.ToArray()))
+                using (var zip = new System.IO.Compression.ZipArchive(ms))
+                using (var reader = new StreamReader(zip.GetEntry("ppt/slides/slide2.xml").Open()))
+                    slide = reader.ReadToEnd();
+                AssertTrue(slide.Contains("<p:pic>"), "на слайде 2 — картинка страницы");
+
+                AuditBRequireWord();
+                string docx = dir.File("broken.docx");
+                List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                AuditBOfficeSta(180000, delegate { WordDocxWriter.Write(pages, docx); });
+                System.Xml.XmlDocument xml = AuditBDocumentXml(docx);
+                var ns = new System.Xml.XmlNamespaceManager(xml.NameTable);
+                ns.AddNamespace("w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main");
+                string text = xml.DocumentElement.InnerText;
+                AssertTrue(text.Contains("Page 1") && text.Contains("Page 3"), "исправные страницы — текстом: " + text);
+                AssertEq(1, xml.SelectNodes("//w:drawing", ns).Count, "одна картинка — сбойная страница");
+                AssertEq(3, xml.SelectNodes("//w:sectPr", ns).Count, "три раздела — три страницы");
             }
         }
 
