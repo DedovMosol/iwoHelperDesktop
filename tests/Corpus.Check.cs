@@ -188,7 +188,7 @@ namespace ExcelMerger.Tests
                 into.Add(new Tok
                 {
                     Text = s.Substring(i, j - i), Bold = r.Bold, Italic = r.Italic, Underline = r.Underline,
-                    Color = r.ColorArgb, Size = r.FontSizePt, Font = r.FontName
+                    Strike = r.Strike, Color = r.ColorArgb, Size = r.FontSizePt, Font = r.FontName
                 });
                 i = j;
             }
@@ -553,7 +553,7 @@ namespace ExcelMerger.Tests
             if (e.Bold != a.Bold) findings.Add(new CFinding("bold", w + (e.Bold ? " потерял полужирный" : " стал полужирным")));
             if (e.Italic != a.Italic) findings.Add(new CFinding("italic", w + (e.Italic ? " потерял курсив" : " стал курсивом")));
             if (e.Underline != a.Underline) findings.Add(new CFinding("underline", w + (e.Underline ? " потерял подчёркивание" : " стал подчёркнутым")));
-            if (e.Strike) findings.Add(new CFinding("strike", w + " — зачёркивания в модели нет"));
+            if (e.Strike != a.Strike) findings.Add(new CFinding("strike", w + (e.Strike ? " потерял зачёркивание" : " стал зачёркнутым")));
             if (e.Color != a.Color) findings.Add(new CFinding("color", w + " — цвет " + a.Color.ToString("X6") + " вместо " + e.Color.ToString("X6")));
             if (Math.Abs(e.Size - a.Size) > 0.3) findings.Add(new CFinding("size", w + " — кегль " + a.Size.ToString("0.##", CultureInfo.InvariantCulture) + " вместо " + e.Size.ToString(CultureInfo.InvariantCulture)));
             if (FontKey(e.Font) != FontKey(a.Font)) findings.Add(new CFinding("font", w + " — шрифт «" + a.Font + "» вместо «" + e.Font + "»"));
@@ -839,13 +839,14 @@ namespace ExcelMerger.Tests
             CompareFormat("pptx-bold", "полужирный", expected, actual, t => t.Bold, where, findings);
             CompareFormat("pptx-italic", "курсив", expected, actual, t => t.Italic, where, findings);
             CompareFormat("pptx-underline", "подчёркивание", expected, actual, t => t.Underline, where, findings);
+            CompareFormat("pptx-strike", "зачёркивание", expected, actual, t => t.Strike, where, findings);
             CompareKeyed("pptx-color", "цвет", expected, actual, t => t.Color != 0 ? t.Text + " #" + t.Color.ToString("X6") : null, where, findings);
             CompareSizes(expected, actual, scale, where, findings);
             if (visibleOcr)
                 findings.Add(new CFinding("pptx-ocr-visible", where + ": невидимый текстовый слой скана стал видимым текстом"));
         }
 
-        private sealed class SlideWord
+        internal sealed class SlideWord
         {
             public Tok Tok;
             public bool NoFill;
@@ -858,7 +859,7 @@ namespace ExcelMerger.Tests
         /// «начало следующей» в одно слово, а пораново слова выглядели бы целыми. Формат слова —
         /// формат его первого знака.
         /// </summary>
-        private static List<SlideWord> SlideWords(XContainer root)
+        internal static List<SlideWord> SlideWords(XContainer root)
         {
             var result = new List<SlideWord>();
             foreach (XElement p in root.Descendants(A + "p"))
@@ -903,6 +904,7 @@ namespace ExcelMerger.Tests
                     Bold = rPr != null && (string)rPr.Attribute("b") == "1",
                     Italic = rPr != null && (string)rPr.Attribute("i") == "1",
                     Underline = rPr != null && rPr.Attribute("u") != null && (string)rPr.Attribute("u") != "none",
+                    Strike = rPr != null && rPr.Attribute("strike") != null && (string)rPr.Attribute("strike") != "noStrike",
                     Color = rgb != null ? int.Parse((string)rgb.Attribute("val"), NumberStyles.HexNumber, CultureInfo.InvariantCulture) : 0,
                     Size = rPr != null && rPr.Attribute("sz") != null ? (double)rPr.Attribute("sz") / 100 : 0
                 }

@@ -408,14 +408,14 @@ namespace ExcelMerger.Tests
             AssertPptxValid(new List<PdfPageText> { wild });
         }
 
-        [Test("Аудит E: pptx — подчёркивание атрибутом только без подложки")]
+        [Test("Аудит E: pptx — подчёркивание и зачёркивание атрибутом только без подложки")]
         private static void AuditEPptxUnderlineWithBackground()
         {
             Func<bool, XElement> runProps = delegate(bool withBackground)
             {
                 PdfPageText page = PptxPage(960, 540);
                 var par = new OcrParagraph { LeftPt = 40, TopPt = 500, RightPt = 300, BottomPt = 480 };
-                par.Runs.Add(new OcrRun { Text = "подчёркнуто", FontSizePt = 12, Underline = true });
+                par.Runs.Add(new OcrRun { Text = "подчёркнуто", FontSizePt = 12, Underline = true, Strike = true });
                 page.Paragraphs.Add(par);
                 List<Background> backgrounds = withBackground
                     ? new List<Background> { new Background { Data = PptxTinyPng() } } : null;
@@ -424,8 +424,10 @@ namespace ExcelMerger.Tests
                 return PptxFirst(slide.Descendants(PptxA + "rPr"));
             };
             AssertEq("sng", (string)runProps(false).Attribute("u"), "без подложки линию рисует сам текст");
+            AssertEq("sngStrike", (string)runProps(false).Attribute("strike"), "и зачёркивание — тоже");
             AssertEq<string>(null, (string)runProps(true).Attribute("u"),
                 "подложка уже несёт линию — второй черты нет");
+            AssertEq<string>(null, (string)runProps(true).Attribute("strike"), "и зачёркивания поверх подложки нет");
         }
 
         [Test("Аудит E: pptx — ссылки, разные регистром, — разные связи; опасные — без связи")]

@@ -575,6 +575,7 @@ namespace ExcelMerger
                 font.Superscript = run.Super ? 1 : 0;
                 font.Subscript = run.Sub ? 1 : 0;
                 font.Underline = run.Underline ? 1 : 0; // wdUnderlineSingle / None
+                font.StrikeThrough = run.Strike ? 1 : 0;
                 font.Color = ToBgr(run.ColorArgb);
                 if (string.IsNullOrEmpty(run.Uri))
                 {

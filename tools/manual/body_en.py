@@ -658,7 +658,7 @@ def build():
 
     h2("7.4. What comes across and what does not")
     p("What comes across: text in paragraphs in reading order — with its font, size, weight, "
-      "colour, underline, alignment and first-line indent. Tables with visible lines are "
+      "colour, underline, strikethrough, alignment and first-line indent. Tables with visible lines are "
       "rebuilt as cells, merged ones included. Portrait and landscape orientation is kept page "
       "by page. Images and hyperlinks come across too.")
     p("The limits are worth knowing in advance, so as not to waste time.")
@@ -726,7 +726,7 @@ def build():
          bold_head="Press “Convert to PowerPoint…” ")
 
     h2("8.5. What comes across")
-    p("Text comes across in paragraphs, with its font, size, weight, colour, underline, "
+    p("Text comes across in paragraphs, with its font, size, weight, colour, underline, strikethrough, "
       "super- and subscripts and hyperlinks. Tables become real slide tables, merged cells "
       "included. The slide size follows the page: a 16:9 deck stays 16:9, and an A4 document "
       "gives A4 slides.")

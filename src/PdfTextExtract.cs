@@ -540,13 +540,15 @@ namespace ExcelMerger
                 : null;
             // Слова таблиц уходят в ячейки; абзацы строятся из ОСТАВШИХСЯ (внетабличных) слов.
             TableDetectResult det = TableDetector.Detect(lines, words, pageW, pageH);
-            HashSet<PdfLine> underlines = UnderlineDetector.Mark(det.RemainingWords, lines); // подчёркивания по линовке
-            // Одиночные линии, не ставшие ни таблицей, ни подчёркиванием, — прочерки
-            // полей («______ №»): переносим текстом-заполнителем, иначе строка
+            // Подчёркивание и зачёркивание — только из одиночных линий: границы ячеек и рамки
+            // (связные компоненты линовки) у слова — не украшение текста (RC-33).
+            HashSet<PdfLine> decorations = TextDecorations.Mark(det.RemainingWords, det.LoneLines);
+            // Одиночные линии, не ставшие ни таблицей, ни подчёркиванием или зачёркиванием, —
+            // прочерки полей («______ №»): переносим текстом-заполнителем, иначе строка
             // полей теряет прочерки и разваливается.
             // Линии-заполнители нужны только потоковому выводу: см. PageLayoutMode.
             if (mode == PageLayoutMode.Document)
-                AddRuleWords(det.RemainingWords, det.LoneLines, underlines);
+                AddRuleWords(det.RemainingWords, det.LoneLines, decorations);
             // Сетки без линовки (чеки, формы «метка … значение») — таблицей без границ.
             GridDetectResult grids = GridDetector.Detect(det.RemainingWords);
             det.Tables.AddRange(grids.Tables);
@@ -730,13 +732,14 @@ namespace ExcelMerger
         private const double RuleAscentFactor = 0.6;
 
         /// <summary>
-        /// Превратить одиночные горизонтальные линии (не таблица и не подчёркивание) в
+        /// Превратить одиночные горизонтальные линии (не таблица, не подчёркивание и не
+        /// зачёркивание — <see cref="TextDecorations"/>) в
         /// слова-прочерки «____»: линии-заполнители полей («______ № ______»)
         /// иначе теряются вовсе, и строка полей разваливается. Число «_» подбирается по
         /// длине линии и типичному кеглю слов страницы; рамка прочерка — от линии вверх на треть
         /// кегля, чтобы строка собралась вместе с соседними словами. Чистая — под тест.
         /// </summary>
-        internal static void AddRuleWords(List<PdfWord> words, List<PdfLine> loneLines, HashSet<PdfLine> underlineLines)
+        internal static void AddRuleWords(List<PdfWord> words, List<PdfLine> loneLines, HashSet<PdfLine> decorationLines)
         {
             if (words == null || loneLines == null || loneLines.Count == 0)
                 return;
@@ -751,7 +754,7 @@ namespace ExcelMerger
             foreach (PdfLine line in loneLines)
             {
                 if (line.Orientation != LineOrientation.Horizontal
-                    || (underlineLines != null && underlineLines.Contains(line))
+                    || (decorationLines != null && decorationLines.Contains(line))
                     || line.Thickness > RuleMaxThicknessPt
                     || line.Length < RuleMinLenPt)
                     continue;

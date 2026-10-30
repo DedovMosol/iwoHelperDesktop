@@ -587,7 +587,7 @@ namespace ExcelMerger
             return !double.IsNaN(value) && !double.IsInfinity(value);
         }
 
-        private static PdfWord CloneWord(PdfWord word)
+        internal static PdfWord CloneWord(PdfWord word)
         {
             return new PdfWord
             {
@@ -611,6 +611,7 @@ namespace ExcelMerger
                 Super = word.Super,
                 Sub = word.Sub,
                 Underline = word.Underline,
+                Strike = word.Strike,
                 Uri = word.Uri
             };
         }

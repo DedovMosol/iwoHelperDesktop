@@ -79,7 +79,7 @@ namespace ExcelMerger.Tests
                 OcrRun r = owners[at];
                 words.Add(new CorpusCheck.Tok
                 {
-                    Text = word, Bold = r.Bold, Italic = r.Italic, Underline = r.Underline,
+                    Text = word, Bold = r.Bold, Italic = r.Italic, Underline = r.Underline, Strike = r.Strike,
                     Color = r.ColorArgb & 0xFFFFFF,
                     // Word хранит кегль в полупунктах: 11,1 пишется как 11.
                     Size = Math.Round(FontResolver.ClampSizePt(r.FontSizePt) * 2) / 2,
@@ -300,6 +300,7 @@ namespace ExcelMerger.Tests
                     Bold = On(pkg.RunProp(r, p, "b")),
                     Italic = On(pkg.RunProp(r, p, "i")),
                     Underline = uVal != null && uVal != "none",
+                    Strike = On(pkg.RunProp(r, p, "strike")),
                     Color = colorVal == null || colorVal == "auto" ? 0 : int.Parse(colorVal, NumberStyles.HexNumber, CultureInfo.InvariantCulture),
                     Size = sz != null ? (double)sz.Attribute(W + "val") / 2 : 0,
                     Font = pkg.Font(pkg.RunProp(r, p, "rFonts"))
@@ -488,6 +489,7 @@ namespace ExcelMerger.Tests
                 if (x.Bold != y.Bold) findings.Add(new CFinding("word-bold", w + (x.Bold ? " потерял полужирный" : " стал полужирным")));
                 if (x.Italic != y.Italic) findings.Add(new CFinding("word-italic", w + (x.Italic ? " потерял курсив" : " стал курсивом")));
                 if (x.Underline != y.Underline) findings.Add(new CFinding("word-underline", w + (x.Underline ? " потерял подчёркивание" : " стал подчёркнутым")));
+                if (x.Strike != y.Strike) findings.Add(new CFinding("word-strike", w + (x.Strike ? " потерял зачёркивание" : " стал зачёркнутым")));
                 if (x.Color != y.Color) findings.Add(new CFinding("word-color", w + " — цвет " + y.Color.ToString("X6") + " вместо " + x.Color.ToString("X6")));
                 if (Math.Abs(x.Size - y.Size) > 0.01) findings.Add(new CFinding("word-size", w + " — кегль " + y.Size.ToString(CultureInfo.InvariantCulture) + " вместо " + x.Size.ToString(CultureInfo.InvariantCulture)));
                 if (CorpusCheck.FontKey(x.Font) != CorpusCheck.FontKey(y.Font)) findings.Add(new CFinding("word-font", w + " — шрифт «" + y.Font + "» вместо «" + x.Font + "»"));

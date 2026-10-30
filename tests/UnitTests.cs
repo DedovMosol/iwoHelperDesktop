@@ -337,9 +337,9 @@ namespace ExcelMerger.Tests
             Run("TableDetector: слова вне таблицы остаются в потоке", TestTableWordsOutside);
             Run("TableDetector: нет линий -> нет таблиц, все слова в потоке", TestTableNoLines);
             Run("PdfPageExtraction: страница-таблица считается текстовой (не «скан»)", TestHasExtractableContent);
-            Run("UnderlineDetector: линия под словом -> подчёркнуто", TestUnderlineMarks);
-            Run("UnderlineDetector: далёкая/короткая линия -> не подчёркнуто", TestUnderlineIgnores);
-            Run("UnderlineDetector: линия во всю ширину (разделитель) -> не подчёркнуто", TestUnderlineWideRule);
+            Run("TextDecorations: линия под словом -> подчёркнуто", TestUnderlineMarks);
+            Run("TextDecorations: далёкая/короткая линия -> не подчёркнуто", TestUnderlineIgnores);
+            Run("TextDecorations: линия во всю ширину (разделитель) -> не подчёркнуто", TestUnderlineWideRule);
             Run("OcrLayout: левый сайдбар отделяется от тела (не перемешиваются)", TestSidebarSeparation);
             Run("OcrLayout: одноколоночный текст не делится (сайдбар не срабатывает)", TestNoSidebarSingleColumn);
             Run("SetMargins: поля по словам И картинкам; нижнее — с капом", TestMarginsWithImages);
@@ -14139,22 +14139,22 @@ namespace ExcelMerger.Tests
             var w = Word("под", 25, 55); // центр 25 -> Left 20, Right 30; переопределим ниже вручную
             w.Left = 10; w.Right = 40; w.Bottom = 50; w.Top = 60;
             var lines = new List<PdfLine> { HLine(48, 10, 40) }; // на 2 pt ниже низа, вся ширина
-            UnderlineDetector.Mark(new List<PdfWord> { w }, lines);
+            TextDecorations.Mark(new List<PdfWord> { w }, lines);
             AssertTrue(w.Underline, "линия у базовой линии на всю ширину -> подчёркнуто");
         }
 
         private static void TestUnderlineIgnores()
         {
             var far = new PdfWord { Text = "far", Left = 10, Right = 40, Bottom = 50, Top = 60 };
-            UnderlineDetector.Mark(new List<PdfWord> { far }, new List<PdfLine> { HLine(30, 10, 40) }); // далеко внизу
+            TextDecorations.Mark(new List<PdfWord> { far }, new List<PdfLine> { HLine(30, 10, 40) }); // далеко внизу
             AssertTrue(!far.Underline, "далёкая линия -> не подчёркнуто");
 
             var shortLine = new PdfWord { Text = "sh", Left = 10, Right = 40, Bottom = 50, Top = 60 };
-            UnderlineDetector.Mark(new List<PdfWord> { shortLine }, new List<PdfLine> { HLine(48, 10, 18) }); // покрытие ~27%
+            TextDecorations.Mark(new List<PdfWord> { shortLine }, new List<PdfLine> { HLine(48, 10, 18) }); // покрытие ~27%
             AssertTrue(!shortLine.Underline, "короткая линия -> не подчёркнуто");
 
             var noLines = new PdfWord { Text = "no", Left = 10, Right = 40, Bottom = 50, Top = 60 };
-            UnderlineDetector.Mark(new List<PdfWord> { noLines }, new List<PdfLine>());
+            TextDecorations.Mark(new List<PdfWord> { noLines }, new List<PdfLine>());
             AssertTrue(!noLines.Underline, "нет линий -> не подчёркнуто");
         }
 
@@ -14163,7 +14163,7 @@ namespace ExcelMerger.Tests
             // Полноширинный разделитель под меткой не должен подчёркивать её.
             var w = new PdfWord { Text = "метка", Left = 57, Right = 120, Bottom = 50, Top = 60, FontSizePt = 10 };
             var rule = HLine(48, 57, 520); // длина 463 >> ширины слова 63 (×7)
-            UnderlineDetector.Mark(new List<PdfWord> { w }, new List<PdfLine> { rule });
+            TextDecorations.Mark(new List<PdfWord> { w }, new List<PdfLine> { rule });
             AssertTrue(!w.Underline, "разделитель во всю ширину -> не подчёркивание");
         }
 

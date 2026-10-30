@@ -62,7 +62,7 @@ Turn one or **several born‑digital** PDFs (saved from Word, “Microsoft Print
 
 <details><summary><b>Everything PDF → Word preserves and handles</b></summary>
 
-- **Text formatting** — font family, size, bold/italic, underline, colour, super/subscript, paragraph alignment (left/justify/centre, including a multi‑line centred heading kept as one block), and per‑paragraph first‑line indent. Line spacing is single, so a dense document keeps its original page count on any machine. Cyrillic falls back to Times New Roman when a PDF font isn't installed.
+- **Text formatting** — font family, size, bold/italic, underline, strikethrough, colour, super/subscript, paragraph alignment (left/justify/centre, including a multi‑line centred heading kept as one block), and per‑paragraph first‑line indent. Line spacing is single, so a dense document keeps its original page count on any machine. Cyrillic falls back to Times New Roman when a PDF font isn't installed.
 - **Page setup** — per‑page size, orientation (portrait/landscape) and margins are reproduced, and margins account for images so a picture above a heading doesn't push the content down.
 - **Tables** — bordered tables become real Word tables (column widths from the ruling, merged cells with colspan/rowspan, per‑cell text). An unruled grid of label/value pairs is rebuilt as a borderless table so the pairs keep their rows.
 - **Lists** — numbered and bulleted lists become native Word lists (the source marker is dropped and Word draws its own), with **nested lists** kept up to Word's nine levels (v1.18.4+): the level follows the *depth* of the indent, an outer indent closes the inner levels, and a step under 12 pt counts as the same level so a ragged left edge doesn't invent nesting. Numbering continues across nested text and restarts for a new list.
@@ -76,7 +76,7 @@ Turn the pages of one or **several born‑digital** PDFs into a single `.pptx` �
 
 <details><summary><b>How the two layers work, and what carries over</b></summary>
 
-- **Two layers per slide.** The text arrives as ordinary text boxes placed where it was, with font, size, weight, colour, underline, super/subscript and hyperlinks. Everything that is *not* text — background, frames, charts, vector logos — arrives as the page rendered **without its text layer**, so the slide looks like the source instead of a handful of labels on white.
+- **Two layers per slide.** The text arrives as ordinary text boxes placed where it was, with font, size, weight, colour, underline, strikethrough, super/subscript and hyperlinks. Everything that is *not* text — background, frames, charts, vector logos — arrives as the page rendered **without its text layer**, so the slide looks like the source instead of a handful of labels on white.
 - **Tables** become real slide tables (column widths, merged cells, borders — or no borders for a grid that had none), so they can still be edited row by row.
 - **Slide size** follows the pages: a 16:9 deck stays 16:9, an A4 document becomes A4 slides. A presentation has one slide size, so when pages differ, the most common size wins and the others are scaled to fit and centred.
 - **Images** are placed where they were, identical ones stored once, and photos repacked to keep the file small.

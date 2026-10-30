@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -932,6 +932,237 @@ namespace ExcelMerger.Tests
             }
             var pages = new List<PdfPageText> { new PdfPageText(), new PdfPageText { ExtractionError = "x" }, new PdfPageText() };
             AssertEq("2", string.Join(",", PdfPageExtraction.FailedPositions(pages)), "номера — с 1, в порядке результата");
+        }
+
+        // ---------- RC-5, RC-6, RC-33: подчёркнутая и зачёркнутая фраза; линовка таблицы — не украшение ----------
+
+        // Слова листа Rc5Pdf под полосами, как их рисует Word: одна полоса на всю фразу.
+        private const string Rc5Underlined = "Крупный Слово важная заголовок подчёркнутая фраза";
+        private const string Rc6Struck = "зачёркнутая фраза";
+
+        /// <summary>
+        /// Строки, как их рисует Word: подчёркивание — ОДНА полоса под всей фразой (на 0,11 кегля
+        /// ниже базовой линии, толщиной 0,05 кегля), зачёркивание — на 0,27 кегля выше. Разметка
+        /// строки: «_слово» — подчёркнуто, «~слово» — зачёркнуто, «+» в конце — полоса захватывает
+        /// и пробел после слова (выделение двойным щелчком). Плюс разделитель во всю колонку под
+        /// заголовком и таблица, нарисованная по ячейкам, вплотную под абзацем (RC-33).
+        /// </summary>
+        private static string Rc5Pdf(string dir)
+        {
+            string path = Path.Combine(dir, "decorations.pdf");
+            var options = new PdfSharp.Drawing.XPdfFontOptions(PdfSharp.Pdf.PdfFontEncoding.Unicode);
+            var f12 = new PdfSharp.Drawing.XFont("Arial", 12, PdfSharp.Drawing.XFontStyle.Regular, options);
+            var f24 = new PdfSharp.Drawing.XFont("Arial", 24, PdfSharp.Drawing.XFontStyle.Regular, options);
+            using (var pdf = new PdfSharp.Pdf.PdfDocument())
+            {
+                PdfSharp.Pdf.PdfPage page = A4(pdf);
+                using (PdfSharp.Drawing.XGraphics g = PdfSharp.Drawing.XGraphics.FromPdfPage(page))
+                {
+                    PdfSharp.Drawing.XBrush ink = PdfSharp.Drawing.XBrushes.Black;
+                    Action<string, PdfSharp.Drawing.XFont, double> line = (spec, font, y) =>
+                    {
+                        double size = font.Size, x = 72;
+                        double space = g.MeasureString("a a", font).Width - g.MeasureString("aa", font).Width;
+                        char kind = ' ';
+                        double from = 0, to = 0;
+                        Action flush = () =>
+                        {
+                            if (kind != ' ')
+                                g.DrawRectangle(ink, from, kind == '_' ? y + 0.11 * size : y - 0.27 * size, to - from, Math.Max(0.5, 0.05 * size));
+                            kind = ' ';
+                        };
+                        foreach (string token in spec.Split(' '))
+                        {
+                            char mark = token[0] == '_' || token[0] == '~' ? token[0] : ' ';
+                            string text = mark == ' ' ? token : token.Substring(1);
+                            bool tail = text.EndsWith("+");
+                            text = text.TrimEnd('+');
+                            double width = g.MeasureString(text, font).Width;
+                            g.DrawString(text, font, ink, x, y);
+                            if (mark != kind) { flush(); kind = mark; from = x; }
+                            to = x + width + (tail ? space : 0);
+                            x += width + space;
+                        }
+                        flush();
+                    };
+                    line("Перед _важная _подчёркнутая _фраза после", f12, 100);
+                    line("_Слово+ дальше идёт обычный текст", f12, 130);
+                    // Разделитель секции — во всю колонку на 3 pt под заголовком: не подчёркивание.
+                    line("Опыт работы и навыки", f12, 160);
+                    g.DrawLine(new PdfSharp.Drawing.XPen(PdfSharp.Drawing.XColors.Black, 0.75), 72, 163, 523, 163);
+                    line("Это ~зачёркнутая ~фраза текста", f12, 200);
+                    // Крупный кегль: «у» и «й» опускают низ рамки ниже полосы — мерить надо от базовой линии.
+                    line("_Крупный _заголовок", f24, 250);
+                    // RC-33: верх таблицы на 3 pt под абзацем, рамка — по ячейке: отрезок верхней
+                    // границы ячейки (120 pt) короче трёх ширин слова «Таблица».
+                    line("Таблица ниже показывает итоги", f12, 300);
+                    var pen = new PdfSharp.Drawing.XPen(PdfSharp.Drawing.XColors.Black, 0.5);
+                    for (int r = 0; r < 2; r++)
+                        for (int c = 0; c < 3; c++)
+                        {
+                            g.DrawRectangle(pen, 72 + c * 120, 303 + r * 20, 120, 20);
+                            g.DrawString("Ячейка" + (r * 3 + c + 1), f12, ink, 76 + c * 120, 317 + r * 20);
+                        }
+                }
+                pdf.Save(path);
+            }
+            return path;
+        }
+
+        /// <summary>Слова абзацев страницы (вне таблиц) с признаком рана, по алфавиту.</summary>
+        private static string Rc5Words(PdfPageText page, Func<OcrRun, bool> flag)
+        {
+            var words = new List<string>();
+            foreach (OcrParagraph p in page.Paragraphs)
+                foreach (OcrRun r in p.Runs)
+                    if (flag(r))
+                        words.AddRange(r.Text.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries));
+            words.Sort(StringComparer.Ordinal);
+            return string.Join(" ", words.ToArray());
+        }
+
+        private static string Rc5Sorted(string words)
+        {
+            return string.Join(" ", words.Split(' ').OrderBy(s => s, StringComparer.Ordinal).ToArray());
+        }
+
+        [Test("Аудит RC-5/RC-6/RC-33: подчёркнута и зачёркнута вся фраза; разделитель и верх таблицы — не украшение")]
+        private static void AuditRc5PhraseDecorations()
+        {
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc5_"))
+            {
+                string path = Rc5Pdf(dir.Path);
+                foreach (PageLayoutMode mode in new[] { PageLayoutMode.Document, PageLayoutMode.Slide })
+                {
+                    PdfPageText page = PdfTextExtract.Extract(path, null, null, null, mode)[0];
+                    AssertEq(Rc5Sorted(Rc5Underlined), Rc5Words(page, r => r.Underline), mode + ": подчёркнуты ровно слова над полосами: " + page.Text);
+                    AssertEq(Rc5Sorted(Rc6Struck), Rc5Words(page, r => r.Strike), mode + ": зачёркнуты ровно слова под полосой: " + page.Text);
+                    AssertEq(1, page.Tables.Count, mode + ": таблица распознана");
+                    // Полосы фраз — не прочерки полей: «____» остаётся один — от разделителя (Document);
+                    // разбор для слайда прочерков не синтезирует вовсе.
+                    int fillers = page.Paragraphs.SelectMany(p => System.Text.RegularExpressions.Regex.Matches(p.Text, "_+").Cast<System.Text.RegularExpressions.Match>()).Count();
+                    AssertEq(mode == PageLayoutMode.Document ? 1 : 0, fillers, mode + ": прочерк только от разделителя: " + page.Text);
+                    AssertTrue(page.Paragraphs.Any(p => p.Text.Contains("Это зачёркнутая фраза текста")), mode + ": зачёркнутая строка цела: " + page.Text);
+                }
+                // PowerPoint: u="sng" и strike="sngStrike" ровно у этих слов.
+                OoxmlPackage package = PptxWriter.BuildPackage(PdfTextExtract.Extract(path, null, null, null, PageLayoutMode.Slide), PptxStamp);
+                string pptx = dir.File("decorations.pptx");
+                package.Save(pptx);
+                AssertTrue(PptxValidationProblems(pptx).Count == 0, "пакет валиден");
+                string slide;
+                using (System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(pptx))
+                using (var reader = new StreamReader(zip.GetEntry("ppt/slides/slide1.xml").Open()))
+                    slide = reader.ReadToEnd();
+                List<CorpusCheck.SlideWord> words = CorpusCheck.SlideWords(System.Xml.Linq.XDocument.Parse(slide));
+                Func<Func<CorpusCheck.Tok, bool>, string> slideWords = flag =>
+                    string.Join(" ", words.Where(w => flag(w.Tok)).Select(w => w.Tok.Text).OrderBy(s => s, StringComparer.Ordinal).ToArray());
+                AssertEq(Rc5Sorted(Rc5Underlined), slideWords(t => t.Underline), "слайд: подчёркнуты ровно слова над полосами");
+                AssertEq(Rc5Sorted(Rc6Struck), slideWords(t => t.Strike), "слайд: зачёркнуты ровно слова под полосой");
+            }
+        }
+
+        [Test("Аудит RC-5/RC-6: подчёркнутая и зачёркнутая фраза в .docx — у каждого её слова (живой Word)")]
+        private static void AuditRc5WordLive()
+        {
+            AuditBRequireWord();
+            EmbeddedAssemblies.Ensure();
+            using (var dir = new TempDir("iwo_rc5_docx_"))
+            {
+                string path = Rc5Pdf(dir.Path), docx = dir.File("decorations.docx");
+                List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                AssertEq(Rc5Sorted(Rc5Underlined), Rc5Words(pages[0], r => r.Underline), "модель: подчёркнутые");
+                AssertEq(Rc5Sorted(Rc6Struck), Rc5Words(pages[0], r => r.Strike), "модель: зачёркнутые");
+                AuditBOfficeSta(180000, delegate { WordDocxWriter.Write(pages, docx); });
+                // Сверка живого корпуса: формат каждого слова, в том числе w:u и w:strike.
+                List<CFinding> findings = CorpusDocx.Compare(pages, docx);
+                AssertTrue(findings.Count == 0, string.Join("; ", findings.Select(f => f.ToString()).ToArray()));
+            }
+        }
+
+        [Test("Аудит RC-6: копия слова в «Сравнении» переносит каждое поле PdfWord, включая Strike")]
+        private static void AuditRc6ReviewCloneCopiesAllFields()
+        {
+            // Поле, добавленное в PdfWord и забытое в копии, молча обнулялось бы у слов «Сравнения».
+            var source = new PdfWord();
+            var fields = typeof(PdfWord).GetFields(System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+            for (int i = 0; i < fields.Length; i++)
+            {
+                Type t = fields[i].FieldType;
+                object value = t == typeof(double) ? (object)(i + 0.5) : t == typeof(int) ? (object)(i + 1)
+                    : t == typeof(bool) ? (object)true : t == typeof(string) ? (object)("v" + i) : null;
+                AssertTrue(value != null, "тип поля " + fields[i].Name + " — " + t.Name + ": дополните тест");
+                fields[i].SetValue(source, value);
+            }
+            PdfWord copy = PdfReviewService.CloneWord(source);
+            AssertTrue(!ReferenceEquals(copy, source), "копия — новый объект");
+            foreach (System.Reflection.FieldInfo f in fields)
+                AssertEq(f.GetValue(source), f.GetValue(copy), "поле " + f.Name + " перенесено");
+        }
+
+        private static PdfWord Rc5Word(string text, double left, double right, double baseline, double size)
+        {
+            // Рамка — чернила: низ у букв с выносными элементами на 0,21 кегля ниже базовой линии.
+            return new PdfWord { Text = text, Left = left, Right = right, Bottom = baseline - 0.21 * size, Top = baseline + 0.72 * size,
+                BaselineXPt = left, BaselineYPt = baseline, FontSizePt = size };
+        }
+
+        [Test("Аудит RC-5/RC-6: правило украшений — полосы от базовой линии в долях кегля, линия по фразе")]
+        private static void AuditRc5Rules()
+        {
+            Func<double, double, double, PdfLine> h = (y, from, to) => Rc19Line(true, y, from, to);
+            // «_слово» — подчёркнуто, «~слово» — зачёркнуто; «|линия» — линия ушла в украшения.
+            Func<List<PdfWord>, PdfLine, string> marked = (words, l) =>
+            {
+                foreach (PdfWord w in words) { w.Underline = false; w.Strike = false; }
+                HashSet<PdfLine> used = TextDecorations.Mark(words, new List<PdfLine> { l });
+                return string.Join(" ", words.Where(w => w.Underline || w.Strike)
+                    .Select(w => (w.Underline ? "_" : "") + (w.Strike ? "~" : "") + w.Text).ToArray()) + (used.Count > 0 ? "|линия" : "");
+            };
+            // Кегль 24: полоса на 0,11 кегля под базовой линией — выше низа рамки «у» на 2,4 pt.
+            var big = new List<PdfWord> { Rc5Word("Крупный", 100, 200, 500, 24) };
+            AssertEq("_Крупный|линия", marked(big, h(500 - 0.11 * 24, 100, 200)), "крупный кегль: от базовой линии");
+            AssertEq("_Крупный|линия", marked(big, h(500 - 0.34 * 24, 100, 200)), "0,34 кегля ниже — ещё подчёркивание");
+            AssertEq("", marked(big, h(500 - 0.36 * 24, 100, 200)), "0,36 кегля ниже — уже нет");
+            AssertEq("_Крупный|линия", marked(big, h(500 + 0.11 * 24, 100, 200)), "0,11 кегля выше — ещё подчёркивание");
+            AssertEq("", marked(big, h(500 + 0.135 * 24, 100, 200)), "между полосами (0,135 кегля) — ни то, ни другое");
+            AssertEq("~Крупный|линия", marked(big, h(500 + 0.16 * 24, 100, 200)), "0,16 кегля выше — уже зачёркивание");
+            AssertEq("~Крупный|линия", marked(big, h(500 + 0.27 * 24, 100, 200)), "зачёркивание Word (0,27)");
+            AssertEq("~Крупный|линия", marked(big, h(500 + 0.44 * 24, 100, 200)), "0,44 кегля — ещё зачёркивание");
+            AssertEq("", marked(big, h(500 + 0.46 * 24, 100, 200)), "0,46 кегля — уже нет");
+            // Мелкий кегль: допуск подчёркивания вниз не меньше 4 pt.
+            var small = new List<PdfWord> { Rc5Word("мелко", 100, 130, 500, 8) };
+            AssertEq("_мелко|линия", marked(small, h(496.2, 100, 130)), "8 pt: 3,8 pt ниже — подчёркивание");
+            AssertEq("", marked(small, h(495.8, 100, 130)), "8 pt: 4,2 pt ниже — нет");
+
+            // Фраза: одна полоса под тремя словами — подчёркнуты все три.
+            Func<List<PdfWord>> phrase = () => new List<PdfWord>
+            {
+                Rc5Word("до", 60, 80, 500, 12), Rc5Word("раз", 100, 120, 500, 12), Rc5Word("два", 124, 150, 500, 12),
+                Rc5Word("три", 154, 170, 500, 12), Rc5Word("после", 174, 200, 500, 12),
+                Rc5Word("ниже", 100, 170, 486, 12) // следующая строка
+            };
+            AssertEq("_раз _два _три|линия", marked(phrase(), h(498.7, 100, 170)), "фраза: полоса точно по словам");
+            AssertEq("~раз ~два ~три|линия", marked(phrase(), h(503.2, 100, 170)), "зачёркнутая фраза — та же логика");
+            AssertEq("_раз _два _три|линия", marked(phrase(), h(498.7, 99, 173)), "с пробелом после фразы (≤ 0,5 кегля с краю)");
+            // Полоса длиннее фразы больше чем на полкегля с края — линейка, а не украшение фразы:
+            // каждое слово тогда само по себе (линия ≤ 3 ширин слова — прежнее правило).
+            AssertEq("", marked(phrase(), h(498.7, 100, 184)), "полоса на 14 pt дальше фразы");
+            AssertEq("", marked(phrase(), h(498.7, 85, 170)), "и на 15 pt раньше");
+            AssertEq("_два|линия", marked(phrase(), h(498.7, 110, 150)), "одно слово: линия 40 ≤ 3 × 26, «раз» задето наполовину");
+            // Слово, накрытое полосой меньше чем на 0,6, — не часть фразы, а полоса, задевшая его
+            // краем, всё ещё прилегает к фразе (выступ 5,5 pt ≤ 0,5 кегля).
+            AssertEq("_раз _два|линия", marked(phrase(), h(498.7, 100, 155.5)), "«три» задето на 1,5 из 16 pt");
+            AssertEq("", marked(phrase(), h(400, 100, 170)), "полоса без слов на строке — ничья");
+            // Выступ мерится кеглем самих слов: у 24 pt пробел 10 pt — ещё полкегля (у 10 pt — нет).
+            var wide = new List<PdfWord> { Rc5Word("a", 100, 110, 500, 24), Rc5Word("b", 120, 130, 500, 24) };
+            AssertEq("_a _b|линия", marked(wide, h(497.4, 100, 140)), "24 pt: выступ 10 pt ≤ 12 pt");
+            AssertEq("", marked(phrase(), Rc19Line(false, 110, 490, 510)), "вертикаль — не украшение");
+
+            // Слово без базовой линии (рамка из другого источника) — мерить от низа рамки.
+            var bare = new List<PdfWord> { new PdfWord { Text = "x", Left = 10, Right = 40, Bottom = 50, Top = 60 } };
+            AssertEq("_x|линия", marked(bare, h(48, 10, 40)), "без базовой линии — от низа рамки");
         }
     }
 }

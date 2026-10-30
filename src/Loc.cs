@@ -1215,7 +1215,7 @@ namespace ExcelMerger
                 "PowerPoint для конвертации НЕ нужен — файл собирается самой программой.\n\n" +
                 "Каждый слайд состоит из двух слоёв. Текст переносится настоящими надписями: " +
                 "его можно править, искать и копировать, у него сохраняются шрифт, размер, " +
-                "начертание, цвет, подчёркивание и гиперссылки; таблицы становятся таблицами " +
+                "начертание, цвет, подчёркивание, зачёркивание и гиперссылки; таблицы становятся таблицами " +
                 "слайда. Всё остальное — фон, рамки, диаграммы, векторные логотипы — переносится " +
                 "подложкой страницы, поэтому слайд выглядит как исходник.\n\n" +
                 "Текущие ограничения перевода в PowerPoint:\n" +
@@ -1238,7 +1238,7 @@ namespace ExcelMerger
                 "PowerPoint is NOT required — the file is built by the program itself.\n\n" +
                 "Every slide has two layers. The text is placed as real text boxes: it stays " +
                 "editable, searchable and copyable, and keeps its font, size, weight, colour, " +
-                "underline and hyperlinks; tables become slide tables. Everything else — " +
+                "underline, strikethrough and hyperlinks; tables become slide tables. Everything else — " +
                 "background, frames, charts, vector logos — is carried over as the page " +
                 "background, so the slide looks like the original.\n\n" +
                 "Current limitations:\n" +
@@ -1266,7 +1266,7 @@ namespace ExcelMerger
                 "Извлекается ТЕКСТОВЫЙ СЛОЙ цифровых PDF (например, сохранённых из Word, " +
                 "«Microsoft Print to PDF», экспортированных из браузера). Переносятся: текст " +
                 "абзацами в порядке чтения — с шрифтом, размером, начертанием, цветом, " +
-                "подчёркиванием, выравниванием и красной строкой; таблицы с линиями (границами) " +
+                "подчёркиванием, зачёркиванием, выравниванием и красной строкой; таблицы с линиями (границами) " +
                 "восстанавливаются ячейками, включая объединённые; книжная и альбомная " +
                 "ориентация страниц сохраняется постранично; изображения и гиперссылки.\n\n" +
                 "Текущие ограничения перевода в Word:\n" +
@@ -1290,7 +1290,7 @@ namespace ExcelMerger
                 "The window remembers its size and position between runs.\n\n" +
                 "The TEXT LAYER of born‑digital PDFs is extracted (e.g. saved from Word, " +
                 "“Microsoft Print to PDF”, exported from a browser). Transferred: text as " +
-                "paragraphs in reading order — with font, size, weight, colour, underline, " +
+                "paragraphs in reading order — with font, size, weight, colour, underline, strikethrough, " +
                 "alignment and first‑line indent; bordered tables are rebuilt as cells, " +
                 "including merged ones; portrait/landscape orientation is kept per page; " +
                 "images and hyperlinks.\n\n" +
