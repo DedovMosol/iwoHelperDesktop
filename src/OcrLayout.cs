@@ -191,11 +191,14 @@ namespace ExcelMerger
         // зазора: в узких шрифтах (напр. Calibri Light) пробел ≈ 0.18 кегля, поэтому прежние 0.2
         // роняли настоящие пробелы и слепляли слова («СЛОВОСЛОВО»). 0.08 надёжно ниже.
         private const double SpaceGapFactor = 0.08;
-        // Разрез страницы на блоки (XyCut). Просвет колонок — в долях кегля (у шапки письма
-        // канал ≈29–42pt при кегле ~11, у justified-текста межсловные зазоры < 0.4 кегля —
-        // запас многократный). Колонка обязана быть высокой (не «подпись … дата» одной строки)
-        // и непустой. Нижний порог пустой полосы этажа — от вырожденных метрик.
-        private const double ColumnGapEmFactor = 2.5;
+        // Разрез колонок: канал Word ≈ 35 pt, LaTeX ≈ 10–12 pt; межсловный зазор ≈ 0.25 em.
+        // 2.5 em (~27 pt) не видел 12 pt канал (RC-14). 8 pt видит канал, а узкую полосу
+        // маркеров списка отсекает MinColumnWidth (4 em) — иначе «• | текст» две колонки.
+        private const double ColumnGapEmFactor = 0.6;
+        private const double ColumnGapMinPt = 8.0;
+        // 4 em (40 pt при 10 pt) глотало узкий сайдбар 33 pt как «не колонка».
+        // Полоса маркеров «•»/«1.» ≈ 8–15 pt — всё ещё ниже 3 em.
+        private const double ColumnMinWidthEmFactor = 3.0;
         private const double ColumnMinExtentEmFactor = 2.2;
         private const int ColumnMinWords = 2;
         private const double MinCutGapPt = 2.0;
@@ -228,6 +231,8 @@ namespace ExcelMerger
         // нарезанный ПО СТРОКАМ плотного текста, схлопнул бы зону колонок (в этаже из одной
         // строки вертикальному просвету не хватает высоты MinColumnExtent).
         private const double FloorGapFactor = 1.35;
+        // Ниже этого — риск резать обычные абзацы (RC-32). Заголовок с малой отбивкой,
+        // перекрывающий канал колонок, снимается в XyCut.PeelBlockingFloor, а не общим порогом.
         private const double FloorMinEmFactor = 1.2;
 
         /// <summary>Итог разбора страницы: абзацы и измеренный отступ первой строки (0 — без красной строки).</summary>
@@ -287,35 +292,7 @@ namespace ExcelMerger
             if (words == null || words.Count == 0)
                 return result;
 
-            // Метрики страницы для порогов разреза — по строкам ВСЕЙ страницы. В многоколоночной
-            // вёрстке строки соседних колонок перемежаются и типичный шаг занижается — это лишь
-            // добавляет горизонтальных разрезов (безвредно: порядок этажей совпадает с «сверху
-            // вниз»), а колонки ищутся внутри каждого этажа по своим просветам.
-            List<Line> pageLines = ToLines(words);
-            var pageHeights = new List<double>(pageLines.Count);
-            foreach (Line ln in pageLines)
-                pageHeights.Add(ln.Height);
-            double em = MathUtil.Median(pageHeights);
-            if (em <= 0) em = 1;
-            // Порог этажа — по типичному просвету между рамками строк: этаж появляется на
-            // полосах заметно шире межстрочных (границы зон и абзацев). Разрез, совпадающий с
-            // разрывом абзаца, безвреден — те же абзацы получаются поблочно (покрыто тестами).
-            double hGapMin = pageLines.Count < 2
-                ? double.MaxValue
-                : Math.Max(MinCutGapPt,
-                    Math.Max(FloorGapFactor * TypicalLineGap(pageLines), FloorMinEmFactor * em));
-
-            var boxes = new CutBox[words.Count];
-            for (int i = 0; i < words.Count; i++)
-            {
-                PdfWord w = words[i];
-                boxes[i] = new CutBox { Left = w.Left, Right = w.Right, Bottom = w.Bottom, Top = w.Top, Tag = i };
-            }
-            // Запрет колонок = «бесконечный» просвет: этажи режутся как обычно, колонки — никогда.
-            double vGapMin = splitColumns ? ColumnGapEmFactor * em : double.MaxValue;
-            List<CutLeaf> leaves = XyCut.Order(boxes, hGapMin, vGapMin,
-                ColumnMinExtentEmFactor * em, ColumnMinWords);
-
+            List<CutLeaf> leaves = CutLeaves(words, splitColumns);
             // Красная строка решается по ВСЕЙ странице (группы всех блоков разом): у отдельного
             // этажа/колонки абзацев мало, порознь порог IndentedShare не набирался бы.
             var stats = new IndentStats();
@@ -329,6 +306,35 @@ namespace ExcelMerger
             }
             result.FirstLineIndentPt = stats.DocumentIndent();
             return result;
+        }
+
+        /// <summary>
+        /// Листья XY-разреза тех же порогов, что и разбор абзацев. Метрики — по строкам всей
+        /// страницы: в многоколоночной вёрстке шаг занижается и это лишь добавляет этажей.
+        /// </summary>
+        private static List<CutLeaf> CutLeaves(IList<PdfWord> words, bool splitColumns)
+        {
+            List<Line> pageLines = ToLines(words);
+            var pageHeights = new List<double>(pageLines.Count);
+            foreach (Line ln in pageLines)
+                pageHeights.Add(ln.Height);
+            double em = MathUtil.Median(pageHeights);
+            if (em <= 0) em = 1;
+            double hGapMin = pageLines.Count < 2
+                ? double.MaxValue
+                : Math.Max(MinCutGapPt,
+                    Math.Max(FloorGapFactor * TypicalLineGap(pageLines), FloorMinEmFactor * em));
+            var boxes = new CutBox[words.Count];
+            for (int i = 0; i < words.Count; i++)
+            {
+                PdfWord w = words[i];
+                boxes[i] = new CutBox { Left = w.Left, Right = w.Right, Bottom = w.Bottom, Top = w.Top, Tag = i };
+            }
+            double vGapMin = splitColumns
+                ? Math.Max(ColumnGapMinPt, ColumnGapEmFactor * em)
+                : double.MaxValue;
+            double minWidth = splitColumns ? ColumnMinWidthEmFactor * em : 0;
+            return XyCut.Order(boxes, hGapMin, vGapMin, ColumnMinExtentEmFactor * em, ColumnMinWords, minWidth);
         }
 
         /// <summary>
@@ -426,6 +432,17 @@ namespace ExcelMerger
                         && !DashContinuation(lines[i - 1], lines[i], bodyRight, em);
                     bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft,
                         Math.Max(availRight, bodyRight), em);
+                    // Висячий отступ пункта: продолжение выровнено по тексту после маркера,
+                    // а не по полю колонки. Иначе строка 2 — новый абзац и «центрированный»
+                    // пункт без списка (RC-3).
+                    bool inList = current.Count > 0 && StartsWithListMarker(current[0]);
+                    if (HangingListContinuation(lines[i - 1], lines[i], em, bodyLeft, inList))
+                    {
+                        indentBreak = false;
+                        centeredBreak = false;
+                        shortBreak = false;
+                        hardBreak = false;
+                    }
                     // Автор уже сказал, где кончается абзац: две строки ОДНОГО блока разметки
                     // рвать нечем. Разметка только СНИМАЕТ разрывы и никогда не добавляет своих —
                     // тогда файл с разметкой «блок на строку» (её пишут и такую) просто не даёт
@@ -1211,6 +1228,9 @@ namespace ExcelMerger
                 {
                     if (line.Words[wi].Left - line.Words[wi - 1].Right < gapTol)
                         continue;
+                    // Маркер «1.» / «•» и текст пункта — одна надпись на слайде, не две.
+                    if (from == 0 && StartsWithListMarker(Slice(line, 0, wi)))
+                        continue;
                     parts.Add(Slice(line, from, wi));
                     from = wi;
                 }
@@ -1304,18 +1324,74 @@ namespace ExcelMerger
             return end != ':' && end != ';' && end != '.';
         }
 
-        /// <summary>Начинается ли строка с маркера списка («1.», «•»). По первым словам (маркеру
-        /// хватает начала строки), с одним пробелом между словами — маркеру этого достаточно.</summary>
-        private static bool StartsWithListMarker(Line line)
+        /// <summary>
+        /// Продолжение пункта с висячим отступом: строка после маркера у текста пункта,
+        /// либо следующая строка с той же кромкой (перенос на 3+ строки). Не путать с
+        /// красной строкой: там продолжение у поля, не у отступа.
+        /// </summary>
+        private static bool HangingListContinuation(Line prev, Line cur, double em, double bodyLeft, bool groupStartedWithMarker)
+        {
+            if (StartsWithListMarker(cur))
+                return false;
+            double tol = Math.Max(0.5 * em, 3);
+            if (StartsWithListMarker(prev))
+            {
+                double content = ListContentLeft(prev);
+                if (content <= prev.Left + 0.25 * em)
+                    return false;
+                return Math.Abs(cur.Left - content) <= tol;
+            }
+            // Третья+ строка пункта: только если группа уже начата маркером.
+            // Иначе два абзаца с одинаковым отступом (в т.ч. «III.») сливаются (RC-10).
+            if (!groupStartedWithMarker)
+                return false;
+            if (prev.Left - bodyLeft <= tol)
+                return false;
+            return Math.Abs(cur.Left - prev.Left) <= tol;
+        }
+
+        /// <summary>Левый край текста после маркера; Left строки, если содержимое не отделено.</summary>
+        private static double ListContentLeft(Line line)
         {
             var sb = new StringBuilder();
             for (int i = 0; i < line.Words.Count; i++)
             {
                 if (i > 0) sb.Append(' ');
                 sb.Append(line.Words[i].Text ?? "");
-                if (sb.Length > 8) break; // маркер распознаётся по самому началу — большего не нужно
+                if (sb.Length > 24)
+                    break;
             }
-            return ListMarker.Detect(sb.ToString()).Kind != ListKind.None;
+            int start = ListMarker.Detect(sb.ToString()).ContentStart;
+            int pos = 0;
+            for (int i = 0; i < line.Words.Count; i++)
+            {
+                if (i > 0) pos++;
+                string t = line.Words[i].Text ?? "";
+                if (start <= pos)
+                    return line.Words[i].Left;
+                pos += t.Length;
+            }
+            return line.Left;
+        }
+
+        /// <summary>Начинается ли строка с маркера списка («1.», «•»). По первым словам (маркеру
+        /// хватает начала строки), с одним пробелом между словами — маркеру этого достаточно.</summary>
+        private static bool StartsWithListMarker(Line line)
+        {
+            return ListMarker.LooksLikeMarker(PrefixText(line));
+        }
+
+        private static string PrefixText(Line line)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < line.Words.Count; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                sb.Append(line.Words[i].Text ?? "");
+                if (sb.Length > 8)
+                    break;
+            }
+            return sb.ToString();
         }
     }
 }

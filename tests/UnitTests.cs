@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -280,6 +280,11 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: порядок чтения (сверху вниз, слева направо)", TestOcrReadingOrder);
             Run("OcrLayout: разрыв абзаца по вертикальному зазору", TestOcrParagraphs);
             Run("OcrLayout: разрыв абзаца по красной строке (justified)", TestOcrParagraphsIndent);
+            Run("OcrLayout: висячий отступ пункта — одна строка с маркером (RC-3)", TestOcrHangingListWrap);
+            Run("OcrLayout: два пункта с переносом — два списка (RC-3)", TestOcrHangingListTwoItems);
+            Run("OcrLayout: три строки висячего пункта — один список (RC-3)", TestOcrHangingListThreeLines);
+            Run("OcrLayout: два отступных абзаца без маркера не сливаются (RC-10)", TestOcrIndentedNotHangingList);
+            Run("GridDetector: пустой ввод — не сетка и не падение", TestGridDetectEmpty);
             Run("OcrLayout: измерен отступ красной строки", TestOcrIndentDetected);
             Run("OcrLayout: без отступов -> красная строка не навязывается", TestOcrNoIndentReported);
             Run("FontNames.Clean: нормализация имени шрифта", TestFontNames);
@@ -315,6 +320,7 @@ namespace ExcelMerger.Tests
             Run("PdfTextExtract: слово под низкой наложенной картинкой скрывается", TestCoveredByLowImage);
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
             Run("ListMarker: нумерованный «1.»/«12)»", TestListMarkerNumbered);
+            Run("ListMarker: буквы, римские и составные «1.1.» (RC-10)", TestListMarkerLettersRomanCompound);
             Run("ListMarker: маркированный «•»/«—»", TestListMarkerBulleted);
             Run("ListMarker: не список (год, проценты, без пробела, обычный текст)", TestListMarkerNegatives);
             Run("OcrLayout: плотный нумерованный список -> отдельные пункты с ListKind", TestOcrNumberedList);
@@ -356,12 +362,22 @@ namespace ExcelMerger.Tests
             Run("GridDetector: чек «метка … значение» -> безграничная таблица", TestGridReceipt);
             Run("GridDetector: justified-текст без широких зазоров — не сетка", TestGridJustifiedNegative);
             Run("GridDetector: две строки пар — мало для сетки", TestGridTwoRowsNegative);
+            Run("GridDetector: две колонки текста — не сетка (RC-8)", TestGridTwoColumnsNotGrid);
+            Run("GridDetector: абзац над формой не входит в сетку (RC-8)", TestGridHeadingNotSwallowed);
+            Run("GridDetector: нумерованный список — не форма (RC-8)", TestGridListNotForm);
+            Run("GridDetector: три колонки текста — не сетка (RC-8)", TestGridThreeColumnsNotGrid);
             Run("AddRuleWords: одиночная линия -> прочерк «____», подчёркивание/толстая — нет", TestRuleWords);
             Run("PdfTextExtract: «_»-слово и PUA-мусор распознаются", TestUnderscoreAndPua);
             Run("XyCut: колонки с общими базовыми линиями — левая целиком раньше правой", TestXyCutColumns);
             Run("XyCut: этаж под колонками выводится после обеих колонок", TestXyCutFloorsThenColumns);
             Run("XyCut: широкий пробел одной строки («подпись … дата») — не колонки", TestXyCutGuardSingleLine);
             Run("XyCut: крошка рядом с существенной колонкой — режется (пометка)", TestXyCutGuardThinColumn);
+            Run("XyCut: полоса маркеров списка — не колонки (RC-14)", TestXyCutListMarkersNotColumns);
+            Run("OcrLayout: канал колонок 12 pt — левая колонка целиком (RC-14)", TestLayoutNarrowColumnGutter);
+            Run("OcrLayout: заголовок во всю ширину не мешает разрезу колонок (RC-14)", TestLayoutTitleThenColumns);
+            Run("OcrLayout: короткий заголовок над каналом не зигзаг колонок (RC-14)", TestLayoutShortTitleThenColumns);
+            Run("OcrLayout: одноколоночный текст с малой отбивкой не режется на этажи", TestLayoutNoFalseFloor);
+            Run("OcrLayout: слайд не отрывает маркер «1.» от пункта", TestOcrSlideKeepsListMarker);
             Run("PageRangePresets.Odd: нечётные страницы", TestPageRangePresetsOdd);
             Run("PageRangePresets.Even: чётные страницы", TestPageRangePresetsEven);
             Run("PageRangePresets.EveryNth: каждая N-я страница", TestPageRangePresetsEveryNth);
@@ -558,7 +574,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 507;
+            const int ExactTests = 523;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13052,6 +13068,62 @@ namespace ExcelMerger.Tests
             AssertEq("B1 B2", p[1], "второй абзац");
         }
 
+        private static void TestOcrHangingListWrap()
+        {
+            // «• First line» и продолжение под текстом (висячий отступ 18 pt), не под маркером.
+            var words = new List<PdfWord>
+            {
+                W("•", 0, 200, 8, 10), W("First", 18, 200, 40, 10), W("line", 62, 200, 36, 10),
+                W("continues", 18, 186, 70, 10)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEq(1, layout.Paragraphs.Count, "перенос пункта — один абзац");
+            AssertEq(ListKind.Bulleted, layout.Paragraphs[0].ListKind, "маркер сохранён");
+            AssertTrue(layout.Paragraphs[0].Text.IndexOf("continues", StringComparison.Ordinal) >= 0, "вторая строка в пункте");
+        }
+
+        private static void TestOcrHangingListTwoItems()
+        {
+            var words = new List<PdfWord>
+            {
+                W("1.", 0, 220, 14, 10), W("Alpha", 18, 220, 40, 10), W("text", 62, 220, 30, 10),
+                W("more", 18, 206, 40, 10),
+                W("2.", 0, 188, 14, 10), W("Beta", 18, 188, 36, 10)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEq(2, layout.Paragraphs.Count, "два пункта");
+            AssertEq(ListKind.Numbered, layout.Paragraphs[0].ListKind, "первый нумерованный");
+            AssertEq(ListKind.Numbered, layout.Paragraphs[1].ListKind, "второй нумерованный");
+            AssertEq(1, layout.Paragraphs[0].ListNumber, "номер 1");
+            AssertEq(2, layout.Paragraphs[1].ListNumber, "номер 2");
+        }
+
+        private static void TestOcrHangingListThreeLines()
+        {
+            var words = new List<PdfWord>
+            {
+                W("•", 0, 220, 8, 10), W("First", 18, 220, 40, 10), W("line", 62, 220, 36, 10),
+                W("second", 18, 206, 50, 10),
+                W("third", 18, 192, 40, 10)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertEq(1, layout.Paragraphs.Count, "три строки пункта — один абзац");
+            AssertEq(ListKind.Bulleted, layout.Paragraphs[0].ListKind, "маркер сохранён");
+            AssertTrue(layout.Paragraphs[0].Text.IndexOf("third", StringComparison.Ordinal) >= 0, "третья строка в пункте");
+        }
+
+        private static void TestOcrIndentedNotHangingList()
+        {
+            var words = new List<PdfWord>
+            {
+                W("III.", 20, 220, 24, 10), W("Alpha", 48, 220, 40, 10),
+                W("III.", 20, 200, 24, 10), W("Beta", 48, 200, 36, 10)
+            };
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
+            AssertTrue(layout.Paragraphs.Count >= 2, "два пункта римскими не слиты");
+            AssertTrue(layout.Paragraphs[0].Text.IndexOf("Beta", StringComparison.Ordinal) < 0, "второй пункт отдельно");
+        }
+
         private static void TestOcrIndentDetected()
         {
             // Тот же justified-документ с красной строкой: отступ первых строк 15 pt
@@ -13678,6 +13750,23 @@ namespace ExcelMerger.Tests
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("•безпробела").Kind, "буллет без пробела — не маркер");
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("Обычный текст").Kind, "обычный текст — не список");
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("").Kind, "пусто — не список");
+        }
+
+        private static void TestListMarkerLettersRomanCompound()
+        {
+            ListMarker.Result a = ListMarker.Detect("III. пункт");
+            AssertEq((int)ListKind.Numbered, (int)a.Kind, "римский");
+            AssertEq(3, a.Number, "III = 3");
+            ListMarker.Result b = ListMarker.Detect("a) item");
+            AssertEq((int)ListKind.Numbered, (int)b.Kind, "буква");
+            AssertEq(1, b.Number, "a = 1");
+            ListMarker.Result c = ListMarker.Detect("1.1. раздел");
+            AssertEq((int)ListKind.Numbered, (int)c.Kind, "составной");
+            AssertEq(1, c.Number, "1.1 → 1");
+            AssertEq(2, ListMarker.Detect("1.2. раздел").Number, "1.2 → 2");
+            AssertEq(1, ListMarker.Detect("а) пункт").Number, "кириллица а)");
+            AssertEq(3, ListMarker.Detect("C. Appendix").Number, "C. — буква, не римские 100");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("12.5% роста").Kind, "проценты по-прежнему не маркер");
         }
 
         private static void TestOcrNumberedList()
@@ -14465,6 +14554,76 @@ namespace ExcelMerger.Tests
             AssertEq(0, r.Tables.Count, "двух строк недостаточно");
         }
 
+        private static void TestGridTwoColumnsNotGrid()
+        {
+            // Две колонки обычного текста на общих базовых линиях: в каждом сегменте фраза,
+            // не «метка — значение» из 1–3 слов.
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 5; row++)
+            {
+                double y = 300 - row * 18;
+                for (int i = 0; i < 4; i++)
+                    words.Add(WS("L" + row + i, 10 + i * 22, y, 20, 10, 10));
+                for (int i = 0; i < 4; i++)
+                    words.Add(WS("R" + row + i, 220 + i * 22, y, 20, 10, 10));
+            }
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEq(0, r.Tables.Count, "колонки текста не сетка");
+        }
+
+        private static void TestGridListNotForm()
+        {
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 4; row++)
+            {
+                double y = 200 - row * 20;
+                words.Add(WS((row + 1) + ".", 0, y, 16, 8, 8));
+                words.Add(WS("Item", 40, y, 40, 8, 8));
+                words.Add(WS("text", 82, y, 36, 8, 8));
+            }
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEq(0, r.Tables.Count, "нумерованный список не форма");
+        }
+
+        private static void TestGridDetectEmpty()
+        {
+            GridDetectResult n = GridDetector.Detect(null);
+            AssertEq(0, n.Tables.Count, "null — нет таблиц");
+            AssertEq(0, n.RemainingWords.Count, "null — нет остатка");
+            GridDetectResult e = GridDetector.Detect(new List<PdfWord>());
+            AssertEq(0, e.Tables.Count, "пусто — нет таблиц");
+            AssertEq(0, e.RemainingWords.Count, "пусто — нет остатка");
+        }
+
+        private static void TestGridThreeColumnsNotGrid()
+        {
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 5; row++)
+            {
+                double y = 300 - row * 18;
+                for (int c = 0; c < 3; c++)
+                    for (int i = 0; i < 2; i++)
+                        words.Add(WS("C" + c + row + i, 10 + c * 120 + i * 22, y, 20, 10, 10));
+            }
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEq(0, r.Tables.Count, "три колонки текста не сетка");
+        }
+
+        private static void TestGridHeadingNotSwallowed()
+        {
+            var words = new List<PdfWord>
+            {
+                WS("HeadingOnly", 0, 240, 160, 10, 10),
+                WS("LblA", 0, 200, 50, 8, 8),  WS("ValA", 100, 200, 40, 8, 8),
+                WS("LblB", 0, 180, 35, 8, 8),  WS("ValB", 100, 180, 35, 8, 8),
+                WS("LblC", 0, 160, 30, 8, 8),  WS("ValC", 100, 160, 40, 8, 8),
+                WS("LblD", 0, 140, 35, 8, 8),  WS("ValD", 100, 140, 40, 8, 8)
+            };
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEq(1, r.Tables.Count, "форма на месте");
+            AssertTrue(r.RemainingWords.Exists(w => w.Text == "HeadingOnly"), "заголовок не в таблице");
+        }
+
         private static void TestRuleWords()
         {
             // Одиночная линия-прочерк становится «____» по кеглю окружения; линия-подчёркивание
@@ -14565,6 +14724,111 @@ namespace ExcelMerger.Tests
             };
             List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 30, 25, 2);
             AssertEq(2, leaves.Count, "существенная колонка + крошка режутся");
+        }
+
+        private static void TestXyCutListMarkersNotColumns()
+        {
+            var boxes = new List<CutBox>();
+            for (int r = 0; r < 5; r++)
+            {
+                double y = 200 - r * 18;
+                boxes.Add(CB(r, 0, y, 8, 10));
+                boxes.Add(CB(10 + r, 20, y, 80, 10));
+            }
+            List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 1000, 10, 25, 2, 40);
+            AssertEq(1, leaves.Count, "маркеры списка не отделяются в колонку");
+        }
+
+        private static void TestLayoutNarrowColumnGutter()
+        {
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 6; row++)
+            {
+                double y = 400 - row * 16;
+                words.Add(W("LA" + row, 10, y, 40, 10));
+                words.Add(W("LB" + row, 52, y, 40, 10));
+                words.Add(W("RA" + row, 104, y, 40, 10));
+                words.Add(W("RB" + row, 146, y, 40, 10));
+            }
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            AssertTrue(paras.Count >= 2, "две колонки — хотя бы два абзаца");
+            string first = paras[0].Text;
+            AssertTrue(first.IndexOf("LA", StringComparison.Ordinal) >= 0, "чтение с левой");
+            AssertTrue(first.IndexOf("RA", StringComparison.Ordinal) < 0, "правая не вперемешку");
+        }
+
+        private static void TestLayoutTitleThenColumns()
+        {
+            // Заголовок на всю ширину, отбивка ~9 pt — как у корпуса; колонки ниже.
+            var words = new List<PdfWord>
+            {
+                W("TitleWide", 10, 400, 180, 10)
+            };
+            for (int row = 0; row < 5; row++)
+            {
+                double y = 381 - row * 16;
+                words.Add(W("LA" + row, 10, y, 40, 10));
+                words.Add(W("LB" + row, 52, y, 36, 10));
+                words.Add(W("RA" + row, 110, y, 40, 10));
+                words.Add(W("RB" + row, 152, y, 36, 10));
+            }
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            AssertTrue(paras.Count >= 3, "заголовок + две колонки");
+            AssertTrue(paras[0].Text.IndexOf("Title", StringComparison.Ordinal) >= 0, "сначала заголовок");
+            string col0 = paras[1].Text;
+            AssertTrue(col0.IndexOf("LA", StringComparison.Ordinal) >= 0, "потом левая колонка");
+            AssertTrue(col0.IndexOf("RA", StringComparison.Ordinal) < 0, "не зигзаг с правой");
+        }
+
+        private static void TestLayoutShortTitleThenColumns()
+        {
+            var words = new List<PdfWord>
+            {
+                W("Head", 70, 400, 50, 10)
+            };
+            for (int row = 0; row < 5; row++)
+            {
+                double y = 384 - row * 16;
+                words.Add(W("LA" + row, 10, y, 40, 10));
+                words.Add(W("LB" + row, 52, y, 36, 10));
+                words.Add(W("RA" + row, 110, y, 40, 10));
+                words.Add(W("RB" + row, 152, y, 36, 10));
+            }
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            AssertTrue(paras.Count >= 3, "заголовок + две колонки");
+            AssertTrue(paras[0].Text.IndexOf("Head", StringComparison.Ordinal) >= 0, "сначала заголовок");
+            string col0 = paras[1].Text;
+            AssertTrue(col0.IndexOf("LA", StringComparison.Ordinal) >= 0, "потом левая");
+            AssertTrue(col0.IndexOf("RA", StringComparison.Ordinal) < 0, "не зигзаг");
+        }
+
+        private static void TestLayoutNoFalseFloor()
+        {
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 8; row++)
+            {
+                double y = 400 - row * 14;
+                words.Add(W("A" + row, 10, y, 40, 10));
+                words.Add(W("B" + row, 55, y, 40, 10));
+                words.Add(W("C" + row, 100, y, 40, 10));
+            }
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            string all = paras[0].Text;
+            AssertTrue(all.IndexOf("A0", StringComparison.Ordinal) >= 0, "первая строка в первом абзаце");
+            AssertTrue(all.IndexOf("A1", StringComparison.Ordinal) >= 0, "вторая строка не отрезана этажом");
+            AssertTrue(all.IndexOf("A0", StringComparison.Ordinal) < all.IndexOf("A1", StringComparison.Ordinal), "сверху вниз");
+        }
+
+        private static void TestOcrSlideKeepsListMarker()
+        {
+            var words = new List<PdfWord>
+            {
+                W("1.", 0, 200, 14, 10),
+                W("Hello", 40, 200, 50, 10)
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words, PageLayoutMode.Slide).Paragraphs;
+            AssertEq(1, paras.Count, "маркер и текст — одна надпись");
+            AssertEq(ListKind.Numbered, paras[0].ListKind, "нумерованный пункт");
         }
 
         private static void TestListNestingThreeLevels()

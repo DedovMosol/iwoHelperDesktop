@@ -30,8 +30,9 @@ forms, so a windowless session cannot run them.
 - **Language level is pinned**: C# 7.3 on .NET Framework 4.8 — no newer syntax.
 - **Match the house style**: identifiers in English, comments in Russian (the project's
   working language), comment *why*, not *what*.
-- **Logic goes into pure functions** with unit tests in `tests/UnitTests.cs`. Behaviour
-  that needs Office gets a `tests\verify*.ps1` script instead.
+- **Logic goes into pure functions** with unit tests in `tests/UnitTests.cs` and
+  `tests/AuditTests.*.cs`. Behaviour that needs Office gets a `tests\verify*.ps1`
+  script instead.
 - **Office COM rules are non-negotiable** — see
   [Office COM layer](docs/ARCHITECTURE.md#office-com-layer): release through
   `ComSafe`, never call a closed object, escape cell text via `CellText`.

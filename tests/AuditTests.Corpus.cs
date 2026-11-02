@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -17,7 +18,7 @@ namespace ExcelMerger.Tests
     internal static partial class UnitTests
     {
         /// <summary>Вариантов на семейство. Детерминированно: тот же набор на любой машине.</summary>
-        private const int CorpusPerFamily = 12;
+        private const int CorpusPerFamily = 40;
 
         private static List<CCase> _corpus;
 
@@ -172,6 +173,9 @@ namespace ExcelMerger.Tests
             if (full)
                 foreach (string line in ledger.Registry)
                     Console.WriteLine("      REG " + line);
+            string knownPath = Environment.GetEnvironmentVariable("IWO_CORPUS_WRITE_KNOWN");
+            if (!string.IsNullOrEmpty(knownPath) && ledger.Registry.Count > 0)
+                File.AppendAllLines(knownPath, ledger.Registry, Encoding.UTF8);
             return sb.ToString();
         }
 
@@ -356,6 +360,85 @@ namespace ExcelMerger.Tests
                     problems.Add("повтор: " + k.Output + " " + k.Family + " «" + k.Aspect + "»");
             }
             AssertTrue(problems.Count == 0, string.Join("; ", problems.ToArray()));
+        }
+
+        /// <summary>
+        /// IWO_SHOTS=&lt;папка&gt; — страница 1 выбранных семейств в PNG + текстовый разбор.
+        /// Без переменной — пустой успех (CI не пишет файлы).
+        /// </summary>
+        [Test("Корпус: снимки страниц, если задан IWO_SHOTS")]
+        private static void CorpusWriteShots()
+        {
+            string dir = Environment.GetEnvironmentVariable("IWO_SHOTS");
+            if (string.IsNullOrEmpty(dir))
+                return;
+            Directory.CreateDirectory(dir);
+            EmbeddedAssemblies.Ensure();
+            string[] want =
+            {
+                "две колонки",
+                "три колонки",
+                "маркированный список в два уровня",
+                "нумерованный список в два уровня",
+                "таблица без линовки «метка — значение»",
+                "таблица с линовкой",
+                "маркеры Word: Symbol, Courier «o», Wingdings",
+                "белый текст на тёмной плашке",
+                "белый текст на светлой цветной плашке",
+                "полужирные, курсивные и цветные слова",
+                "подчёркнутые фразы",
+                "зачёркнутые фразы"
+            };
+            int n = 0;
+            using (var tmp = new TempDir("iwo_shots_"))
+                foreach (string family in want)
+                {
+                    CCase c = Corpus().FirstOrDefault(x => x.Family == family && x.Variant.Index == 0);
+                    AssertTrue(c != null, "семейство есть: " + family);
+                    string pdf;
+                    RenderCase(c, tmp, out pdf);
+                    using (BudgetedBitmap bmp = PageRasterizer.RenderPage(pdf, 1, c.Doc.PageW, c.Doc.PageH))
+                    {
+                        AssertTrue(bmp != null && bmp.Bitmap != null, "растр страницы: " + family);
+                        string slug = n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png";
+                        bmp.Bitmap.Save(Path.Combine(dir, slug), ImageFormat.Png);
+                    }
+                    var dump = new StringBuilder();
+                    dump.AppendLine(c.Name);
+                    AppendShotDump(dump, "document", PdfTextExtract.Extract(pdf));
+                    AppendShotDump(dump, "slide", PdfTextExtract.Extract(pdf, null, null, null, PageLayoutMode.Slide));
+                    File.WriteAllText(Path.Combine(dir, n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".txt"),
+                        dump.ToString(), Encoding.UTF8);
+                    n++;
+                }
+        }
+
+        private static void AppendShotDump(StringBuilder dump, string label, List<PdfPageText> pages)
+        {
+            dump.AppendLine("== " + label + " ==");
+            if (pages == null || pages.Count == 0)
+            {
+                dump.AppendLine("(empty)");
+                return;
+            }
+            PdfPageText page = pages[0];
+            foreach (OcrParagraph p in page.Paragraphs)
+            {
+                dump.AppendLine((p.ListKind == ListKind.None ? "P" : "L" + (int)p.ListKind)
+                    + " " + p.Alignment + " lv" + p.ListLevel + " " + p.Text);
+                if (p.Runs == null) continue;
+                foreach (OcrRun r in p.Runs)
+                {
+                    dump.Append("  r");
+                    if (r.Bold) dump.Append(" B");
+                    if (r.Italic) dump.Append(" I");
+                    if (r.Underline) dump.Append(" U");
+                    if (r.Strike) dump.Append(" S");
+                    if (r.ColorArgb != 0) dump.Append(" #").Append(r.ColorArgb.ToString("X6"));
+                    dump.Append(" ").AppendLine(r.Text);
+                }
+            }
+            dump.AppendLine("tables " + page.Tables.Count);
         }
     }
 }

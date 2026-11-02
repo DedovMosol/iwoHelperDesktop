@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace ExcelMerger
 {
@@ -32,6 +33,9 @@ namespace ExcelMerger
         private const double MaxStraySegmentShare = 0.2; // больше выбросов мимо колонок — не сетка
         private const double RowSpacingMinFactor = 0.4;   // зазор сверх типичного шага больше этой доли -> интервал группы
         private const double RowSpacingMaxFactor = 3.0;   // кап интервала (доля типичного шага)
+        // Форма «метка — значение»: в сегменте 1–3 слова. Строка газетной колонки — целая фраза.
+        // Медиана ≥ этого числа → две колонки текста, не сетка (RC-8).
+        private const int MaxFormSegmentWords = 3;
 
         /// <summary>Слова страницы → сетки-таблицы (Borderless) и остаток. Чистая — под тест.</summary>
         public static GridDetectResult Detect(IList<PdfWord> words)
@@ -61,7 +65,11 @@ namespace ExcelMerger
                 while (end + 1 < lines.Count
                     && lines[end].MidY - lines[end + 1].MidY <= RowGapEmFactor * em)
                     end++;
-                OcrTable table = TryBuildGrid(lines, segments, start, end, em, consumed);
+                // Абзац над формой входит в то же вертикальное окно. Сетку начинаем с первой
+                // строки-пары; хвост не режем — итоговая строка во всю ширину (один сегмент, ColSpan).
+                int a = start, b = end;
+                while (a <= b && segments[a].Count < 2) a++;
+                OcrTable table = a <= b ? TryBuildGrid(lines, segments, a, b, em, consumed) : null;
                 if (table != null)
                     result.Tables.Add(table);
                 start = end + 1;
@@ -109,11 +117,24 @@ namespace ExcelMerger
             int rows = end - start + 1;
             if (rows < MinRows)
                 return null;
-            int pairRows = 0;
+            int pairRows = 0, tripleRows = 0;
             for (int i = start; i <= end; i++)
+            {
                 if (segments[i].Count >= 2)
                     pairRows++;
+                if (segments[i].Count >= 3)
+                    tripleRows++;
+            }
             if (pairRows < (int)Math.Ceiling(rows * MinPairShare))
+                return null;
+            // Три сегмента в строке — газетные колонки, не форма из двух полей (снимок «три колонки»).
+            // Медиана слов тут бесполезна: хвосты колонок однословные и опускают её до 1.
+            if (tripleRows >= MinRows)
+                return null;
+            int medianWords = MedianSegmentWords(segments, start, end);
+            if (medianWords > MaxFormSegmentWords)
+                return null;
+            if (LeftColumnLooksLikeList(segments, start, end))
                 return null;
 
             // Колонки — кластеры левых краёв сегментов с достаточной поддержкой.
@@ -250,6 +271,45 @@ namespace ExcelMerger
                 table.Rows.Add(row);
             }
             return table;
+        }
+
+        private static int MedianSegmentWords(List<List<Segment>> segments, int start, int end)
+        {
+            var counts = new List<double>();
+            for (int i = start; i <= end; i++)
+                foreach (Segment s in segments[i])
+                    counts.Add(s.Words.Count);
+            if (counts.Count == 0)
+                return 0;
+            return (int)Math.Round(MathUtil.Median(counts));
+        }
+
+        /// <summary>
+        /// Левая колонка — маркеры списка («•», «1.»), правая — текст пункта: это не форма.
+        /// </summary>
+        private static bool LeftColumnLooksLikeList(List<List<Segment>> segments, int start, int end)
+        {
+            int pair = 0, listed = 0;
+            for (int i = start; i <= end; i++)
+            {
+                if (segments[i].Count < 2)
+                    continue;
+                pair++;
+                Segment left = segments[i][0];
+                for (int k = 1; k < segments[i].Count; k++)
+                    if (segments[i][k].Left < left.Left)
+                        left = segments[i][k];
+                var text = new StringBuilder();
+                foreach (PdfWord w in left.Words)
+                {
+                    if (text.Length > 0) text.Append(' ');
+                    text.Append(w.Text ?? "");
+                }
+                string s = text.ToString();
+                if (ListMarker.LooksLikeMarker(s))
+                    listed++;
+            }
+            return pair >= MinRows && listed * 2 >= pair;
         }
 
         /// <summary>Индекс колонки, чья левая граница совпадает с left в пределах tol; -1 — мимо всех.</summary>

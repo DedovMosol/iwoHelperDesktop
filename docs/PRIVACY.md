@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Application:** iwo Helper Desktop
-**Last updated:** 2026-10-29
+**Last updated:** 2026-11-02
 
 ## Summary
 
@@ -36,10 +36,10 @@ This processing runs entirely on your machine using local components:
 - the embedded PdfSharp library for reading and writing PDFs (merge, split, blank pages,
   document properties),
 - the embedded PdfPig library for extracting the text layer of born‑digital PDFs
-  (PDF → Word, Compare PDF, and “extract text to `.txt`”),
+  (PDF → Word, PDF → PowerPoint, Compare PDF, and “extract text to `.txt`”),
 - Ghostscript, run as a separate local process, for compression, grayscale conversion,
-  repairing damaged files, and for rendering the picture regions that PDF → Word puts
-  into the `.docx`,
+  repairing damaged files, rendering the picture regions that PDF → Word puts into
+  the `.docx`, and rendering page-without-text backgrounds for PDF → PowerPoint,
 - the built‑in Windows PDF engine (`Windows.Data.Pdf`) for rendering page thumbnails,
   the full‑size preview, Compare PDF's original page views and bounded visual confirmation,
   and the images produced by “save pages as images,”
@@ -71,11 +71,16 @@ Some operations write working files. All of them stay on your machine, and all a
 as soon as they are no longer needed — successfully or not:
 
 - **PDF → Word** puts any images found in the PDF into a folder under your system temp
-  directory, and deletes that folder as soon as the `.docx` is saved.
-- **Images added as pages** (More operations) are each wrapped into a one‑page PDF in a
-  folder under your system temp directory. Unlike the others, these live as long as the
-  window does — they *are* the pages you see in it — and the folder is deleted when the
-  window closes. A folder left behind by a crash is swept the next time images are added.
+  directory (`iwo_img_…`), and deletes that folder as soon as the `.docx` is saved.
+- **PDF → PowerPoint** writes page-without-text backgrounds into a folder under your system
+  temp directory (`iwo_bg_…`) and deletes it when the `.pptx` is written. A leftover folder
+  from a crash is removed at the next start.
+- **Images and blank pages added to a grid** (More operations, Merge, Split, converters)
+  are each wrapped into a one‑page PDF in a per-window folder under your system temp
+  directory (`iwo_wrap_…`). Unlike the others, these live as long as the window does —
+  they *are* the pages you see in it — and the folder is deleted when the window closes.
+  A folder left behind by a crash is swept at the next start (folders older than a day);
+  a live window never deletes another window's wrappers.
 - **An action over an assembled document** (More operations) first writes that document to a
   temporary PDF in your system temp directory when the pages have been reordered, rotated or
   removed, and deletes it as soon as the action finishes. Untouched pages need no such file.

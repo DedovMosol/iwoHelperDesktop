@@ -347,11 +347,14 @@ namespace ExcelMerger.Tests
             var table = new CTable { Ruled = true, SpaceAfter = c.Variant.Size, ColWidths = new double[cols] };
             for (int k = 0; k < cols; k++)
                 table.ColWidths[k] = 100;
-            for (int r = 0; r < t.Next(3, 5); r++)
+            bool tight = c.Doc.PageH < 700 || c.Variant.Size >= 13;
+            int rows = t.Next(3, tight ? 4 : 5);
+            for (int r = 0; r < rows; r++)
             {
                 var row = new CCell[cols];
                 for (int k = 0; k < cols; k++)
-                    row[k] = Cell(r == 0 ? t.Phrase(t.Next(1, 3)) : t.Phrase(t.Next(6, 13)),
+                    row[k] = Cell(r == 0 ? t.Phrase(t.Next(1, 3))
+                        : t.Phrase(tight ? t.Next(3, 6) : t.Next(6, 13)),
                         r == 0 ? Body(c).WithBold() : Body(c));
                 table.Rows.Add(row);
             }

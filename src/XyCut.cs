@@ -76,6 +76,7 @@ namespace ExcelMerger
             public double VGapMin;          // минимальная ширина пустого просвета для колонки
             public double MinColumnExtent;  // колонка ниже этого по высоте — не колонка (подпись/дата в одной строке)
             public int MinColumnItems;      // и колонка из меньшего числа элементов — не колонка
+            public double MinColumnWidth;   // 0 — не проверять; иначе узкая полоса маркеров списка — не колонка
         }
 
         /// <summary>
@@ -85,8 +86,14 @@ namespace ExcelMerger
         public static List<CutLeaf> Order(IList<CutBox> boxes, double hGapMin, double vGapMin,
             double minColumnExtent, int minColumnItems)
         {
+            return Order(boxes, hGapMin, vGapMin, minColumnExtent, minColumnItems, 0);
+        }
+
+        public static List<CutLeaf> Order(IList<CutBox> boxes, double hGapMin, double vGapMin,
+            double minColumnExtent, int minColumnItems, double minColumnWidth)
+        {
             var leaves = new List<CutLeaf>();
-            CutNode root = OrderTree(boxes, hGapMin, vGapMin, minColumnExtent, minColumnItems);
+            CutNode root = OrderTree(boxes, hGapMin, vGapMin, minColumnExtent, minColumnItems, minColumnWidth);
             if (root != null)
                 Flatten(root, leaves);
             return leaves;
@@ -101,6 +108,12 @@ namespace ExcelMerger
         public static CutNode OrderTree(IList<CutBox> boxes, double hGapMin, double vGapMin,
             double minColumnExtent, int minColumnItems)
         {
+            return OrderTree(boxes, hGapMin, vGapMin, minColumnExtent, minColumnItems, 0);
+        }
+
+        public static CutNode OrderTree(IList<CutBox> boxes, double hGapMin, double vGapMin,
+            double minColumnExtent, int minColumnItems, double minColumnWidth)
+        {
             if (boxes == null || boxes.Count == 0)
                 return null;
             var all = new List<int>(boxes.Count);
@@ -112,7 +125,8 @@ namespace ExcelMerger
                 HGapMin = hGapMin,
                 VGapMin = vGapMin,
                 MinColumnExtent = minColumnExtent,
-                MinColumnItems = minColumnItems
+                MinColumnItems = minColumnItems,
+                MinColumnWidth = minColumnWidth
             };
             double left, right;
             HorizontalBounds(boxes, all, out left, out right);
@@ -137,6 +151,8 @@ namespace ExcelMerger
         private static CutNode CutFloors(CutContext ctx, List<int> items, int depth, double colLeft, double colRight, double availRight)
         {
             List<List<int>> floors = depth > 0 ? SplitAtGaps(ctx.Boxes, items, true, ctx.HGapMin) : null;
+            if (floors == null && depth > 0 && SplitColumns(ctx, items) == null)
+                floors = PeelBlockingFloor(ctx, items);
             if (floors == null)
                 return CutColumns(ctx, items, depth, colLeft, colRight, availRight);
             var node = new CutNode { SideBySide = false, Children = new List<CutNode>(floors.Count) };
@@ -191,21 +207,24 @@ namespace ExcelMerger
             bool anySubstantial = false;
             foreach (List<int> column in columns)
             {
-                if (column.Count < ctx.MinColumnItems)
-                    continue;
-                double top = double.MinValue, bottom = double.MaxValue;
-                foreach (int i in column)
-                {
-                    if (ctx.Boxes[i].Top > top) top = ctx.Boxes[i].Top;
-                    if (ctx.Boxes[i].Bottom < bottom) bottom = ctx.Boxes[i].Bottom;
-                }
-                if (top - bottom >= ctx.MinColumnExtent)
+                if (ColumnSubstantial(ctx, column))
                 {
                     anySubstantial = true;
                     break;
                 }
             }
-            return anySubstantial ? columns : null;
+            if (!anySubstantial)
+                return null;
+            // Левая колонка из маркеров («•», «1.») — не газета: висячий отступ иначе
+            // отрывает маркер (RC-3). Правая узкая пометка у широкого блока — режется.
+            if (ctx.MinColumnWidth > 0 && columns.Count >= 2)
+            {
+                double left, right;
+                HorizontalBounds(ctx.Boxes, columns[0], out left, out right);
+                if (right - left < ctx.MinColumnWidth)
+                    return null;
+            }
+            return columns;
         }
 
         /// <summary>
@@ -254,6 +273,100 @@ namespace ExcelMerger
             }
             parts.Add(current);
             return parts.Count >= 2 ? parts : null;
+        }
+
+        /// <summary>
+        /// Заголовок над каналом колонок: пустой полосы до HGapMin нет, вертикальный
+        /// разрез всего набора тоже пуст. Снимаем верхнюю полосу, только если:
+        /// остаток — две настоящие колонки, снятое не само колонки, оно перекрывает
+        /// канал, тонкое, и НИ один бокс вне полосы в канал не заходит (иначе первая
+        /// строка формы «метка … значение» стала бы этажом).
+        /// </summary>
+        private static List<List<int>> PeelBlockingFloor(CutContext ctx, List<int> items)
+        {
+            if (ctx.VGapMin == double.MaxValue)
+                return null;
+            double small = ctx.HGapMin * 0.25;
+            if (small > 2.0) small = 2.0;
+            if (small < 0.5) small = 0.5;
+            List<List<int>> bands = SplitAtGaps(ctx.Boxes, items, true, small);
+            if (bands == null || bands.Count < 2)
+                return null;
+            var prefix = new List<int>();
+            for (int i = 0; i < bands.Count - 1; i++)
+            {
+                prefix.AddRange(bands[i]);
+                var rest = new List<int>();
+                for (int j = i + 1; j < bands.Count; j++)
+                    rest.AddRange(bands[j]);
+                List<List<int>> cols = SplitColumns(ctx, rest);
+                if (cols == null || SubstantialColumnCount(ctx, cols) < 2)
+                    continue;
+                if (SplitAtGaps(ctx.Boxes, prefix, false, ctx.VGapMin) != null)
+                    continue;
+                double gL, gR;
+                if (!ColumnGutter(ctx, cols[0], cols[1], out gL, out gR))
+                    continue;
+                if (!OverlapsInterval(ctx, prefix, gL, gR))
+                    continue;
+                if (OverlapsInterval(ctx, rest, gL, gR))
+                    continue;
+                if (VerticalExtent(ctx, prefix) > 1.2 * ctx.MinColumnExtent)
+                    continue;
+                return new List<List<int>> { new List<int>(prefix), rest };
+            }
+            return null;
+        }
+
+        private static int SubstantialColumnCount(CutContext ctx, List<List<int>> columns)
+        {
+            int n = 0;
+            foreach (List<int> column in columns)
+                if (ColumnSubstantial(ctx, column))
+                    n++;
+            return n;
+        }
+
+        private static bool ColumnGutter(CutContext ctx, List<int> leftCol, List<int> rightCol, out double gL, out double gR)
+        {
+            double l0, r0, l1, r1;
+            HorizontalBounds(ctx.Boxes, leftCol, out l0, out r0);
+            HorizontalBounds(ctx.Boxes, rightCol, out l1, out r1);
+            gL = r0;
+            gR = l1;
+            return gR > gL;
+        }
+
+        private static bool OverlapsInterval(CutContext ctx, List<int> items, double lo, double hi)
+        {
+            foreach (int i in items)
+                if (ctx.Boxes[i].Left < hi && ctx.Boxes[i].Right > lo)
+                    return true;
+            return false;
+        }
+
+        private static double VerticalExtent(CutContext ctx, List<int> items)
+        {
+            double top = double.MinValue, bottom = double.MaxValue;
+            foreach (int i in items)
+            {
+                if (ctx.Boxes[i].Top > top) top = ctx.Boxes[i].Top;
+                if (ctx.Boxes[i].Bottom < bottom) bottom = ctx.Boxes[i].Bottom;
+            }
+            return top - bottom;
+        }
+
+        private static bool ColumnSubstantial(CutContext ctx, List<int> column)
+        {
+            if (column.Count < ctx.MinColumnItems)
+                return false;
+            double top = double.MinValue, bottom = double.MaxValue;
+            foreach (int i in column)
+            {
+                if (ctx.Boxes[i].Top > top) top = ctx.Boxes[i].Top;
+                if (ctx.Boxes[i].Bottom < bottom) bottom = ctx.Boxes[i].Bottom;
+            }
+            return top - bottom >= ctx.MinColumnExtent;
         }
 
         /// <summary>Левая/правая граница набора боксов.</summary>
