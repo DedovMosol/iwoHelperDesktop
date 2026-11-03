@@ -590,7 +590,12 @@ namespace ExcelMerger
                 int from = 0;
                 for (int wi = 1; wi < ln.Words.Count; wi++)
                 {
-                    if (ln.Words[wi].Left - ln.Words[wi - 1].Right < gapTol)
+                    double x0 = ln.Words[wi - 1].Right, x1 = ln.Words[wi].Left;
+                    if (x1 - x0 < gapTol)
+                        continue;
+                    // Река выключки: на соседних строках колонки в этом X есть слова
+                    // (снимок Courier «две колонки»). Подпись и дата — зазор пуст на всех строках.
+                    if (GapCoveredByOtherLines(lines, li, x0, x1))
                         continue;
                     if (parts == null)
                         parts = new List<Line>();
@@ -613,6 +618,20 @@ namespace ExcelMerger
                 result.AddRange(parts);
             }
             return result ?? lines;
+        }
+
+        private static bool GapCoveredByOtherLines(List<Line> lines, int skip, double x0, double x1)
+        {
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (i == skip)
+                    continue;
+                List<PdfWord> ws = lines[i].Words;
+                for (int w = 0; w < ws.Count; w++)
+                    if (ws[w].Left < x1 && ws[w].Right > x0)
+                        return true;
+            }
+            return false;
         }
 
         /// <summary>Сегмент строки [from..to) как самостоятельная строка (тот же MidY).</summary>

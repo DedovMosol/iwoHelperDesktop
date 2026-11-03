@@ -318,6 +318,7 @@ namespace ExcelMerger.Tests
             Run("WindowPlacement: сериализация границ окна и отбраковка мусора", TestWindowBoundsRoundTrip);
             Run("WindowPlacement.ClampToWorkingArea: край/вне экрана/мин/макс/мультимонитор", TestClampToWorkingArea);
             Run("OcrLayout: гигантский зазор внутри строки рвёт её на зоны (в ячейке — нет)", TestOcrWideGapSplit);
+            Run("OcrLayout: река выключки на соседней строке не рвёт зону (RC-14)", TestOcrJustifyRiverStaysOneLine);
             Run("PageBlocks.CoalesceRowBands: блоки одной строки — в полосу", TestCoalesceRowBands);
             Run("WordDocxWriter.AnchorIndents: красная строка по факту / позиция колонки", TestAnchorIndents);
             Run("OcrLayout: дефис лат+кириллица на переносе сохраняется", TestOcrHyphenMixedKept);
@@ -588,7 +589,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 537;
+            const int ExactTests = 538;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13705,6 +13706,20 @@ namespace ExcelMerger.Tests
             List<OcrParagraph> cell = OcrLayout.Analyze(words, false).Paragraphs;
             AssertEq(1, cell.Count, "в ячейке строка едина");
             AssertEq("На № 02.07.2026 REG~MARK", cell[0].Text, "текст ячейки не порван");
+        }
+
+        private static void TestOcrJustifyRiverStaysOneLine()
+        {
+            // Как на снимке Courier: в строке дыра > 6 em, но на соседней строке там слово.
+            var words = new List<PdfWord>
+            {
+                W("L0", 0, 200, 40, 10), W("R0", 120, 200, 40, 10),
+                W("L1", 0, 191, 40, 10), W("M1", 55, 191, 40, 10), W("R1", 120, 191, 40, 10)
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            string all = paras[0].Text;
+            AssertTrue(all.IndexOf("L0", StringComparison.Ordinal) >= 0, "начало");
+            AssertTrue(all.IndexOf("R0", StringComparison.Ordinal) >= 0, "хвост той же строки не отрезан: " + all);
         }
 
         private static void TestCoalesceRowBands()
