@@ -69,7 +69,8 @@ namespace ExcelMerger.Tests
             // Новые семейства — только в конец: номер семейства входит в сид и шрифт варианта,
             // вставка в середину пересоздала бы все последующие документы и весь реестр.
             Family("таблица с переносом строк в ячейках", WrappedTable),
-            Family("жирный курсив цвет черта и зачёркивание вместе", CombinedFormat)
+            Family("жирный курсив цвет черта и зачёркивание вместе", CombinedFormat),
+            Family("список с цветом жирным чертой и зачёркиванием", FormattedLists)
         };
 
         private static KeyValuePair<string, Builder> Family(string name, Builder b)
@@ -436,6 +437,28 @@ namespace ExcelMerger.Tests
             for (int i = 0; i < words.Length; i++)
                 p.Runs.Add(new CRun((i > 0 ? " " : "") + words[i], styleOf(i, Body(c))));
             return p;
+        }
+
+        private static void FormattedLists(CCase c, CText t)
+        {
+            c.Doc.Blocks.Add(Para(c, t.Text(1), CAlign.Left));
+            int n = t.Next(4, 7);
+            for (int i = 0; i < n; i++)
+            {
+                bool nested = i % 3 == 2;
+                CParagraph p = Item(c, t, ListKind.Bulleted, nested ? 1 : 0, 0, nested ? "–" : "•");
+                for (int r = 0; r < p.Runs.Count; r++)
+                {
+                    CStyle s = p.Runs[r].Style;
+                    int k = (i + r) % 4;
+                    if (k == 0) s = s.WithBold().WithColor(0xC00000);
+                    else if (k == 1) s = s.WithItalic().WithColor(0x2F5597);
+                    else if (k == 2) s = s.WithUnderline().WithBold();
+                    else s = s.WithStrike().WithItalic();
+                    p.Runs[r] = new CRun(p.Runs[r].Text, s);
+                }
+                c.Doc.Blocks.Add(p);
+            }
         }
 
         private static void CombinedFormat(CCase c, CText t)

@@ -923,7 +923,7 @@ The pyramid, bottom-up:
    local files exist and skips explicitly when they do not.
 
    The **layout corpus** (`tests/Corpus.*.cs`, `AuditTests.Corpus.cs`) checks recognition
-   (PDF → Word/PowerPoint) on **3120** generated documents: 26 families (columns, lists, Word
+   (PDF → Word/PowerPoint) on **3240** generated documents: 27 families (columns, lists, Word
    bullet fonts, tables with spans and wrapped cells, underline and strike, white text on
    fills, rotated labels, a scan with an invisible text layer, headers and footers, …) times
    **120** variants of font, size, language, paper and line spacing. PDFs are built in a temp
