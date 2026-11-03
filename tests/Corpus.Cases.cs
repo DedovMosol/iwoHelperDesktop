@@ -68,7 +68,8 @@ namespace ExcelMerger.Tests
             Family("абзацы с полной последней строкой и малой отбивкой", FullLastLine),
             // Новые семейства — только в конец: номер семейства входит в сид и шрифт варианта,
             // вставка в середину пересоздала бы все последующие документы и весь реестр.
-            Family("таблица с переносом строк в ячейках", WrappedTable)
+            Family("таблица с переносом строк в ячейках", WrappedTable),
+            Family("жирный курсив цвет черта и зачёркивание вместе", CombinedFormat)
         };
 
         private static KeyValuePair<string, Builder> Family(string name, Builder b)
@@ -435,6 +436,26 @@ namespace ExcelMerger.Tests
             for (int i = 0; i < words.Length; i++)
                 p.Runs.Add(new CRun((i > 0 ? " " : "") + words[i], styleOf(i, Body(c))));
             return p;
+        }
+
+        private static void CombinedFormat(CCase c, CText t)
+        {
+            c.Doc.Blocks.Add(Styled(c, t, delegate(int i, CStyle s)
+            {
+                if (i % 5 == 0) return s.WithBold().WithColor(0xC00000);
+                if (i % 5 == 1) return s.WithItalic().WithColor(0x2F5597);
+                if (i % 5 == 2) return s.WithUnderline().WithBold();
+                if (i % 5 == 3) return s.WithStrike().WithItalic();
+                return s;
+            }));
+            CParagraph banner = Para(c, t.Phrase(t.Next(4, 8)), CAlign.Center, Body(c).WithBold().WithItalic().WithColor(0xFFFFFF));
+            banner.Fill = 0x1F3864;
+            banner.SpaceAfter = c.Variant.Size;
+            c.Doc.Blocks.Add(banner);
+            c.Doc.Blocks.Add(Styled(c, t, delegate(int i, CStyle s)
+            {
+                return i % 3 == 0 ? s.WithBold().WithItalic().WithUnderline() : s;
+            }));
         }
 
         private static void Formatting(CCase c, CText t)

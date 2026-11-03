@@ -18,7 +18,7 @@ namespace ExcelMerger.Tests
     internal static partial class UnitTests
     {
         /// <summary>Вариантов на семейство. Детерминированно: тот же набор на любой машине.</summary>
-        private const int CorpusPerFamily = 40;
+        private const int CorpusPerFamily = 80;
 
         private static List<CCase> _corpus;
 
@@ -387,7 +387,12 @@ namespace ExcelMerger.Tests
                 "белый текст на светлой цветной плашке",
                 "полужирные, курсивные и цветные слова",
                 "подчёркнутые фразы",
-                "зачёркнутые фразы"
+                "зачёркнутые фразы",
+                "списки с буквами, римскими и составными номерами",
+                "разный кегль в абзаце",
+                "выключка: влево, по центру, вправо, по ширине",
+                "таблица с переносом строк в ячейках",
+                "жирный курсив цвет черта и зачёркивание вместе"
             };
             int n = 0;
             using (var tmp = new TempDir("iwo_shots_"))
