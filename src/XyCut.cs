@@ -130,7 +130,7 @@ namespace ExcelMerger
             };
             double left, right;
             HorizontalBounds(boxes, all, out left, out right);
-            return CutFloors(ctx, all, MaxDepth, left, right, right);
+            return CutFloors(ctx, all, MaxDepth, left, right, right, true);
         }
 
         /// <summary>Листья дерева в порядке чтения (обход в порядке детей).</summary>
@@ -148,16 +148,18 @@ namespace ExcelMerger
         }
 
         /// <summary>Этажи области (сверху вниз): узел-стек. Нет этажей — сразу колонки.</summary>
-        private static CutNode CutFloors(CutContext ctx, List<int> items, int depth, double colLeft, double colRight, double availRight)
+        private static CutNode CutFloors(CutContext ctx, List<int> items, int depth, double colLeft, double colRight, double availRight, bool splitX)
         {
             List<List<int>> floors = depth > 0 ? SplitAtGaps(ctx.Boxes, items, true, ctx.HGapMin) : null;
-            if (floors == null && depth > 0 && SplitColumns(ctx, items) == null)
+            if (floors == null && depth > 0 && splitX && SplitColumns(ctx, items) == null)
                 floors = PeelBlockingFloor(ctx, items);
             if (floors == null)
-                return CutColumns(ctx, items, depth, colLeft, colRight, availRight);
+                return splitX ? CutColumns(ctx, items, depth, colLeft, colRight, availRight) : MakeLeaf(ctx, items, colLeft, colRight, availRight);
             var node = new CutNode { SideBySide = false, Children = new List<CutNode>(floors.Count) };
             foreach (List<int> floor in floors)
-                node.Children.Add(CutColumns(ctx, floor, depth - 1, colLeft, colRight, availRight));
+                node.Children.Add(splitX
+                    ? CutColumns(ctx, floor, depth - 1, colLeft, colRight, availRight)
+                    : CutFloors(ctx, floor, depth - 1, colLeft, colRight, availRight, false));
             return node;
         }
 
@@ -166,12 +168,7 @@ namespace ExcelMerger
         {
             List<List<int>> columns = depth > 0 ? SplitColumns(ctx, items) : null;
             if (columns == null)
-            {
-                var leaf = new CutNode { Tags = new List<int>(items.Count), ColumnLeft = colLeft, ColumnRight = colRight, AvailRight = availRight };
-                foreach (int i in items)
-                    leaf.Tags.Add(ctx.Boxes[i].Tag);
-                return leaf;
-            }
+                return MakeLeaf(ctx, items, colLeft, colRight, availRight);
             var node = new CutNode { SideBySide = true, Children = new List<CutNode>(columns.Count) };
             for (int c = 0; c < columns.Count; c++)
             {
@@ -187,7 +184,7 @@ namespace ExcelMerger
                     HorizontalBounds(ctx.Boxes, columns[c + 1], out nextLeft, out nextRight);
                     childAvail = nextLeft;
                 }
-                node.Children.Add(CutFloors(ctx, column, depth - 1, left, right, childAvail));
+                node.Children.Add(CutFloors(ctx, column, depth - 1, left, right, childAvail, false));
             }
             return node;
         }
@@ -215,8 +212,8 @@ namespace ExcelMerger
             }
             if (!anySubstantial)
                 return null;
-            // Левая колонка из маркеров («•», «1.») — не газета: висячий отступ иначе
-            // отрывает маркер (RC-3). Правая узкая пометка у широкого блока — режется.
+            // Сначала маркеры списка: иначе collapse склеит «• | текст | вложенный» в две
+            // газетные колонки и сломает уровень (RC-9). Правая узкая пометка — режется.
             if (ctx.MinColumnWidth > 0 && columns.Count >= 2)
             {
                 double left, right;
@@ -224,7 +221,52 @@ namespace ExcelMerger
                 if (right - left < ctx.MinColumnWidth)
                     return null;
             }
-            return columns;
+            columns = CollapseJustifyRivers(ctx, columns);
+            return columns.Count >= 2 ? columns : null;
+        }
+
+        /// <summary>
+        /// Выключка Courier/газеты даёт «реки» — пустые полосы внутри колонки, и разрез
+        /// видит 3+ столбика. Настоящий канал — у середины набора. Равные по ширине
+        /// три колонки (бюллетень) не трогаем.
+        /// </summary>
+        private static List<List<int>> CollapseJustifyRivers(CutContext ctx, List<List<int>> columns)
+        {
+            if (columns.Count < 3)
+                return columns;
+            var lefts = new double[columns.Count];
+            var rights = new double[columns.Count];
+            double minW = double.MaxValue, maxW = 0;
+            for (int i = 0; i < columns.Count; i++)
+            {
+                HorizontalBounds(ctx.Boxes, columns[i], out lefts[i], out rights[i]);
+                double w = rights[i] - lefts[i];
+                if (w < minW) minW = w;
+                if (w > maxW) maxW = w;
+            }
+            if (minW > 0 && maxW <= 2.0 * minW)
+                return columns;
+            double mid = (lefts[0] + rights[columns.Count - 1]) / 2.0;
+            int best = 0;
+            double bestDist = double.MaxValue;
+            for (int i = 0; i < columns.Count - 1; i++)
+            {
+                double gutter = (rights[i] + lefts[i + 1]) / 2.0;
+                double dist = gutter > mid ? gutter - mid : mid - gutter;
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = i;
+                }
+            }
+            var left = new List<int>();
+            var right = new List<int>();
+            for (int i = 0; i < columns.Count; i++)
+            {
+                if (i <= best) left.AddRange(columns[i]);
+                else right.AddRange(columns[i]);
+            }
+            return new List<List<int>> { left, right };
         }
 
         /// <summary>
@@ -367,6 +409,20 @@ namespace ExcelMerger
                 if (ctx.Boxes[i].Bottom < bottom) bottom = ctx.Boxes[i].Bottom;
             }
             return top - bottom >= ctx.MinColumnExtent;
+        }
+
+        private static CutNode MakeLeaf(CutContext ctx, List<int> items, double colLeft, double colRight, double availRight)
+        {
+            var order = new List<int>(items);
+            order.Sort(delegate(int a, int b)
+            {
+                int c = ctx.Boxes[b].Top.CompareTo(ctx.Boxes[a].Top);
+                return c != 0 ? c : ctx.Boxes[a].Left.CompareTo(ctx.Boxes[b].Left);
+            });
+            var leaf = new CutNode { Tags = new List<int>(order.Count), ColumnLeft = colLeft, ColumnRight = colRight, AvailRight = availRight };
+            foreach (int i in order)
+                leaf.Tags.Add(ctx.Boxes[i].Tag);
+            return leaf;
         }
 
         /// <summary>Левая/правая граница набора боксов.</summary>
