@@ -977,7 +977,7 @@ The pyramid, bottom-up:
    fails if it would be cut with an ellipsis: clipping is silent, and it had already shipped
    in a dialog whose primary button is set larger and bold than the window it lives in. Run by `tests\build_tests.cmd [x86]`, and CI runs both
    architectures because cache sizing branches on `IntPtr.Size`. The runner also requires
-   exactly 524 `Run(...)` registrations (a skip or a filter does not change the count), so
+   exactly 525 `Run(...)` registrations (a skip or a filter does not change the count), so
    adding or deleting a `Run(...)` line must be accompanied by an intentional count update.
 
    What the runner enforces besides pass/fail:

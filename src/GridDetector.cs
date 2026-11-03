@@ -36,6 +36,7 @@ namespace ExcelMerger
         // Форма «метка — значение»: в сегменте 1–3 слова. Строка газетной колонки — целая фраза.
         // Медиана ≥ этого числа → две колонки текста, не сетка (RC-8).
         private const int MaxFormSegmentWords = 3;
+        private const double RunningTextFill = 0.75;
 
         /// <summary>Слова страницы → сетки-таблицы (Borderless) и остаток. Чистая — под тест.</summary>
         public static GridDetectResult Detect(IList<PdfWord> words)
@@ -207,6 +208,10 @@ namespace ExcelMerger
                 double colRight = c + 1 < columns.Count ? columns[c + 1] : right;
                 table.ColumnWidthsPt.Add(Math.Max(1, colRight - columns[c]));
             }
+            // Газета: каждая колонка заполнена почти целиком. Форма «метка — значение» —
+            // короткие метки в широкой колонке (снимок «две колонки» глотался как таблица).
+            if (columns.Count >= 2 && RunningTextColumns(segments, start, end, columns, table.ColumnWidthsPt, tol))
+                return null;
 
             // Типичный шаг строк окна — чтобы вернуть группировку: где исходный зазор заметно
             // больше типичного (пустая строка между группами полей чека), добавим интервал после
@@ -282,6 +287,33 @@ namespace ExcelMerger
             if (counts.Count == 0)
                 return 0;
             return (int)Math.Round(MathUtil.Median(counts));
+        }
+
+        private static bool RunningTextColumns(List<List<Segment>> segments, int start, int end,
+            List<double> columns, List<double> widths, double tol)
+        {
+            var fills = new List<double>[columns.Count];
+            for (int c = 0; c < columns.Count; c++)
+                fills[c] = new List<double>();
+            for (int i = start; i <= end; i++)
+                foreach (Segment s in segments[i])
+                {
+                    int c = ColumnIndex(columns, s.Left, tol);
+                    if (c < 0)
+                        continue;
+                    double w = widths[c];
+                    if (w <= 0)
+                        continue;
+                    fills[c].Add((s.Right - s.Left) / w);
+                }
+            for (int c = 0; c < columns.Count; c++)
+            {
+                if (fills[c].Count < MinColumnSupport)
+                    return false;
+                if (MathUtil.Median(fills[c]) < RunningTextFill)
+                    return false;
+            }
+            return true;
         }
 
         /// <summary>

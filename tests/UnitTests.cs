@@ -364,6 +364,7 @@ namespace ExcelMerger.Tests
             Run("GridDetector: justified-текст без широких зазоров — не сетка", TestGridJustifiedNegative);
             Run("GridDetector: две строки пар — мало для сетки", TestGridTwoRowsNegative);
             Run("GridDetector: две колонки текста — не сетка (RC-8)", TestGridTwoColumnsNotGrid);
+            Run("GridDetector: короткие строки двух колонок — не форма (RC-8)", TestGridTwoColumnsShortLinesNotGrid);
             Run("GridDetector: абзац над формой не входит в сетку (RC-8)", TestGridHeadingNotSwallowed);
             Run("GridDetector: нумерованный список — не форма (RC-8)", TestGridListNotForm);
             Run("GridDetector: три колонки текста — не сетка (RC-8)", TestGridThreeColumnsNotGrid);
@@ -575,7 +576,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 524;
+            const int ExactTests = 525;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -14585,6 +14586,21 @@ namespace ExcelMerger.Tests
             }
             GridDetectResult r = GridDetector.Detect(words);
             AssertEq(0, r.Tables.Count, "колонки текста не сетка");
+        }
+
+        private static void TestGridTwoColumnsShortLinesNotGrid()
+        {
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 5; row++)
+            {
+                double y = 300 - row * 18;
+                words.Add(WS("LA" + row, 10, y, 80, 10, 10));
+                words.Add(WS("LB" + row, 95, y, 80, 10, 10));
+                words.Add(WS("RA" + row, 220, y, 80, 10, 10));
+                words.Add(WS("RB" + row, 305, y, 80, 10, 10));
+            }
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEq(0, r.Tables.Count, "короткие полные строки колонок — не форма");
         }
 
         private static void TestGridListNotForm()
