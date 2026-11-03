@@ -330,6 +330,7 @@ namespace ExcelMerger.Tests
             Run("ListMarker: маркированный «•»/«—»", TestListMarkerBulleted);
             Run("ListMarker: не список (год, проценты, без пробела, обычный текст)", TestListMarkerNegatives);
             Run("OcrLayout: плотный нумерованный список -> отдельные пункты с ListKind", TestOcrNumberedList);
+            Run("OcrLayout: «(1)» «(2)» — два нумерованных абзаца (RC-3)", TestOcrParenNumberedList);
             Run("OcrLayout: маркированный список -> ListKind=Bulleted, содержимое без маркера", TestOcrBulletedList);
             Run("OcrLayout: пункт с полной первой строкой — Left, не Justify (RC-31)", TestOcrListNotJustified);
             Run("OcrLayout: вложенность списка не сбрасывается на следующем этаже (RC-9)", TestOcrListLevelAcrossFloors);
@@ -591,7 +592,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 540;
+            const int ExactTests = 541;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13901,6 +13902,23 @@ namespace ExcelMerger.Tests
             AssertEq(2, ps[1].ListNumber, "номер второго пункта");
             AssertEq("Первый", ps[0].Text.Substring(ps[0].ListContentStart), "содержимое 1 без маркера");
             AssertEq("Второй", ps[1].Text.Substring(ps[1].ListContentStart), "содержимое 2 без маркера");
+        }
+
+        private static void TestOcrParenNumberedList()
+        {
+            var words = new List<PdfWord>
+            {
+                W("(1)", 0, 100, 16, 10), W("Alpha", 20, 100, 40, 10),
+                W("(2)", 0, 88, 16, 10),  W("Beta", 20, 88, 40, 10)
+            };
+            List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
+            AssertEq(2, ps.Count, "(1)/(2) -> two paragraphs");
+            AssertEq((int)ListKind.Numbered, (int)ps[0].ListKind, "(1) numbered");
+            AssertEq(1, ps[0].ListNumber, "(1) = 1");
+            AssertEq((int)ListKind.Numbered, (int)ps[1].ListKind, "(2) numbered");
+            AssertEq(2, ps[1].ListNumber, "(2) = 2");
+            AssertEq("Alpha", ps[0].Text.Substring(ps[0].ListContentStart), "content after (1)");
+            AssertEq("Beta", ps[1].Text.Substring(ps[1].ListContentStart), "content after (2)");
         }
 
         private static void TestOcrBulletedList()

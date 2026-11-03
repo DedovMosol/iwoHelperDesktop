@@ -73,7 +73,8 @@ namespace ExcelMerger.Tests
             Family("список с цветом жирным чертой и зачёркиванием", FormattedLists),
             Family("нумерованный список с цветом жирным и чертой", FormattedNumbered),
             Family("скобочная нумерация", ParenNumbered),
-            Family("нумерация в три уровня", DeepNumbered)
+            Family("нумерация в три уровня", DeepNumbered),
+            Family("таблица и пункты списка", TableThenList)
         };
 
         private static KeyValuePair<string, Builder> Family(string name, Builder b)
@@ -623,6 +624,20 @@ namespace ExcelMerger.Tests
                 c.Doc.Blocks.Add(Item(c, t, ListKind.Numbered, 2, 1, "a)"));
                 c.Doc.Blocks.Add(Item(c, t, ListKind.Numbered, 1, 2, "2)"));
             }
+        }
+
+        /// <summary>
+        /// Ruled table then a numbered list — the shape of an inventory / schedule
+        /// (not a copy of any real file). Checks that list markers survive after a grid.
+        /// </summary>
+        private static void TableThenList(CCase c, CText t)
+        {
+            c.Doc.Blocks.Add(Spaced(c, t.Text(1), CAlign.Left));
+            bool tight = c.Doc.PageH < 700 || c.Variant.Size >= 13;
+            c.Doc.Blocks.Add(Table(c, t, t.Next(3, tight ? 4 : 6), t.Next(2, 4), true));
+            int n = t.Next(2, tight ? 3 : 5);
+            for (int i = 1; i <= n; i++)
+                c.Doc.Blocks.Add(Item(c, t, ListKind.Numbered, 0, i, i + "."));
         }
     }
 }

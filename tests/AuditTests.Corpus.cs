@@ -363,6 +363,39 @@ namespace ExcelMerger.Tests
         }
 
         /// <summary>
+        /// IWO_SHAPE=&lt;dir&gt; — layout counts only (pages/tables/paras/lists/images).
+        /// No file names and no text: local probes of private samples stay private.
+        /// </summary>
+        [Test("Корпус: счётчики разметки каталога IWO_SHAPE (без текста)")]
+        private static void CorpusShapeCounts()
+        {
+            string dir = Environment.GetEnvironmentVariable("IWO_SHAPE");
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+                return;
+            EmbeddedAssemblies.Ensure();
+            int i = 0;
+            foreach (string pdf in Directory.GetFiles(dir, "*.pdf"))
+            {
+                List<PdfPageText> pages = PdfTextExtract.Extract(pdf);
+                int tables = 0, paras = 0, lists = 0, images = 0;
+                foreach (PdfPageText p in pages)
+                {
+                    if (p.Tables != null) tables += p.Tables.Count;
+                    if (p.Paragraphs != null)
+                    {
+                        paras += p.Paragraphs.Count;
+                        foreach (OcrParagraph para in p.Paragraphs)
+                            if (para.ListKind != ListKind.None) lists++;
+                    }
+                    if (p.Images != null) images += p.Images.Count;
+                }
+                Console.WriteLine("      shape #" + i + ": pages " + pages.Count +
+                    " tables " + tables + " paras " + paras + " lists " + lists + " images " + images);
+                i++;
+            }
+        }
+
+        /// <summary>
         /// IWO_SHOTS=&lt;папка&gt; — страница 1 выбранных семейств в PNG + текстовый разбор.
         /// Без переменной — пустой успех (CI не пишет файлы).
         /// </summary>

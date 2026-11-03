@@ -78,7 +78,7 @@ namespace ExcelMerger
         private static Result TryNumbered(string text)
         {
             var none = new Result { Kind = ListKind.None, Number = 0, ContentStart = 0 };
-            // «(1) пункт», «(12) пункт» — скобочная нумерация ГОСТ/инструкций (RC-3).
+            // "(1) item" / "(12) item" — parenthetical numbering (RC-3).
             if (text[0] == '(')
             {
                 int i = 1, n = 0;
@@ -116,6 +116,7 @@ namespace ExcelMerger
                 {
                     // «1.» / «12)» — последняя точка уже съедена, либо «)».
                     int p = first <= 9 ? 1 : (first <= 99 ? 2 : 3);
+                    // "12)" already handled; "1]" is the same shape with a bracket.
                     if (p < text.Length && (text[p] == ')' || text[p] == ']') && p + 1 < text.Length && char.IsWhiteSpace(text[p + 1]))
                     {
                         int c = SkipSpaces(text, p + 1);
