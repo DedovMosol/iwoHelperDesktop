@@ -329,6 +329,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: маркированный список -> ListKind=Bulleted, содержимое без маркера", TestOcrBulletedList);
             Run("OcrLayout: пункт с полной первой строкой — Left, не Justify (RC-31)", TestOcrListNotJustified);
             Run("OcrLayout: вложенность списка не сбрасывается на следующем этаже (RC-9)", TestOcrListLevelAcrossFloors);
+            Run("OcrLayout: правая колонка не наследует уровень левой (RC-9)", TestOcrListLevelIndependentColumns);
             Run("StampDetector: штамп -> область со всеми словами, вне полосы не берётся", TestStampDetected);
             Run("StampDetector: нет одного опорного слова -> не штамп", TestStampMissingAnchor);
             Run("StampDetector: опорные слова разбросаны по странице -> не штамп", TestStampScatteredRejected);
@@ -581,7 +582,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 530;
+            const int ExactTests = 531;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13867,6 +13868,25 @@ namespace ExcelMerger.Tests
             AssertTrue(parent != null && child != null, "оба пункта");
             AssertEq(0, parent.ListLevel, "родитель");
             AssertEq(1, child.ListLevel, "потомок после этажа");
+        }
+
+        private static void TestOcrListLevelIndependentColumns()
+        {
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 4; row++)
+            {
+                double y = 400 - row * 16;
+                words.Add(W("1.", 10, y, 14, 10));
+                words.Add(W("L" + row, 28, y, 40, 10));
+                words.Add(W("1.", 120, y, 14, 10));
+                words.Add(W("R" + row, 138, y, 40, 10));
+            }
+            List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
+            foreach (OcrParagraph p in ps)
+            {
+                if (p.ListKind == ListKind.None) continue;
+                AssertEq(0, p.ListLevel, "колонки независимы: " + p.Text);
+            }
         }
 
         // ---------- StampDetector (текстовый штамп) ----------

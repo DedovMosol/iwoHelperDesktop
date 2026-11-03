@@ -295,30 +295,40 @@ namespace ExcelMerger
             if (words == null || words.Count == 0)
                 return result;
 
-            List<CutLeaf> leaves = CutLeaves(words, splitColumns);
-            // Красная строка решается по ВСЕЙ странице (группы всех блоков разом): у отдельного
-            // этажа/колонки абзацев мало, порознь порог IndentedShare не набирался бы.
+            CutNode root = CutTree(words, splitColumns);
             var stats = new IndentStats();
-            // Уровни списка — на всю страницу в порядке чтения: этаж с заголовком не должен
-            // сбрасывать вложенность пунктов в следующем листе XY (RC-9).
-            var listNesting = new ListNesting();
-            foreach (CutLeaf leaf in leaves)
-            {
-                var regionWords = new List<PdfWord>(leaf.Tags.Count);
-                foreach (int tag in leaf.Tags)
-                    regionWords.Add(words[tag]);
-                AnalyzeRegion(ToLines(regionWords), leaf.ColumnLeft, leaf.ColumnRight, leaf.AvailRight,
-                    splitColumns, result.Paragraphs, stats, mode, listNesting);
-            }
+            if (root != null)
+                WalkCut(root, words, splitColumns, result.Paragraphs, stats, mode, new ListNesting());
             result.FirstLineIndentPt = stats.DocumentIndent();
             return result;
         }
 
         /// <summary>
-        /// Листья XY-разреза тех же порогов, что и разбор абзацев. Метрики — по строкам всей
+        /// Этажи делят один трекер вложенности; колонки бок о бок — каждая свой:
+        /// правая колонка не наследует глубину левой.
+        /// </summary>
+        private static void WalkCut(CutNode node, IList<PdfWord> words, bool splitColumns,
+            List<OcrParagraph> paragraphs, IndentStats stats, PageLayoutMode mode, ListNesting listNesting)
+        {
+            if (node.IsLeaf)
+            {
+                var regionWords = new List<PdfWord>(node.Tags.Count);
+                foreach (int tag in node.Tags)
+                    regionWords.Add(words[tag]);
+                AnalyzeRegion(ToLines(regionWords), node.ColumnLeft, node.ColumnRight, node.AvailRight,
+                    splitColumns, paragraphs, stats, mode, listNesting);
+                return;
+            }
+            foreach (CutNode child in node.Children)
+                WalkCut(child, words, splitColumns, paragraphs, stats, mode,
+                    node.SideBySide ? new ListNesting() : listNesting);
+        }
+
+        /// <summary>
+        /// Дерево XY-разреза тех же порогов, что и разбор абзацев. Метрики — по строкам всей
         /// страницы: в многоколоночной вёрстке шаг занижается и это лишь добавляет этажей.
         /// </summary>
-        private static List<CutLeaf> CutLeaves(IList<PdfWord> words, bool splitColumns)
+        private static CutNode CutTree(IList<PdfWord> words, bool splitColumns)
         {
             List<Line> pageLines = ToLines(words);
             var pageHeights = new List<double>(pageLines.Count);
@@ -340,7 +350,7 @@ namespace ExcelMerger
                 ? Math.Max(ColumnGapMinPt, ColumnGapEmFactor * em)
                 : double.MaxValue;
             double minWidth = splitColumns ? ColumnMinWidthEmFactor * em : 0;
-            return XyCut.Order(boxes, hGapMin, vGapMin, ColumnMinExtentEmFactor * em, ColumnMinWords, minWidth);
+            return XyCut.OrderTree(boxes, hGapMin, vGapMin, ColumnMinExtentEmFactor * em, ColumnMinWords, minWidth);
         }
 
         /// <summary>
