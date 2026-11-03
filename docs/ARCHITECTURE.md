@@ -923,10 +923,10 @@ The pyramid, bottom-up:
    local files exist and skips explicitly when they do not.
 
    The **layout corpus** (`tests/Corpus.*.cs`, `AuditTests.Corpus.cs`) checks recognition
-   (PDF → Word/PowerPoint) on **2080** generated documents: 26 families (columns, lists, Word
+   (PDF → Word/PowerPoint) on **3120** generated documents: 26 families (columns, lists, Word
    bullet fonts, tables with spans and wrapped cells, underline and strike, white text on
    fills, rotated labels, a scan with an invisible text layer, headers and footers, …) times
-   **80** variants of font, size, language, paper and line spacing. PDFs are built in a temp
+   **120** variants of font, size, language, paper and line spacing. PDFs are built in a temp
    folder and never stored in git. One document model
    (`Corpus.Spec.cs`) drives both the PdfSharp drawing (`Corpus.Render.cs`) and the
    expectations (`Corpus.Check.cs`), so the two cannot drift apart. The check compares the
