@@ -193,7 +193,7 @@ namespace ExcelMerger
         private const double SpaceGapFactor = 0.08;
         // Разрез колонок: канал Word ≈ 35 pt, LaTeX ≈ 10–12 pt; межсловный зазор ≈ 0.25 em.
         // 2.5 em (~27 pt) не видел 12 pt канал (RC-14). 8 pt видит канал, а узкую полосу
-        // маркеров списка отсекает MinColumnWidth (4 em) — иначе «• | текст» две колонки.
+        // маркеров списка отсекает MinColumnWidth (3 em) — иначе «• | текст» две колонки.
         private const double ColumnGapEmFactor = 0.6;
         private const double ColumnGapMinPt = 8.0;
         // 4 em (40 pt при 10 pt) глотало узкий сайдбар 33 pt как «не колонка».

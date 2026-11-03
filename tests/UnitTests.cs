@@ -13786,6 +13786,8 @@ namespace ExcelMerger.Tests
             AssertEq(1, ListMarker.Detect("а) пункт").Number, "кириллица а)");
             AssertEq(3, ListMarker.Detect("C. Appendix").Number, "C. — буква, не римские 100");
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("12.5% роста").Kind, "проценты по-прежнему не маркер");
+            AssertEq(3, ListMarker.Detect("III.Пункт").Number, "римский без пробела");
+            AssertEq(1, ListMarker.Detect("а)пункт").Number, "кириллица без пробела");
         }
 
         private static void TestOcrNumberedList()

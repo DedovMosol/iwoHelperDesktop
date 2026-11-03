@@ -117,23 +117,23 @@ namespace ExcelMerger
             int r = 0;
             while (r < text.Length && r < 7 && "IVXLCDMivxlcdm".IndexOf(text[r]) >= 0)
                 r++;
-            if (r > 0 && r < text.Length && (text[r] == '.' || text[r] == ')') && r + 1 < text.Length && char.IsWhiteSpace(text[r + 1]))
+            if (r > 0 && r < text.Length && (text[r] == '.' || text[r] == ')') && r + 1 < text.Length && ContentAfter(text, r + 1) >= 0)
             {
                 char u = text[0] >= 'a' ? (char)(text[0] - 32) : text[0];
                 bool singleOk = r == 1 && (u == 'I' || u == 'V' || u == 'X');
                 if (r >= 2 || singleOk)
                 {
-                    int c = SkipSpaces(text, r + 1);
+                    int c = ContentAfter(text, r + 1);
                     int val = RomanValue(text, r);
-                    if (c < text.Length && val > 0)
+                    if (c >= 0 && val > 0)
                         return new Result { Kind = ListKind.Numbered, Number = val, ContentStart = c };
                 }
             }
-            if (text.Length >= 3 && (text[1] == '.' || text[1] == ')') && char.IsWhiteSpace(text[2]))
+            if (text.Length >= 3 && (text[1] == '.' || text[1] == ')'))
             {
                 int n = LetterIndex(text[0]);
-                int c = SkipSpaces(text, 2);
-                if (n > 0 && c < text.Length)
+                int c = ContentAfter(text, 2);
+                if (n > 0 && c >= 0)
                     return new Result { Kind = ListKind.Numbered, Number = n, ContentStart = c };
             }
             return none;
@@ -174,6 +174,19 @@ namespace ExcelMerger
             while (i < text.Length && char.IsWhiteSpace(text[i]))
                 i++;
             return i;
+        }
+
+        /// <summary>Начало содержимого после маркера: пробел(ы) или сразу буква («III.Пункт»).</summary>
+        private static int ContentAfter(string text, int from)
+        {
+            if (from >= text.Length)
+                return -1;
+            if (char.IsWhiteSpace(text[from]))
+            {
+                int c = SkipSpaces(text, from);
+                return c < text.Length ? c : -1;
+            }
+            return LetterIndex(text[from]) > 0 ? from : -1;
         }
     }
 }
