@@ -157,7 +157,10 @@ namespace ExcelMerger
             if (splitX && depth > 0)
             {
                 List<List<int>> cols = SplitColumns(ctx, items);
-                if (cols != null)
+                // Колонки разной высоты: шапка/подвал на всю ширину слева + узкая колонка
+                // справа — не газета. Иначе «верх / середина / низ» читается как левая
+                // колонка целиком (PlainText reading order).
+                if (cols != null && ColumnsComparableHeight(ctx, cols))
                     return AssembleColumns(ctx, cols, depth, availRight);
                 List<List<int>> peeled = PeelBlockingFloor(ctx, items);
                 if (peeled != null)
@@ -404,6 +407,20 @@ namespace ExcelMerger
                 if (ctx.Boxes[i].Left < hi && ctx.Boxes[i].Right > lo)
                     return true;
             return false;
+        }
+
+        private static bool ColumnsComparableHeight(CutContext ctx, List<List<int>> columns)
+        {
+            if (columns.Count < 2)
+                return false;
+            double minE = double.MaxValue, maxE = 0;
+            foreach (List<int> column in columns)
+            {
+                double e = VerticalExtent(ctx, column);
+                if (e < minE) minE = e;
+                if (e > maxE) maxE = e;
+            }
+            return maxE > 0 && minE >= 0.4 * maxE;
         }
 
         private static double VerticalExtent(CutContext ctx, List<int> items)
