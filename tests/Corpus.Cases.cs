@@ -71,7 +71,9 @@ namespace ExcelMerger.Tests
             Family("таблица с переносом строк в ячейках", WrappedTable),
             Family("жирный курсив цвет черта и зачёркивание вместе", CombinedFormat),
             Family("список с цветом жирным чертой и зачёркиванием", FormattedLists),
-            Family("нумерованный список с цветом жирным и чертой", FormattedNumbered)
+            Family("нумерованный список с цветом жирным и чертой", FormattedNumbered),
+            Family("скобочная нумерация", ParenNumbered),
+            Family("нумерация в три уровня", DeepNumbered)
         };
 
         private static KeyValuePair<string, Builder> Family(string name, Builder b)
@@ -600,6 +602,27 @@ namespace ExcelMerger.Tests
         {
             for (int k = 0; k < 3; k++)
                 c.Doc.Blocks.Add(Styled(c, t, (i, s) => i % 7 == 3 ? s.WithSize(s.Size + 2) : s));
+        }
+
+        private static void ParenNumbered(CCase c, CText t)
+        {
+            c.Doc.Blocks.Add(Para(c, t.Text(1), CAlign.Left));
+            int n = t.Next(4, 7);
+            for (int i = 1; i <= n; i++)
+                c.Doc.Blocks.Add(Item(c, t, ListKind.Numbered, 0, i, "(" + i + ")"));
+        }
+
+        private static void DeepNumbered(CCase c, CText t)
+        {
+            c.Doc.Blocks.Add(Para(c, t.Text(1), CAlign.Left));
+            int n = t.Next(2, 4);
+            for (int i = 1; i <= n; i++)
+            {
+                c.Doc.Blocks.Add(Item(c, t, ListKind.Numbered, 0, i, i + "."));
+                c.Doc.Blocks.Add(Item(c, t, ListKind.Numbered, 1, 1, "1)"));
+                c.Doc.Blocks.Add(Item(c, t, ListKind.Numbered, 2, 1, "a)"));
+                c.Doc.Blocks.Add(Item(c, t, ListKind.Numbered, 1, 2, "2)"));
+            }
         }
     }
 }

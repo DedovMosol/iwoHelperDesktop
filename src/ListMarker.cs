@@ -78,6 +78,23 @@ namespace ExcelMerger
         private static Result TryNumbered(string text)
         {
             var none = new Result { Kind = ListKind.None, Number = 0, ContentStart = 0 };
+            // «(1) пункт», «(12) пункт» — скобочная нумерация ГОСТ/инструкций (RC-3).
+            if (text[0] == '(')
+            {
+                int i = 1, n = 0;
+                while (i < text.Length && i < 4 && IsAsciiDigit(text[i]))
+                {
+                    n = n * 10 + (text[i] - '0');
+                    i++;
+                }
+                if (n > 0 && i < text.Length && text[i] == ')')
+                {
+                    int c = ContentAfter(text, i + 1);
+                    if (c >= 0)
+                        return new Result { Kind = ListKind.Numbered, Number = n, ContentStart = c };
+                }
+                return none;
+            }
             if (IsAsciiDigit(text[0]))
             {
                 int i = 0, segs = 0, first = 0, last = 0;
@@ -99,7 +116,7 @@ namespace ExcelMerger
                 {
                     // «1.» / «12)» — последняя точка уже съедена, либо «)».
                     int p = first <= 9 ? 1 : (first <= 99 ? 2 : 3);
-                    if (p < text.Length && text[p] == ')' && p + 1 < text.Length && char.IsWhiteSpace(text[p + 1]))
+                    if (p < text.Length && (text[p] == ')' || text[p] == ']') && p + 1 < text.Length && char.IsWhiteSpace(text[p + 1]))
                     {
                         int c = SkipSpaces(text, p + 1);
                         if (c < text.Length)

@@ -326,6 +326,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: пустой ввод -> нет абзацев", TestOcrEmpty);
             Run("ListMarker: нумерованный «1.»/«12)»", TestListMarkerNumbered);
             Run("ListMarker: буквы, римские и составные «1.1.» (RC-10)", TestListMarkerLettersRomanCompound);
+            Run("ListMarker: «(1)» и «1]» — нумерованный список (RC-3)", TestListMarkerParenAndBracket);
             Run("ListMarker: маркированный «•»/«—»", TestListMarkerBulleted);
             Run("ListMarker: не список (год, проценты, без пробела, обычный текст)", TestListMarkerNegatives);
             Run("OcrLayout: плотный нумерованный список -> отдельные пункты с ListKind", TestOcrNumberedList);
@@ -590,7 +591,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 539;
+            const int ExactTests = 540;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13866,6 +13867,21 @@ namespace ExcelMerger.Tests
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("12.5% роста").Kind, "проценты по-прежнему не маркер");
             AssertEq(3, ListMarker.Detect("III.Пункт").Number, "римский без пробела");
             AssertEq(1, ListMarker.Detect("а)пункт").Number, "кириллица без пробела");
+        }
+
+        private static void TestListMarkerParenAndBracket()
+        {
+            ListMarker.Result a = ListMarker.Detect("(1) пункт");
+            AssertEq((int)ListKind.Numbered, (int)a.Kind, "(1) — нумерованный");
+            AssertEq(1, a.Number, "(1) = 1");
+            AssertEq("пункт", "(1) пункт".Substring(a.ContentStart), "содержимое после (1)");
+            ListMarker.Result b = ListMarker.Detect("(12) раздел");
+            AssertEq(12, b.Number, "(12) = 12");
+            ListMarker.Result c = ListMarker.Detect("1] пункт");
+            AssertEq((int)ListKind.Numbered, (int)c.Kind, "1] — нумерованный");
+            AssertEq(1, c.Number, "1] = 1");
+            AssertEq(1, ListMarker.Detect("(1)пункт").Number, "скобка без пробела — как III.Пункт");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("(0) ноль").Kind, "нулевой номер не маркер");
         }
 
         private static void TestOcrNumberedList()
