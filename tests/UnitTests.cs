@@ -297,6 +297,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: надстрочный ран", TestOcrSuperscript);
             Run("OcrLayout: ран-гиперссылка", TestOcrHyperlinkRun);
             Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
+            Run("OcrLayout: жирный курсив цвет черта и зачёркивание в ранах", TestOcrStackedFormatting);
             Run("OcrLayout: рваный абзац по левому краю", TestOcrLeftAligned);
             Run("OcrLayout: центрированная строка", TestOcrCentered);
             Run("OcrLayout: IsCentered — узкая/широкая/красная строка/рваная/правая", TestIsCenteredPredicate);
@@ -582,7 +583,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 531;
+            const int ExactTests = 532;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13313,6 +13314,25 @@ namespace ExcelMerger.Tests
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
             AssertEq(1, layout.Paragraphs[0].Runs.Count, "один ран");
             AssertEq(0xFF0000, layout.Paragraphs[0].Runs[0].ColorArgb, "цвет рана сохранён");
+        }
+
+        private static void TestOcrStackedFormatting()
+        {
+            var words = new List<PdfWord>
+            {
+                new PdfWord { Text = "BoldRed", Left = 0, Right = 40, Bottom = 200, Top = 210, FontSizePt = 12, Bold = true, ColorArgb = 0xC00000 },
+                new PdfWord { Text = "ItalBlue", Left = 45, Right = 90, Bottom = 200, Top = 210, FontSizePt = 12, Italic = true, ColorArgb = 0x2F5597 },
+                new PdfWord { Text = "Under", Left = 95, Right = 130, Bottom = 200, Top = 210, FontSizePt = 12, Underline = true },
+                new PdfWord { Text = "Strike", Left = 135, Right = 175, Bottom = 200, Top = 210, FontSizePt = 12, Strike = true },
+                new PdfWord { Text = "White", Left = 180, Right = 220, Bottom = 200, Top = 210, FontSizePt = 12, Bold = true, ColorArgb = 0xFFFFFF }
+            };
+            List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
+            AssertEq(5, runs.Count, "пять ранов");
+            AssertTrue(runs[0].Bold && runs[0].ColorArgb == 0xC00000, "жирный красный");
+            AssertTrue(runs[1].Italic && runs[1].ColorArgb == 0x2F5597, "курсив синий");
+            AssertTrue(runs[2].Underline, "подчёркивание");
+            AssertTrue(runs[3].Strike, "зачёркивание");
+            AssertTrue(runs[4].Bold && runs[4].ColorArgb == 0xFFFFFF, "белый жирный");
         }
 
         private static void TestOcrLeftAligned()
