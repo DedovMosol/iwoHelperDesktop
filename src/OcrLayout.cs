@@ -1398,6 +1398,8 @@ namespace ExcelMerger
         /// хватает начала строки), с одним пробелом между словами — маркеру этого достаточно.</summary>
         private static bool StartsWithListMarker(Line line)
         {
+            if (line.Words.Count > 0 && ListMarker.LooksLikeMarker(line.Words[0].Text ?? ""))
+                return true;
             return ListMarker.LooksLikeMarker(PrefixText(line));
         }
 
@@ -1408,7 +1410,7 @@ namespace ExcelMerger
             {
                 if (i > 0) sb.Append(' ');
                 sb.Append(line.Words[i].Text ?? "");
-                if (sb.Length > 8)
+                if (sb.Length > 16)
                     break;
             }
             return sb.ToString();
