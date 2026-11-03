@@ -244,8 +244,17 @@ namespace ExcelMerger
                     spanFrom = ColumnIndex(columns, s.Left, tol);
                     if (spanFrom < 0) spanFrom = NearestColumn(columns, s.Left);
                     spanLen = 1;
-                    while (spanFrom + spanLen < columns.Count && s.Right > columns[spanFrom + spanLen] + tol)
+                    while (spanFrom + spanLen < columns.Count)
+                    {
+                        int n = spanFrom + spanLen;
+                        double nLeft = columns[n];
+                        double nRight = n + 1 < columns.Count ? columns[n + 1] : right;
+                        double fill = nRight - nLeft;
+                        // Чуть залезли в соседнюю колонку — не объединение (RC-8 table-cell).
+                        if (fill <= 0 || s.Right < nLeft + 0.5 * fill)
+                            break;
                         spanLen++;
+                    }
                 }
                 for (int c = 0; c < columns.Count; c++)
                 {

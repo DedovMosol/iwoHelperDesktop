@@ -355,6 +355,7 @@ namespace ExcelMerger.Tests
             Run("ColumnConfineIndents: правая колонка -> левый отступ; левая -> правый; полная ширина -> нет", TestColumnConfine);
             Run("FontResolver.HasCyrillic: кириллица / латиница / пусто", TestHasCyrillic);
             Run("GridDetector: широкий одиночный ряд -> ColSpan во всю ширину", TestGridColSpan);
+            Run("GridDetector: лёгкий заступ в соседнюю колонку — не ColSpan (RC-8)", TestGridSlightOverflowNotColSpan);
             Run("GridDetector: увеличенный зазор между группами -> интервал после строки", TestGridRowSpacing);
             Run("TableDetector: прочерк кусками (коллинеарные) -> LoneLines, не таблица", TestLoneCollinearRule);
             Run("TableDetector: линия внутри рамки таблицы -> не прочерк (LoneLines пуст)", TestRuleInsideTableExcluded);
@@ -579,7 +580,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 528;
+            const int ExactTests = 529;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -14419,6 +14420,22 @@ namespace ExcelMerger.Tests
             OcrTableRow last = t.Rows[t.Rows.Count - 1];
             AssertEq(2, last.Cells[0].ColSpan, "широкий ряд -> ColSpan=2");
             AssertTrue(last.Cells[1].Covered, "вторая ячейка накрыта");
+        }
+
+        private static void TestGridSlightOverflowNotColSpan()
+        {
+            var words = new List<PdfWord>
+            {
+                WS("LblA", 0, 200, 40, 8, 8),  WS("ValA", 100, 200, 40, 8, 8),
+                WS("LblB", 0, 180, 40, 8, 8),  WS("ValB", 100, 180, 40, 8, 8),
+                WS("LblC", 0, 160, 40, 8, 8),  WS("ValC", 100, 160, 40, 8, 8),
+                WS("Almost", 0, 140, 110, 8, 8)
+            };
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEq(1, r.Tables.Count, "сетка");
+            OcrTableRow last = r.Tables[0].Rows[r.Tables[0].Rows.Count - 1];
+            AssertEq(1, last.Cells[0].ColSpan, "заступ 10 pt в колонку 40 pt — не объединение");
+            AssertTrue(!last.Cells[1].Covered, "вторая ячейка своя");
         }
 
         private static void TestGridRowSpacing()
