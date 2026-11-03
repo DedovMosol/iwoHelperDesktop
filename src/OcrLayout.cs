@@ -299,13 +299,16 @@ namespace ExcelMerger
             // Красная строка решается по ВСЕЙ странице (группы всех блоков разом): у отдельного
             // этажа/колонки абзацев мало, порознь порог IndentedShare не набирался бы.
             var stats = new IndentStats();
+            // Уровни списка — на всю страницу в порядке чтения: этаж с заголовком не должен
+            // сбрасывать вложенность пунктов в следующем листе XY (RC-9).
+            var listNesting = new ListNesting();
             foreach (CutLeaf leaf in leaves)
             {
                 var regionWords = new List<PdfWord>(leaf.Tags.Count);
                 foreach (int tag in leaf.Tags)
                     regionWords.Add(words[tag]);
                 AnalyzeRegion(ToLines(regionWords), leaf.ColumnLeft, leaf.ColumnRight, leaf.AvailRight,
-                    splitColumns, result.Paragraphs, stats, mode);
+                    splitColumns, result.Paragraphs, stats, mode, listNesting);
             }
             result.FirstLineIndentPt = stats.DocumentIndent();
             return result;
@@ -377,7 +380,8 @@ namespace ExcelMerger
         /// (красную строку решает Analyze по всем блокам страницы).
         /// </summary>
         private static void AnalyzeRegion(List<Line> lines, double colLeft, double colRight, double availRight,
-            bool splitColumns, List<OcrParagraph> paragraphs, IndentStats stats, PageLayoutMode mode)
+            bool splitColumns, List<OcrParagraph> paragraphs, IndentStats stats, PageLayoutMode mode,
+            ListNesting listNesting)
         {
             if (lines.Count == 0)
                 return;
@@ -479,7 +483,6 @@ namespace ExcelMerger
             }
 
             // Абзацы: раны с форматом + выравнивание; сбор отступов первых строк (исключая центрирование).
-            var listNesting = new ListNesting(); // трекер уровней вложенности списка для региона
             double maxIndent = MaxIndentFraction * width;
             for (int gi = 0; gi < groups.Count; gi++)
             {

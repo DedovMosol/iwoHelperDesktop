@@ -328,6 +328,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: плотный нумерованный список -> отдельные пункты с ListKind", TestOcrNumberedList);
             Run("OcrLayout: маркированный список -> ListKind=Bulleted, содержимое без маркера", TestOcrBulletedList);
             Run("OcrLayout: пункт с полной первой строкой — Left, не Justify (RC-31)", TestOcrListNotJustified);
+            Run("OcrLayout: вложенность списка не сбрасывается на следующем этаже (RC-9)", TestOcrListLevelAcrossFloors);
             Run("StampDetector: штамп -> область со всеми словами, вне полосы не берётся", TestStampDetected);
             Run("StampDetector: нет одного опорного слова -> не штамп", TestStampMissingAnchor);
             Run("StampDetector: опорные слова разбросаны по странице -> не штамп", TestStampScatteredRejected);
@@ -580,7 +581,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 529;
+            const int ExactTests = 530;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13851,6 +13852,21 @@ namespace ExcelMerger.Tests
             AssertEq(1, ps.Count, "один пункт");
             AssertEq(ListKind.Numbered, ps[0].ListKind, "нумерованный");
             AssertEq(OcrAlignment.Left, ps[0].Alignment, "пункт не выключка");
+        }
+
+        private static void TestOcrListLevelAcrossFloors()
+        {
+            var words = new List<PdfWord>
+            {
+                W("1.", 10, 400, 14, 10), W("Parent", 30, 400, 80, 10),
+                W("a)", 34, 300, 16, 10), W("Child", 54, 300, 50, 10)
+            };
+            List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
+            OcrParagraph parent = ps.Find(p => p.ListKind == ListKind.Numbered && p.Text.IndexOf("Parent", StringComparison.Ordinal) >= 0);
+            OcrParagraph child = ps.Find(p => p.Text.IndexOf("Child", StringComparison.Ordinal) >= 0);
+            AssertTrue(parent != null && child != null, "оба пункта");
+            AssertEq(0, parent.ListLevel, "родитель");
+            AssertEq(1, child.ListLevel, "потомок после этажа");
         }
 
         // ---------- StampDetector (текстовый штамп) ----------
