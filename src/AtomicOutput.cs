@@ -141,7 +141,10 @@ namespace ExcelMerger
                 // После успешной публикации backup — только мусор. При неуспешной он
                 // может быть единственной копией исходника и ниже НИКОГДА не удаляется.
                 if (File.Exists(TargetPath))
-                    DeleteQuietly(_backupPath);
+                {
+                    if (!DeleteQuietly(_backupPath))
+                        unresolved = true;
+                }
                 else if (File.Exists(_backupPath))
                     unresolved = true;
             }
@@ -222,10 +225,19 @@ namespace ExcelMerger
             catch { return false; }
         }
 
-        private static void DeleteQuietly(string path)
+        /// <summary>True — файла нет или удалили. False — удалить не вышло, журнал нельзя сносить.</summary>
+        private static bool DeleteQuietly(string path)
         {
-            try { if (File.Exists(path)) File.Delete(path); }
-            catch { }
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

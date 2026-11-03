@@ -193,19 +193,27 @@ namespace ExcelMerger
             return (nowUtc - new DateTime(ticks, DateTimeKind.Utc)).TotalDays < days;
         }
 
-        /// <summary>Применить срок хранения к записям и к неразобранным строкам записей.</summary>
-        private static void ApplyAutoClear(Data data, DateTime nowUtc)
+        /// <summary>
+        /// Срок хранения: разобранные записи и неразобранные строки «e=…».
+        /// True — что-то убрали (нужна запись на диск, иначе пути старше срока остаются в файле).
+        /// </summary>
+        private static bool ApplyAutoClear(Data data, DateTime nowUtc)
         {
+            if (data.AutoClearDays <= 0)
+                return false;
             List<HistoryEntry> fresh = KeepRecent(data.Entries, nowUtc, data.AutoClearDays);
-            if (fresh.Count != data.Entries.Count)
+            bool changed = fresh.Count != data.Entries.Count;
+            if (changed)
             {
                 data.Entries.Clear();
                 data.Entries.AddRange(fresh);
             }
+            int unknown = data.UnknownLines.Count;
             data.UnknownLines.RemoveAll(delegate(string line)
             {
                 return !KeepUnknownLine(line, nowUtc, data.AutoClearDays);
             });
+            return changed || data.UnknownLines.Count != unknown;
         }
 
         /// <summary>
@@ -234,15 +242,33 @@ namespace ExcelMerger
 
         public static Data Load()
         {
-            Data data;
-            return TryLoad(out data) ? data : new Data();
+            Data result = null;
+            bool locked = AppDataLock.TryRun(FilePath, delegate
+            {
+                Data data;
+                if (!TryLoadRaw(out data))
+                    return false;
+                if (ApplyAutoClear(data, DateTime.UtcNow))
+                    Save(data);
+                result = data;
+                return true;
+            });
+            if (locked)
+                return result;
+
+            // Без lock не пишем: как UsageStats.Load. Срез в памяти врал бы, что диск уже чист.
+            Data fallback;
+            if (TryLoadRaw(out fallback))
+                return fallback;
+            return new Data();
         }
 
         /// <summary>
         /// Существующий, но временно непрочитанный файл — не пустая история: мутация должна
         /// отказаться, а не перезаписать opt-out/defaults поверх неизвестного снимка.
+        /// Автоочистка здесь не применяется: иначе Mutate не видит устаревшие строки на диске.
         /// </summary>
-        private static bool TryLoad(out Data data)
+        private static bool TryLoadRaw(out Data data)
         {
             data = new Data();
             string[] lines;
@@ -271,7 +297,6 @@ namespace ExcelMerger
                 else
                     data.UnknownLines.Add(line);
             }
-            ApplyAutoClear(data, DateTime.UtcNow);
             return true;
         }
 
@@ -297,8 +322,9 @@ namespace ExcelMerger
             return AppDataLock.TryRun(FilePath, delegate
             {
                 Data data;
-                if (!TryLoad(out data) || !change(data))
+                if (!TryLoadRaw(out data) || !change(data))
                     return false;
+                ApplyAutoClear(data, DateTime.UtcNow);
                 Save(data);
                 return true;
             });

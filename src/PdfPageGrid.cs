@@ -257,6 +257,7 @@ namespace ExcelMerger
             _list.BorderStyle = BorderStyle.FixedSingle;
             _list.BackColor = GridBack; // единый источник с BackBrush/DimBrush пейнта
             _list.OwnerDraw = true;
+            _list.ShowItemToolTips = true; // ToolTipText на элементе иначе не показывается
             _list.DrawItem += OnDrawItem;
             _list.HandleCreated += delegate { ApplyIconSpacing(); };
             _list.SelectedIndexChanged += delegate

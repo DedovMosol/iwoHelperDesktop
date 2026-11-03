@@ -153,6 +153,77 @@ namespace ExcelMerger.Tests
             });
         }
 
+        /// <summary>
+        /// Автоочистка при Load раньше жила только в памяти: history.txt держал пути старше
+        /// срока до следующей мутации. PRIVACY обещает срок хранения на диске.
+        /// </summary>
+        [Test("Аудит SH-5: Load с автоочисткой стирает просроченные пути на диске")]
+        private static void AuditHistoryLoadPersistsAutoClear()
+        {
+            InIsolatedSettings("iwo_hist_persist_", delegate
+            {
+                const string secret = @"C:\old\must-not-keep.pdf";
+                const string kept = @"C:\fresh\keep.pdf";
+                SeedHistory(
+                    "enabled=True",
+                    "autoClearDays=7",
+                    OperationHistory.FormatEntry(new HistoryEntry
+                    {
+                        WhenUtc = DateTime.UtcNow.AddDays(-40),
+                        Operation = "hist.op.merge",
+                        Path = secret
+                    }),
+                    OperationHistory.FormatEntry(new HistoryEntry
+                    {
+                        WhenUtc = DateTime.UtcNow,
+                        Operation = "hist.op.merge",
+                        Path = kept
+                    }));
+                OperationHistory.Data data = OperationHistory.Load();
+                AssertEq(1, data.Entries.Count, "в памяти осталась свежая запись");
+                AssertEq(kept, data.Entries[0].Path, "свежий путь");
+                string text = File.ReadAllText(AppPaths.HistoryFile);
+                AssertTrue(text.IndexOf("must-not-keep", StringComparison.Ordinal) < 0,
+                    "просроченный путь ушёл с диска без отдельной мутации");
+                AssertTrue(text.Contains("keep.pdf"), "свежая запись на диске");
+            });
+        }
+
+        /// <summary>
+        /// После успешного Commit backup — мусор. Если его не удалось удалить, журнал раньше
+        /// всё равно снимали, и .bak с прежней версией оставался навсегда без восстановления.
+        /// </summary>
+        [Test("Аудит SH-6: неудалённый backup после commit оставляет журнал")]
+        private static void AuditAtomicOutputKeepsJournalIfBackupRemains()
+        {
+            using (var tmp = new TempDir("iwo_bak_lock_"))
+            {
+                string target = tmp.File("out.txt");
+                File.WriteAllText(target, "old");
+                var output = new AtomicOutput(target);
+                File.WriteAllText(output.TempPath, "new");
+                output.Commit();
+                AssertEq("new", File.ReadAllText(target), "результат опубликован");
+                BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                string bak = (string)typeof(AtomicOutput).GetField("_backupPath", flags).GetValue(output);
+                string marker = (string)typeof(AtomicOutput).GetField("_markerPath", flags).GetValue(output);
+                File.WriteAllText(bak, "old");
+                using (new FileStream(bak, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    output.Dispose();
+                    AssertTrue(File.Exists(marker), "журнал на месте, пока backup не удалён");
+                    AssertTrue(File.Exists(bak), "backup ещё держит прежнюю копию");
+                }
+            }
+        }
+
+        [Test("Аудит GR-10: сетка показывает подсказки страниц")]
+        private static void AuditGridShowsItemToolTips()
+        {
+            using (var grid = new PdfPageGrid())
+                AssertTrue(grid.ListControl.ShowItemToolTips, "ShowItemToolTips включён — иначе ToolTipText мёртв");
+        }
+
         // ---------- 9. StartupSweep: изоляция сбоев по журналам ----------
 
         /// <summary>

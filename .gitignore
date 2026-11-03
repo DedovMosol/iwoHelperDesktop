@@ -28,6 +28,11 @@ tests/icon_preview.png
 Thumbs.db
 desktop.ini
 tests/retrydata/
+.vs/
+*.binlog
+*.pfx
+*.p12
+*.key
 
 # Временные файлы-лок-файлы офисных редакторов (~$*.docx): случайный артефакт
 # открытого документа в репозиторий не уходит
@@ -41,6 +46,7 @@ docs/Plan_*.md
 COMMON.md
 iwo-tasks/
 _scratch/
+superagent-brief.html
 
 # Справочные скриншоты чужих репозиториев и прочий временный мусор в корне
 /1.png
