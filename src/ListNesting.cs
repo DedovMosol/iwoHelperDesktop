@@ -58,7 +58,7 @@ namespace ExcelMerger
             double top = _open[_open.Count - 1];
 
             // Заметно правее вершины — открыт новый уровень (до предела Word).
-            if (leftPt > top + MinNestStepPt && _open.Count - 1 < MaxLevel)
+            if (leftPt >= top + MinNestStepPt && _open.Count - 1 < MaxLevel)
             {
                 _open.Add(leftPt);
                 return _open.Count - 1;

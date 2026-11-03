@@ -392,6 +392,7 @@ namespace ExcelMerger.Tests
             Run("ListNesting: возврат на уровень 0 после вложенного", TestListNestingReturnToRoot);
             Run("ListNesting: раны края плоского списка остаются на уровне 0", TestListNestingRaggedFlat);
             Run("ListNesting: корень сдвигается влево при общем отступе", TestListNestingRootShift);
+            Run("ListNesting: шаг ровно MinNestStepPt открывает уровень (RC-9)", TestListNestingExactMinStep);
             Run("OcrLayout: двухколоночная шапка — абзацы колонок не смешаны, левая раньше", TestOcrTwoColumnsSeparated);
             Run("OcrLayout: ячейка таблицы (splitColumns=false) — «метка … число» одной строкой", TestOcrCellNoColumns);
             Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
@@ -577,7 +578,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 527;
+            const int ExactTests = 528;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -14929,6 +14930,17 @@ namespace ExcelMerger.Tests
 
             AssertEq(0, shift, "50 левее 70 на >12pt → корень переезжает на 50, уровень 0");
             AssertEq(1, nested, "68 на 18pt правее нового корня 50 → уровень 1");
+        }
+
+        private static void TestListNestingExactMinStep()
+        {
+            var tracker = new ListNesting();
+            AssertEq(0, tracker.LevelFor(50), "корень");
+            AssertEq(1, tracker.LevelFor(50 + ListNesting.MinNestStepPt), "ровно порог — вложенность");
+            AssertEq(0, new ListNesting().LevelFor(50), "новый трекер");
+            var flat = new ListNesting();
+            flat.LevelFor(50);
+            AssertEq(0, flat.LevelFor(50 + ListNesting.MinNestStepPt - 1), "шаг меньше порога — тот же уровень");
         }
 
         private static void TestPageRangePresetsOdd()
