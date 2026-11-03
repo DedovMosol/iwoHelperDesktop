@@ -385,6 +385,7 @@ namespace ExcelMerger.Tests
             Run("XyCut: полоса маркеров списка — не колонки (RC-14)", TestXyCutListMarkersNotColumns);
             Run("XyCut: река выключки не третья колонка (RC-14)", TestXyCutJustifyRiverNotThirdColumn);
             Run("XyCut: три равные колонки остаются тремя (RC-14)", TestXyCutThreeEqualColumns);
+            Run("XyCut: отбивка в левой колонке не зигзаг с правой (RC-14)", TestXyCutColumnParaGapNotZigzag);
             Run("OcrLayout: канал колонок 12 pt — левая колонка целиком (RC-14)", TestLayoutNarrowColumnGutter);
             Run("OcrLayout: заголовок во всю ширину не мешает разрезу колонок (RC-14)", TestLayoutTitleThenColumns);
             Run("OcrLayout: короткий заголовок над каналом не зигзаг колонок (RC-14)", TestLayoutShortTitleThenColumns);
@@ -589,7 +590,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 538;
+            const int ExactTests = 539;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -14945,6 +14946,30 @@ namespace ExcelMerger.Tests
             }
             List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 1000, 12, 25, 2);
             AssertEq(3, leaves.Count, "равные три колонки");
+        }
+
+        private static void TestXyCutColumnParaGapNotZigzag()
+        {
+            // Левая колонка с дырой по Y (отбивка абзаца), правая заполняет эту высоту.
+            var boxes = new List<CutBox>();
+            for (int r = 0; r < 3; r++)
+            {
+                double y = 200 - r * 16;
+                boxes.Add(CB(r, 0, y, 50, 10));
+                boxes.Add(CB(10 + r, 100, y, 50, 10));
+            }
+            for (int r = 0; r < 3; r++)
+            {
+                double y = 120 - r * 16;
+                boxes.Add(CB(20 + r, 0, y, 50, 10));
+                boxes.Add(CB(30 + r, 100, y, 50, 10));
+            }
+            List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 20, 12, 25, 2);
+            AssertEq(4, leaves.Count, "две колонки по два этажа");
+            AssertEq("0,1,2", TagsOf(leaves[0]), "верх левой");
+            AssertEq("20,21,22", TagsOf(leaves[1]), "низ левой");
+            AssertEq("10,11,12", TagsOf(leaves[2]), "верх правой");
+            AssertEq("30,31,32", TagsOf(leaves[3]), "низ правой");
         }
 
         private static void TestLayoutNarrowColumnGutter()

@@ -147,12 +147,28 @@ namespace ExcelMerger
                 Flatten(child, acc);
         }
 
-        /// <summary>Этажи области (сверху вниз): узел-стек. Нет этажей — сразу колонки.</summary>
+        /// <summary>
+        /// Этажи сверху вниз. На корне сначала пробуем КОЛОНКИ: газета с отбивкой абзацев
+        /// иначе режется на этажи «левая+правая строка» и читается зигзагом (RC-14, снимок #3).
+        /// Нет вертикального канала — этажи как раньше; заголовок над каналом снимает peel.
+        /// </summary>
         private static CutNode CutFloors(CutContext ctx, List<int> items, int depth, double colLeft, double colRight, double availRight, bool splitX)
         {
+            if (splitX && depth > 0)
+            {
+                List<List<int>> cols = SplitColumns(ctx, items);
+                if (cols != null)
+                    return AssembleColumns(ctx, cols, depth, availRight);
+                List<List<int>> peeled = PeelBlockingFloor(ctx, items);
+                if (peeled != null)
+                {
+                    var peeledNode = new CutNode { SideBySide = false, Children = new List<CutNode>(peeled.Count) };
+                    foreach (List<int> floor in peeled)
+                        peeledNode.Children.Add(CutFloors(ctx, floor, depth - 1, colLeft, colRight, availRight, true));
+                    return peeledNode;
+                }
+            }
             List<List<int>> floors = depth > 0 ? SplitAtGaps(ctx.Boxes, items, true, ctx.HGapMin) : null;
-            if (floors == null && depth > 0 && splitX && SplitColumns(ctx, items) == null)
-                floors = PeelBlockingFloor(ctx, items);
             if (floors == null)
                 return splitX ? CutColumns(ctx, items, depth, colLeft, colRight, availRight) : MakeLeaf(ctx, items, colLeft, colRight, availRight);
             var node = new CutNode { SideBySide = false, Children = new List<CutNode>(floors.Count) };
@@ -169,11 +185,14 @@ namespace ExcelMerger
             List<List<int>> columns = depth > 0 ? SplitColumns(ctx, items) : null;
             if (columns == null)
                 return MakeLeaf(ctx, items, colLeft, colRight, availRight);
+            return AssembleColumns(ctx, columns, depth, availRight);
+        }
+
+        private static CutNode AssembleColumns(CutContext ctx, List<List<int>> columns, int depth, double availRight)
+        {
             var node = new CutNode { SideBySide = true, Children = new List<CutNode>(columns.Count) };
             for (int c = 0; c < columns.Count; c++)
             {
-                // Новая колонка — новая опорная рамка для геометрии её содержимого. Доступное
-                // справа место кончается у контента СЛЕДУЮЩЕЙ колонки (или у предела родителя).
                 List<int> column = columns[c];
                 double left, right;
                 HorizontalBounds(ctx.Boxes, column, out left, out right);
