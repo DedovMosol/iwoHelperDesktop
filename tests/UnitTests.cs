@@ -576,7 +576,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 525;
+            const int ExactTests = 526;
             if (_filter == null)
             {
                 if (registered != ExactTests)
