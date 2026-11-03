@@ -298,6 +298,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: ран-гиперссылка", TestOcrHyperlinkRun);
             Run("OcrLayout: цвет рана сохранён", TestOcrColorRun);
             Run("OcrLayout: жирный курсив цвет черта и зачёркивание в ранах", TestOcrStackedFormatting);
+            Run("OcrLayout: все флаги формата на одном слове", TestOcrAllFlagsOnOneRun);
             Run("OcrLayout: рваный абзац по левому краю", TestOcrLeftAligned);
             Run("OcrLayout: центрированная строка", TestOcrCentered);
             Run("OcrLayout: IsCentered — узкая/широкая/красная строка/рваная/правая", TestIsCenteredPredicate);
@@ -384,6 +385,8 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: канал колонок 12 pt — левая колонка целиком (RC-14)", TestLayoutNarrowColumnGutter);
             Run("OcrLayout: заголовок во всю ширину не мешает разрезу колонок (RC-14)", TestLayoutTitleThenColumns);
             Run("OcrLayout: короткий заголовок над каналом не зигзаг колонок (RC-14)", TestLayoutShortTitleThenColumns);
+            Run("OcrLayout: двухстрочный заголовок над каналом не зигзаг (RC-14)", TestLayoutTwoLineTitleThenColumns);
+            Run("XyCut: двухстрочный заголовок снимается этажом (RC-14)", TestXyCutTwoLineTitlePeel);
             Run("OcrLayout: одноколоночный текст с малой отбивкой не режется на этажи", TestLayoutNoFalseFloor);
             Run("OcrLayout: слайд не отрывает маркер «1.» от пункта", TestOcrSlideKeepsListMarker);
             Run("PageRangePresets.Odd: нечётные страницы", TestPageRangePresetsOdd);
@@ -583,7 +586,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 532;
+            const int ExactTests = 535;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13335,6 +13338,25 @@ namespace ExcelMerger.Tests
             AssertTrue(runs[4].Bold && runs[4].ColorArgb == 0xFFFFFF, "белый жирный");
         }
 
+        private static void TestOcrAllFlagsOnOneRun()
+        {
+            var words = new List<PdfWord>
+            {
+                new PdfWord
+                {
+                    Text = "All", Left = 0, Right = 40, Bottom = 200, Top = 210, FontSizePt = 12,
+                    Bold = true, Italic = true, Underline = true, Strike = true, ColorArgb = 0xC00000
+                },
+                W("plain", 45, 200, 40, 10)
+            };
+            words[1].FontSizePt = 12;
+            List<OcrRun> runs = OcrLayout.Analyze(words).Paragraphs[0].Runs;
+            AssertEq(2, runs.Count, "формат не слился с соседним");
+            OcrRun a = runs[0];
+            AssertTrue(a.Bold && a.Italic && a.Underline && a.Strike && a.ColorArgb == 0xC00000, "все флаги");
+            AssertTrue(!runs[1].Bold && !runs[1].Italic && !runs[1].Underline && !runs[1].Strike, "сосед чистый");
+        }
+
         private static void TestOcrLeftAligned()
         {
             // Рваный справа абзац (строки не достают до правого поля) -> по левому краю,
@@ -14937,6 +14959,54 @@ namespace ExcelMerger.Tests
             string col0 = paras[1].Text;
             AssertTrue(col0.IndexOf("LA", StringComparison.Ordinal) >= 0, "потом левая");
             AssertTrue(col0.IndexOf("RA", StringComparison.Ordinal) < 0, "не зигзаг");
+        }
+
+        private static void TestLayoutTwoLineTitleThenColumns()
+        {
+            var words = new List<PdfWord>
+            {
+                W("HeadA", 60, 414, 70, 10),
+                W("HeadB", 65, 400, 60, 10)
+            };
+            for (int row = 0; row < 6; row++)
+            {
+                double y = 380 - row * 16;
+                words.Add(W("LA" + row, 10, y, 40, 10));
+                words.Add(W("LB" + row, 52, y, 36, 10));
+                words.Add(W("RA" + row, 110, y, 40, 10));
+                words.Add(W("RB" + row, 152, y, 36, 10));
+            }
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            var texts = new List<string>();
+            foreach (OcrParagraph p in paras) texts.Add(p.Text);
+            string dump = string.Join(" | ", texts.ToArray());
+            AssertTrue(paras.Count >= 3, "заголовок + две колонки: " + dump);
+            AssertTrue(paras[0].Text.IndexOf("Head", StringComparison.Ordinal) >= 0, "сначала заголовок: " + dump);
+            int left = -1;
+            for (int i = 0; i < paras.Count; i++)
+                if (paras[i].Text.IndexOf("LA", StringComparison.Ordinal) >= 0) { left = i; break; }
+            AssertTrue(left > 0, "левая колонка после заголовка: " + dump);
+            AssertTrue(paras[left].Text.IndexOf("RA", StringComparison.Ordinal) < 0, "не зигзаг: " + dump);
+        }
+
+        private static void TestXyCutTwoLineTitlePeel()
+        {
+            var boxes = new List<CutBox>
+            {
+                CB(90, 70, 400, 50, 12),
+                CB(91, 75, 384, 40, 12)
+            };
+            for (int r = 0; r < 6; r++)
+            {
+                double y = 360 - r * 16;
+                boxes.Add(CB(r, 0, y, 40, 10));
+                boxes.Add(CB(10 + r, 100, y, 40, 10));
+            }
+            List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 20, 30, 25, 2);
+            AssertTrue(leaves.Count >= 3, "заголовок отдельным этажом, затем колонки");
+            AssertTrue(TagsOf(leaves[0]).IndexOf("90", StringComparison.Ordinal) >= 0, "заголовок первым");
+            AssertTrue(TagsOf(leaves[1]).IndexOf("0", StringComparison.Ordinal) >= 0, "левая колонка");
+            AssertTrue(TagsOf(leaves[1]).IndexOf("10", StringComparison.Ordinal) < 0, "правая не в левой");
         }
 
         private static void TestLayoutNoFalseFloor()
