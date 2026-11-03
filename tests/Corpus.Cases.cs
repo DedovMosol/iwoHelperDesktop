@@ -70,7 +70,8 @@ namespace ExcelMerger.Tests
             // вставка в середину пересоздала бы все последующие документы и весь реестр.
             Family("таблица с переносом строк в ячейках", WrappedTable),
             Family("жирный курсив цвет черта и зачёркивание вместе", CombinedFormat),
-            Family("список с цветом жирным чертой и зачёркиванием", FormattedLists)
+            Family("список с цветом жирным чертой и зачёркиванием", FormattedLists),
+            Family("нумерованный список с цветом жирным и чертой", FormattedNumbered)
         };
 
         private static KeyValuePair<string, Builder> Family(string name, Builder b)
@@ -439,6 +440,20 @@ namespace ExcelMerger.Tests
             return p;
         }
 
+        private static void PaintCycle(CParagraph p, int seed)
+        {
+            for (int r = 0; r < p.Runs.Count; r++)
+            {
+                CStyle s = p.Runs[r].Style;
+                int k = (seed + r) % 4;
+                if (k == 0) s = s.WithBold().WithColor(0xC00000);
+                else if (k == 1) s = s.WithItalic().WithColor(0x2F5597);
+                else if (k == 2) s = s.WithUnderline().WithBold();
+                else s = s.WithStrike().WithItalic();
+                p.Runs[r] = new CRun(p.Runs[r].Text, s);
+            }
+        }
+
         private static void FormattedLists(CCase c, CText t)
         {
             c.Doc.Blocks.Add(Para(c, t.Text(1), CAlign.Left));
@@ -447,16 +462,31 @@ namespace ExcelMerger.Tests
             {
                 bool nested = i % 3 == 2;
                 CParagraph p = Item(c, t, ListKind.Bulleted, nested ? 1 : 0, 0, nested ? "–" : "•");
-                for (int r = 0; r < p.Runs.Count; r++)
+                PaintCycle(p, i);
+                c.Doc.Blocks.Add(p);
+            }
+        }
+
+        private static void FormattedNumbered(CCase c, CText t)
+        {
+            c.Doc.Blocks.Add(Para(c, t.Text(1), CAlign.Left));
+            int n = t.Next(4, 7);
+            int num = 1, sub = 1;
+            for (int i = 0; i < n; i++)
+            {
+                bool nested = i % 3 == 2;
+                CParagraph p;
+                if (nested)
                 {
-                    CStyle s = p.Runs[r].Style;
-                    int k = (i + r) % 4;
-                    if (k == 0) s = s.WithBold().WithColor(0xC00000);
-                    else if (k == 1) s = s.WithItalic().WithColor(0x2F5597);
-                    else if (k == 2) s = s.WithUnderline().WithBold();
-                    else s = s.WithStrike().WithItalic();
-                    p.Runs[r] = new CRun(p.Runs[r].Text, s);
+                    int s = sub++;
+                    p = Item(c, t, ListKind.Numbered, 1, s, s + ")");
                 }
+                else
+                {
+                    int n0 = num++;
+                    p = Item(c, t, ListKind.Numbered, 0, n0, n0 + ".");
+                }
+                PaintCycle(p, i);
                 c.Doc.Blocks.Add(p);
             }
         }
