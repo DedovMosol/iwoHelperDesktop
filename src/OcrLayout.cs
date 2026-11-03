@@ -209,6 +209,9 @@ namespace ExcelMerger
         // неразрывных групп («и°надзора») оставляет строку почти полной — его не рвём.
         private const double HardBreakSlackEmFactor = 0.75;
         private const double HardBreakMaxPrevFill = 0.75;
+        // Короткое первое слово («и», «в», «of») почти всегда «влезает» — это не доказательство
+        // умышленного перевода, а обычный перенос. Подпись «отдела» ~5 em проходит.
+        private const double HardBreakMinWordEmFactor = 2.0;
         // ГИГАНТСКИЙ внутристрочный зазор (в долях кегля) рвёт строку на отдельные абзацы:
         // куски принадлежат разным зонам одной высоты («___ № ___» слева и боковая метка
         // справа; «(подпись) … (дата)»). Порог многократно выше любых межсловных зазоров и
@@ -628,6 +631,8 @@ namespace ExcelMerger
                 return false; // предыдущая строка почти полная — обычный мягкий перенос
             PdfWord first = cur.Words[0];
             double firstWidth = first.Right - first.Left;
+            if (firstWidth < HardBreakMinWordEmFactor * em)
+                return false;
             return prev.Right + firstWidth + HardBreakSlackEmFactor * em <= availRight;
         }
 

@@ -307,6 +307,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: перенос с дефисом склеивает слово", TestOcrHyphenation);
             Run("OcrLayout: кириллический дефис-перенос сохраняется (составное слово)", TestOcrHyphenCyrillicKept);
             Run("OcrLayout: умышленный перевод строки рвёт абзац (подпись)", TestOcrHardLineBreak);
+            Run("OcrLayout: короткое «и» после неполной строки — перенос, не разрыв (RC-32)", TestOcrShortWordNotHardBreak);
             Run("OcrLayout: подпись в левой колонке рвётся по строкам (доступное место)", TestOcrSignatureHardBreak);
             Run("OcrLayout: мелкая цифра у базовой линии — сносочный маркер (Super)", TestOcrFootnoteDigitSuper);
             Run("OcrLayout: строка с красной строкой не центрируется случайной симметрией", TestOcrRedIndentNotCentered);
@@ -578,7 +579,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 527;
+            const int ExactTests = 528;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13480,6 +13481,20 @@ namespace ExcelMerger.Tests
             AssertEq(3, p.Count, "полная строка и две строки подписи — три абзаца");
             AssertEq("Заместитель руководитель", p[1], "первая строка подписи своим абзацем");
             AssertEq("отдела", p[2], "вторая строка подписи своим абзацем");
+        }
+
+        private static void TestOcrShortWordNotHardBreak()
+        {
+            var words = new List<PdfWord>
+            {
+                W("полная строка на всю ширину колонки текста", 0, 130, 200, 10),
+                W("слово", 0, 90, 40, 10),
+                W("слово", 45, 90, 35, 10),
+                W("и", 0, 75, 8, 10)
+            };
+            List<string> p = OcrLayout.ToParagraphs(words);
+            AssertEq(2, p.Count, "короткое «и» не рвёт абзац");
+            AssertTrue(p[1].IndexOf("и", StringComparison.Ordinal) >= 0, "«и» в том же абзаце");
         }
 
         private static void TestOcrSignatureHardBreak()
