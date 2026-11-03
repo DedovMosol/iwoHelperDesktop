@@ -514,7 +514,6 @@ namespace ExcelMerger
                     LineTopsPt = lineTops,
                     LineLeftsPt = lineLefts,
                     LineBaselinesPt = lineBaselines,
-                    Alignment = OcrAlignment.Left,
                     TopPt = g[0].Top,
                     LeftPt = g[0].Left,
                     RightPt = right,
@@ -545,7 +544,8 @@ namespace ExcelMerger
                 if (para.Alignment == OcrAlignment.Justify)
                     stats.JustifiedGroups++;
                 double ind = g[0].Left - bodyLeft;
-                if (!groupCentered[gi] && ind > indentTol && ind <= maxIndent)
+                if (para.ListKind == ListKind.None && para.Alignment != OcrAlignment.Center
+                    && ind > indentTol && ind <= maxIndent)
                 {
                     stats.Indents.Add(ind);
                     if (para.Alignment == OcrAlignment.Justify)
@@ -834,13 +834,16 @@ namespace ExcelMerger
                     // Строка, начатая ТОЧНО с красной строки региона, — абзац с отступом, а не
                     // центр, даже если её правый зазор случайно почти равен левому («перевод
                     // учреждений…» с отступами 36/42 при красной строке 35).
+                    if (StartsWithListMarker(lines[i]))
+                        continue;
                     if (redIndent >= 0 && Math.Abs(leftGap - redIndent) <= IndentMatchTolPt)
                         continue;
                     anyFloating = IsCentered(leftGap, bodyRight - lines[i].Right, em, width);
                 }
                 if (anyFloating)
                     for (int i = start; i <= end; i++)
-                        centered[i] = true;
+                        if (!StartsWithListMarker(lines[i]))
+                            centered[i] = true;
                 start = end + 1;
             }
             return centered;
