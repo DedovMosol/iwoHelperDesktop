@@ -326,6 +326,7 @@ namespace ExcelMerger.Tests
             Run("ListMarker: не список (год, проценты, без пробела, обычный текст)", TestListMarkerNegatives);
             Run("OcrLayout: плотный нумерованный список -> отдельные пункты с ListKind", TestOcrNumberedList);
             Run("OcrLayout: маркированный список -> ListKind=Bulleted, содержимое без маркера", TestOcrBulletedList);
+            Run("OcrLayout: пункт с полной первой строкой — Left, не Justify (RC-31)", TestOcrListNotJustified);
             Run("StampDetector: штамп -> область со всеми словами, вне полосы не берётся", TestStampDetected);
             Run("StampDetector: нет одного опорного слова -> не штамп", TestStampMissingAnchor);
             Run("StampDetector: опорные слова разбросаны по странице -> не штамп", TestStampScatteredRejected);
@@ -576,7 +577,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 526;
+            const int ExactTests = 527;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13331,7 +13332,7 @@ namespace ExcelMerger.Tests
             {
                 W("7", 48, 180, 4, 8),      // центр: слева 48, справа 48 от полей 0..100
                 W("Тело", 0, 150, 100, 8),  // полная строка (Left 0, Right 100) — задаёт поля
-                W("строка", 0, 138, 100, 8)
+                W("хвост", 0, 138, 40, 8)   // последняя короткая — признак выключки, не блока влево
             };
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
             AssertEq(2, layout.Paragraphs.Count, "два абзаца");
@@ -13376,7 +13377,7 @@ namespace ExcelMerger.Tests
                 W("Sh",       35, 176, 30, 8),  // Left35 Right65 mid50: короткая центрированная — доказывает ось
                 W("Bodyoneaa", 2, 150, 96, 8),  // тело: полные строки (задают поля, justified), большой зазор
                 W("Bodytwoaa", 2, 138, 96, 8),
-                W("Bodythree", 2, 126, 96, 8)
+                W("Tail", 2, 126, 40, 8)
             };
             List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
             AssertEq(4, paras.Count, "3 центрированные строки титула (каждая своим абзацем) + тело");
@@ -13818,6 +13819,19 @@ namespace ExcelMerger.Tests
             AssertEq((int)ListKind.Bulleted, (int)ps[1].ListKind, "буллет 2");
             AssertEq("яблоко", ps[0].Text.Substring(ps[0].ListContentStart), "содержимое буллета 1 без маркера");
             AssertEq("груша", ps[1].Text.Substring(ps[1].ListContentStart), "содержимое буллета 2 без маркера");
+        }
+
+        private static void TestOcrListNotJustified()
+        {
+            var words = new List<PdfWord>
+            {
+                W("1.", 0, 120, 14, 10), W("AAAAAAAA", 18, 120, 82, 10),
+                W("more", 18, 106, 36, 10)
+            };
+            List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
+            AssertEq(1, ps.Count, "один пункт");
+            AssertEq(ListKind.Numbered, ps[0].ListKind, "нумерованный");
+            AssertEq(OcrAlignment.Left, ps[0].Alignment, "пункт не выключка");
         }
 
         // ---------- StampDetector (текстовый штамп) ----------

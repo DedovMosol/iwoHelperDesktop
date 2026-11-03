@@ -534,7 +534,8 @@ namespace ExcelMerger
                     if (para.ListKind != ListKind.None)
                     {
                         para.ListLevel = listNesting.LevelFor(para.LeftPt);
-                        if (para.Alignment == OcrAlignment.Right)
+                        if (para.Alignment == OcrAlignment.Right
+                            || para.Alignment == OcrAlignment.Justify)
                             para.Alignment = OcrAlignment.Left;
                     }
                 }
