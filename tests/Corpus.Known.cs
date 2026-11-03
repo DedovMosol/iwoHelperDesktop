@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 namespace ExcelMerger.Tests
 {
-    /// <summary>РР·РІРµСЃС‚РЅС‹Р№ РґРµС„РµРєС‚: РІ РєР°РєРѕРј РІС‹РІРѕРґРµ, Сѓ РєР°РєРѕРіРѕ СЃРµРјРµР№СЃС‚РІР°, РєР°РєРѕР№ РІРёРґ Рё СЃРєРѕР»СЊРєРѕ РґРѕРєСѓРјРµРЅС‚РѕРІ.</summary>
+    /// <summary>Р ВР В·Р Р†Р ВµРЎРѓРЎвЂљР Р…РЎвЂ№Р в„– Р Т‘Р ВµРЎвЂћР ВµР С”РЎвЂљ: Р Р† Р С”Р В°Р С”Р С•Р С Р Р†РЎвЂ№Р Р†Р С•Р Т‘Р Вµ, РЎС“ Р С”Р В°Р С”Р С•Р С–Р С• РЎРѓР ВµР СР ВµР в„–РЎРѓРЎвЂљР Р†Р В°, Р С”Р В°Р С”Р С•Р в„– Р Р†Р С‘Р Т‘ Р С‘ РЎРѓР С”Р С•Р В»РЎРЉР С”Р С• Р Т‘Р С•Р С”РЎС“Р СР ВµР Р…РЎвЂљР С•Р Р†.</summary>
     internal sealed class CKnown
     {
         public readonly string Output, Family, Aspect, Id;
-        /// <summary>Р”РѕРєСѓРјРµРЅС‚РѕРІ СЃРµРјРµР№СЃС‚РІР° СЃ СЌС‚РёРј РІРёРґРѕРј Рё РІСЃРµРіРѕ СЃР»СѓС‡Р°РµРІ РІ РЅРёС… (СЃРј. CFinding.Count).</summary>
+        /// <summary>Р вЂќР С•Р С”РЎС“Р СР ВµР Р…РЎвЂљР С•Р Р† РЎРѓР ВµР СР ВµР в„–РЎРѓРЎвЂљР Р†Р В° РЎРѓ РЎРЊРЎвЂљР С‘Р С Р Р†Р С‘Р Т‘Р С•Р С Р С‘ Р Р†РЎРѓР ВµР С–Р С• РЎРѓР В»РЎС“РЎвЂЎР В°Р ВµР Р† Р Р† Р Р…Р С‘РЎвЂ¦ (РЎРѓР С. CFinding.Count).</summary>
         public readonly int Docs, Cases;
         public CKnown(string output, string family, string aspect, string id, int docs, int cases)
         {
@@ -14,8 +14,8 @@ namespace ExcelMerger.Tests
         }
     }
     /// <summary>
-    /// Р РµРµСЃС‚СЂ РёР·РІРµСЃС‚РЅС‹С… РґРµС„РµРєС‚РѕРІ РєРѕСЂРїСѓСЃР° (26 СЃРµРјРµР№СЃС‚РІ Г— 80 РІР°СЂРёР°РЅС‚РѕРІ = 2080 PDF).
-    /// РЎРІРµСЂРєР° СЃС‚СЂРѕРіР°СЏ РІ РѕР±Рµ СЃС‚РѕСЂРѕРЅС‹.
+    /// Р В Р ВµР ВµРЎРѓРЎвЂљРЎР‚ Р С‘Р В·Р Р†Р ВµРЎРѓРЎвЂљР Р…РЎвЂ№РЎвЂ¦ Р Т‘Р ВµРЎвЂћР ВµР С”РЎвЂљР С•Р Р† Р С”Р С•РЎР‚Р С—РЎС“РЎРѓР В° (26 РЎРѓР ВµР СР ВµР в„–РЎРѓРЎвЂљР Р† Р“вЂ” 80 Р Р†Р В°РЎР‚Р С‘Р В°Р Р…РЎвЂљР С•Р Р† = 2080 PDF).
+    /// Р РЋР Р†Р ВµРЎР‚Р С”Р В° РЎРѓРЎвЂљРЎР‚Р С•Р С–Р В°РЎРЏ Р Р† Р С•Р В±Р Вµ РЎРѓРЎвЂљР С•РЎР‚Р С•Р Р…РЎвЂ№.
     /// </summary>
     internal static class CorpusKnown
     {
@@ -74,11 +74,9 @@ namespace ExcelMerger.Tests
             K(Docx, "зачёркнутые фразы", "split", "RC-14", 4, 4),
             K(Docx, "колонтитулы и номера страниц", "lost", "RC-2", 2, 2),
             K(Docx, "колонтитулы и номера страниц", "split", "RC-32", 3, 3),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-centered", "RC-3", 11, 16),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-kind", "RC-4", 12, 18),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-level", "RC-9", 19, 57),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-level", "RC-9", 7, 24),
             K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "lost", "RC-2", 1, 1),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "split", "RC-3", 14, 28),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "split", "RC-3", 1, 1),
             K(Docx, "маркированный список в два уровня", "align-left", "RC-31", 9, 9),
             K(Docx, "маркированный список в два уровня", "list-level", "RC-9", 21, 34),
             K(Docx, "маркированный список в два уровня", "order", "RC-14", 2, 2),
@@ -123,7 +121,6 @@ namespace ExcelMerger.Tests
             K(Pptx, "жирный курсив цвет черта и зачёркивание вместе", "pptx-extra", "WP-16", 2, 2),
             K(Pptx, "жирный курсив цвет черта и зачёркивание вместе", "pptx-lost", "WP-16", 2, 4),
             K(Pptx, "заголовки и текст", "pptx-table-extra", "RC-8", 1, 1),
-            K(Pptx, "маркеры Word: Symbol, Courier «o», Wingdings", "pptx-marker-lost", "RC-4", 13, 13),
             K(Pptx, "полужирные, курсивные и цветные слова", "pptx-extra", "WP-16", 1, 1),
             K(Pptx, "полужирные, курсивные и цветные слова", "pptx-lost", "WP-16", 1, 2),
             K(Pptx, "скан с невидимым текстовым слоем", "pptx-lost", "WP-16", 2, 2),

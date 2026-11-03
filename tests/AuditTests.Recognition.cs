@@ -550,6 +550,9 @@ namespace ExcelMerger.Tests
             AssertTrue(bullet[0].FontName == null, "в шрифте по умолчанию");
             var code = new List<PdfWord> { Rc4Word("o", "Courier New", 90, 7), Rc4Word("=", "Courier New", 104, 7) };
             AssertEq(0, WordBullets.MarkCourierBullets(code), "листинг кода: сосед того же Courier");
+            var mono = new List<PdfWord> { Rc4Word("o", "Courier New", 90, 7), Rc4Word("Пункт", "Courier New", 108, 40) };
+            AssertEq(1, WordBullets.MarkCourierBullets(mono), "моноширинный документ: «o Пункт» — значок");
+            AssertEq("◦", mono[0].Text, "стал «◦»");
             var inside = new List<PdfWord> { Rc4Word("слово", "Courier New", 40, 40), Rc4Word("o", "Courier New", 87, 7), Rc4Word("Пункт", "Arial", 108, 40) };
             AssertEq(0, WordBullets.MarkCourierBullets(inside), "не в начале строки");
             var arial = new List<PdfWord> { Rc4Word("o", "Arial", 90, 7), Rc4Word("Пункт", "Times New Roman", 108, 40) };

@@ -61,6 +61,15 @@ namespace ExcelMerger
             return family != null && family.Replace(" ", "").StartsWith("Courier", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool CourierBulletFollows(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length < 2)
+                return false;
+            char c = text[0];
+            return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                || (c >= 'А' && c <= 'Я') || (c >= 'а' && c <= 'я');
+        }
+
         /// <summary>
         /// Пометить маркеры второго уровня Word: слово «o» шрифта Courier New в НАЧАЛЕ строки,
         /// за которым на той же строке через пробел или табуляцию идёт текст ДРУГОГО шрифта, —
@@ -92,7 +101,11 @@ namespace ExcelMerger
                     if (x.Left >= w.Right && (next == null || x.Left < next.Left))
                         next = x;
                 }
-                if (!lineStart || next == null || IsCourier(next.FontName))
+                if (!lineStart || next == null)
+                    continue;
+                // Сосед того же Courier: в коде это «o =» / «o x», в пункте Word на моноширинном
+                // документе — «o Пункт». Буква после «o» длиной ≥ 2 — пункт, не оператор.
+                if (IsCourier(next.FontName) && !CourierBulletFollows(next.Text))
                     continue;
                 double gap = next.Left - w.Right;
                 if (gap < 0.2 * em || gap > 4 * em)
