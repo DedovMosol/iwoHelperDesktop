@@ -6,7 +6,9 @@
 Три вида отказов ловятся здесь:
 
 * **внешние адреса** — ссылки на файлы релиза прибиты к версии и после выпуска
-  перестают отвечать, если ассет назван иначе;
+  перестают отвечать, если ассет назван иначе. Файлы релиза проверяются
+  через GitHub API (имена ассетов), не GET `/releases/download/` — иначе
+  каждый push CI рисует ложные скачивания;
 * **якоря разделов** — заголовок с эмодзи даёт якорь, в котором остаётся
   невидимый селектор начертания (U+FE0F), и ссылка «#-download» молча ведёт
   в никуда, выглядя при этом правильной;
@@ -17,6 +19,7 @@ Usage: python tools/check_readme_links.py [README.md]
 Код возврата: 0 — всё цело, 1 — есть битые ссылки.
 """
 import io
+import json
 import os
 import re
 import sys
@@ -26,6 +29,11 @@ import urllib.request
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) readme-link-check"}
 TIMEOUT = 30
+# GET /releases/download/… считает GitHub как скачивание ассета. Проверка
+# живёт через API релиза (список имён) и HEAD для прочих URL.
+_RELEASE_DOWNLOAD = re.compile(
+    r"^https://github\.com/([^/]+)/([^/]+)/releases/download/(v[^/]+)/([^/?#]+)$")
+_release_cache = {}
 
 
 def anchor_of(heading):
@@ -68,15 +76,33 @@ def is_pending_asset_url(target, version):
     }
 
 
-def release_exists(version):
-    url = "https://api.github.com/repos/DedovMosol/iwoHelperDesktop/releases/tags/v%s" % version
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=TIMEOUT):
-            return True
-    except urllib.error.HTTPError as error:
-        return False if error.code == 404 else None
-    except Exception:
+def github_release_download(url):
+    """owner, repo, tag, filename из URL ассета, или None — не github download."""
+    match = _RELEASE_DOWNLOAD.match(url)
+    if not match:
         return None
+    owner, repo, tag, name = match.groups()
+    return owner, repo, tag, urllib.parse.unquote(name)
+
+
+def fetch_release_assets(owner, repo, tag):
+    """('ok', names) | ('missing', []) | ('error', []). Кэш на прогон. Не качает файлы."""
+    key = (owner, repo, tag)
+    if key in _release_cache:
+        return _release_cache[key]
+    url = "https://api.github.com/repos/%s/%s/releases/tags/%s" % (owner, repo, tag)
+    try:
+        request = urllib.request.Request(url, headers=UA, method="GET")
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            names = [asset.get("name") for asset in data.get("assets") or [] if asset.get("name")]
+            result = ("ok", names)
+    except urllib.error.HTTPError as error:
+        result = ("missing", []) if error.code == 404 else ("error", [])
+    except Exception:
+        result = ("error", [])
+    _release_cache[key] = result
+    return result
 
 
 def extract_targets(text):
@@ -100,8 +126,6 @@ def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "README.md"
     root = os.path.dirname(os.path.abspath(path)) or "."
     version = assembly_version(root)
-    published = None
-    published_checked = False
     text = io.open(path, encoding="utf-8").read()
 
     anchors = set()
@@ -124,29 +148,32 @@ def main():
                 broken.append("якорь не найден: %s" % target)
         elif target.startswith(("http://", "https://")):
             try:
-                # Адрес с кириллицей (например, имя файла в релизе) валит запрос
-                # ошибкой кодировки вместо честного ответа сервера, поэтому путь
-                # приводится к процентной записи, а уже закодированное не трогаем.
+                asset = github_release_download(target)
+                if asset is not None:
+                    owner, repo, tag, filename = asset
+                    status, names = fetch_release_assets(owner, repo, tag)
+                    if status == "ok":
+                        if filename not in names:
+                            broken.append("%s -> asset not on %s" % (target, tag))
+                    elif status == "missing":
+                        if is_pending_asset_url(target, version):
+                            flaky.append("%s -> pending release v%s (name is valid)" %
+                                         (target, version))
+                        else:
+                            broken.append("%s -> no release %s" % (target, tag))
+                    else:
+                        flaky.append("%s -> release API unavailable" % target)
+                    continue
+                # Адрес с кириллицей валит запрос ошибкой кодировки; путь в проценты.
+                # HEAD: тело не качается. GET на /releases/download/ накручивает счётчик.
                 safe = urllib.parse.quote(target, safe="/:?&=#%+,;@!$'()*~")
-                request = urllib.request.Request(safe, headers=UA, method="GET")
+                request = urllib.request.Request(safe, headers=UA, method="HEAD")
                 with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
                     if response.status >= 400:
                         broken.append("%s -> HTTP %s" % (target, response.status))
             except urllib.error.HTTPError as error:
-                if error.code == 404 and is_pending_asset_url(target, version):
-                    if not published_checked:
-                        published = release_exists(version)
-                        published_checked = True
-                    if published is False:
-                        flaky.append("%s -> pending release v%s (name is valid)" %
-                                     (target, version))
-                    elif published is None:
-                        flaky.append("%s -> HTTP 404; release status unavailable" % target)
-                    else:
-                        broken.append("%s -> HTTP 404 (release exists, asset missing)" % target)
-                else:
-                    where = broken if error.code in (404, 410) else flaky
-                    where.append("%s -> HTTP %s" % (target, error.code))
+                where = broken if error.code in (404, 410) else flaky
+                where.append("%s -> HTTP %s" % (target, error.code))
             except Exception as error:
                 flaky.append("%s -> %s" % (target, error))
         elif target.startswith("mailto:"):

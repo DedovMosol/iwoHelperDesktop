@@ -1090,7 +1090,7 @@ needs Office gets a `verify` script.
 |---|---|
 | `src/` | All application sources (one project, flat). |
 | `tests/` | `UnitTests.cs`, `AuditTests.*.cs`, `TestRunner.cs`, `TestSupport.cs` + runner project (`build_tests.cmd`), `golden/` expected outputs, `verify*.ps1` integration scripts, `run_all.cmd`, corpus generators. |
-| `tools/` | Maintainer scripts: `make_release.ps1`, `make_installer.ps1`, `sign.ps1`, `stage_gs.ps1`, `make_wizard_images.ps1`, `make_flag_bitmaps.ps1` (renders the installer language‑picker flags, mirroring `Flags.cs`), README image scripts; `manual/` builds the user manuals; `githooks/commit-msg`, `check_commit_metadata.py`, `check_readme_links.py` and their Python tests. |
+| `tools/` | Maintainer scripts: `make_release.ps1`, `make_installer.ps1`, `sign.ps1`, `stage_gs.ps1`, `make_wizard_images.ps1`, `make_flag_bitmaps.ps1` (renders the installer language‑picker flags, mirroring `Flags.cs`), README image scripts; `manual/` builds the user manuals; `githooks/commit-msg`, `check_commit_metadata.py`, `check_readme_links.py` (release assets via the GitHub API, never GET `/releases/download/`) and their Python tests. |
 | `build/` | Build inputs: icon, manifest, `app.config` (DPI mode), vendored `PdfSharp.dll`, `pdfpig/*`. |
 | `installer/` | Inno Setup script + wizard images + language‑picker flags (`flag_en.bmp`, `flag_ru.bmp`), `gs/` and `gs32/` are staged locally and gitignored. |
 | `docs/` | This file, `CHANGELOG.md`, `PRIVACY.md`, `RELEASING.md`, `whatsnew.json`, the two user manuals (`.docx`), screenshots. |

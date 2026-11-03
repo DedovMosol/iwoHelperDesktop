@@ -65,5 +65,26 @@ class PendingAssetTest(unittest.TestCase):
             self.PREFIX + "iwoHelperDesktop-1.2.4.zip", "1.2.4"))
 
 
+class GithubReleaseDownloadTest(unittest.TestCase):
+    def test_parses_owner_repo_tag_name(self):
+        url = "https://github.com/DedovMosol/iwoHelperDesktop/releases/download/v1.18.4/iwoHelperDesktop-setup-1.18.4.exe"
+        self.assertEqual(
+            ("DedovMosol", "iwoHelperDesktop", "v1.18.4", "iwoHelperDesktop-setup-1.18.4.exe"),
+            check_readme_links.github_release_download(url))
+
+    def test_ignores_api_and_tree_urls(self):
+        self.assertIsNone(check_readme_links.github_release_download(
+            "https://github.com/DedovMosol/iwoHelperDesktop/releases/tag/v1.18.4"))
+        self.assertIsNone(check_readme_links.github_release_download(
+            "https://api.github.com/repos/DedovMosol/iwoHelperDesktop/releases"))
+
+    def test_readme_download_buttons_are_release_assets(self):
+        readme = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "README.md")
+        with open(readme, encoding="utf-8") as handle:
+            targets = check_readme_links.extract_targets(handle.read())
+        downloads = [t for t in targets if check_readme_links.github_release_download(t)]
+        self.assertEqual(4, len(downloads), downloads)
+
+
 if __name__ == "__main__":
     unittest.main()
