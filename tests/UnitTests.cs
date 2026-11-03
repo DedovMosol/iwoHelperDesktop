@@ -284,6 +284,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: два пункта с переносом — два списка (RC-3)", TestOcrHangingListTwoItems);
             Run("OcrLayout: три строки висячего пункта — один список (RC-3)", TestOcrHangingListThreeLines);
             Run("OcrLayout: два отступных абзаца без маркера не сливаются (RC-10)", TestOcrIndentedNotHangingList);
+            Run("OcrLayout: короткий пункт на широкой колонке — список, не центр (RC-3)", TestOcrShortListNotCentered);
             Run("GridDetector: пустой ввод — не сетка и не падение", TestGridDetectEmpty);
             Run("OcrLayout: измерен отступ красной строки", TestOcrIndentDetected);
             Run("OcrLayout: без отступов -> красная строка не навязывается", TestOcrNoIndentReported);
@@ -574,7 +575,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 523;
+            const int ExactTests = 524;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13122,6 +13123,21 @@ namespace ExcelMerger.Tests
             OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(words);
             AssertTrue(layout.Paragraphs.Count >= 2, "два пункта римскими не слиты");
             AssertTrue(layout.Paragraphs[0].Text.IndexOf("Beta", StringComparison.Ordinal) < 0, "второй пункт отдельно");
+        }
+
+        private static void TestOcrShortListNotCentered()
+        {
+            var words = new List<PdfWord>
+            {
+                W("WideA", 10, 400, 90, 10), W("WideB", 110, 400, 90, 10),
+                W("WideC", 210, 400, 90, 10), W("WideD", 310, 400, 80, 10),
+                W("•", 170, 380, 8, 10), W("Hi", 188, 380, 28, 10)
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            OcrParagraph item = paras.Find(p => p.Text.IndexOf("Hi", StringComparison.Ordinal) >= 0);
+            AssertTrue(item != null, "пункт найден");
+            AssertEq(ListKind.Bulleted, item.ListKind, "короткий пункт остался списком");
+            AssertTrue(item.Alignment != OcrAlignment.Center, "не центр");
         }
 
         private static void TestOcrIndentDetected()

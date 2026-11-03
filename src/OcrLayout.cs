@@ -514,8 +514,7 @@ namespace ExcelMerger
                     LineTopsPt = lineTops,
                     LineLeftsPt = lineLefts,
                     LineBaselinesPt = lineBaselines,
-                    // Центрированность решена на уровне прогона; иначе — выключка или левый край.
-                    Alignment = groupCentered[gi] ? OcrAlignment.Center : DetectAlignment(g, bodyLeft, bodyRight, em, width),
+                    Alignment = OcrAlignment.Left,
                     TopPt = g[0].Top,
                     LeftPt = g[0].Left,
                     RightPt = right,
@@ -523,20 +522,19 @@ namespace ExcelMerger
                     BlockLeftPt = colLeft,
                     BlockRightPt = colRight
                 };
-                if (para.Alignment != OcrAlignment.Center)
+                ListMarker.Result m = ListMarker.Detect(para.Text);
+                // Короткий пункт на широкой колонке выглядит «плавающим» — это список, не титул.
+                bool asCenter = groupCentered[gi] && m.Kind == ListKind.None;
+                para.Alignment = asCenter ? OcrAlignment.Center
+                    : DetectAlignment(g, bodyLeft, bodyRight, em, width);
+                if (!asCenter)
                 {
-                    ListMarker.Result m = ListMarker.Detect(para.Text);
                     para.ListKind = m.Kind;
                     para.ListNumber = m.Number;
                     para.ListContentStart = m.ContentStart;
-
-                    // Детекция уровня вложенности списка (v1.18.4): стековый трекер держит
-                    // открытые уровни, присваивая их по величине отступа — не по порядку встречи.
                     if (para.ListKind != ListKind.None)
                     {
                         para.ListLevel = listNesting.LevelFor(para.LeftPt);
-                        // Пункт глубокого уровня, дотянувшийся до поля, — всё равно пункт с
-                        // висячим отступом, а не текст вправо: Word прижал бы маркер к правому краю.
                         if (para.Alignment == OcrAlignment.Right)
                             para.Alignment = OcrAlignment.Left;
                     }

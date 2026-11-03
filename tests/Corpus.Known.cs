@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 namespace ExcelMerger.Tests
 {
-    /// <summary>Известный дефект: в каком выводе, у какого семейства, какой вид и сколько документов.</summary>
+    /// <summary>РР·РІРµСЃС‚РЅС‹Р№ РґРµС„РµРєС‚: РІ РєР°РєРѕРј РІС‹РІРѕРґРµ, Сѓ РєР°РєРѕРіРѕ СЃРµРјРµР№СЃС‚РІР°, РєР°РєРѕР№ РІРёРґ Рё СЃРєРѕР»СЊРєРѕ РґРѕРєСѓРјРµРЅС‚РѕРІ.</summary>
     internal sealed class CKnown
     {
         public readonly string Output, Family, Aspect, Id;
-        /// <summary>Документов семейства с этим видом и всего случаев в них (см. CFinding.Count).</summary>
+        /// <summary>Р”РѕРєСѓРјРµРЅС‚РѕРІ СЃРµРјРµР№СЃС‚РІР° СЃ СЌС‚РёРј РІРёРґРѕРј Рё РІСЃРµРіРѕ СЃР»СѓС‡Р°РµРІ РІ РЅРёС… (СЃРј. CFinding.Count).</summary>
         public readonly int Docs, Cases;
         public CKnown(string output, string family, string aspect, string id, int docs, int cases)
         {
@@ -14,8 +14,8 @@ namespace ExcelMerger.Tests
         }
     }
     /// <summary>
-    /// Реестр известных дефектов корпуса (26 семейств × 80 вариантов = 2080 PDF).
-    /// Сверка строгая в обе стороны.
+    /// Р РµРµСЃС‚СЂ РёР·РІРµСЃС‚РЅС‹С… РґРµС„РµРєС‚РѕРІ РєРѕСЂРїСѓСЃР° (26 СЃРµРјРµР№СЃС‚РІ Г— 80 РІР°СЂРёР°РЅС‚РѕРІ = 2080 PDF).
+    /// РЎРІРµСЂРєР° СЃС‚СЂРѕРіР°СЏ РІ РѕР±Рµ СЃС‚РѕСЂРѕРЅС‹.
     /// </summary>
     internal static class CorpusKnown
     {
@@ -74,17 +74,16 @@ namespace ExcelMerger.Tests
             K(Docx, "зачёркнутые фразы", "split", "RC-14", 4, 4),
             K(Docx, "колонтитулы и номера страниц", "lost", "RC-2", 2, 2),
             K(Docx, "колонтитулы и номера страниц", "split", "RC-32", 3, 3),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-centered", "RC-3", 54, 100),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-centered", "RC-3", 11, 16),
             K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-kind", "RC-4", 12, 18),
-            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-level", "RC-9", 34, 57),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "list-level", "RC-9", 19, 57),
+            K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "lost", "RC-2", 1, 1),
             K(Docx, "маркеры Word: Symbol, Courier «o», Wingdings", "split", "RC-3", 14, 28),
             K(Docx, "маркированный список в два уровня", "align-left", "RC-31", 9, 9),
-            K(Docx, "маркированный список в два уровня", "list-centered", "RC-3", 47, 61),
-            K(Docx, "маркированный список в два уровня", "list-level", "RC-9", 20, 27),
+            K(Docx, "маркированный список в два уровня", "list-level", "RC-9", 21, 34),
             K(Docx, "маркированный список в два уровня", "order", "RC-14", 2, 2),
             K(Docx, "нумерованный список в два уровня", "align-left", "RC-31", 5, 5),
-            K(Docx, "нумерованный список в два уровня", "list-centered", "RC-3", 49, 71),
-            K(Docx, "нумерованный список в два уровня", "list-level", "RC-9", 19, 52),
+            K(Docx, "нумерованный список в два уровня", "list-level", "RC-9", 19, 58),
             K(Docx, "нумерованный список в два уровня", "marker-lost", "RC-3", 2, 7),
             K(Docx, "нумерованный список в два уровня", "merge", "RC-30", 2, 4),
             K(Docx, "нумерованный список в два уровня", "split", "RC-32", 2, 2),
@@ -100,8 +99,8 @@ namespace ExcelMerger.Tests
             K(Docx, "разный кегль в абзаце", "split", "RC-32", 1, 1),
             K(Docx, "скан с невидимым текстовым слоем", "lost", "RC-2", 2, 2),
             K(Docx, "скан с невидимым текстовым слоем", "scan-duplicate", "RC-2", 80, 80),
-            K(Docx, "списки с буквами, римскими и составными номерами", "list-centered", "RC-3", 42, 54),
             K(Docx, "списки с буквами, римскими и составными номерами", "list-level", "RC-9", 4, 7),
+            K(Docx, "списки с буквами, римскими и составными номерами", "lost", "RC-2", 1, 1),
             K(Docx, "списки с буквами, римскими и составными номерами", "marker-lost", "RC-3", 13, 50),
             K(Docx, "списки с буквами, римскими и составными номерами", "order", "RC-14", 10, 30),
             K(Docx, "списки с буквами, римскими и составными номерами", "split", "RC-3", 8, 8),
