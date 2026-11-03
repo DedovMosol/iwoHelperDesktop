@@ -18,7 +18,7 @@ namespace ExcelMerger.Tests
     internal static partial class UnitTests
     {
         /// <summary>Вариантов на семейство. Детерминированно: тот же набор на любой машине.</summary>
-        private const int CorpusPerFamily = 80;
+        private const int CorpusPerFamily = 120;
 
         private static List<CCase> _corpus;
 
