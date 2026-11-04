@@ -298,7 +298,7 @@ namespace ExcelMerger
             int fcol = right - 140;
             _btnUp = AddListButton(Loc.T("excel.btn.up"), fcol, 528, Loc.T("excel.tip.up"), ButtonChevron.Up);
             _btnUp.Click += delegate { MoveSelectedFile(false); };
-            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 562, Loc.T("excel.tip.down"), ButtonChevron.Down);
+            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 564, Loc.T("excel.tip.down"), ButtonChevron.Down);
             _btnDown.Click += delegate { MoveSelectedFile(true); };
             _btnSortName = AddListButton(Loc.T("excel.btn.sortName"), fcol, 604, Loc.T("excel.tip.sortName"));
             _btnSortName.Click += delegate { SortFilesByName(); };

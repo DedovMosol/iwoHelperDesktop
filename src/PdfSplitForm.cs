@@ -158,25 +158,22 @@ namespace ExcelMerger
             // Кнопка «Ещё с документом» рядом с остальным вводом: те же пункты, что в «☰».
             // Без неё картинки, текст, серое, восстановление и свойства оставались невидимыми —
             // искать их в меню окна никто не догадывался.
-            _btnPrint = new RoundedButton(false);
-            _btnPrint.Text = Loc.T("split.btn.print");
-            _btnPrint.SetBounds(px, m + 352, 74, 32);
+            int gap = 8;
+            int printW = (pw - gap) / 2;
+            _btnPrint = Ui.ToolButton(this, Loc.T("split.btn.print"), Loc.T("split.tip.print"),
+                _tips, ButtonChevron.None, ButtonMark.Print);
+            _btnPrint.SetBounds(px, m + 352, printW, 32);
             _btnPrint.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _tips.SetToolTip(_btnPrint, Loc.T("split.tip.print"));
             _btnPrint.Click += delegate { PrintSelectedPages(); };
-            Controls.Add(_btnPrint);
 
             // Шесть операций над одним документом переехали в своё окно (их не находили в меню).
             // Здесь остался переход туда с УЖЕ ОТКРЫТЫМ файлом — открывать его заново не нужно.
-            _btnOps = new RoundedButton(false);
-            _btnOps.Text = Loc.T("split.btn.ops");
-            _btnOps.SetBounds(px + 80, m + 352, pw - 80, 32);
+            _btnOps = Ui.ToolButton(this, Loc.T("split.btn.ops"), Loc.T("split.tip.ops"), _tips);
+            _btnOps.SetBounds(px + printW + gap, m + 352, pw - printW - gap, 32);
             _btnOps.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _tips.SetToolTip(_btnOps, Loc.T("split.tip.ops"));
             // Открытый документ уезжает туда сам, а если ничего не открыто — окно просто
             // откроется: нажатие обязано что-то делать, иначе кнопку считают сломанной.
             _btnOps.Click += delegate { OpenInOps(); };
-            Controls.Add(_btnOps);
 
             // Масштаб, сжатие и статус — общий нижний строй (как в «Объединении»).
             BuildBottomStrip(right, Loc.T("common.status.openPdf"), 190);

@@ -247,9 +247,11 @@ namespace ExcelMerger
                 DrawMark(g, pad, s, text);
             if (Chevron != ButtonChevron.None)
                 DrawChevron(g, pad + mark, s, text);
-            TextRenderer.DrawText(g, Text, Font, textArea, text,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+            TextFormatFlags tf = TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+            if (Mark == ButtonMark.None && Chevron == ButtonChevron.None)
+                tf |= TextFormatFlags.HorizontalCenter;
+            TextRenderer.DrawText(g, Text, Font, textArea, text, tf);
         }
 
         /// <summary>Шеврон влево. Чистая геометрия — под тест.</summary>
@@ -263,7 +265,7 @@ namespace ExcelMerger
         {
             int arm = Math.Max(3, (int)Math.Round(5f * scale));
             int o = pad + (int)Math.Round(3f * scale);
-            int midY = height / 2, midX = width / 2;
+            int midY = height / 2;
             switch (dir)
             {
                 case ButtonChevron.Right:
