@@ -90,6 +90,21 @@ namespace ExcelMerger
             ForeColor = Color.White;
         }
 
+        /// <summary>Градиент шапки в системе координат дочерней кнопки — без сплошного BackColor и Region.</summary>
+        internal void PaintBehindChild(Graphics g, Control child)
+        {
+            if (g == null || child == null)
+                return;
+            GraphicsState state = g.Save();
+            g.TranslateTransform(-child.Left, -child.Top);
+            if (Theme.HighContrast)
+                g.Clear(SystemColors.Control);
+            else
+                using (var brush = new LinearGradientBrush(ClientRectangle, _top, _bottom, LinearGradientMode.Vertical))
+                    g.FillRectangle(brush, ClientRectangle);
+            g.Restore(state);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Rectangle r = ClientRectangle;

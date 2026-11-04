@@ -697,18 +697,17 @@ namespace ExcelMerger
                 bool hot = (Hover || Pressed) && (hc || HoverFill != Color.Empty || OnAccentHeader);
                 Color glyph = hc && hot ? SystemColors.HighlightText : ForeColor;
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var band = Parent as HeaderBand;
+                if (OnAccentHeader && band != null && !hc)
+                    band.PaintBehindChild(e.Graphics, this);
                 if (OnAccentHeader && !hc)
                 {
                     Color fill, border;
                     Theme.HeaderChipColors(true, Hover, Pressed, out fill, out border);
-                    float s = DpiScale.Device(this);
-                    float rad = Math.Min(Width, Height) / 4f;
-                    using (GraphicsPath path = Ui.RoundedRect(new RectangleF(s / 2f, s / 2f, Width - s, Height - s), rad))
+                    if (fill.A > 0)
                     {
                         using (var b = new SolidBrush(fill))
-                            e.Graphics.FillPath(b, path);
-                        using (var pen = new Pen(border, Math.Max(1f, s)))
-                            e.Graphics.DrawPath(pen, path);
+                            e.Graphics.FillEllipse(b, 1, 1, Width - 3, Height - 3);
                     }
                 }
                 else if (hot)

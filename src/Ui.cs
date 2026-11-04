@@ -122,7 +122,8 @@ namespace ExcelMerger
             if (header == null || menu == null)
                 return null;
             var b = new RoundedButton(ButtonLook.OnHeader);
-            b.Text = "☰";
+            b.Text = "";
+            b.Mark = ButtonMark.Menu;
             b.AccessibleName = Loc.T("menu.root");
             const int w = 32;
             int homeLeft = header.Width - 12;

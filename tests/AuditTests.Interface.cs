@@ -1493,7 +1493,7 @@ namespace ExcelMerger.Tests
             }
         }
 
-        [Test("Шапка: в покое лёгкий тон полосы, не молоко и не голый акцент")]
+        [Test("Шапка: в покое градиент, не белая плашка")]
         private static void AuditHeaderNavIdleIsSubtle()
         {
             Color accent = Color.FromArgb(15, 76, 129);
@@ -1505,37 +1505,21 @@ namespace ExcelMerger.Tests
                 {
                     back.DrawToBitmap(bmp, new Rectangle(0, 0, back.Width, back.Height));
                     Color p = bmp.GetPixel(8, back.Height / 2);
-                    AssertTrue(p.R < 160, "не забелено, пиксель=" + p);
-                    AssertTrue(p.R > 28 && p.B > p.R, "чуть светлее акцента, пиксель=" + p);
+                    AssertTrue(p.R < 80, "не забелено, пиксель=" + p);
+                    AssertTrue(p.B > p.R, "тон шапки, пиксель=" + p);
                 }
             }
         }
 
-        [Test("Шапка: регион кнопки — пилюля, квадратные углы не рисуются")]
+        [Test("Шапка: без Region — белая пилюля больше не режет градиент")]
         private static void AuditHeaderNavRegionIsPill()
         {
-            RunSta(delegate
+            using (var band = new HeaderBand("T", "S", Color.Navy, Color.Black))
             {
-                using (var form = new Form())
-                {
-                    var band = new HeaderBand("T", "S", Color.Navy, Color.Black);
-                    band.SetBounds(0, 0, 640, 78);
-                    form.Controls.Add(band);
-                    RoundedButton back = Ui.HeaderNav(band, delegate { }, Ui.HeaderNavKind.Back, null);
-                    form.Show();
-                    try
-                    {
-                        using (Region region = back.Region)
-                        {
-                            AssertTrue(region != null, "регион задан");
-                            AssertTrue(!region.IsVisible(new Point(0, 0)), "угол квадрата вне пилюли");
-                            AssertTrue(region.IsVisible(new Point(back.Width / 2, back.Height / 2)),
-                                "центр кнопки внутри");
-                        }
-                    }
-                    finally { form.Hide(); }
-                }
-            });
+                band.SetBounds(0, 0, 640, 78);
+                RoundedButton back = Ui.HeaderNav(band, delegate { }, Ui.HeaderNavKind.Back, null);
+                AssertTrue(back.Region == null, "регион не клипит углы");
+            }
         }
 
         [Test("Primary только у действия с файлом, на шапке его нет")]

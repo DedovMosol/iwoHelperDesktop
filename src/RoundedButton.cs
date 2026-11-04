@@ -38,7 +38,8 @@ namespace ExcelMerger
         Plus,
         Trash,
         Print,
-        Open
+        Open,
+        Menu
     }
 
     /// <summary>
@@ -70,7 +71,6 @@ namespace ExcelMerger
         private bool _hover;
         private bool _pressed;
         private Point[] _chevronPts; // переиспользуем в OnPaint, не new[] на кадр
-        private Region _headerShape; // живой: GetHrgn после Dispose даёт «недопустимый параметр»
 
         public bool Selected
         {
@@ -101,7 +101,10 @@ namespace ExcelMerger
                 ? Ui.Font(10.5f, FontStyle.Bold)
                 : Ui.Font(9.75f);
             if (look == ButtonLook.OnHeader)
-                BackColor = Color.Transparent; // углы: Clear возьмёт BackColor шапки (акцент)
+            {
+                SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent;
+            }
         }
 
         protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
@@ -111,61 +114,6 @@ namespace ExcelMerger
         protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
         protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
-
-        protected override void OnSizeChanged(EventArgs e)
-        {
-            base.OnSizeChanged(e);
-            if (!IsHandleCreated)
-                return;
-            ApplyHeaderShape();
-        }
-
-        protected override void OnVisibleChanged(EventArgs e)
-        {
-            base.OnVisibleChanged(e);
-            if (Visible && IsHandleCreated)
-                ApplyHeaderShape();
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                Region = null;
-                if (_headerShape != null)
-                {
-                    _headerShape.Dispose();
-                    _headerShape = null;
-                }
-            }
-            base.Dispose(disposing);
-        }
-
-        /// <summary>Радиус пилюли на шапке. Совпадает у Region и у обводки, иначе торчат углы.</summary>
-        internal static float HeaderChipRadius(int height, float scale)
-        {
-            float line = Math.Max(1f, scale);
-            float cap = 14f * scale;
-            float r = height / 2f - line;
-            return r < cap ? r : cap;
-        }
-
-        private void ApplyHeaderShape()
-        {
-            if (_look != ButtonLook.OnHeader || !IsHandleCreated || Width < 4 || Height < 4)
-                return;
-            float radius = HeaderChipRadius(Height, DpiScale.Device(this));
-            using (GraphicsPath path = Ui.RoundedRect(new RectangleF(0, 0, Width, Height), radius))
-            {
-                Region next = new Region(path);
-                Region = next;
-                if (_headerShape != null)
-                    _headerShape.Dispose();
-                _headerShape = next;
-            }
-            if (Parent != null)
-                Parent.Invalidate(Bounds, false);
-        }
 
         /// <summary>
         /// Радиус скругления по высоте кнопки: пропорция вместо ступеньки. Пределы — логические
@@ -196,21 +144,22 @@ namespace ExcelMerger
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            Color ground = Parent != null ? Parent.BackColor : Color.White;
-            if (_look == ButtonLook.OnHeader && Parent != null)
-                ground = Parent.BackColor;
-            g.Clear(ground);
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            var band = Parent as HeaderBand;
+            if (_look == ButtonLook.OnHeader && band != null)
+                band.PaintBehindChild(g, this);
+            else
+                g.Clear(Parent != null ? Parent.BackColor : Color.White);
 
             Color fill, text, border;
             Colors(out fill, out text, out border);
 
-            // Рисование — всегда после масштаба окна, в пикселях устройства (UI-25).
             float s = DpiScale.Device(this);
             float line = Math.Max(1f, s);
-            float radius = _look == ButtonLook.OnHeader
-                ? HeaderChipRadius(Height, s)
-                : RadiusFor(Height, s);
-            var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
+            float radius = RadiusFor(Height, s);
+            if (_look == ButtonLook.OnHeader)
+                radius = Math.Max(2f, Height / 2f - line);
+            var rect = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
             using (GraphicsPath path = Ui.RoundedRect(rect, radius))
             {
                 if (fill.A > 0)
@@ -311,58 +260,54 @@ namespace ExcelMerger
 
         private void DrawMark(Graphics g, int pad, float scale, Color color)
         {
-            int size = Math.Max(10, (int)Math.Round(14f * scale));
-            int x = pad;
-            int y = (Height - size) / 2;
-            string mdl = MarkMdl2(Mark);
-            if (mdl != null)
-            {
-                Font font = Ui.Font(this, 11f, FontStyle.Regular, "Segoe MDL2 Assets");
-                if (string.Equals(font.Name, "Segoe MDL2 Assets", StringComparison.OrdinalIgnoreCase))
-                {
-                    TextRenderer.DrawText(g, mdl, font, new Rectangle(x, y, size, size), color,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                        TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
-                    return;
-                }
-            }
-            float w = Math.Max(1.2f, 1.3f * scale);
+            float size = 16f * scale;
+            float x = pad;
+            float y = (Height - size) / 2f;
+            float w = Math.Max(1.2f, 1.4f * scale);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             using (var p = new Pen(color, w))
+            using (var b = new SolidBrush(color))
             {
+                p.StartCap = LineCap.Round;
+                p.EndCap = LineCap.Round;
                 p.LineJoin = LineJoin.Round;
-                int m = size / 2;
+                float m = size / 2f;
                 switch (Mark)
                 {
                     case ButtonMark.Plus:
-                        g.DrawLine(p, x + 1, y + m, x + size - 1, y + m);
-                        g.DrawLine(p, x + m, y + 1, x + m, y + size - 1);
+                        g.DrawLine(p, x + 2, y + m, x + size - 2, y + m);
+                        g.DrawLine(p, x + m, y + 2, x + m, y + size - 2);
                         break;
                     case ButtonMark.Trash:
-                        g.DrawLine(p, x + 2, y + 3, x + size - 2, y + 3);
-                        g.DrawRectangle(p, x + 3, y + 3, size - 6, size - 5);
+                        g.DrawLine(p, x + m - 2.5f, y + 1.5f, x + m + 2.5f, y + 1.5f);
+                        g.DrawLine(p, x + 1.5f, y + 4.5f, x + size - 1.5f, y + 4.5f);
+                        g.DrawLine(p, x + 3.5f, y + 4.5f, x + 4.5f, y + size - 1.5f);
+                        g.DrawLine(p, x + size - 3.5f, y + 4.5f, x + size - 4.5f, y + size - 1.5f);
+                        g.DrawLine(p, x + 4.5f, y + size - 1.5f, x + size - 4.5f, y + size - 1.5f);
+                        g.DrawLine(p, x + m, y + 6.5f, x + m, y + size - 3.5f);
                         break;
                     case ButtonMark.Print:
-                        g.DrawRectangle(p, x + 2, y + m - 1, size - 4, m);
-                        g.DrawRectangle(p, x + 4, y + 1, size - 8, m);
+                        g.DrawRectangle(p, x + 4, y + 1.5f, size - 8, m - 1);
+                        g.DrawRectangle(p, x + 1.5f, y + m - 1, size - 3, m);
+                        g.FillRectangle(b, x + 4, y + m + 2, size - 8, m - 2);
+                        break;
+                    case ButtonMark.Menu:
+                        float gap = 4.5f * scale;
+                        float left = x + 3;
+                        float right = x + size - 3;
+                        g.DrawLine(p, left, y + m - gap, right, y + m - gap);
+                        g.DrawLine(p, left, y + m, right, y + m);
+                        g.DrawLine(p, left, y + m + gap, right, y + m + gap);
                         break;
                     default:
-                        g.DrawRectangle(p, x + 2, y + 1, size - 5, size - 3);
-                        g.DrawLine(p, x + 5, y + m, x + size - 5, y + m);
+                        g.DrawLine(p, x + 1.5f, y + 5, x + 6, y + 5);
+                        g.DrawLine(p, x + 6, y + 5, x + 8, y + 2.5f);
+                        g.DrawLine(p, x + 8, y + 2.5f, x + size - 1.5f, y + 2.5f);
+                        g.DrawLine(p, x + size - 1.5f, y + 2.5f, x + size - 1.5f, y + size - 2);
+                        g.DrawLine(p, x + size - 1.5f, y + size - 2, x + 1.5f, y + size - 2);
+                        g.DrawLine(p, x + 1.5f, y + size - 2, x + 1.5f, y + 5);
                         break;
                 }
-            }
-        }
-
-        private static string MarkMdl2(ButtonMark mark)
-        {
-            switch (mark)
-            {
-                case ButtonMark.Plus: return "";
-                case ButtonMark.Trash: return "";
-                case ButtonMark.Print: return "";
-                case ButtonMark.Open: return "";
-                default: return null;
             }
         }
 

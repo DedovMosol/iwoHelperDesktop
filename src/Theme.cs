@@ -83,19 +83,18 @@ namespace ExcelMerger
         /// Цвет в формате OLE/COLORREF (0x00BBGGRR) — как ждут Excel Range/Shape
         /// «.RGB» и Win32/DWM. Единое место упаковки (DRY). Чистая — под тест.
         /// </summary>
-        /// <summary>Стекло на цветной шапке: лёгкий подъём тона и тонкая кромка (Назад, Главная, глобус).</summary>
+        /// <summary>На шапке в покое заливки нет (градиент виден). Наведение — тёмная тень, не белая кромка.</summary>
         public static void HeaderChipColors(bool enabled, bool hover, bool pressed, out Color fill, out Color border)
         {
+            border = Color.Empty;
             if (!enabled)
             {
-                fill = Color.FromArgb(28, 255, 255, 255);
-                border = Color.FromArgb(70, 255, 255, 255);
+                fill = Color.Empty;
                 return;
             }
-            fill = pressed ? Color.FromArgb(72, 255, 255, 255)
-                : hover ? Color.FromArgb(56, 255, 255, 255)
-                : Color.FromArgb(38, 255, 255, 255);
-            border = Color.FromArgb(hover || pressed ? 160 : 110, 255, 255, 255);
+            fill = pressed ? Color.FromArgb(64, 0, 0, 0)
+                : hover ? Color.FromArgb(40, 0, 0, 0)
+                : Color.Empty;
         }
 
         public static int ToBgr(Color c)
