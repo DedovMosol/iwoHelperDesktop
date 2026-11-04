@@ -694,55 +694,57 @@ namespace ExcelMerger
                 // Высокий контраст (UI-7): под мышью — круг Highlight и значок HighlightText,
                 // иначе значок цветом текста окна (ForeColor уже системный, см. HighContrastColors).
                 bool hc = Theme.HighContrast;
-                bool hot = (Hover || Pressed) && (hc || HoverFill != Color.Empty || OnAccentHeader);
+                bool hot = Hover || Pressed || Focused;
                 Color glyph = hc && hot ? SystemColors.HighlightText : ForeColor;
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                 var band = Parent as HeaderBand;
                 if (OnAccentHeader && band != null && !hc)
-                    band.PaintBehindChild(e.Graphics, this);
+                    band.PaintBehindChild(g, this);
+                var bubble = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
                 if (OnAccentHeader && !hc)
                 {
                     Color fill, border;
-                    Theme.HeaderChipColors(true, Hover, Pressed, out fill, out border);
+                    Theme.HeaderChipColors(true, Hover || Focused, Pressed, out fill, out border);
                     if (fill.A > 0)
                     {
                         using (var b = new SolidBrush(fill))
-                            e.Graphics.FillEllipse(b, 1, 1, Width - 3, Height - 3);
+                            g.FillEllipse(b, bubble);
                     }
                 }
-                else if (hot)
+                else if (hot && (hc || HoverFill != Color.Empty))
                 {
                     int alpha = Pressed ? Math.Min(255, HoverFill.A * 2) : HoverFill.A;
                     using (var b = new SolidBrush(hc ? SystemColors.Highlight : Color.FromArgb(alpha, HoverFill)))
-                        e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
+                        g.FillEllipse(b, bubble);
                 }
-                e.Graphics.SmoothingMode = SmoothingMode.Default;
                 Image fallback = _glyphFontPresent || _fallback == null ? null : _fallback();
                 if (fallback != null)
                 {
-                    // Флаг-картинка нарисована под 100 %: растягиваем её вместе с кнопкой.
                     int w = DpiScale.Device(this, fallback.Width), h = DpiScale.Device(this, fallback.Height);
-                    e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                    e.Graphics.DrawImage(fallback, new Rectangle((Width - w) / 2, (Height - h) / 2, w, h));
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(fallback, new Rectangle((Width - w) / 2, (Height - h) / 2, w, h));
                 }
                 else
                 {
-                    // Рисуем СЕРЫМ сглаживанием, а не субпиксельным: у мелкого глифа на светлом
-                    // фоне цветная кайма видна как грязь по краям — значок выглядит цветным,
-                    // хотя он одноцветный.
-                    TextRenderingHint was = e.Graphics.TextRenderingHint;
-                    e.Graphics.TextRenderingHint = TextRenderingHint.AntiAlias;
+                    TextRenderingHint was = g.TextRenderingHint;
+                    g.TextRenderingHint = TextRenderingHint.AntiAlias;
                     using (var brush = new SolidBrush(glyph))
-                    using (var format = new StringFormat())
+                    using (var format = (StringFormat)StringFormat.GenericTypographic.Clone())
                     {
                         format.Alignment = StringAlignment.Center;
                         format.LineAlignment = StringAlignment.Center;
-                        e.Graphics.DrawString(Text, Font, brush, ClientRectangle, format);
+                        format.FormatFlags |= StringFormatFlags.NoClip | StringFormatFlags.NoWrap;
+                        SizeF sz = g.MeasureString(Text, Font, PointF.Empty, format);
+                        float gx = (Width - sz.Width) / 2f;
+                        float gy = (Height - sz.Height) / 2f;
+                        g.DrawString(Text, Font, brush, gx, gy, format);
                     }
-                    e.Graphics.TextRenderingHint = was;
+                    g.TextRenderingHint = was;
                 }
-                // Кольцо фокуса — цветом значка: белое на синей шапке, цветное на белом ряду.
-                DrawFocusRing(e.Graphics, new RectangleF(0, 0, Width, Height), Math.Min(Width, Height) / 2f, glyph);
+                if (!OnAccentHeader)
+                    DrawFocusRing(g, bubble, Math.Min(Width, Height) / 2f, glyph);
             }
         }
     }

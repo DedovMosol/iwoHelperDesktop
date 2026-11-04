@@ -175,7 +175,7 @@ namespace ExcelMerger
             // Кольцо фокуса для управления с клавиатуры: сплошное, а не полупрозрачное —
             // сквозь прозрачность на светлой заливке его почти не видно, а именно оно и
             // отвечает на вопрос «где я сейчас нахожусь».
-            if (Focused && Enabled)
+            if (Focused && Enabled && _look != ButtonLook.OnHeader)
             {
                 float inset = 3f * s;
                 var inner = new RectangleF(inset, inset, Width - 2 * inset, Height - 2 * inset);
@@ -189,18 +189,22 @@ namespace ExcelMerger
             int pad = TextPadFor(Width, s);
             int mark = Mark == ButtonMark.None ? 0 : (int)Math.Round(18f * s);
             int glyph = Chevron == ButtonChevron.None ? 0 : (int)Math.Round(12f * s);
-            int insetL = mark + (Chevron == ButtonChevron.Right ? 0 : glyph);
+            bool markOnly = Mark != ButtonMark.None && string.IsNullOrEmpty(Text) && Chevron == ButtonChevron.None;
+            int insetL = markOnly ? 0 : mark + (Chevron == ButtonChevron.Right ? 0 : glyph);
             int insetR = Chevron == ButtonChevron.Right ? glyph : 0;
             var textArea = new Rectangle(pad + insetL, 0, Math.Max(1, Width - 2 * pad - insetL - insetR), Height);
             if (Mark != ButtonMark.None)
-                DrawMark(g, pad, s, text);
+                DrawMark(g, markOnly ? (int)Math.Round((Width - 16f * s) / 2f) : pad, s, text);
             if (Chevron != ButtonChevron.None)
                 DrawChevron(g, pad + mark, s, text);
-            TextFormatFlags tf = TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
-            if (Mark == ButtonMark.None && Chevron == ButtonChevron.None)
-                tf |= TextFormatFlags.HorizontalCenter;
-            TextRenderer.DrawText(g, Text, Font, textArea, text, tf);
+            if (!string.IsNullOrEmpty(Text))
+            {
+                TextFormatFlags tf = TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+                if (Mark == ButtonMark.None && Chevron == ButtonChevron.None)
+                    tf |= TextFormatFlags.HorizontalCenter;
+                TextRenderer.DrawText(g, Text, Font, textArea, text, tf);
+            }
         }
 
         /// <summary>Шеврон влево. Чистая геометрия — под тест.</summary>
@@ -340,7 +344,7 @@ namespace ExcelMerger
 
                 case ButtonLook.OnHeader:
                     text = Enabled ? Color.White : Color.FromArgb(190, 255, 255, 255);
-                    Theme.HeaderChipColors(Enabled, _hover || _selected, _pressed, out fill, out border);
+                    Theme.HeaderChipColors(Enabled, _hover || _selected || Focused, _pressed, out fill, out border);
                     return;
 
                 default:

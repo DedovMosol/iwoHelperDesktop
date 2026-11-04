@@ -90,7 +90,9 @@ namespace ExcelMerger
             b.Chevron = kind == HeaderNavKind.Back ? ButtonChevron.Left : ButtonChevron.None;
             b.Text = Loc.T(kind == HeaderNavKind.Back ? "hub.back" : "common.home");
             b.AccessibleName = b.Text;
-            int width = kind == HeaderNavKind.Back ? 104 : 160;
+            int extra = kind == HeaderNavKind.Back ? 28 : 20;
+            int width = TextRenderer.MeasureText(b.Text, b.Font).Width + extra;
+            if (width < 72) width = 72;
             int left = kind == HeaderNavKind.Back ? 12 : Math.Max(12, header.Width - width - 12);
             b.SetBounds(left, top, width, 30);
             b.Anchor = kind == HeaderNavKind.Back
@@ -130,7 +132,7 @@ namespace ExcelMerger
             foreach (Control c in header.Controls)
                 if ((c.Anchor & AnchorStyles.Right) == AnchorStyles.Right && c.Left < homeLeft)
                     homeLeft = c.Left;
-            b.SetBounds(Math.Max(8, homeLeft - 8 - w), 0, w, 30);
+            b.SetBounds(Math.Max(8, homeLeft - 4 - w), 0, w, 30);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             b.ContextMenuStrip = menu;
             b.Click += delegate { menu.Show(b, new Point(0, b.Height)); };
