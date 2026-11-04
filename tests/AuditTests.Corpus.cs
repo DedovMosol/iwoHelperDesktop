@@ -278,6 +278,33 @@ namespace ExcelMerger.Tests
             AssertTrue(fails.Count == 0, "zigzag: " + string.Join("; ", fails.ToArray()));
         }
 
+        [Test("Корпус: нумерация в три уровня #2/#14 — вложенность через страницу (RC-9)")]
+        private static void CorpusDeepNumberedLevels()
+        {
+            EmbeddedAssemblies.Ensure();
+            var fails = new List<string>();
+            using (var dir = new TempDir("iwo_deepnum_"))
+                foreach (int idx in new[] { 2, 14 })
+                {
+                    CCase c = CorpusCases.All(15).Find(x => x.Family == "нумерация в три уровня" && x.Variant.Index == idx);
+                    AssertTrue(c != null, "variant " + idx);
+                    string path;
+                    CRendered drawn = RenderCase(c, dir, out path);
+                    List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                    int levels = 0;
+                    var details = new List<string>();
+                    foreach (CFinding f in CorpusCheck.Document(drawn, pages))
+                    {
+                        if (f.Aspect != "list-level") continue;
+                        levels += f.Count;
+                        details.Add(f.Detail);
+                    }
+                    if (levels > 0)
+                        fails.Add("#" + idx + " list-level ×" + levels + " " + string.Join(" | ", details.ToArray()));
+                }
+            AssertTrue(fails.Count == 0, string.Join(" ;; ", fails.ToArray()));
+        }
+
         [Test("Корпус: римский список #4 — маркеры на месте (RC-3)")]
         private static void CorpusLetterListMarkers()
         {

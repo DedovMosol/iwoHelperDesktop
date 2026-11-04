@@ -171,6 +171,8 @@ namespace ExcelMerger
                     int pageCount = numbers.Count;
                     Exception firstFailure = null;
                     var sizeHints = new PageSizeHints(path); // откроется, только если страница не разберётся
+                    // Вложенность списка через границу страницы (A5, три уровня).
+                    ListNesting listNesting = mode == PageLayoutMode.Document ? new ListNesting() : null;
                     foreach (int number in numbers)
                     {
                         Cancellation.ThrowIf(cancelled); // отмена между страницами извлечения
@@ -180,7 +182,7 @@ namespace ExcelMerger
                         try
                         {
                             page = doc.GetPage(number);
-                            pt = ExtractPage(page, path, rotation, mode, extractImages);
+                            pt = ExtractPage(page, path, rotation, mode, extractImages, listNesting);
                         }
                         catch (Exception ex) when (mode != PageLayoutMode.Review && MergeException.ShouldWrap(ex))
                         {
@@ -376,7 +378,7 @@ namespace ExcelMerger
         /// страница бросает исключение; превратить ли её в картинку, решает вызывающий (RC-11).
         /// </summary>
         private static PdfPageText ExtractPage(UglyToad.PdfPig.Content.Page page, string path, int rotation,
-            PageLayoutMode mode, bool extractImages)
+            PageLayoutMode mode, bool extractImages, ListNesting listNesting)
         {
             // Картинки страницы перечисляются ОДИН раз (декода здесь нет): рамки
             // нужны фильтрам невидимого текста и наложенных картинок, а сами объекты — переносу
@@ -552,7 +554,7 @@ namespace ExcelMerger
             // Сетки без линовки (чеки, формы «метка … значение») — таблицей без границ.
             GridDetectResult grids = GridDetector.Detect(det.RemainingWords);
             det.Tables.AddRange(grids.Tables);
-            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(grids.RemainingWords, mode);
+            OcrLayout.OcrPageLayout layout = OcrLayout.Analyze(grids.RemainingWords, true, mode, listNesting);
             var pt = new PdfPageText
             {
                 PageIndex = page.Number - 1, // PdfPig нумерует страницы с 1

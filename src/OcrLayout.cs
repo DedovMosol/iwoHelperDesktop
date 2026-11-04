@@ -297,6 +297,16 @@ namespace ExcelMerger
 
         internal static OcrPageLayout Analyze(IList<PdfWord> words, bool splitColumns, PageLayoutMode mode)
         {
+            return Analyze(words, splitColumns, mode, null);
+        }
+
+        /// <summary>
+        /// listNesting — стек уровней списка документа. На границе страницы вложенный
+        /// пункт иначе становится корнем (A5, три уровня, RC-9). null — свой стек
+        /// (ячейка таблицы, слайд, одиночный разбор).
+        /// </summary>
+        internal static OcrPageLayout Analyze(IList<PdfWord> words, bool splitColumns, PageLayoutMode mode, ListNesting listNesting)
+        {
             var result = new OcrPageLayout();
             if (words == null || words.Count == 0)
                 return result;
@@ -306,7 +316,8 @@ namespace ExcelMerger
             if (root != null)
             {
                 GlueListMarkerColumns(root, words);
-                WalkCut(root, words, splitColumns, result.Paragraphs, stats, mode, new ListNesting());
+                WalkCut(root, words, splitColumns, result.Paragraphs, stats, mode,
+                    listNesting ?? new ListNesting());
             }
             result.FirstLineIndentPt = stats.DocumentIndent();
             return result;
