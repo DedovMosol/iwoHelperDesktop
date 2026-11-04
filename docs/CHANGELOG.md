@@ -15,7 +15,7 @@ MAJOR.MINOR.PATCH ([SemVer](https://semver.org/)); one hotfix, 1.18.3.1, used a 
 
 ### Changed
 - **Hub Back and tool Home sit on the accent header as quiet Fluent chips** (regular white caption, drawn chevron, a slight lift of the band colour and a thin rim — not milky glass and not a solid dialog pill). Both sit on the title’s vertical centre (`Ui.HeaderNav`, `AlignToText`). The accent `Primary` button is the file action (bottom of Merge/Split/Word/PPT, or Compare next to the paths), never on the header.
-- **Page-order buttons draw their chevrons** instead of ◀▶▲▼ in the caption (and in How-to / README). Merge/Word/PowerPoint group file, page and print actions with even 32 px buttons; Excel keeps Up/Down on the file list. Left/Right (and Alt+←/→) move every selected page as a block, not only one.
+- **Page-order buttons draw their chevrons** instead of ◀▶▲▼ in the caption (and in How-to / README). Merge/Word/PowerPoint group file, page and print actions with even 32 px buttons; Excel keeps Up/Down on the file list. Left/Right (and Alt+←/→) move every selected page as a block, not only one; the buttons disable at that edge.
 - **`--selftest` writes its crash log under %TEMP%** (`iwo_selftest.log`), and `--thumbcheck` no longer waits forever on a stuck renderer (60 s, same bound as `--gscheck`).
 - **Excel merge no longer sets `AskToUpdateLinks = false`.** In Excel that means “update links without asking”; workbooks still open with `UpdateLinks:0`.
 - **CI no longer counts as a download.** README link checks used GET on `releases/download/…`, which GitHub tallies as a real installer/zip fetch (+4 per push). Release assets are now listed through the GitHub API; other URLs use HEAD. The download counter is only people.

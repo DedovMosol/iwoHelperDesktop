@@ -507,6 +507,19 @@ namespace ExcelMerger
             _grid.SelectRange(moved, n);
         }
 
+        /// <summary>Влево/вправо только когда шаг ещё возможен — иначе кнопка светится вхолостую.</summary>
+        protected void SyncMoveButtons(Button earlier, Button later)
+        {
+            if (earlier == null || later == null)
+                return;
+            int unused;
+            int[] sel = _grid == null ? new int[0] : _grid.GetSelectedIndices();
+            int n = _order == null ? 0 : _order.Count;
+            bool idle = !Working;
+            earlier.Enabled = idle && ListReorder.TryStepInsert(sel, n, false, out unused);
+            later.Enabled = idle && ListReorder.TryStepInsert(sel, n, true, out unused);
+        }
+
         /// <summary>Удалить выбранные страницы (кнопка, Delete).</summary>
         protected void RemoveSelected()
         {

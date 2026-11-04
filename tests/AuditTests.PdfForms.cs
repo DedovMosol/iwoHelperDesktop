@@ -1241,6 +1241,10 @@ namespace ExcelMerger.Tests
             items = new List<int> { 0, 1, 2, 3, 4 };
             ListReorder.MoveRange(items, new[] { 2 }, 1);
             AssertEq("0,2,1,3,4", string.Join(",", items.ToArray()), "один шаг вверх как MoveUp");
+            AssertTrue(!ListReorder.TryStepInsert(new[] { 0, 2 }, 5, false, out insertAt),
+                "если в наборе есть первая страница — раньше нельзя");
+            AssertTrue(ListReorder.TryStepInsert(new[] { 0, 2 }, 5, true, out insertAt),
+                "тот же набор позже — можно");
         }
 
         /// <summary>Вызвать непубличный метод экземпляра по имени и числу параметров (по цепочке типов).</summary>
