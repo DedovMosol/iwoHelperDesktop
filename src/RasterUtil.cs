@@ -166,26 +166,34 @@ namespace ExcelMerger
                             return false; // definitive negative; full proof is unnecessary
                 int bits = Image.GetPixelFormatSize(bmp.PixelFormat);
                 int bytesPerPixel = bits / 8;
-                if (bytesPerPixel != 3 && bytesPerPixel != 4)
-                {
-                    int firstArgb = bmp.GetPixel(0, 0).ToArgb();
-                    for (int y = 0; y < height; y++)
-                        for (int x = 0; x < width; x++)
-                            if (bmp.GetPixel(x, y).ToArgb() != firstArgb)
-                                return false;
-                    return true;
-                }
-
                 data = bmp.LockBits(new Rectangle(0, 0, width, height),
                     ImageLockMode.ReadOnly, bmp.PixelFormat);
-                int rowBytes = checked(width * bytesPerPixel);
+                int rowBytes = bytesPerPixel >= 3
+                    ? checked(width * bytesPerPixel)
+                    : (bits == 1 ? (width + 7) / 8 : width);
                 var row = new byte[rowBytes];
                 int first = 0;
                 bool haveFirst = false;
+                byte[] firstRow = bytesPerPixel >= 3 ? null : new byte[rowBytes];
                 for (int y = 0; y < height; y++)
                 {
-                    IntPtr start = IntPtr.Add(data.Scan0, y * data.Stride);
+                    IntPtr start = new IntPtr(data.Scan0.ToInt64() + (long)y * data.Stride);
                     System.Runtime.InteropServices.Marshal.Copy(start, row, 0, rowBytes);
+                    if (bytesPerPixel < 3)
+                    {
+                        if (!haveFirst)
+                        {
+                            Buffer.BlockCopy(row, 0, firstRow, 0, rowBytes);
+                            haveFirst = true;
+                        }
+                        else
+                        {
+                            for (int i = 0; i < rowBytes; i++)
+                                if (row[i] != firstRow[i])
+                                    return false;
+                        }
+                        continue;
+                    }
                     for (int x = 0; x < rowBytes; x += bytesPerPixel)
                     {
                         int pixel = (bytesPerPixel >= 4 ? row[x + 3] : 255) << 24 |
@@ -199,7 +207,8 @@ namespace ExcelMerger
                             return false;
                     }
                 }
-                argb = first;
+                if (bytesPerPixel >= 3)
+                    argb = first;
                 return true;
             }
             catch { return false; }

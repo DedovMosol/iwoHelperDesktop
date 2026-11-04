@@ -89,8 +89,14 @@ namespace ExcelMerger
                         return null;
                     result = new Bitmap(decoded);
                 }
-                working.ReduceTo(PdfMemoryBudget.EstimateBitmapBytes(
-                    result.Width, result.Height));
+                long actual = PdfMemoryBudget.EstimateBitmapBytes(result.Width, result.Height);
+                if (actual > working.Bytes && !working.TryGrow(actual - working.Bytes))
+                {
+                    result.Dispose();
+                    result = null;
+                    return null;
+                }
+                working.ReduceTo(actual);
                 var owned = new BudgetedBitmap(result, working);
                 result = null;
                 working = null;

@@ -71,6 +71,14 @@ namespace ExcelMerger
             /// <summary>До native-выбора: иначе мультивыделение схлопывается до одной плитки (GR-8).</summary>
             public Action<int, int> PeekLeftDown;
 
+            [StructLayout(LayoutKind.Sequential)]
+            private struct NmHdr
+            {
+                public IntPtr HwndFrom;
+                public IntPtr IdFrom;
+                public int Code;
+            }
+
             protected override void WndProc(ref Message m)
             {
                 const int WM_LBUTTONDOWN = 0x201;
@@ -80,8 +88,17 @@ namespace ExcelMerger
                     PeekLeftDown(unchecked((short)lp), unchecked((short)(lp >> 16)));
                 }
                 base.WndProc(ref m);
-                const int WM_VSCROLL = 0x115, WM_MOUSEWHEEL = 0x20A, WM_KEYUP = 0x101, WM_PAINT = 0x0F;
-                if (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL || m.Msg == WM_KEYUP)
+                const int WM_VSCROLL = 0x115, WM_HSCROLL = 0x114, WM_MOUSEWHEEL = 0x20A,
+                    WM_KEYUP = 0x101, WM_PAINT = 0x0F, WM_NOTIFY = 0x4E;
+                const int LvnEndScroll = -181; // LVN_FIRST-81: конец сенсорной/инерционной прокрутки
+                bool scrolled = m.Msg == WM_VSCROLL || m.Msg == WM_HSCROLL
+                    || m.Msg == WM_MOUSEWHEEL || m.Msg == WM_KEYUP;
+                if (!scrolled && m.Msg == WM_NOTIFY && m.LParam != IntPtr.Zero)
+                {
+                    NmHdr hdr = (NmHdr)Marshal.PtrToStructure(m.LParam, typeof(NmHdr));
+                    scrolled = hdr.Code == LvnEndScroll;
+                }
+                if (scrolled)
                 {
                     EventHandler h = Scrolled;
                     if (h != null) h(this, EventArgs.Empty);
@@ -448,6 +465,10 @@ namespace ExcelMerger
                 }
             }
             _list.EndUpdate();
+            // Ctrl+Z поворота оставляет те же страницы, но другие углы — ThumbKey тот же,
+            // PruneCache плитки старого угла не снимает (GR-15).
+            foreach (string pageKey in _currentKeys)
+                PruneUnusedRotations(pageKey);
             UpdateHint();            // пусто/не пусто → показать или снять подсказку
             ScheduleVisibleUpdate(); // рендерим только видимые страницы, а не все сразу
         }
