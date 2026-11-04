@@ -158,11 +158,15 @@ namespace ExcelMerger
 
         private void RenderInBackground(int width)
         {
+            if (_closed)
+                return;
             PdfThumbnailRenderer renderer = null;
             BudgetedBitmap page = null;
             try
             {
                 renderer = new PdfThumbnailRenderer();
+                if (_closed)
+                    return;
                 page = renderer.RenderOwned(_page.SourcePath, _page.PageIndex, width, 0,
                     RasterBudget.PreviewPixels); // без поворота, его наложит UI
             }
@@ -267,11 +271,23 @@ namespace ExcelMerger
                 catch (OperationCanceledException) { }
                 catch (Exception ex) { error = ex; }
                 Exception shown = error;
-                if (shown != null)
-                    Ui.OnUi(this, delegate
-                    {
-                        Dialogs.Error(this, Text, Loc.T("preview.err.printFailed"), shown.Message);
-                    });
+                if (shown == null)
+                    return;
+                string caption = Text;
+                string detail = shown.Message;
+                // Модалку могли закрыть, пока шла печать: OnUi(this) тогда молчит (GR-7).
+                if (!Ui.OnUi(this, delegate
+                {
+                    Dialogs.Error(this, caption, Loc.T("preview.err.printFailed"), detail);
+                }))
+                {
+                    Form owner = Owner;
+                    if (owner != null)
+                        Ui.OnUi(owner, delegate
+                        {
+                            Dialogs.Error(owner, caption, Loc.T("preview.err.printFailed"), detail);
+                        });
+                }
             });
         }
 

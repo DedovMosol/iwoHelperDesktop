@@ -132,7 +132,11 @@ namespace ExcelMerger
             if (_docs.TryGet(key, out cached))
                 return cached.Doc;
 
-            long reserved = PdfMemoryBudget.EstimateDocumentBytes(new FileInfo(key).Length);
+            long fileBytes = new FileInfo(key).Length;
+            long reserved = PdfMemoryBudget.EstimateDocumentBytes(fileBytes);
+            // Вытеснение не поможет, если копия файла сама больше лимита (GR-6).
+            if (reserved <= 0 || reserved > PdfMemoryBudget.LimitBytes)
+                return null;
             PdfMemoryLease lease;
             while (!PdfMemoryBudget.TryAcquire(reserved, out lease))
                 if (!_docs.TryEvictOldest())

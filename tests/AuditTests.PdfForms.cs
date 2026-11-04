@@ -949,6 +949,18 @@ namespace ExcelMerger.Tests
                 "null-набор и вставка хвоста в конец — без правки");
         }
 
+        [Test("Аудит GR-6: копия файла больше лимита не берётся даже при пустом кэше")]
+        private static void AuditGr6HugeDocumentRejected()
+        {
+            long half = PdfMemoryBudget.LimitBytes / 2 + 1;
+            AssertTrue(PdfMemoryBudget.EstimateDocumentBytes(half) > PdfMemoryBudget.LimitBytes,
+                "оценка 2× файла выше лимита");
+            PdfMemoryLease lease;
+            AssertTrue(!PdfMemoryBudget.TryAcquire(PdfMemoryBudget.LimitBytes + 1, out lease),
+                "бронь больше лимита — отказ без вытеснения");
+            AssertTrue(lease == null, "лизинга нет");
+        }
+
         private static string AuditDText(object value)
         {
             var array = value as int[];
