@@ -76,8 +76,8 @@ namespace ExcelMerger
                 const int WM_LBUTTONDOWN = 0x201;
                 if (m.Msg == WM_LBUTTONDOWN && PeekLeftDown != null)
                 {
-                    int xy = m.LParam.ToInt32();
-                    PeekLeftDown((short)xy, (short)(xy >> 16));
+                    long lp = m.LParam.ToInt64();
+                    PeekLeftDown(unchecked((short)lp), unchecked((short)(lp >> 16)));
                 }
                 base.WndProc(ref m);
                 const int WM_VSCROLL = 0x115, WM_MOUSEWHEEL = 0x20A, WM_KEYUP = 0x101, WM_PAINT = 0x0F;

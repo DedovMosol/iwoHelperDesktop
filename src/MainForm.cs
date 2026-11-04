@@ -298,13 +298,13 @@ namespace ExcelMerger
             int fcol = right - 140;
             _btnUp = AddListButton(Loc.T("excel.btn.up"), fcol, 528, Loc.T("excel.tip.up"), ButtonChevron.Up);
             _btnUp.Click += delegate { MoveSelectedFile(false); };
-            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 564, Loc.T("excel.tip.down"), ButtonChevron.Down);
+            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 562, Loc.T("excel.tip.down"), ButtonChevron.Down);
             _btnDown.Click += delegate { MoveSelectedFile(true); };
-            _btnSortName = AddListButton(Loc.T("excel.btn.sortName"), fcol, 608, Loc.T("excel.tip.sortName"));
+            _btnSortName = AddListButton(Loc.T("excel.btn.sortName"), fcol, 604, Loc.T("excel.tip.sortName"));
             _btnSortName.Click += delegate { SortFilesByName(); };
-            _btnCheckAll = AddListButton(Loc.T("excel.btn.checkAll"), fcol, 652, null);
+            _btnCheckAll = AddListButton(Loc.T("excel.btn.checkAll"), fcol, 646, null);
             _btnCheckAll.Click += delegate { SetAllChecked(true); };
-            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, 688, null);
+            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, 680, null);
             _btnUncheckAll.Click += delegate { SetAllChecked(false); };
 
             _dropLine = new Panel();

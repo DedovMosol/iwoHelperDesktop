@@ -312,33 +312,29 @@ namespace ExcelMerger
             int size = Math.Max(10, (int)Math.Round(14f * scale));
             int x = pad;
             int y = (Height - size) / 2;
-            float w = Math.Max(1.2f, 1.4f * scale);
+            float w = Math.Max(1.2f, 1.3f * scale);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             using (var p = new Pen(color, w))
             {
-                p.StartCap = LineCap.Round;
-                p.EndCap = LineCap.Round;
+                p.LineJoin = LineJoin.Round;
                 int m = size / 2;
                 switch (Mark)
                 {
                     case ButtonMark.Plus:
-                        g.DrawLine(p, x + 2, y + m, x + size - 2, y + m);
-                        g.DrawLine(p, x + m, y + 2, x + m, y + size - 2);
+                        g.DrawLine(p, x + 1, y + m, x + size - 1, y + m);
+                        g.DrawLine(p, x + m, y + 1, x + m, y + size - 1);
                         break;
                     case ButtonMark.Trash:
-                        g.DrawLine(p, x + 2, y + 4, x + size - 2, y + 4);
-                        g.DrawLine(p, x + m, y + 1, x + m, y + 4);
-                        g.DrawLine(p, x + 3, y + 4, x + 4, y + size - 2);
-                        g.DrawLine(p, x + size - 3, y + 4, x + size - 4, y + size - 2);
-                        g.DrawLine(p, x + 4, y + size - 2, x + size - 4, y + size - 2);
+                        g.DrawLine(p, x + 2, y + 3, x + size - 2, y + 3);
+                        g.DrawRectangle(p, x + 3, y + 3, size - 6, size - 5);
                         break;
                     case ButtonMark.Print:
-                        g.DrawRectangle(p, x + 3, y + 1, size - 6, size / 3);
-                        g.DrawRectangle(p, x + 1, y + size / 3, size - 2, size / 2);
+                        g.DrawRectangle(p, x + 2, y + m - 1, size - 4, m);
+                        g.DrawRectangle(p, x + 4, y + 1, size - 8, m);
                         break;
-                    default: // Open: document
-                        g.DrawRectangle(p, x + 3, y + 1, size - 6, size - 3);
-                        g.DrawLine(p, x + 5, y + size / 2, x + size - 5, y + size / 2);
+                    default:
+                        g.DrawRectangle(p, x + 2, y + 1, size - 5, size - 3);
+                        g.DrawLine(p, x + 5, y + m, x + size - 5, y + m);
                         break;
                 }
             }

@@ -84,28 +84,28 @@ namespace ExcelMerger
             _grid.ShowPositionNumbers = true;  // под плиткой — позиция в итоговом наборе
             _grid.EmptyHint = Loc.T("pdf.grid.empty");
             _grid.DropHint = Loc.T("grid.dropHint");
-            _grid.SetBounds(20, m + 80, right - 20 - 150, ClientSize.Height - (m + 80) - 152);
+            _grid.SetBounds(20, m + 80, right - 20 - 168, ClientSize.Height - (m + 80) - 152);
             _grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             WireOrderGrid(); // события порядка + контекстное меню (общая обвязка базы)
             Controls.Add(_grid);
 
-            int col = right - 130;
+            int col = right - 148;
             // Три пачки: файл / страницы / документ. Высота одна, зазор между пачками больше.
-            _btnAdd = AddButton(Loc.T("common.addPdf"), col, m + 80, 130, 32, Loc.T("common.tip.addPdf"),
+            _btnAdd = AddButton(Loc.T("common.addPdf"), col, m + 80, 148, 32, Loc.T("common.tip.addPdf"),
                 ButtonChevron.None, ButtonMark.Plus);
             _btnAdd.Click += OnAddClick;
-            _btnUp = AddButton(Loc.T("common.earlier"), col, m + 128, 130, 32, Loc.T("common.tip.earlier"),
+            _btnUp = AddButton(Loc.T("common.earlier"), col, m + 128, 148, 32, Loc.T("common.tip.earlier"),
                 ButtonChevron.Left);
             _btnUp.Click += delegate { MoveSelected(false); };
-            _btnDown = AddButton(Loc.T("common.later"), col, m + 168, 130, 32, Loc.T("common.tip.later"),
+            _btnDown = AddButton(Loc.T("common.later"), col, m + 168, 148, 32, Loc.T("common.tip.later"),
                 ButtonChevron.Right);
             _btnDown.Click += delegate { MoveSelected(true); };
-            _btnRemove = AddButton(Loc.T("common.remove"), col, m + 208, 130, 32, Loc.T("common.tip.removePages"),
+            _btnRemove = AddButton(Loc.T("common.remove"), col, m + 208, 148, 32, Loc.T("common.tip.removePages"),
                 ButtonChevron.None, ButtonMark.Trash);
             _btnRemove.Click += delegate { RemoveSelected(); };
             // Печать того, что собрано в сетке: страницы уже в нужном порядке и с поворотами,
             // и распечатать их до сохранения — нормальный способ проверить результат.
-            _btnPrint = AddButton(Loc.T("common.btn.print"), col, m + 256, 130, 32, Loc.T("common.tip.print"),
+            _btnPrint = AddButton(Loc.T("common.btn.print"), col, m + 256, 148, 32, Loc.T("common.tip.print"),
                 ButtonChevron.None, ButtonMark.Print);
             _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
 
@@ -115,7 +115,7 @@ namespace ExcelMerger
             // две строки (см. AccentCheckBox) — обрезать её ради одной строки нельзя.
             // Keep above the bottom zoom/compress strip at MinimumSize (client ~501:
             // compress sits at height-146). Print ends at m+288.
-            _chkPadEven.SetBounds(col, m + 292, 130, 36);
+            _chkPadEven.SetBounds(col, m + 292, 148, 36);
             _chkPadEven.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _chkPadEven.ForeColor = Theme.TextPrimary;
             _tips.SetToolTip(_chkPadEven, Loc.T("pdf.tip.padEven"));

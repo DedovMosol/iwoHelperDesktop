@@ -705,10 +705,15 @@ namespace ExcelMerger
                 {
                     Color fill, border;
                     Theme.HeaderChipColors(true, Hover, Pressed, out fill, out border);
-                    using (var b = new SolidBrush(fill))
-                        e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
-                    using (var pen = new Pen(border, Math.Max(1f, DpiScale.Device(this))))
-                        e.Graphics.DrawEllipse(pen, 0, 0, Width - 2, Height - 2);
+                    float s = DpiScale.Device(this);
+                    float rad = Math.Min(Width, Height) / 4f;
+                    using (GraphicsPath path = Ui.RoundedRect(new RectangleF(s / 2f, s / 2f, Width - s, Height - s), rad))
+                    {
+                        using (var b = new SolidBrush(fill))
+                            e.Graphics.FillPath(b, path);
+                        using (var pen = new Pen(border, Math.Max(1f, s)))
+                            e.Graphics.DrawPath(pen, path);
+                    }
                 }
                 e.Graphics.SmoothingMode = SmoothingMode.Default;
                 Image fallback = _glyphFontPresent || _fallback == null ? null : _fallback();
