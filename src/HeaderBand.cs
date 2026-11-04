@@ -84,6 +84,7 @@ namespace ExcelMerger
             _subtitle = subtitle ?? string.Empty;
             _top = top;
             _bottom = bottom;
+            BackColor = top; // углы скруглённых кнопок на шапке: Clear совпадает с акцентом
             DoubleBuffered = true;
             SetStyle(ControlStyles.ResizeRedraw, true); // перерисовка градиента при растяжении
             ForeColor = Color.White;

@@ -1434,5 +1434,51 @@ namespace ExcelMerger.Tests
             AssertEq(new Size(1269, 500), ScaledForm.FitClient(new Size(1500, 500), Size.Empty, frame, area, 1.5f),
                 "по ширине так же: (1920 − 16) / 1,5 = 1269");
         }
+
+        [Test("Шапка: назад и главная — OnHeader, шеврон рисуется, в тексте нет ◀ и ⌂")]
+        private static void AuditHeaderNavIsGhostOnAccent()
+        {
+            AssertTrue(Loc.T("hub.back").IndexOf('◀') < 0, "◀ не в переводе");
+            AssertTrue(Loc.T("common.home").IndexOf('⌂') < 0, "⌂ не в переводе");
+            using (var band = new HeaderBand("Title", "Sub", Color.FromArgb(15, 76, 129), Color.FromArgb(10, 50, 90)))
+            {
+                band.SetBounds(0, 0, 800, 78);
+                RoundedButton back = Ui.HeaderNav(band, delegate { }, Ui.HeaderNavKind.Back, null);
+                RoundedButton home = Ui.HeaderNav(band, delegate { }, Ui.HeaderNavKind.Home, null);
+                AssertTrue(back != null && home != null, "кнопки созданы");
+                AssertTrue(back.Look == ButtonLook.OnHeader, "назад — вид шапки, не Secondary");
+                AssertTrue(home.Look == ButtonLook.OnHeader, "главная — тот же вид");
+                AssertTrue(back.ChevronLeft, "шеврон слева у назад");
+                AssertTrue(!home.ChevronLeft, "у главной шеврона нет");
+                AssertEq(Loc.T("hub.back"), back.Text, "подпись назад из Loc");
+                AssertEq(Loc.T("common.home"), home.Text, "подпись главной из Loc");
+                AssertTrue(back.Left < home.Left, "назад слева, главная справа");
+                AssertEq(AnchorStyles.Top | AnchorStyles.Right, home.Anchor, "главная привязана справа");
+                Point a, b, c;
+                RoundedButton.ChevronPoints(4, 30, 1f, out a, out b, out c);
+                AssertTrue(b.X < a.X && b.X < c.X, "остриё шеврона слева");
+                AssertTrue(a.Y < b.Y && c.Y > b.Y, "крылья шеврона сверху и снизу");
+            }
+        }
+
+        [Test("Шапка: назад и главная выровнены по текстовому блоку, не фиксированным top")]
+        private static void AuditHeaderNavAlignsToText()
+        {
+            using (var form = new Form())
+            {
+                var band = new HeaderBand("Title", "Subtitle", Color.Navy, Color.MidnightBlue);
+                band.SetBounds(0, 0, 640, 78);
+                form.Controls.Add(band);
+                RoundedButton back = Ui.HeaderNav(band, delegate { }, Ui.HeaderNavKind.Back, null);
+                RoundedButton home = Ui.HeaderNav(band, delegate { }, Ui.HeaderNavKind.Home, null);
+                form.Show();
+                try
+                {
+                    AssertTrue(back.Top > 0 && home.Top > 0, "шапка сдвинула кнопки с Y=0");
+                    AssertEq(back.Top, home.Top, "главная на той же вертикали, что назад");
+                }
+                finally { form.Hide(); }
+            }
+        }
     }
 }

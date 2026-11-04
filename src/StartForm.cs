@@ -120,14 +120,8 @@ namespace ExcelMerger
             Controls.Add(_header);
 
             // «Назад» — слева, зеркально глобусу справа. Показывается только внутри раздела.
-            _back = new RoundedButton(false);
-            _back.Text = Loc.T("hub.back");
-            _back.SetBounds(12, 0, 104, 30);
-            _back.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            _back = Ui.HeaderNav(_header, delegate { GoTo(HubLevel.Main, true); }, Ui.HeaderNavKind.Back, null);
             _back.Visible = false;
-            _back.Click += delegate { GoTo(HubLevel.Main, true); };
-            _header.Controls.Add(_back);
-            _header.AlignToText(_back);
 
             // Выбор языка — белый глиф-глобус в правом верхнем углу шапки (на синем, без рамки).
             _langMenu = HelpMenu.LanguageContextMenu(); // одно меню на жизнь окна

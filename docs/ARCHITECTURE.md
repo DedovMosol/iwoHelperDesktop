@@ -226,8 +226,11 @@ process by `Ui` (WinForms never disposes `Control.Font`/`Form.Icon`).
 
 `ChoiceCard` measures its own contents and centres the icon-title-description block in the
 card, so cards with descriptions of different lengths still look alike, and `RoundedButton`
-has three looks (`Primary`, `Secondary`, `OnDark`) with a **filled** disabled state — a panel
+has four looks (`Primary`, `Secondary`, `OnDark`, `OnHeader`) with a **filled** disabled state — a panel
 where half the buttons wait for an open document must show that without being clicked.
+Hub Back and tool Home share `Ui.HeaderNav`: `OnHeader` (ghost on the accent band, not a white
+dialog chip), one vertical alignment via `HeaderBand.AlignToText`, and a drawn chevron for Back
+instead of a triangle in the translation.
 
 `PushControl` is the base of every owner-drawn control that acts as a button (`ChoiceCard`,
 `RecentCard`, the hub's glyph buttons). It holds the one keyboard rule: Enter and Space press

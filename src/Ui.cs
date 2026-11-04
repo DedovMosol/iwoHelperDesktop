@@ -71,20 +71,49 @@ namespace ExcelMerger
                 p.SetValue(list, true, null);
         }
 
+        /// <summary>Навигация на цветной шапке: назад в хабе или «к инструментам» в окне.</summary>
+        public enum HeaderNavKind
+        {
+            Back,
+            Home
+        }
+
+        /// <summary>
+        /// Одна кнопка навигации на шапке (DRY): вид OnHeader, вертикаль через AlignToText.
+        /// Back слева, Home справа. Не белая Secondary — она чужая на градиенте.
+        /// </summary>
+        public static RoundedButton HeaderNav(HeaderBand header, Action click, HeaderNavKind kind, ToolTip tips)
+        {
+            if (header == null || click == null)
+                return null;
+            var b = new RoundedButton(ButtonLook.OnHeader);
+            b.ChevronLeft = kind == HeaderNavKind.Back;
+            b.Text = Loc.T(kind == HeaderNavKind.Back ? "hub.back" : "common.home");
+            b.AccessibleName = b.Text;
+            int width = kind == HeaderNavKind.Back ? 104 : 160;
+            int left = kind == HeaderNavKind.Back ? 12 : Math.Max(12, header.Width - width - 12);
+            b.SetBounds(left, 0, width, 30);
+            b.Anchor = kind == HeaderNavKind.Back
+                ? AnchorStyles.Top | AnchorStyles.Left
+                : AnchorStyles.Top | AnchorStyles.Right;
+            b.Click += delegate { click(); };
+            if (tips != null)
+                tips.SetToolTip(b, kind == HeaderNavKind.Home ? Loc.T("common.homeTip") : b.Text);
+            header.Controls.Add(b);
+            header.AlignToText(b);
+            return b;
+        }
+
         /// <summary>
         /// Кнопка «Главная» в правом углу брендовой шапки (единая для всех инструментов, DRY).
         /// showHub == null (запуск вне хаба, напр. смоук-тест) — кнопки нет.
+        /// top оставлен в подписи вызовов; вертикаль задаёт шапка (AlignToText).
         /// </summary>
         public static void HomeOnHeader(HeaderBand header, Action showHub, ToolTip tips, int top)
         {
             if (showHub == null)
                 return;
-            Button home = HomeButton(showHub);
-            home.SetBounds(header.Width - 180, top, 160, 30);
-            home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            if (tips != null)
-                tips.SetToolTip(home, Loc.T("common.homeTip"));
-            header.Controls.Add(home);
+            HeaderNav(header, showHub, HeaderNavKind.Home, tips);
         }
 
         public static Label Label(Control parent, string text, int x, int y, Font font, Color color)
@@ -234,15 +263,6 @@ namespace ExcelMerger
                 OpenUrlOrShow(owner, owner == null ? "iwo Helper Desktop" : owner.Text, url);
             };
             return l;
-        }
-
-        /// <summary>Стилизованная кнопка «Главная» — показывает экран выбора инструмента.</summary>
-        public static Button HomeButton(Action showHub)
-        {
-            var b = new RoundedButton(false);
-            b.Text = Loc.T("common.home");
-            b.Click += delegate { showHub(); };
-            return b;
         }
 
         /// <summary>

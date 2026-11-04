@@ -138,7 +138,7 @@ namespace ExcelMerger
             A("hub.subtitle", "Выберите раздел", "Choose a section");
             A("hub.subtitle.pdf", "Инструменты PDF", "PDF tools");
             A("hub.subtitle.other", "Иной функционал", "Other tools");
-            A("hub.back", "◀ Назад", "◀ Back");
+            A("hub.back", "Назад", "Back");
             A("hub.pending", "Выберите инструмент для файлов: {0}", "Choose a tool for {0} file(s)");
             A("hub.section.pdf.name", "PDF", "PDF");
             A("hub.section.pdf.desc",
@@ -182,7 +182,7 @@ namespace ExcelMerger
             // common.* — общие элементы нескольких окон
             A("common.browse", "Обзор…", "Browse…");
             A("common.copy", "Копировать", "Copy");
-            A("common.home", "⌂ Главная", "⌂ Home");
+            A("common.home", "Главная", "Home");
             A("common.homeTip", "Открыть экран выбора инструмента", "Open the tool chooser");
             A("common.zoom", "Масштаб:", "Zoom:");
             A("common.tip.zoom", "Масштаб миниатюр (также Ctrl+колесо мыши)", "Thumbnail zoom (also Ctrl+mouse wheel)");

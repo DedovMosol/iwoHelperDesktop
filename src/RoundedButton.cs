@@ -13,7 +13,12 @@ namespace ExcelMerger
         /// <summary>Обычное действие: светлая кнопка с рамкой.</summary>
         Secondary,
         /// <summary>Действие на тёмной подложке (полоса лупы в полноэкранном просмотре).</summary>
-        OnDark
+        OnDark,
+        /// <summary>
+        /// Навигация на цветной шапке: белый текст, полупрозрачная подложка при наведении.
+        /// Не путать с Secondary — белая «таблетка» на градиенте выглядит чужой.
+        /// </summary>
+        OnHeader
     }
 
     /// <summary>
@@ -38,6 +43,9 @@ namespace ExcelMerger
         private const float MinRadius = 5f, MaxRadius = 10f;
 
         private readonly ButtonLook _look;
+        /// <summary>Шеврон слева (шапка «Назад»). Рисуем сами, не символом в переводе.</summary>
+        internal bool ChevronLeft { get; set; }
+        internal ButtonLook Look { get { return _look; } }
         private bool _selected;
         private bool _hover;
         private bool _pressed;
@@ -70,6 +78,8 @@ namespace ExcelMerger
             Font = look == ButtonLook.Primary
                 ? Ui.Font(10.5f, FontStyle.Bold)
                 : Ui.Font(9.75f);
+            if (look == ButtonLook.OnHeader)
+                BackColor = Color.Transparent; // углы: Clear возьмёт BackColor шапки (акцент)
         }
 
         protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
@@ -109,7 +119,10 @@ namespace ExcelMerger
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Parent != null ? Parent.BackColor : Color.White);
+            Color ground = Parent != null ? Parent.BackColor : Color.White;
+            if (_look == ButtonLook.OnHeader && Parent != null)
+                ground = Parent.BackColor;
+            g.Clear(ground);
 
             Color fill, text, border;
             Colors(out fill, out text, out border);
@@ -143,10 +156,37 @@ namespace ExcelMerger
             }
 
             int pad = TextPadFor(Width, s);
-            var textArea = new Rectangle(pad, 0, Math.Max(1, Width - 2 * pad), Height);
+            int chevron = ChevronLeft ? (int)Math.Round(12f * s) : 0;
+            var textArea = new Rectangle(pad + chevron, 0, Math.Max(1, Width - 2 * pad - chevron), Height);
+            if (ChevronLeft)
+                DrawChevronLeft(g, pad, Height, s, text);
             TextRenderer.DrawText(g, Text, Font, textArea, text,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+        }
+
+        /// <summary>Шеврон «назад»: две линии, без юникода в строке. Чистая геометрия — под тест.</summary>
+        internal static void ChevronPoints(int left, int height, float scale, out Point a, out Point b, out Point c)
+        {
+            int x = left + (int)Math.Round(3f * scale);
+            int mid = height / 2;
+            int arm = Math.Max(3, (int)Math.Round(5f * scale));
+            a = new Point(x + arm, mid - arm);
+            b = new Point(x, mid);
+            c = new Point(x + arm, mid + arm);
+        }
+
+        private static void DrawChevronLeft(Graphics g, int left, int height, float scale, Color color)
+        {
+            Point a, b, c;
+            ChevronPoints(left, height, scale, out a, out b, out c);
+            using (var p = new Pen(color, Math.Max(1.5f, 1.6f * scale)))
+            {
+                p.StartCap = LineCap.Round;
+                p.EndCap = LineCap.Round;
+                p.LineJoin = LineJoin.Round;
+                g.DrawLines(p, new[] { a, b, c });
+            }
         }
 
         /// <summary>Цвета текущего состояния: заливка, подпись, рамка (Empty — без рамки).</summary>
@@ -174,6 +214,15 @@ namespace ExcelMerger
                         : _pressed ? Theme.DarkBarPressed
                         : _hover ? Theme.DarkBarHover : Theme.DarkBarFill;
                     border = Theme.DarkBarBorder;
+                    return;
+
+                case ButtonLook.OnHeader:
+                    text = Enabled ? Color.White : Color.FromArgb(180, 255, 255, 255);
+                    fill = !Enabled ? Color.FromArgb(24, 255, 255, 255)
+                        : _pressed ? Color.FromArgb(70, 255, 255, 255)
+                        : _hover || _selected ? Color.FromArgb(46, 255, 255, 255)
+                        : Color.FromArgb(20, 255, 255, 255);
+                    border = Color.FromArgb(55, 255, 255, 255);
                     return;
 
                 default:
