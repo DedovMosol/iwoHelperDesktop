@@ -15216,10 +15216,16 @@ namespace ExcelMerger.Tests
                 boxes.Add(CB(10 + r, 100, y, 40, 10));
             }
             List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 20, 30, 25, 2);
-            AssertTrue(leaves.Count >= 3, "заголовок отдельным этажом, затем колонки");
-            AssertTrue(TagsOf(leaves[0]).IndexOf("90", StringComparison.Ordinal) >= 0, "заголовок первым");
-            AssertTrue(TagsOf(leaves[1]).IndexOf("0", StringComparison.Ordinal) >= 0, "левая колонка");
-            AssertTrue(TagsOf(leaves[1]).IndexOf("10", StringComparison.Ordinal) < 0, "правая не в левой");
+            string dump = leaves.Count.ToString();
+            for (int i = 0; i < leaves.Count; i++)
+                dump += " [" + TagsOf(leaves[i]) + "]";
+            AssertTrue(leaves.Count >= 3, "title then columns: " + dump);
+            AssertTrue(TagsOf(leaves[0]).IndexOf("90", StringComparison.Ordinal) >= 0, "title first: " + dump);
+            int left = 0;
+            while (left < leaves.Count && Array.IndexOf(TagsOf(leaves[left]).Split(','), "0") < 0)
+                left++;
+            AssertTrue(left > 0 && left < leaves.Count, "left column after title: " + dump);
+            AssertTrue(TagsOf(leaves[left]).IndexOf("10", StringComparison.Ordinal) < 0, "right not in left: " + dump);
         }
 
         private static void TestLayoutNoFalseFloor()
@@ -15560,8 +15566,8 @@ namespace ExcelMerger.Tests
             var page = new PdfPageText();
             page.Paragraphs.Add(Para("upper", 20, 592, 200, 8));  // 592..600
             page.Paragraphs.Add(Para("lower", 10, 580, 200, 8));  // 580..588 (не перекрыты по вертикали)
-            page.Paragraphs.Add(Para("right", 232, 450, 100, 100)); // левый край 232
-            page.Paragraphs.Add(Para("left", 20, 450, 200, 100));   // правый край 220, зазор 12 < порога колонки
+            page.Paragraphs.Add(Para("right", 229, 450, 100, 100)); // left 229
+            page.Paragraphs.Add(Para("left", 20, 450, 200, 100));   // right 220, gap 9 < BlockColumnGapPt (10)
             List<PageBlocks.PageItem> items = PageBlocks.OrderedItems(page);
             var order = new List<string>();
             foreach (PageBlocks.PageItem it in items)

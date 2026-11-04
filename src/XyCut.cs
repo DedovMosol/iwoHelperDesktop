@@ -156,20 +156,23 @@ namespace ExcelMerger
         {
             if (splitX && depth > 0)
             {
-                List<List<int>> cols = SplitColumns(ctx, items);
-                // Колонки разной высоты: шапка/подвал на всю ширину слева + узкая колонка
-                // справа — не газета. Иначе «верх / середина / низ» читается как левая
-                // колонка целиком (PlainText reading order).
-                if (cols != null && ColumnsComparableHeight(ctx, cols))
-                    return AssembleColumns(ctx, cols, depth, availRight);
+                // Peel a thin title BEFORE X-first: an inclusive gutter split otherwise
+                // glues the title to one column (two-line heading + 30 pt vGapMin).
                 List<List<int>> peeled = PeelBlockingFloor(ctx, items);
                 if (peeled != null)
                 {
                     var peeledNode = new CutNode { SideBySide = false, Children = new List<CutNode>(peeled.Count) };
-                    foreach (List<int> floor in peeled)
-                        peeledNode.Children.Add(CutFloors(ctx, floor, depth - 1, colLeft, colRight, availRight, true));
+                    // Prefix is a title band — do not X-split it into fake columns.
+                    for (int i = 0; i < peeled.Count; i++)
+                        peeledNode.Children.Add(CutFloors(ctx, peeled[i], depth - 1, colLeft, colRight, availRight, i > 0));
                     return peeledNode;
                 }
+                List<List<int>> cols = SplitColumns(ctx, items);
+                // Different heights: full-width header/footer + a short side column is not
+                // a newspaper (PlainText top / mid / bottom). Columns that start together
+                // still count even if one is longer.
+                if (cols != null && ColumnsComparableHeight(ctx, cols))
+                    return AssembleColumns(ctx, cols, depth, availRight);
             }
             List<List<int>> floors = depth > 0 ? SplitAtGaps(ctx.Boxes, items, true, ctx.HGapMin) : null;
             if (floors == null)
