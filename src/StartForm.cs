@@ -667,8 +667,9 @@ namespace ExcelMerger
         private sealed class GlyphButton : PushControl
         {
             private readonly bool _glyphFontPresent;
-
             private readonly Func<Image> _fallback;
+            private Point _inkNudge;
+            private Size _inkFor;
 
             /// <summary>
             /// Подложка под значком при наведении и нажатии. Значок без рамки ничем не отвечает
@@ -728,12 +729,47 @@ namespace ExcelMerger
                 }
                 else
                 {
-                    TextRenderer.DrawText(g, Text, Font, ClientRectangle, glyph,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                        TextFormatFlags.NoPrefix | TextFormatFlags.GlyphOverhangPadding);
+                    TextFormatFlags flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.NoPrefix | TextFormatFlags.GlyphOverhangPadding;
+                    Point nudge = InkNudge(flags);
+                    TextRenderer.DrawText(g, Text, Font,
+                        new Rectangle(nudge.X, nudge.Y, Width, Height), glyph, flags);
                 }
                 if (!OnAccentHeader)
                     DrawFocusRing(g, bubble, Math.Min(Width, Height) / 2f, glyph);
+            }
+
+            /// <summary>MDL2 сидит в em-boxе криво: сдвиг, чтобы чернила совпали с центром круга.</summary>
+            private Point InkNudge(TextFormatFlags flags)
+            {
+                if (_inkFor == Size)
+                    return _inkNudge;
+                if (Width < 4 || Height < 4)
+                    return Point.Empty;
+                _inkFor = Size;
+                _inkNudge = Point.Empty;
+                using (var bmp = new Bitmap(Width, Height))
+                using (Graphics mg = Graphics.FromImage(bmp))
+                {
+                    mg.Clear(Color.White);
+                    TextRenderer.DrawText(mg, Text, Font, new Rectangle(0, 0, Width, Height), Color.Black, flags);
+                    int minX = Width, minY = Height, maxX = -1, maxY = -1;
+                    for (int y = 0; y < Height; y++)
+                        for (int x = 0; x < Width; x++)
+                        {
+                            Color p = bmp.GetPixel(x, y);
+                            if (p.R > 232 && p.G > 232 && p.B > 232)
+                                continue;
+                            if (x < minX) minX = x;
+                            if (y < minY) minY = y;
+                            if (x > maxX) maxX = x;
+                            if (y > maxY) maxY = y;
+                        }
+                    if (maxX >= minX)
+                        _inkNudge = new Point((Width - 1) / 2 - (minX + maxX) / 2,
+                            (Height - 1) / 2 - (minY + maxY) / 2);
+                }
+                return _inkNudge;
             }
         }
     }
