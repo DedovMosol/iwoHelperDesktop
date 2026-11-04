@@ -392,6 +392,7 @@ namespace ExcelMerger.Tests
             Run("XyCut: отбивка в левой колонке не зигзаг с правой (RC-14)", TestXyCutColumnParaGapNotZigzag);
             Run("OcrLayout: канал колонок 12 pt — левая колонка целиком (RC-14)", TestLayoutNarrowColumnGutter);
             Run("OcrLayout: заголовок во всю ширину не мешает разрезу колонок (RC-14)", TestLayoutTitleThenColumns);
+            Run("OcrLayout: неравные колонки под центрированным заголовком — левая целиком (RC-14)", TestLayoutUnevenColumnsAfterTitle);
             Run("OcrLayout: короткий заголовок над каналом не зигзаг колонок (RC-14)", TestLayoutShortTitleThenColumns);
             Run("OcrLayout: двухстрочный заголовок над каналом не зигзаг (RC-14)", TestLayoutTwoLineTitleThenColumns);
             Run("XyCut: двухстрочный заголовок снимается этажом (RC-14)", TestXyCutTwoLineTitlePeel);
@@ -595,7 +596,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 544;
+            const int ExactTests = 545;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -15080,6 +15081,43 @@ namespace ExcelMerger.Tests
             string col0 = paras[1].Text;
             AssertTrue(col0.IndexOf("LA", StringComparison.Ordinal) >= 0, "потом левая колонка");
             AssertTrue(col0.IndexOf("RA", StringComparison.Ordinal) < 0, "не зигзаг с правой");
+        }
+
+        private static void TestLayoutUnevenColumnsAfterTitle()
+        {
+            // Georgia two-column dump: title, L 4 lines / R 3 lines, then R continuation
+            // before L (zigzag). Left has a paragraph gap the right fills.
+            var words = new List<PdfWord> { W("TitleMid", 50, 400, 100, 10) };
+            int[] leftRows = { 0, 1, 2, 3, 5, 6, 7 };
+            int[] rightRows = { 0, 1, 2, 4, 5 };
+            for (int i = 0; i < leftRows.Length; i++)
+            {
+                double y = 381 - leftRows[i] * 16;
+                words.Add(W("LA" + i, 10, y, 40, 10));
+                words.Add(W("LB" + i, 52, y, 36, 10));
+            }
+            for (int i = 0; i < rightRows.Length; i++)
+            {
+                double y = 381 - rightRows[i] * 16;
+                words.Add(W("RA" + i, 110, y, 40, 10));
+                words.Add(W("RB" + i, 152, y, 36, 10));
+            }
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            var texts = new List<string>();
+            foreach (OcrParagraph p in paras) texts.Add(p.Text);
+            string dump = string.Join(" | ", texts.ToArray());
+            AssertTrue(paras.Count >= 3, "title + columns: " + dump);
+            AssertTrue(texts[0].IndexOf("Title", StringComparison.Ordinal) >= 0, "title first: " + dump);
+            int leftAt = -1;
+            for (int i = 0; i < texts.Count; i++)
+                if (texts[i].IndexOf("LA0", StringComparison.Ordinal) >= 0) { leftAt = i; break; }
+            AssertTrue(leftAt > 0, "left column after title: " + dump);
+            AssertTrue(texts[leftAt].IndexOf("RA", StringComparison.Ordinal) < 0, "left para has no right words: " + dump);
+            string joined = string.Join(" ", texts.ToArray());
+            int la = joined.IndexOf("LA0", StringComparison.Ordinal);
+            int lastLa = joined.LastIndexOf("LA", StringComparison.Ordinal);
+            int ra = joined.IndexOf("RA0", StringComparison.Ordinal);
+            AssertTrue(la >= 0 && ra > lastLa, "all left words before right: " + dump);
         }
 
         private static void TestLayoutShortTitleThenColumns()

@@ -179,6 +179,51 @@ namespace ExcelMerger.Tests
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Live two-column PDF (variant 3: Letter/Georgia-class). Left column words
+        /// must all precede the right column — the dump of #3 still zigzagged (RC-14).
+        /// </summary>
+        [Test("Корпус: две колонки #3 — левая колонка целиком раньше правой (RC-14)")]
+        private static void CorpusTwoColumnReadingOrder()
+        {
+            EmbeddedAssemblies.Ensure();
+            CCase c = CorpusCases.All(4).Find(x => x.Family == "две колонки" && x.Variant.Index == 3);
+            AssertTrue(c != null, "variant 3 exists");
+            using (var dir = new TempDir("iwo_twocol_"))
+            {
+                string path;
+                RenderCase(c, dir, out path);
+                List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                AssertTrue(pages.Count >= 1 && pages[0].Paragraphs.Count >= 3, "title + columns");
+                var flow = new List<OcrParagraph>();
+                foreach (PageBlocks.PageItem item in PageBlocks.CoalesceRowBands(PageBlocks.OrderedItems(pages[0])))
+                {
+                    if (item.IsBand)
+                        foreach (List<PageBlocks.Block> col in item.Columns)
+                            foreach (PageBlocks.Block b in col)
+                                if (b.Paragraph != null) flow.Add(b.Paragraph);
+                    else if (item.Single != null && item.Single.Paragraph != null)
+                        flow.Add(item.Single.Paragraph);
+                }
+                var lefts = new List<string>();
+                int firstRight = -1, lastLeft = -1;
+                for (int i = 0; i < flow.Count; i++)
+                {
+                    lefts.Add(i + ":" + flow[i].LeftPt.ToString("0") + "x" + flow[i].LineCount);
+                    if (flow[i].LeftPt < 120)
+                        lastLeft = i;
+                    else if (flow[i].LeftPt > 250 && firstRight < 0)
+                        firstRight = i;
+                }
+                var raw = new List<string>();
+                foreach (OcrParagraph p in pages[0].Paragraphs)
+                    raw.Add(p.LeftPt.ToString("0") + "x" + p.LineCount);
+                string dump = "raw " + string.Join(",", raw.ToArray()) + " flow " + string.Join(" ", lefts.ToArray());
+                AssertTrue(lastLeft >= 0 && firstRight >= 0, "both columns present: " + dump);
+                AssertTrue(firstRight > lastLeft, "Word/PPTX flow right after whole left: " + dump);
+            }
+        }
+
         [Test("Корпус: генератор рисует ровно те слова, что описаны в модели")]
         private static void CorpusGeneratorDrawsTheModel()
         {
