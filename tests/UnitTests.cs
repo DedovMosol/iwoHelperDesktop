@@ -13544,6 +13544,26 @@ namespace ExcelMerger.Tests
             AssertEq("отдела", p[2], "вторая строка подписи своим абзацем");
         }
 
+        /// <summary>
+        /// Три почти полных строки выключки и хвост: среднее слово «не влезло» в доступную
+        /// ширину — это перенос, не подпись. HardBreak иначе режет газету (RC-14).
+        /// </summary>
+        [Test("OcrLayout: выключенный столбец не рвётся умышленным переводом (RC-14)")]
+        private static void TestOcrJustifiedWrapNotHardBreak()
+        {
+            var words = new List<PdfWord>
+            {
+                W("aaaaaa", 0, 130, 90, 10), W("bbbbbb", 92, 130, 90, 10),
+                W("cccccc", 0, 115, 90, 10), W("dddddd", 92, 115, 70, 10),
+                W("eeeeee", 0, 100, 90, 10), W("ffffff", 92, 100, 90, 10),
+                W("tail", 0, 85, 30, 10)
+            };
+            List<OcrParagraph> paras = OcrLayout.Analyze(words).Paragraphs;
+            AssertTrue(paras.Count >= 1, "есть абзац");
+            AssertEq("aaaaaa bbbbbb cccccc dddddd eeeeee ffffff tail", paras[0].Text,
+                "один выключенный абзац, не осколок «eeeeee ffffff»");
+        }
+
         private static void TestOcrShortWordNotHardBreak()
         {
             var words = new List<PdfWord>

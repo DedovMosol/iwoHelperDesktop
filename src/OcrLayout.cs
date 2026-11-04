@@ -472,6 +472,7 @@ namespace ExcelMerger
             // дали бы нулевые зазоры и обрушили медиану), затем строки с гигантскими
             // внутренними зазорами рвутся на сегменты-«строки» — куски разных зон.
             double gapThreshold = ParagraphThreshold(lines);
+            double linePitch = LinePitch(lines);
             double slot = Math.Max(availRight, bodyRight) - bodyLeft;
             if (splitColumns && slot >= Math.Max(240.0, WideGapMinRegionEmFactor * em))
                 lines = SplitWideGaps(lines, em);
@@ -504,8 +505,18 @@ namespace ExcelMerger
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
                     bool listBreak = StartsWithListMarker(lines[i])
                         && !DashContinuation(lines[i - 1], lines[i], bodyRight, em);
-                    bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft,
-                        Math.Max(availRight, bodyRight), em);
+                    double hardRight = justified ? bodyRight : Math.Max(availRight, bodyRight);
+                    bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft, hardRight, em);
+                    // Выключка: короткий хвост с отбивкой — shortBreak; строка с шагом как у
+                    // соседних (нижняя квартиль), куда слово не влезало — перенос, не подпись.
+                    // Порог от медианы всех зазоров глотал абзацную отбивку ×1.5 (merge RC-30).
+                    if (justified)
+                    {
+                        double step = lines[i - 1].MidY - lines[i].MidY;
+                        if (linePitch > 0 && step <= 1.12 * linePitch && !hardBreak)
+                            shortBreak = false;
+                        hardBreak = false;
+                    }
                     // Висячий отступ пункта: продолжение выровнено по тексту после маркера,
                     // а не по полю колонки. Иначе строка 2 — новый абзац и «центрированный»
                     // пункт без списка (RC-3).
@@ -1387,6 +1398,26 @@ namespace ExcelMerger
             gaps.Sort();
             double typical = gaps[(gaps.Count - 1) / 2];
             return typical * ParagraphGapFactor;
+        }
+
+        /// <summary>
+        /// Шаг соседних строк (нижняя квартиль midY-зазоров): обычный перенос, не отбивка абзаца.
+        /// </summary>
+        private static double LinePitch(List<Line> lines)
+        {
+            if (lines.Count < 3)
+                return 0;
+            var gaps = new List<double>(lines.Count - 1);
+            for (int i = 1; i < lines.Count; i++)
+            {
+                double g = lines[i - 1].MidY - lines[i].MidY;
+                if (g > 0)
+                    gaps.Add(g);
+            }
+            if (gaps.Count == 0)
+                return 0;
+            gaps.Sort();
+            return gaps[gaps.Count / 4];
         }
 
         /// <summary>Текст кончается дефисом-переносом (дефис сразу после буквы).</summary>

@@ -142,9 +142,10 @@ namespace ExcelMerger.Tests
                     {
                         if (b.Paragraph != null)
                             Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                                "      P{0} {1} {2}{3} top {4:0.#} left {5:0.#} right {6:0.#} lines {7}: {8}", item.IsBand ? "[band]" : "",
+                                "      P{0} {1} {2}{3} top {4:0.#} left {5:0.#} right {6:0.#} blk {7:0.#}-{8:0.#} lines {9}: {10}", item.IsBand ? "[band]" : "",
                                 b.Paragraph.Alignment, b.Paragraph.ListKind, b.Paragraph.ListLevel, b.Paragraph.TopPt,
-                                b.Paragraph.LeftPt, b.Paragraph.RightPt, b.Paragraph.LineCount, b.Paragraph.Text));
+                                b.Paragraph.LeftPt, b.Paragraph.RightPt, b.Paragraph.BlockLeftPt, b.Paragraph.BlockRightPt,
+                                b.Paragraph.LineCount, b.Paragraph.Text));
                         else if (b.Table != null)
                             Console.WriteLine("      T " + b.Table.Rows.Count + "×" + b.Table.ColumnCount + (b.Table.Borderless ? " без линовки" : "") +
                                 ": " + string.Join(" | ", b.Table.Rows.SelectMany(r => r.Cells).Take(8)
@@ -378,6 +379,45 @@ namespace ExcelMerger.Tests
                             " last1=" + last1 + " first2=" + first2 + " " + string.Join(" ", dump.ToArray()));
                     else if (idx == 29 && body.Count > 24)
                         fails.Add("#29 осколки ×" + body.Count + " " + dump[0]);
+                }
+            AssertTrue(fails.Count == 0, string.Join(" ;; ", fails.ToArray()));
+        }
+
+        /// <summary>
+        /// Узкая выключенная колонка: слово не влезло — мягкий перенос, не HardBreak.
+        /// Дамп #3/#4: однострочные Left внутри Justify (RC-14 split).
+        /// </summary>
+        [Test("Корпус: три колонки #4/#11 — абзац не рвётся как подпись (RC-14)")]
+        private static void CorpusThreeColumnNoHardBreakSplit()
+        {
+            EmbeddedAssemblies.Ensure();
+            var fails = new List<string>();
+            using (var dir = new TempDir("iwo_threecol_hb_"))
+                foreach (int idx in new[] { 4, 11 })
+                {
+                    CCase c = CorpusCases.All(30).Find(x => x.Family == "три колонки" && x.Variant.Index == idx);
+                    AssertTrue(c != null, "variant " + idx);
+                    string path;
+                    CRendered drawn = RenderCase(c, dir, out path);
+                    List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                    var findings = CorpusCheck.Document(drawn, pages);
+                    int splits = 0, merges = 0;
+                    var details = new List<string>();
+                    foreach (CFinding f in findings)
+                    {
+                        if (f.Aspect == "split")
+                        {
+                            splits += f.Count;
+                            details.Add(f.Detail);
+                        }
+                        else if (f.Aspect == "merge")
+                        {
+                            merges += f.Count;
+                            details.Add(f.Detail);
+                        }
+                    }
+                    if (splits > 0 || merges > 0)
+                        fails.Add("#" + idx + " split ×" + splits + " merge ×" + merges + " " + string.Join(" | ", details.ToArray()));
                 }
             AssertTrue(fails.Count == 0, string.Join(" ;; ", fails.ToArray()));
         }
