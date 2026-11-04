@@ -377,6 +377,8 @@ namespace ExcelMerger.Tests
             Run("GridDetector: короткие строки двух колонок — не форма (RC-8)", TestGridTwoColumnsShortLinesNotGrid);
             Run("GridDetector: абзац над формой не входит в сетку (RC-8)", TestGridHeadingNotSwallowed);
             Run("GridDetector: нумерованный список — не форма (RC-8)", TestGridListNotForm);
+            Run("GridDetector: реки выключки над списком — не форма (RC-8)", TestGridListAfterRiversNotForm);
+            Run("GridDetector: два пункта и перенос — не форма (RC-8)", TestGridTwoItemsAndWrapNotForm);
             Run("GridDetector: три колонки текста — не сетка (RC-8)", TestGridThreeColumnsNotGrid);
             Run("AddRuleWords: одиночная линия -> прочерк «____», подчёркивание/толстая — нет", TestRuleWords);
             Run("PdfTextExtract: «_»-слово и PUA-мусор распознаются", TestUnderscoreAndPua);
@@ -592,7 +594,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 541;
+            const int ExactTests = 543;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -14794,6 +14796,38 @@ namespace ExcelMerger.Tests
             }
             GridDetectResult r = GridDetector.Detect(words);
             AssertEq(0, r.Tables.Count, "нумерованный список не форма");
+        }
+
+        private static void TestGridListAfterRiversNotForm()
+        {
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 3; row++)
+            {
+                double y = 280 - row * 16;
+                words.Add(WS("WordA" + row, 0, y, 36, 8, 8));
+                words.Add(WS("WordB" + row, 120, y, 36, 8, 8));
+            }
+            for (int row = 0; row < 4; row++)
+            {
+                double y = 220 - row * 18;
+                words.Add(WS((row + 1) + ".", 0, y, 14, 8, 8));
+                words.Add(WS("Clause", 36, y, 40, 8, 8));
+                words.Add(WS("body", 80, y, 32, 8, 8));
+            }
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEq(0, r.Tables.Count, "list under justify rivers is not a form");
+        }
+
+        private static void TestGridTwoItemsAndWrapNotForm()
+        {
+            var words = new List<PdfWord>
+            {
+                WS("1.", 0, 200, 14, 8, 8), WS("First", 36, 200, 40, 8, 8), WS("line", 80, 200, 28, 8, 8),
+                WS("2.", 0, 182, 14, 8, 8), WS("Second", 36, 182, 44, 8, 8), WS("line", 84, 182, 28, 8, 8),
+                WS("wrap", 36, 164, 40, 8, 8), WS("more", 80, 164, 32, 8, 8)
+            };
+            GridDetectResult r = GridDetector.Detect(words);
+            AssertEq(0, r.Tables.Count, "two items and a wrap are a list, not a form");
         }
 
         private static void TestGridDetectEmpty()

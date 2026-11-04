@@ -326,7 +326,9 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Левая колонка — маркеры списка («•», «1.»), правая — текст пункта: это не форма.
+        /// Left band is list markers ("•", "1."), right band is item text: not a form.
+        /// A few marker rows in a larger window still veto the grid — justified
+        /// rivers above a list used to outvote the markers (RC-8 into-table).
         /// </summary>
         private static bool LeftColumnLooksLikeList(List<List<Segment>> segments, int start, int end)
         {
@@ -350,7 +352,9 @@ namespace ExcelMerger
                 if (ListMarker.LooksLikeMarker(s))
                     listed++;
             }
-            return pair >= MinRows && listed * 2 >= pair;
+            // Two numbered items plus a wrap line already make a 3-row "grid".
+            // Requiring three marked rows let "1. / 2. / wrap" become a form (RC-8).
+            return listed >= 2 && listed * 2 >= pair;
         }
 
         /// <summary>Индекс колонки, чья левая граница совпадает с left в пределах tol; -1 — мимо всех.</summary>
