@@ -391,6 +391,7 @@ namespace ExcelMerger.Tests
             Run("XyCut: три равные колонки остаются тремя (RC-14)", TestXyCutThreeEqualColumns);
             Run("XyCut: отбивка в левой колонке не зигзаг с правой (RC-14)", TestXyCutColumnParaGapNotZigzag);
             Run("XyCut: канал ровно vGapMin — две колонки (RC-14)", TestXyCutExactMinGutter);
+            Run("XyCut: узкая река выключки — не вторая колонка (RC-14)", TestXyCutTwoColumnSkinnyRiver);
             Run("XyCut: короткая правая при общем верхе — не зигзаг (RC-14)", TestXyCutShortRightSameTop);
             Run("OcrLayout: канал колонок 12 pt — левая колонка целиком (RC-14)", TestLayoutNarrowColumnGutter);
             Run("OcrLayout: заголовок во всю ширину не мешает разрезу колонок (RC-14)", TestLayoutTitleThenColumns);
@@ -599,7 +600,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 548;
+            const int ExactTests = 549;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -15059,6 +15060,19 @@ namespace ExcelMerger.Tests
             AssertEq(2, leaves.Count, "exact 12 pt gutter is a column split");
             AssertEq("0,1", TagsOf(leaves[0]), "left stack");
             AssertEq("2,3", TagsOf(leaves[1]), "right stack");
+        }
+
+        private static void TestXyCutTwoColumnSkinnyRiver()
+        {
+            var boxes = new List<CutBox>();
+            for (int r = 0; r < 5; r++)
+            {
+                double y = 200 - r * 16;
+                boxes.Add(CB(r, 0, y, 120, 10));
+                boxes.Add(CB(10 + r, 160, y, 30, 10));
+            }
+            List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 1000, 12, 24, 2);
+            AssertEq(1, leaves.Count, "skinny strip is a river, one leaf");
         }
 
         private static void TestXyCutShortRightSameTop()

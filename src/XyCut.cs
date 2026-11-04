@@ -251,13 +251,14 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Выключка Courier/газеты даёт «реки» — пустые полосы внутри колонки, и разрез
-        /// видит 3+ столбика. Настоящий канал — у середины набора. Равные по ширине
-        /// три колонки (бюллетень) не трогаем.
+        /// Justified rivers look like extra columns. A 2-column split where one strip is
+        /// much skinnier than the other is a river, not a newspaper (FullLastLine RC-14).
+        /// Three-plus strips: keep the gutter nearest the block centre; equal-width
+        /// bulletins stay as they are.
         /// </summary>
         private static List<List<int>> CollapseJustifyRivers(CutContext ctx, List<List<int>> columns)
         {
-            if (columns.Count < 3)
+            if (columns.Count < 2)
                 return columns;
             var lefts = new double[columns.Count];
             var rights = new double[columns.Count];
@@ -271,6 +272,13 @@ namespace ExcelMerger
             }
             if (minW > 0 && maxW <= 2.0 * minW)
                 return columns;
+            if (columns.Count == 2)
+            {
+                var all = new List<int>(columns[0].Count + columns[1].Count);
+                all.AddRange(columns[0]);
+                all.AddRange(columns[1]);
+                return new List<List<int>> { all };
+            }
             double mid = (lefts[0] + rights[columns.Count - 1]) / 2.0;
             int best = 0;
             double bestDist = double.MaxValue;
