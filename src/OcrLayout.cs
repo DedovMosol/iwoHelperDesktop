@@ -199,7 +199,9 @@ namespace ExcelMerger
         // 4 em (40 pt при 10 pt) глотало узкий сайдбар 33 pt как «не колонка».
         // Полоса маркеров «•»/«1.» ≈ 8–15 pt — всё ещё ниже 3 em.
         private const double ColumnMinWidthEmFactor = 3.0;
-        private const double ColumnMinExtentEmFactor = 2.2;
+        // 2.2 em allowed a 2-line justified river to become a newspaper column
+        // (FullLastLine / headings RC-14). 3 em is still below a real 4-line column.
+        private const double ColumnMinExtentEmFactor = 3.0;
         private const int ColumnMinWords = 2;
         private const double MinCutGapPt = 2.0;
         // Умышленный перевод строки (жёсткий разрыв): следующая строка начата, хотя её первое
