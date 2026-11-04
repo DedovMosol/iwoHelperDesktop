@@ -11841,8 +11841,8 @@ namespace ExcelMerger.Tests
                 "docs", "whatsnew.json"));
             string ru = UpdateChecker.ExtractNotes(json, "1.18.5", "ru");
             string en = UpdateChecker.ExtractNotes(json, "1.18.5", "en");
-            AssertTrue(ru.Contains("Появилось сравнение") &&
-                       en.Contains("comparison is now available"),
+            AssertTrue(ru.Contains("Сравнение двух цифровых PDF") &&
+                       en.Contains("Compare two born-digital PDFs"),
                 "каталог 1.18.5 честно сообщает, что сравнение PDF появилось впервые");
             AssertTrue(ru.Split('\n').Length >= 5 && en.Split('\n').Length >= 5,
                 "окно получает краткий список заметных изменений");

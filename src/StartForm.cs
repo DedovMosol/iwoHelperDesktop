@@ -695,8 +695,8 @@ namespace ExcelMerger
                 // Высокий контраст (UI-7): под мышью — круг Highlight и значок HighlightText,
                 // иначе значок цветом текста окна (ForeColor уже системный, см. HighContrastColors).
                 bool hc = Theme.HighContrast;
-                bool hot = Hover || Pressed || Focused;
-                Color glyph = hc && hot ? SystemColors.HighlightText : ForeColor;
+                bool hot = Hover || Pressed;
+                Color glyph = hc && (hot || Focused) ? SystemColors.HighlightText : ForeColor;
                 Graphics g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -707,7 +707,7 @@ namespace ExcelMerger
                 if (OnAccentHeader && !hc)
                 {
                     Color fill, border;
-                    Theme.HeaderChipColors(true, Hover || Focused, Pressed, out fill, out border);
+                    Theme.HeaderChipColors(true, Hover, Pressed, out fill, out border);
                     if (fill.A > 0)
                     {
                         using (var b = new SolidBrush(fill))
@@ -735,6 +735,8 @@ namespace ExcelMerger
                     TextRenderer.DrawText(g, Text, Font,
                         new Rectangle(nudge.X, nudge.Y, Width, Height), glyph, flags);
                 }
+                DrawFocusRing(g, new RectangleF(0, 0, Width, Height), Width / 2f,
+                    hc ? SystemColors.WindowText : (OnAccentHeader ? Color.White : Theme.Accent));
             }
 
             /// <summary>MDL2 сидит в em-boxе криво: сдвиг, чтобы чернила совпали с центром круга.</summary>
