@@ -62,7 +62,7 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            InitShell(Title, new Size(780, 660), new Size(660, 540), Theme.PdfRed);
+            InitShell(Title, new Size(780, 660), new Size(660, 580), Theme.PdfRed);
             WireFileDropAppend(); // дроп PDF на окно — добавить в конец (общая обвязка базы)
             _miInterleave = new ToolStripMenuItem(Loc.T("pdf.menu.interleave"), null,
                 delegate { InterleavePages(); });
@@ -113,7 +113,9 @@ namespace ExcelMerger
             _chkPadEven.Text = Loc.T("pdf.chk.padEven");
             // Под кнопками и по их ширине. Подпись длиннее колонки, поэтому переносится на
             // две строки (см. AccentCheckBox) — обрезать её ради одной строки нельзя.
-            _chkPadEven.SetBounds(col, m + 300, 130, 40);
+            // Keep above the bottom zoom/compress strip at MinimumSize (client ~501:
+            // compress sits at height-146). Print ends at m+288.
+            _chkPadEven.SetBounds(col, m + 292, 130, 36);
             _chkPadEven.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _chkPadEven.ForeColor = Theme.TextPrimary;
             _tips.SetToolTip(_chkPadEven, Loc.T("pdf.tip.padEven"));
@@ -286,12 +288,12 @@ namespace ExcelMerger
         /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>
         protected override void SyncControls()
         {
-            bool one = !Working && _grid.SelectedCount == 1;
+            bool canMove = !Working && _grid.SelectedCount > 0;
             _grid.Locked = Working; // правки сетки (буфер, поворот, дроп) — только вне работы
             _compress.Enabled = !Working;
             _btnAdd.Enabled = !Working;
-            _btnUp.Enabled = one;
-            _btnDown.Enabled = one;
+            _btnUp.Enabled = canMove;
+            _btnDown.Enabled = canMove;
             _btnRemove.Enabled = !Working && _grid.SelectedCount > 0;
             _btnPrint.Enabled = !Working && _order.Count > 0;
             _btnSave.Enabled = !Working && _order.Count > 0;

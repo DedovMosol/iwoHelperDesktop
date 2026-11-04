@@ -1225,6 +1225,24 @@ namespace ExcelMerger.Tests
         }
 
 
+        [Test("Порядок страниц: несколько выделенных шагают пакетом")]
+        private static void AuditMoveSelectedStepsABlock()
+        {
+            int insertAt;
+            AssertTrue(!ListReorder.TryStepInsert(new[] { 0, 1 }, 5, false, out insertAt), "с начала раньше нельзя");
+            AssertTrue(!ListReorder.TryStepInsert(new[] { 3, 4 }, 5, true, out insertAt), "с конца позже нельзя");
+            AssertTrue(ListReorder.TryStepInsert(new[] { 1, 2 }, 5, false, out insertAt), "блок раньше");
+            AssertEq(0, insertAt, "вставка перед бывшим 0");
+            AssertTrue(ListReorder.TryStepInsert(new[] { 1, 2 }, 5, true, out insertAt), "блок позже");
+            AssertEq(4, insertAt, "вставка после соседа за блоком");
+            var items = new List<int> { 0, 1, 2, 3, 4 };
+            ListReorder.MoveRange(items, new[] { 1, 2 }, 4);
+            AssertEq("0,3,1,2,4", string.Join(",", items.ToArray()), "два номера ушли за 3");
+            items = new List<int> { 0, 1, 2, 3, 4 };
+            ListReorder.MoveRange(items, new[] { 2 }, 1);
+            AssertEq("0,2,1,3,4", string.Join(",", items.ToArray()), "один шаг вверх как MoveUp");
+        }
+
         /// <summary>Вызвать непубличный метод экземпляра по имени и числу параметров (по цепочке типов).</summary>
     }
 }

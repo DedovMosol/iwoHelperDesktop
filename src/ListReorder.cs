@@ -78,6 +78,38 @@ namespace ExcelMerger
             return insertAt - before;
         }
 
+        /// <summary>
+        /// Куда вставить набор, чтобы он шагнул на одну позицию раньше/позже (кнопки, Alt+стрелки).
+        /// Набор пакуется подряд. False — пусто или уже с того края. Чистая — под тест.
+        /// </summary>
+        public static bool TryStepInsert(IList<int> indices, int count, bool later, out int insertAt)
+        {
+            List<int> sorted = NormalizeIndices(indices, count);
+            if (sorted.Count == 0)
+            {
+                insertAt = 0;
+                return false;
+            }
+            int min = sorted[0], max = sorted[sorted.Count - 1];
+            if (!later)
+            {
+                if (min <= 0)
+                {
+                    insertAt = 0;
+                    return false;
+                }
+                insertAt = min - 1;
+                return true;
+            }
+            if (max >= count - 1)
+            {
+                insertAt = count;
+                return false;
+            }
+            insertAt = max + 2;
+            return true;
+        }
+
         /// <summary>Индексы по возрастанию, без дублей и выходов за [0, count). Чистая — под тест.</summary>
         internal static List<int> NormalizeIndices(IList<int> indices, int count)
         {

@@ -491,19 +491,23 @@ namespace ExcelMerger
             SyncControls();
         }
 
-        /// <summary>Сдвинуть единственную выбранную страницу раньше/позже (Alt+←/→, кнопки).</summary>
+        /// <summary>Сдвинуть выбранные страницы раньше/позже (Alt+←/→, кнопки). Несколько — пакетом.</summary>
         protected void MoveSelected(bool later)
         {
-            if (Working || _grid.SelectedCount != 1)
+            if (Working || _grid.SelectedCount == 0)
                 return;
-            int index = _grid.GetSelectedIndices()[0];
-            bool willMove = later ? index < _order.Count - 1 : index > 0;
-            if (!willMove)
+            int[] indices = _grid.GetSelectedIndices();
+            int insertAt;
+            if (!ListReorder.TryStepInsert(indices, _order.Count, later, out insertAt))
                 return; // уже с краю — снимок для Ctrl+Z не нужен
+            int n = indices.Length;
             _order.Checkpoint();
-            int moved = later ? _order.MoveDown(index) : _order.MoveUp(index);
+            int moved = _order.MoveRange(indices, insertAt);
             RefreshGrid();
-            _grid.SelectIndex(moved);
+            if (n == 1)
+                _grid.SelectIndex(moved);
+            else
+                _grid.SelectRange(moved, n);
         }
 
         /// <summary>Удалить выбранные страницы (кнопка, Delete).</summary>

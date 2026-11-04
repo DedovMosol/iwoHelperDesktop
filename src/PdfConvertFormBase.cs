@@ -315,11 +315,11 @@ namespace ExcelMerger
         /// <summary>Доступность кнопок и блокировка сетки по текущему состоянию (операция/загрузка/выделение).</summary>
         protected override void SyncControls()
         {
-            bool one = !Working && _grid.SelectedCount == 1;
+            bool canMove = !Working && _grid.SelectedCount > 0;
             _grid.Locked = Working; // правки сетки (буфер, дроп) — только вне работы
             _btnOpen.Enabled = !Working;
-            _btnUp.Enabled = one;
-            _btnDown.Enabled = one;
+            _btnUp.Enabled = canMove;
+            _btnDown.Enabled = canMove;
             _btnRemove.Enabled = !Working && _grid.SelectedCount > 0;
             _btnPrint.Enabled = !Working && _order.Count > 0;
             _btnConvert.Enabled = !Working && _order.Count > 0;
