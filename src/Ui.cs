@@ -90,8 +90,12 @@ namespace ExcelMerger
             b.Chevron = kind == HeaderNavKind.Back ? ButtonChevron.Left : ButtonChevron.None;
             b.Text = Loc.T(kind == HeaderNavKind.Back ? "hub.back" : "common.home");
             b.AccessibleName = b.Text;
+            // Font уже с EmulatedScale, а SetBounds — в логических: иначе AutoScale
+            // шапки умножит ширину второй раз (105 вместо 90 при 125 %, UI-1).
             int extra = kind == HeaderNavKind.Back ? 28 : 20;
-            int width = TextRenderer.MeasureText(b.Text, b.Font).Width + extra;
+            float emul = DpiScale.EmulatedScale;
+            if (emul < 0.01f) emul = 1f;
+            int width = (int)Math.Round(TextRenderer.MeasureText(b.Text, b.Font).Width / emul) + extra;
             if (width < 72) width = 72;
             int left = kind == HeaderNavKind.Back ? 12 : Math.Max(12, header.Width - width - 12);
             b.SetBounds(left, top, width, 30);

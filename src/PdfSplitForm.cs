@@ -54,7 +54,9 @@ namespace ExcelMerger
 
         private void BuildUi()
         {
-            InitShell(Title, new Size(800, 660), new Size(700, 600), Theme.PdfRed);
+            // 660, не 600: вторая строка панели («Прочие операции») на 150 % минимума
+            // наезжала на выбор сжатия (UI-1). Высота как у окна по умолчанию.
+            InitShell(Title, new Size(800, 660), new Size(700, 660), Theme.PdfRed);
             BuildHeaderWithHome(Title,
                 Loc.T("split.header.subtitle"),
                 Theme.PdfRed, Theme.PdfRedDark, ShowHelp);
