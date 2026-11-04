@@ -31,6 +31,16 @@ namespace ExcelMerger
         Down
     }
 
+    /// <summary>16 px знак слева на светлой кнопке панели (не шрифт — Windows 8.1 без MDL2).</summary>
+    internal enum ButtonMark
+    {
+        None,
+        Plus,
+        Trash,
+        Print,
+        Open
+    }
+
     /// <summary>
     /// Кнопка со скруглёнными углами и состояниями normal / hover / pressed / disabled /
     /// focused. Рисуется вручную, поэтому выглядит одинаково на всех версиях Windows и не
@@ -54,6 +64,7 @@ namespace ExcelMerger
 
         private readonly ButtonLook _look;
         internal ButtonChevron Chevron { get; set; }
+        internal ButtonMark Mark { get; set; }
         internal ButtonLook Look { get { return _look; } }
         private bool _selected;
         private bool _hover;
@@ -227,12 +238,15 @@ namespace ExcelMerger
             }
 
             int pad = TextPadFor(Width, s);
+            int mark = Mark == ButtonMark.None ? 0 : (int)Math.Round(18f * s);
             int glyph = Chevron == ButtonChevron.None ? 0 : (int)Math.Round(12f * s);
-            int insetL = Chevron == ButtonChevron.Right ? 0 : glyph;
+            int insetL = mark + (Chevron == ButtonChevron.Right ? 0 : glyph);
             int insetR = Chevron == ButtonChevron.Right ? glyph : 0;
             var textArea = new Rectangle(pad + insetL, 0, Math.Max(1, Width - 2 * pad - insetL - insetR), Height);
+            if (Mark != ButtonMark.None)
+                DrawMark(g, pad, s, text);
             if (Chevron != ButtonChevron.None)
-                DrawChevron(g, pad, s, text);
+                DrawChevron(g, pad + mark, s, text);
             TextRenderer.DrawText(g, Text, Font, textArea, text,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
@@ -293,6 +307,43 @@ namespace ExcelMerger
             }
         }
 
+        private void DrawMark(Graphics g, int pad, float scale, Color color)
+        {
+            int size = Math.Max(10, (int)Math.Round(14f * scale));
+            int x = pad;
+            int y = (Height - size) / 2;
+            float w = Math.Max(1.2f, 1.4f * scale);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var p = new Pen(color, w))
+            {
+                p.StartCap = LineCap.Round;
+                p.EndCap = LineCap.Round;
+                int m = size / 2;
+                switch (Mark)
+                {
+                    case ButtonMark.Plus:
+                        g.DrawLine(p, x + 2, y + m, x + size - 2, y + m);
+                        g.DrawLine(p, x + m, y + 2, x + m, y + size - 2);
+                        break;
+                    case ButtonMark.Trash:
+                        g.DrawLine(p, x + 2, y + 4, x + size - 2, y + 4);
+                        g.DrawLine(p, x + m, y + 1, x + m, y + 4);
+                        g.DrawLine(p, x + 3, y + 4, x + 4, y + size - 2);
+                        g.DrawLine(p, x + size - 3, y + 4, x + size - 4, y + size - 2);
+                        g.DrawLine(p, x + 4, y + size - 2, x + size - 4, y + size - 2);
+                        break;
+                    case ButtonMark.Print:
+                        g.DrawRectangle(p, x + 3, y + 1, size - 6, size / 3);
+                        g.DrawRectangle(p, x + 1, y + size / 3, size - 2, size / 2);
+                        break;
+                    default: // Open: document
+                        g.DrawRectangle(p, x + 3, y + 1, size - 6, size - 3);
+                        g.DrawLine(p, x + 5, y + size / 2, x + size - 5, y + size / 2);
+                        break;
+                }
+            }
+        }
+
         /// <summary>Цвета текущего состояния: заливка, подпись, рамка (Empty — без рамки).</summary>
         private void Colors(out Color fill, out Color text, out Color border)
         {
@@ -321,15 +372,8 @@ namespace ExcelMerger
                     return;
 
                 case ButtonLook.OnHeader:
-                    // Fluent subtle: лёгкий подъём тона полосы и тонкая кромка, не молоко.
                     text = Enabled ? Color.White : Color.FromArgb(190, 255, 255, 255);
-                    fill = !Enabled ? Color.FromArgb(28, 255, 255, 255)
-                        : _pressed ? Color.FromArgb(72, 255, 255, 255)
-                        : (_hover || _selected) ? Color.FromArgb(56, 255, 255, 255)
-                        : Color.FromArgb(38, 255, 255, 255);
-                    border = Enabled
-                        ? Color.FromArgb(_hover || _pressed || _selected ? 160 : 110, 255, 255, 255)
-                        : Color.FromArgb(70, 255, 255, 255);
+                    Theme.HeaderChipColors(Enabled, _hover || _selected, _pressed, out fill, out border);
                     return;
 
                 default:

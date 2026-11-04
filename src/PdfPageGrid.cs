@@ -68,9 +68,17 @@ namespace ExcelMerger
             public event EventHandler Scrolled;
             public string HintText;   // текст-подсказка пустого списка; null — не рисовать
             public float HintPoints;  // кегль подсказки; 0 — шрифт списка (шрифт берётся из кэша Ui)
+            /// <summary>До native-выбора: иначе мультивыделение схлопывается до одной плитки (GR-8).</summary>
+            public Action<int, int> PeekLeftDown;
 
             protected override void WndProc(ref Message m)
             {
+                const int WM_LBUTTONDOWN = 0x201;
+                if (m.Msg == WM_LBUTTONDOWN && PeekLeftDown != null)
+                {
+                    int xy = m.LParam.ToInt32();
+                    PeekLeftDown((short)xy, (short)(xy >> 16));
+                }
                 base.WndProc(ref m);
                 const int WM_VSCROLL = 0x115, WM_MOUSEWHEEL = 0x20A, WM_KEYUP = 0x101, WM_PAINT = 0x0F;
                 if (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL || m.Msg == WM_KEYUP)
@@ -186,6 +194,7 @@ namespace ExcelMerger
         private System.Windows.Forms.Timer _dragScrollTimer;
         private int _dragScrollDir; // -1 вверх, +1 вниз, 0 — нет
         private bool _dragHasFiles; // в текущей drag-сессии тянут PDF-файлы (решено в DragEnter)
+        private int[] _dragSel; // мультивыделение на LBUTTONDOWN, до native-схлопывания (GR-8)
 
         private ContextMenuStrip _menu;
         private ToolStripMenuItem _miCut, _miCopy, _miPaste, _miMoveAfter, _miRotate, _miRotateRight, _miRotateLeft,
@@ -269,6 +278,7 @@ namespace ExcelMerger
                 ScheduleVisibleUpdate(); // навигация клавишами меняет набор видимых миниатюр
             };
             _list.AllowDrop = true;
+            _list.PeekLeftDown = OnPeekLeftDown;
             _list.ItemDrag += OnItemDrag;
             _list.DragEnter += OnListDragEnter;
             _list.DragOver += OnListDragOver;
@@ -1514,10 +1524,36 @@ namespace ExcelMerger
 
         // ---------- перетаскивание и дроп файлов ----------
 
+        /// <summary>Тянуть всё выделение, если нажали уже выбранную плитку. Чистая — под тест.</summary>
+        internal static bool ShouldKeepMultiDrag(bool hitSelected, int selectedCount)
+        {
+            return hitSelected && selectedCount > 1;
+        }
+
+        private void OnPeekLeftDown(int x, int y)
+        {
+            _dragSel = null;
+            if (Locked || !AllowReorder)
+                return;
+            ListViewItem hit = _list.GetItemAt(x, y);
+            if (hit != null && ShouldKeepMultiDrag(hit.Selected, _list.SelectedIndices.Count))
+                _dragSel = GetSelectedIndices();
+        }
+
         private void OnItemDrag(object sender, ItemDragEventArgs e)
         {
-            if (AllowReorder && !Locked)
-                _list.DoDragDrop(e.Item, DragDropEffects.Move);
+            if (!AllowReorder || Locked)
+                return;
+            if (_dragSel != null && _dragSel.Length > 1)
+            {
+                _list.BeginUpdate();
+                _list.SelectedIndices.Clear();
+                foreach (int i in _dragSel)
+                    if (i >= 0 && i < _list.Items.Count)
+                        _list.Items[i].Selected = true;
+                _list.EndUpdate();
+            }
+            _list.DoDragDrop(e.Item, DragDropEffects.Move);
         }
 
         private void OnListDragEnter(object sender, DragEventArgs e)
@@ -1594,11 +1630,19 @@ namespace ExcelMerger
             ListViewItem item = DraggedOwnItem(e.Data);
             if (!AllowReorder || Locked || item == null || target < 0)
                 return;
-            int from = item.Index;
             int to = after ? target + 1 : target;
-            var h = ReorderRequested;
-            if (h != null)
-                h(from, to);
+            if (_dragSel != null && _dragSel.Length > 1)
+            {
+                var range = MoveRangeRequested;
+                if (range != null)
+                    range(_dragSel, to);
+            }
+            else
+            {
+                var h = ReorderRequested;
+                if (h != null)
+                    h(item.Index, to);
+            }
         }
 
         /// <summary>Перетаскиваемая плитка ЭТОЙ сетки или null (чужая, не плитка, нет данных).</summary>

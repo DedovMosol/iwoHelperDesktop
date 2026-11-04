@@ -692,18 +692,25 @@ namespace ExcelMerger
                 // Высокий контраст (UI-7): под мышью — круг Highlight и значок HighlightText,
                 // иначе значок цветом текста окна (ForeColor уже системный, см. HighContrastColors).
                 bool hc = Theme.HighContrast;
-                bool hot = (Hover || Pressed) && (hc || HoverFill != Color.Empty);
+                bool hot = Hover || Pressed;
                 Color glyph = hc && hot ? SystemColors.HighlightText : ForeColor;
-                if (hot)
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                if (hc)
                 {
-                    // Круг, а не прямоугольник: значок квадратный и мелкий, прямоугольная плашка
-                    // на его фоне выглядит крупнее самого значка.
-                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                    int alpha = Pressed ? Math.Min(255, HoverFill.A * 2) : HoverFill.A;
-                    using (var b = new SolidBrush(hc ? SystemColors.Highlight : Color.FromArgb(alpha, HoverFill)))
-                        e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
-                    e.Graphics.SmoothingMode = SmoothingMode.Default;
+                    if (hot)
+                        using (var b = new SolidBrush(SystemColors.Highlight))
+                            e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
                 }
+                else
+                {
+                    Color fill, border;
+                    Theme.HeaderChipColors(true, Hover, Pressed, out fill, out border);
+                    using (var b = new SolidBrush(fill))
+                        e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
+                    using (var pen = new Pen(border, Math.Max(1f, DpiScale.Device(this))))
+                        e.Graphics.DrawEllipse(pen, 0, 0, Width - 2, Height - 2);
+                }
+                e.Graphics.SmoothingMode = SmoothingMode.Default;
                 Image fallback = _glyphFontPresent || _fallback == null ? null : _fallback();
                 if (fallback != null)
                 {

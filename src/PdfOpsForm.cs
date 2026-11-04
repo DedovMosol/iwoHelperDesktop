@@ -106,13 +106,13 @@ namespace ExcelMerger
             int pw = panelW - 10;
             int y = m + 84;
 
-            _btnOpen = AddButton(Loc.T("common.btn.openPdf"), px, y, pw, 32, Loc.T("common.tip.openPdf"));
+            _btnOpen = AddButton(Loc.T("common.btn.openPdf"), px, y, pw, 32, Loc.T("common.tip.openPdf"), mark: ButtonMark.Open);
             _btnOpen.Click += delegate { PickAndOpenFile(); };
             y += 32 + BtnGap;
             // Картинки — второй способ набрать страницы: снимки и сканы становятся документом
             // здесь же, а не в отдельном окне, потому что дальше с ними делают ровно то же —
             // поворачивают, переставляют, сжимают, печатают.
-            _btnAddImages = AddButton(Loc.T("ops.btn.addImages"), px, y, pw, BtnH, Loc.T("ops.tip.addImages"));
+            _btnAddImages = AddButton(Loc.T("ops.btn.addImages"), px, y, pw, BtnH, Loc.T("ops.tip.addImages"), mark: ButtonMark.Plus);
             _btnAddImages.Click += delegate { PickAndAddImages(); };
             y += BtnH + GroupGap;
 
@@ -128,7 +128,7 @@ namespace ExcelMerger
             _btnExtract.Click += delegate { ShowExtractMenu(); };
             y += BtnH + BtnGap;
             // Печать выносим отдельно — частая операция
-            _btnPrint = AddButton(Loc.T("common.btn.print"), px, y, pw, BtnH, Loc.T("common.tip.print"));
+            _btnPrint = AddButton(Loc.T("common.btn.print"), px, y, pw, BtnH, Loc.T("common.tip.print"), ButtonMark.Print);
             _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
             y += BtnH + GroupGap;
 
@@ -164,14 +164,11 @@ namespace ExcelMerger
             return y + HeaderH + HeaderGap;
         }
 
-        private Button AddButton(string text, int x, int y, int w, int h, string tip)
+        private Button AddButton(string text, int x, int y, int w, int h, string tip, ButtonMark mark = ButtonMark.None)
         {
-            var b = new RoundedButton(false);
-            b.Text = text;
+            RoundedButton b = Ui.ToolButton(this, text, tip, _tips, ButtonChevron.None, mark);
             b.SetBounds(x, y, w, h);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _tips.SetToolTip(b, tip);
-            Controls.Add(b);
             return b;
         }
 

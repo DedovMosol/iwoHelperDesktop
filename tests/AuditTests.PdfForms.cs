@@ -1245,6 +1245,9 @@ namespace ExcelMerger.Tests
                 "если в наборе есть первая страница — раньше нельзя");
             AssertTrue(ListReorder.TryStepInsert(new[] { 0, 2 }, 5, true, out insertAt),
                 "тот же набор позже — можно");
+            AssertTrue(PdfPageGrid.ShouldKeepMultiDrag(true, 3), "нажатие на выбранную из нескольких");
+            AssertTrue(!PdfPageGrid.ShouldKeepMultiDrag(false, 3), "нажатие на невыбранную");
+            AssertTrue(!PdfPageGrid.ShouldKeepMultiDrag(true, 1), "одна плитка");
         }
 
         /// <summary>Вызвать непубличный метод экземпляра по имени и числу параметров (по цепочке типов).</summary>

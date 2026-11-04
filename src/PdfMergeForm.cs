@@ -91,23 +91,23 @@ namespace ExcelMerger
 
             int col = right - 130;
             // Три пачки: файл / страницы / документ. Высота одна, зазор между пачками больше.
-            _btnAdd = AddButton(Loc.T("common.addPdf"), col, m + 80, 130, 32);
+            _btnAdd = AddButton(Loc.T("common.addPdf"), col, m + 80, 130, 32, Loc.T("common.tip.addPdf"),
+                ButtonChevron.None, ButtonMark.Plus);
             _btnAdd.Click += OnAddClick;
-            _tips.SetToolTip(_btnAdd, Loc.T("common.tip.addPdf"));
-            _btnUp = AddButton(Loc.T("common.earlier"), col, m + 128, 130, 32, ButtonChevron.Left);
+            _btnUp = AddButton(Loc.T("common.earlier"), col, m + 128, 130, 32, Loc.T("common.tip.earlier"),
+                ButtonChevron.Left);
             _btnUp.Click += delegate { MoveSelected(false); };
-            _tips.SetToolTip(_btnUp, Loc.T("common.tip.earlier"));
-            _btnDown = AddButton(Loc.T("common.later"), col, m + 168, 130, 32, ButtonChevron.Right);
+            _btnDown = AddButton(Loc.T("common.later"), col, m + 168, 130, 32, Loc.T("common.tip.later"),
+                ButtonChevron.Right);
             _btnDown.Click += delegate { MoveSelected(true); };
-            _tips.SetToolTip(_btnDown, Loc.T("common.tip.later"));
-            _btnRemove = AddButton(Loc.T("common.remove"), col, m + 208, 130, 32);
+            _btnRemove = AddButton(Loc.T("common.remove"), col, m + 208, 130, 32, Loc.T("common.tip.removePages"),
+                ButtonChevron.None, ButtonMark.Trash);
             _btnRemove.Click += delegate { RemoveSelected(); };
-            _tips.SetToolTip(_btnRemove, Loc.T("common.tip.removePages"));
             // Печать того, что собрано в сетке: страницы уже в нужном порядке и с поворотами,
             // и распечатать их до сохранения — нормальный способ проверить результат.
-            _btnPrint = AddButton(Loc.T("common.btn.print"), col, m + 256, 130, 32);
+            _btnPrint = AddButton(Loc.T("common.btn.print"), col, m + 256, 130, 32, Loc.T("common.tip.print"),
+                ButtonChevron.None, ButtonMark.Print);
             _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
-            _tips.SetToolTip(_btnPrint, Loc.T("common.tip.print"));
 
             _chkPadEven = new AccentCheckBox();
             _chkPadEven.Text = Loc.T("pdf.chk.padEven");
@@ -139,14 +139,12 @@ namespace ExcelMerger
             Dialogs.Info(this, Title, Loc.T("menu.howTo"), Loc.T("pdf.help.body"));
         }
 
-        private Button AddButton(string text, int x, int y, int w, int h, ButtonChevron chevron = ButtonChevron.None)
+        private Button AddButton(string text, int x, int y, int w, int h, string tip,
+            ButtonChevron chevron = ButtonChevron.None, ButtonMark mark = ButtonMark.None)
         {
-            var b = new RoundedButton(false);
-            b.Text = text;
-            b.Chevron = chevron;
+            RoundedButton b = Ui.ToolButton(this, text, tip, _tips, chevron, mark);
             b.SetBounds(x, y, w, h);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            Controls.Add(b);
             return b;
         }
 

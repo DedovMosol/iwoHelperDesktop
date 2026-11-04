@@ -97,18 +97,18 @@ namespace ExcelMerger
             WireOrderGrid(); // события порядка + контекстное меню (общая обвязка базы)
             Controls.Add(_grid);
 
-            _btnOpen = new RoundedButton(false);
-            _btnOpen.Text = _spec.Text("btn.open");
+            _btnOpen = AddPanelButton(_spec.Text("btn.open"), _spec.Text("tip.open"),
+                ButtonChevron.None, ButtonMark.Plus);
             _btnOpen.Click += delegate { PickAndAddFiles(); };
-            _tips.SetToolTip(_btnOpen, _spec.Text("tip.open"));
-            Controls.Add(_btnOpen);
 
             _btnUp = AddPanelButton(Loc.T("common.earlier"), Loc.T("common.tip.earlier"), ButtonChevron.Left);
             _btnUp.Click += delegate { MoveSelected(false); };
             _btnDown = AddPanelButton(Loc.T("common.later"), Loc.T("common.tip.later"), ButtonChevron.Right);
             _btnDown.Click += delegate { MoveSelected(true); };
-            _btnRemove = AddPanelButton(Loc.T("common.remove"), Loc.T("common.tip.remove"));
-            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), Loc.T("common.tip.print"));
+            _btnRemove = AddPanelButton(Loc.T("common.remove"), Loc.T("common.tip.remove"),
+                ButtonChevron.None, ButtonMark.Trash);
+            _btnPrint = AddPanelButton(Loc.T("common.btn.print"), Loc.T("common.tip.print"),
+                ButtonChevron.None, ButtonMark.Print);
             _btnPrint.Click += delegate { PrintPages(SelectedOrAllPages()); };
             _btnRemove.Click += delegate { RemoveSelected(); };
             LayoutBody();
@@ -357,13 +357,10 @@ namespace ExcelMerger
         }
 
         /// <summary>Кнопка правой колонки: место ей найдёт <see cref="LayoutBody"/>.</summary>
-        private Button AddPanelButton(string text, string tip, ButtonChevron chevron = ButtonChevron.None)
+        private Button AddPanelButton(string text, string tip,
+            ButtonChevron chevron = ButtonChevron.None, ButtonMark mark = ButtonMark.None)
         {
-            var b = new RoundedButton(false);
-            b.Text = text;
-            b.Chevron = chevron;
-            _tips.SetToolTip(b, tip);
-            Controls.Add(b);
+            RoundedButton b = Ui.ToolButton(this, text, tip, _tips, chevron, mark);
             return b;
         }
     }

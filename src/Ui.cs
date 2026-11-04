@@ -116,6 +116,21 @@ namespace ExcelMerger
             HeaderNav(header, showHub, HeaderNavKind.Home, tips, top);
         }
 
+        /// <summary>Светлая кнопка панели инструмента: шеврон/знак и подсказка. Место задаёт форма.</summary>
+        public static RoundedButton ToolButton(Control parent, string text, string tip, ToolTip tips,
+            ButtonChevron chevron = ButtonChevron.None, ButtonMark mark = ButtonMark.None)
+        {
+            var b = new RoundedButton(false);
+            b.Text = text;
+            b.Chevron = chevron;
+            b.Mark = mark;
+            if (tips != null && !string.IsNullOrEmpty(tip))
+                tips.SetToolTip(b, tip);
+            if (parent != null)
+                parent.Controls.Add(b);
+            return b;
+        }
+
         public static Label Label(Control parent, string text, int x, int y, Font font, Color color)
         {
             var l = new Label();

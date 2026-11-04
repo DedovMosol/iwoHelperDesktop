@@ -78,13 +78,11 @@ namespace ExcelMerger
 
             int px = right - panelW + 10; // левый край панели режима
             int pw = panelW - 10;
-            _btnOpen = new RoundedButton(false);
-            _btnOpen.Text = Loc.T("common.btn.openPdf");
+            _btnOpen = Ui.ToolButton(this, Loc.T("common.btn.openPdf"), Loc.T("common.tip.openPdf"),
+                _tips, ButtonChevron.None, ButtonMark.Open);
             _btnOpen.SetBounds(px, m + 84, pw, 32);
             _btnOpen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnOpen.Click += delegate { PickAndOpenFile(); };
-            _tips.SetToolTip(_btnOpen, Loc.T("common.tip.openPdf"));
-            Controls.Add(_btnOpen);
 
             Label lblMode = Ui.Label(this, Loc.T("split.lbl.mode"), px, m + 128, Font, Theme.TextPrimary);
             lblMode.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -162,7 +160,7 @@ namespace ExcelMerger
             // искать их в меню окна никто не догадывался.
             _btnPrint = new RoundedButton(false);
             _btnPrint.Text = Loc.T("split.btn.print");
-            _btnPrint.SetBounds(px, m + 336, 74, 32);
+            _btnPrint.SetBounds(px, m + 352, 74, 32);
             _btnPrint.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _tips.SetToolTip(_btnPrint, Loc.T("split.tip.print"));
             _btnPrint.Click += delegate { PrintSelectedPages(); };
@@ -172,7 +170,7 @@ namespace ExcelMerger
             // Здесь остался переход туда с УЖЕ ОТКРЫТЫМ файлом — открывать его заново не нужно.
             _btnOps = new RoundedButton(false);
             _btnOps.Text = Loc.T("split.btn.ops");
-            _btnOps.SetBounds(px + 80, m + 336, pw - 80, 32);
+            _btnOps.SetBounds(px + 80, m + 352, pw - 80, 32);
             _btnOps.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _tips.SetToolTip(_btnOps, Loc.T("split.tip.ops"));
             // Открытый документ уезжает туда сам, а если ничего не открыто — окно просто
