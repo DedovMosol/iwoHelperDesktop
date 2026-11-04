@@ -314,6 +314,18 @@ namespace ExcelMerger
             int size = Math.Max(10, (int)Math.Round(14f * scale));
             int x = pad;
             int y = (Height - size) / 2;
+            string mdl = MarkMdl2(Mark);
+            if (mdl != null)
+            {
+                Font font = Ui.Font(this, 11f, FontStyle.Regular, "Segoe MDL2 Assets");
+                if (string.Equals(font.Name, "Segoe MDL2 Assets", StringComparison.OrdinalIgnoreCase))
+                {
+                    TextRenderer.DrawText(g, mdl, font, new Rectangle(x, y, size, size), color,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                    return;
+                }
+            }
             float w = Math.Max(1.2f, 1.3f * scale);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             using (var p = new Pen(color, w))
@@ -339,6 +351,18 @@ namespace ExcelMerger
                         g.DrawLine(p, x + 5, y + m, x + size - 5, y + m);
                         break;
                 }
+            }
+        }
+
+        private static string MarkMdl2(ButtonMark mark)
+        {
+            switch (mark)
+            {
+                case ButtonMark.Plus: return "";
+                case ButtonMark.Trash: return "";
+                case ButtonMark.Print: return "";
+                case ButtonMark.Open: return "";
+                default: return null;
             }
         }
 

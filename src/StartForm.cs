@@ -123,14 +123,14 @@ namespace ExcelMerger
             _back = Ui.HeaderNav(_header, delegate { GoTo(HubLevel.Main, true); }, Ui.HeaderNavKind.Back, null);
             _back.Visible = false;
 
-            // Выбор языка — белый глиф-глобус в правом верхнем углу шапки (на синем, без рамки).
+            // Выбор языка — глиф-глобус на шапке, чип как у «Назад».
             _langMenu = HelpMenu.LanguageContextMenu(); // одно меню на жизнь окна
             // Запасной рисунок — флаг текущего языка: если шрифта глифов нет, кнопка всё равно
             // должна говорить, что она про язык (общий кэш на процесс — не освобождать).
             var globe = new GlyphButton("", 15f, "Segoe MDL2 Assets",
                 delegate { return Flags.For(Loc.Current); }); // U+E774 — «глобус»
             globe.ForeColor = Color.White;
-            globe.HoverFill = Color.FromArgb(46, 255, 255, 255); // на синей шапке отзывается высветлением
+            globe.OnAccentHeader = true; // тот же чип, что «Назад»; настройки/справка на белом ряду — без него
             globe.AccessibleName = Loc.T("lang.tooltip"); // с клавиатуры и для экранного диктора
             // Y задаёт сама шапка (AlignToText): глобус встаёт по центру пары «заголовок +
             // подпись» при любом масштабе экрана, здесь только колонка.
@@ -677,6 +677,8 @@ namespace ExcelMerger
             /// полупрозрачная, и обратное в каждом случае было бы невидимо.
             /// </summary>
             public Color HoverFill = Color.Empty;
+            /// <summary>На цветной шапке — стекло как у «Назад». На белом ряду не ставить.</summary>
+            public bool OnAccentHeader;
 
             public GlyphButton(string glyph, float size, string family, Func<Image> fallback = null)
             {
@@ -692,16 +694,10 @@ namespace ExcelMerger
                 // Высокий контраст (UI-7): под мышью — круг Highlight и значок HighlightText,
                 // иначе значок цветом текста окна (ForeColor уже системный, см. HighContrastColors).
                 bool hc = Theme.HighContrast;
-                bool hot = Hover || Pressed;
+                bool hot = (Hover || Pressed) && (hc || HoverFill != Color.Empty || OnAccentHeader);
                 Color glyph = hc && hot ? SystemColors.HighlightText : ForeColor;
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                if (hc)
-                {
-                    if (hot)
-                        using (var b = new SolidBrush(SystemColors.Highlight))
-                            e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
-                }
-                else
+                if (OnAccentHeader && !hc)
                 {
                     Color fill, border;
                     Theme.HeaderChipColors(true, Hover, Pressed, out fill, out border);
@@ -714,6 +710,12 @@ namespace ExcelMerger
                         using (var pen = new Pen(border, Math.Max(1f, s)))
                             e.Graphics.DrawPath(pen, path);
                     }
+                }
+                else if (hot)
+                {
+                    int alpha = Pressed ? Math.Min(255, HoverFill.A * 2) : HoverFill.A;
+                    using (var b = new SolidBrush(hc ? SystemColors.Highlight : Color.FromArgb(alpha, HoverFill)))
+                        e.Graphics.FillEllipse(b, 0, 0, Width - 1, Height - 1);
                 }
                 e.Graphics.SmoothingMode = SmoothingMode.Default;
                 Image fallback = _glyphFontPresent || _fallback == null ? null : _fallback();
