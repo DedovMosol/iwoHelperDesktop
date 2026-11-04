@@ -728,20 +728,9 @@ namespace ExcelMerger
                 }
                 else
                 {
-                    TextRenderingHint was = g.TextRenderingHint;
-                    g.TextRenderingHint = TextRenderingHint.AntiAlias;
-                    using (var brush = new SolidBrush(glyph))
-                    using (var format = (StringFormat)StringFormat.GenericTypographic.Clone())
-                    {
-                        format.Alignment = StringAlignment.Center;
-                        format.LineAlignment = StringAlignment.Center;
-                        format.FormatFlags |= StringFormatFlags.NoClip | StringFormatFlags.NoWrap;
-                        SizeF sz = g.MeasureString(Text, Font, PointF.Empty, format);
-                        float gx = (Width - sz.Width) / 2f;
-                        float gy = (Height - sz.Height) / 2f;
-                        g.DrawString(Text, Font, brush, gx, gy, format);
-                    }
-                    g.TextRenderingHint = was;
+                    TextRenderer.DrawText(g, Text, Font, ClientRectangle, glyph,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.NoPrefix | TextFormatFlags.GlyphOverhangPadding);
                 }
                 if (!OnAccentHeader)
                     DrawFocusRing(g, bubble, Math.Min(Width, Height) / 2f, glyph);
