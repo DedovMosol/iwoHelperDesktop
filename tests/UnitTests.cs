@@ -413,6 +413,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: ячейка таблицы (splitColumns=false) — «метка … число» одной строкой", TestOcrCellNoColumns);
             Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
             Run("PageBlocks.OrderedItems: колонки -> side-by-side полоса (левая|правая), нижний одиночный", TestOrderedItemsColumns);
+            Run("PageBlocks.OrderedItems: неравные колонки под заголовком не зигзаг (RC-14)", TestOrderedItemsUnevenNewspaper);
             Run("PageBlocks.OrderedItems: внутри листа — строки сверху вниз, бок о бок слева направо", TestOrderedItemsWithinLeaf);
             Run("WordDocxWriter.BandColumnWidths: границы ячеек по середине зазора колонок", TestBandColumnWidths);
             Run("WordDocxWriter: центрированное изображение (логотип) -> по центру, врезка/штамп -> нет", TestImageCentered);
@@ -594,7 +595,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 543;
+            const int ExactTests = 544;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -15404,6 +15405,26 @@ namespace ExcelMerger.Tests
             AssertEq("L1,L2", ColText(items[0].Columns[0]), "левая колонка целиком");
             AssertEq("R1,R2", ColText(items[0].Columns[1]), "правая колонка целиком");
             AssertTrue(!items[1].IsBand && items[1].Single.Paragraph.Text == "F", "нижний — одиночный блок");
+        }
+
+        private static void TestOrderedItemsUnevenNewspaper()
+        {
+            // Geometry from corpus "две колонки #3": title, then left 4-line + 3-line
+            // paras vs right 3-line + 2-line. Y-gaps between the lower paras exceed
+            // BlockFloorGapPt, so a floor-first cut zigzags R2 then L2 (RC-14).
+            var page = new PdfPageText();
+            page.Paragraphs.Add(Para("Title", 185, 713.8, 220, 12));
+            page.Paragraphs.Add(Para("L1", 70, 640.7, 230, 54));
+            page.Paragraphs.Add(Para("R1", 319, 654.7, 220, 40));
+            page.Paragraphs.Add(Para("L2", 70, 579.8, 230, 45));
+            page.Paragraphs.Add(Para("R2", 319, 610.4, 220, 30));
+            List<PageBlocks.PageItem> items = PageBlocks.OrderedItems(page);
+            AssertTrue(items.Count >= 2, "title then columns");
+            AssertTrue(!items[0].IsBand && items[0].Single.Paragraph.Text == "Title", "title first");
+            PageBlocks.PageItem cols = items[1];
+            AssertTrue(cols.IsBand, "body is one side-by-side band, not zigzag floors");
+            AssertEq("L1,L2", ColText(cols.Columns[0]), "left column complete");
+            AssertEq("R1,R2", ColText(cols.Columns[1]), "right column complete");
         }
 
         private static void TestCropRect()
