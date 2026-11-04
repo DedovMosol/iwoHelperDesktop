@@ -281,7 +281,7 @@ namespace ExcelMerger.Tests
                 {
                     StartupSweep.Sweep(new[] { tmp.Path }, DateTime.UtcNow);
                     if (!File.Exists(marker1))
-                        Skip("запрет удаления через ACL не сработал на этой машине");
+                        SkipMissing("acl", "запрет удаления через ACL не сработал на этой машине");
                     AssertTrue(File.Exists(target2) && File.ReadAllText(target2) == "old2",
                         "второй журнал восстановлен несмотря на сбой первого");
                     AssertTrue(!File.Exists(orphan), "старый временный файл убран");
@@ -361,7 +361,7 @@ namespace ExcelMerger.Tests
                 {
                     Action activate = ActivationCallback(ctx);
                     if (activate == null)
-                        Skip("слушатель повторного запуска не создан в этом сеансе");
+                        SkipMissing("desktop", "слушатель повторного запуска не создан в этом сеансе");
                     HubOf(ctx).Close(); // хаб закрыт, открыт только диалог — исходный сценарий
                     using (var dialog = new Form())
                     {
@@ -571,7 +571,7 @@ namespace ExcelMerger.Tests
             {
                 IDisposable listener = SingleInstance.Listen(delegate { });
                 if (listener == null)
-                    Skip("окно-слушатель не создаётся в этом сеансе");
+                    SkipMissing("desktop", "окно-слушатель не создаётся в этом сеансе");
                 try
                 {
                     int self = System.Diagnostics.Process.GetCurrentProcess().Id;

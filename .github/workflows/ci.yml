@@ -142,7 +142,9 @@ jobs:
         timeout-minutes: 40 # обычно 7–8 минут; зависший тест раньше останавливает сторож раннера (10 мин)
         env:
           IWO_STRICT: '1'
-          IWO_OPTIONAL: office
+          # office — нет Excel/Word; shortnames — 8.3 часто выключен; printer/desktop/winrt —
+          # у раннера нет принтера, интерактивного стола и иногда WinRT PDF.
+          IWO_OPTIONAL: office,shortnames,printer,desktop,winrt,acl
         run: |
           cmd /c "tests\build_tests.cmd ${{ matrix.arch }}" 2>&1 | Tee-Object -FilePath "unit-tests-${{ matrix.arch }}.log"
           exit $LASTEXITCODE

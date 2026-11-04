@@ -107,7 +107,7 @@ namespace ExcelMerger.Tests
                     using (BudgetedBitmap rendered = renderer.RenderOwned(path, 0, 400, 0, RasterBudget.PreviewPixels))
                     {
                         if (rendered == null)
-                            Skip("системный рендерер PDF недоступен");
+                            SkipMissing("winrt", "системный рендерер PDF недоступен");
                         Bitmap bitmap = rendered.Bitmap;
                         double aspectView = page.ViewHeightPt / page.ViewWidthPt;
                         double aspectBitmap = (double)bitmap.Height / bitmap.Width;
