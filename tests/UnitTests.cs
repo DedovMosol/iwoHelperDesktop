@@ -390,6 +390,7 @@ namespace ExcelMerger.Tests
             Run("XyCut: река выключки не третья колонка (RC-14)", TestXyCutJustifyRiverNotThirdColumn);
             Run("XyCut: три равные колонки остаются тремя (RC-14)", TestXyCutThreeEqualColumns);
             Run("XyCut: отбивка в левой колонке не зигзаг с правой (RC-14)", TestXyCutColumnParaGapNotZigzag);
+            Run("XyCut: канал ровно vGapMin — две колонки (RC-14)", TestXyCutExactMinGutter);
             Run("OcrLayout: канал колонок 12 pt — левая колонка целиком (RC-14)", TestLayoutNarrowColumnGutter);
             Run("OcrLayout: заголовок во всю ширину не мешает разрезу колонок (RC-14)", TestLayoutTitleThenColumns);
             Run("OcrLayout: неравные колонки под центрированным заголовком — левая целиком (RC-14)", TestLayoutUnevenColumnsAfterTitle);
@@ -415,6 +416,7 @@ namespace ExcelMerger.Tests
             Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
             Run("PageBlocks.OrderedItems: колонки -> side-by-side полоса (левая|правая), нижний одиночный", TestOrderedItemsColumns);
             Run("PageBlocks.OrderedItems: неравные колонки под заголовком не зигзаг (RC-14)", TestOrderedItemsUnevenNewspaper);
+            Run("PageBlocks.OrderedItems: 12 pt gutter leftover left para (RC-14)", TestOrderedItemsTwelvePtUneven);
             Run("PageBlocks.OrderedItems: внутри листа — строки сверху вниз, бок о бок слева направо", TestOrderedItemsWithinLeaf);
             Run("WordDocxWriter.BandColumnWidths: границы ячеек по середине зазора колонок", TestBandColumnWidths);
             Run("WordDocxWriter: центрированное изображение (логотип) -> по центру, врезка/штамп -> нет", TestImageCentered);
@@ -596,7 +598,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 545;
+            const int ExactTests = 547;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -15042,6 +15044,22 @@ namespace ExcelMerger.Tests
             AssertEq("30,31,32", TagsOf(leaves[3]), "низ правой");
         }
 
+        private static void TestXyCutExactMinGutter()
+        {
+            // Word/LaTeX 12 pt columnsep equals PageBlocks.BlockColumnGapPt.
+            var boxes = new[]
+            {
+                CB(0, 0, 180, 100, 50),
+                CB(1, 0, 120, 100, 50),
+                CB(2, 112, 180, 100, 50),
+                CB(3, 112, 120, 100, 50)
+            };
+            List<CutLeaf> leaves = XyCut.Order(boxes, 1000, 12, 24, 1);
+            AssertEq(2, leaves.Count, "exact 12 pt gutter is a column split");
+            AssertEq("0,1", TagsOf(leaves[0]), "left stack");
+            AssertEq("2,3", TagsOf(leaves[1]), "right stack");
+        }
+
         private static void TestLayoutNarrowColumnGutter()
         {
             var words = new List<PdfWord>();
@@ -15418,6 +15436,13 @@ namespace ExcelMerger.Tests
             return p;
         }
 
+        private static OcrParagraph Box(string text, double left, double right, double top, double bottom)
+        {
+            var p = new OcrParagraph { TopPt = top, LeftPt = left, RightPt = right, BottomPt = bottom };
+            p.Runs.Add(new OcrRun { Text = text });
+            return p;
+        }
+
         private static string ColText(List<PageBlocks.Block> col)
         {
             var t = new List<string>();
@@ -15463,6 +15488,24 @@ namespace ExcelMerger.Tests
             AssertTrue(cols.IsBand, "body is one side-by-side band, not zigzag floors");
             AssertEq("L1,L2", ColText(cols.Columns[0]), "left column complete");
             AssertEq("R1,R2", ColText(cols.Columns[1]), "right column complete");
+        }
+
+        private static void TestOrderedItemsTwelvePtUneven()
+        {
+            // Corpus "две колонки #41": 12 pt gutter, leftover left para under a shorter right.
+            var page = new PdfPageText();
+            page.Paragraphs.Add(Box("Title", 170.5, 438.5, 776.6, 766.3));
+            page.Paragraphs.Add(Box("L1", 70, 298.5, 750.9, 695));
+            page.Paragraphs.Add(Box("L2", 70, 298.5, 684.9, 628.7));
+            page.Paragraphs.Add(Box("L3", 70, 298.5, 618.6, 562.3));
+            page.Paragraphs.Add(Box("R1", 310.5, 539, 750.6, 719.2));
+            page.Paragraphs.Add(Box("R2", 310.5, 539, 708.7, 640.7));
+            List<PageBlocks.PageItem> items = PageBlocks.OrderedItems(page);
+            AssertTrue(items.Count >= 2, "title then columns");
+            PageBlocks.PageItem cols = items[0].IsBand ? items[0] : items[1];
+            AssertTrue(cols.IsBand, "one newspaper band");
+            AssertEq("L1,L2,L3", ColText(cols.Columns[0]), "left includes leftover");
+            AssertEq("R1,R2", ColText(cols.Columns[1]), "right column");
         }
 
         private static void TestCropRect()

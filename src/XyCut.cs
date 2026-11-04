@@ -325,7 +325,10 @@ namespace ExcelMerger
                 double lo = byY ? -boxes[i].Top : boxes[i].Left;
                 double hi = byY ? -boxes[i].Bottom : boxes[i].Right;
                 if (hi < lo) hi = lo; // вырожденный бокс не ломает объединение
-                if (!first && lo > reach + minGap)
+                // Inclusive: a 12 pt newspaper gutter with vGapMin=12 must split
+                // (PageBlocks.BlockColumnGapPt). Strict > left a 12 pt channel as one
+                // leaf and zigzagged L/R paragraphs (RC-14, two-col odd variants).
+                if (!first && lo - reach >= minGap)
                 {
                     parts.Add(current);
                     current = new List<int>();

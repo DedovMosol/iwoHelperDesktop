@@ -142,9 +142,9 @@ namespace ExcelMerger.Tests
                     {
                         if (b.Paragraph != null)
                             Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                                "      P{0} {1} {2}{3} top {4:0.#} left {5:0.#} lines {6}: {7}", item.IsBand ? "[band]" : "",
+                                "      P{0} {1} {2}{3} top {4:0.#} left {5:0.#} right {6:0.#} lines {7}: {8}", item.IsBand ? "[band]" : "",
                                 b.Paragraph.Alignment, b.Paragraph.ListKind, b.Paragraph.ListLevel, b.Paragraph.TopPt,
-                                b.Paragraph.LeftPt, b.Paragraph.LineCount, b.Paragraph.Text));
+                                b.Paragraph.LeftPt, b.Paragraph.RightPt, b.Paragraph.LineCount, b.Paragraph.Text));
                         else if (b.Table != null)
                             Console.WriteLine("      T " + b.Table.Rows.Count + "×" + b.Table.ColumnCount + (b.Table.Borderless ? " без линовки" : "") +
                                 ": " + string.Join(" | ", b.Table.Rows.SelectMany(r => r.Cells).Take(8)
@@ -217,11 +217,64 @@ namespace ExcelMerger.Tests
                 }
                 var raw = new List<string>();
                 foreach (OcrParagraph p in pages[0].Paragraphs)
-                    raw.Add(p.LeftPt.ToString("0") + "x" + p.LineCount);
+                    raw.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                        "L{0:G} R{1:G} T{2:G} B{3:G}", p.LeftPt, p.RightPt, p.TopPt, p.BottomPt));
                 string dump = "raw " + string.Join(",", raw.ToArray()) + " flow " + string.Join(" ", lefts.ToArray());
+                var clone = new PdfPageText();
+                clone.Paragraphs.AddRange(pages[0].Paragraphs);
+                var items = PageBlocks.OrderedItems(pages[0]);
+                var cloned = PageBlocks.OrderedItems(clone);
+                dump += " items=" + items.Count + " clone=" + cloned.Count
+                    + " tbl=" + (pages[0].Tables == null ? 0 : pages[0].Tables.Count)
+                    + " img=" + (pages[0].Images == null ? 0 : pages[0].Images.Count);
+                for (int i = 0; i < items.Count; i++)
+                    dump += items[i].IsBand ? " B" + items[i].Columns.Count : " S";
                 AssertTrue(lastLeft >= 0 && firstRight >= 0, "both columns present: " + dump);
                 AssertTrue(firstRight > lastLeft, "Word/PPTX flow right after whole left: " + dump);
             }
+        }
+
+        [Test("Корпус: все варианты «две колонки» — левая колонка раньше правой (RC-14)")]
+        private static void CorpusTwoColumnAllVariantsReadingOrder()
+        {
+            EmbeddedAssemblies.Ensure();
+            var fails = new List<string>();
+            using (var dir = new TempDir("iwo_twocol_all_"))
+                foreach (CCase c in CorpusCases.All(CorpusPerFamily))
+                {
+                    if (c.Family != "две колонки")
+                        continue;
+                    string path;
+                    RenderCase(c, dir, out path);
+                    List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                    if (pages.Count == 0) continue;
+                    var flow = new List<OcrParagraph>();
+                    foreach (PageBlocks.PageItem item in PageBlocks.CoalesceRowBands(PageBlocks.OrderedItems(pages[0])))
+                    {
+                        if (item.IsBand)
+                            foreach (List<PageBlocks.Block> col in item.Columns)
+                                foreach (PageBlocks.Block b in col)
+                                    if (b.Paragraph != null) flow.Add(b.Paragraph);
+                        else if (item.Single != null && item.Single.Paragraph != null)
+                            flow.Add(item.Single.Paragraph);
+                    }
+                    double mid = pages[0].WidthPt > 0 ? pages[0].WidthPt / 2.0 : 300;
+                    int firstRight = -1, lastLeft = -1;
+                    for (int i = 0; i < flow.Count; i++)
+                    {
+                        if (flow[i].Alignment == OcrAlignment.Center)
+                            continue;
+                        if (flow[i].LeftPt < mid)
+                            lastLeft = i;
+                        else if (firstRight < 0)
+                            firstRight = i;
+                    }
+                    if (lastLeft >= 0 && firstRight >= 0 && firstRight <= lastLeft)
+                        fails.Add("#" + c.Variant.Index + " " + c.Variant + " lastL=" + lastLeft + " firstR=" + firstRight);
+                    if (fails.Count >= 8)
+                        break;
+                }
+            AssertTrue(fails.Count == 0, "zigzag: " + string.Join("; ", fails.ToArray()));
         }
 
         [Test("Корпус: генератор рисует ровно те слова, что описаны в модели")]

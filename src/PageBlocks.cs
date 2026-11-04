@@ -27,7 +27,10 @@ namespace ExcelMerger
         private const double BlockFloorGapPt = 14;
         // Канал 12 pt: между колонкой подписи и штампом рядом бывает всего ~17 pt, а
         // межсловные зазоры текста на порядок уже — ложных колонок канал не даёт.
-        private const double BlockColumnGapPt = 12;
+        // Word/LaTeX columnsep is 12 pt, but paragraph boxes are tighter than the
+        // word-level gutter (two-col #41 measured 11.999 pt). 10 pt still beats
+        // inter-word gaps and still sees a newspaper channel (RC-14).
+        private const double BlockColumnGapPt = 10;
         private const double BlockColumnMinExtentPt = 24;
         // На уровне БЛОКОВ достаточно ОДНОГО существенного блока в колонке: «подпись слева —
         // Ф.И.О. справа» и «Приложения: — список справа» — это одиночные (но высокие) блоки
