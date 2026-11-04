@@ -21,7 +21,10 @@ namespace ExcelMerger
         /// Пределы сторожа зависшего вызова Word: без предела длительности — наполнение
         /// растёт с числом страниц; модальное окно и отмена — как у Excel. Тесты подставляют короткие.
         /// </summary>
-        internal static ComWatchdog.Limits WatchdogLimits = new ComWatchdog.Limits();
+        internal static ComWatchdog.Limits WatchdogLimits = new ComWatchdog.Limits
+        {
+            StepMs = 180000 // наполнение без диалога не должно висеть минутами до Fail Fast Word
+        };
 
         /// <summary>
         /// Наполняет и сохраняет .docx. build получает (word, document) как object —
@@ -53,6 +56,7 @@ namespace ExcelMerger
                 word = Activator.CreateInstance(wordType);
                 word.Visible = false;
                 word.DisplayAlerts = 0; // wdAlertsNone
+                QuietAutomation(word);
                 doc = word.Documents.Add();
                 // Окно Word (а с ним и процесс) появляется только с документом; запуск до этого — без сторожа.
                 watchdog = new ComWatchdog(OwnWordProcess((object)word), cancelled, WatchdogLimits);
@@ -125,6 +129,28 @@ namespace ExcelMerger
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Скрытый Word не должен проверять орфографию и спрашивать про шрифты: на письмах
+        /// со смешанным RU/EN TypeText первой строки зависал на минуты, потом процесс
+        /// умирал Fail Fast / RPC (0x800706BA). Каждое свойство — отдельно, старые сборки
+        /// без опции не срывают запись.
+        /// </summary>
+        private static void QuietAutomation(dynamic word)
+        {
+            const int msoAutomationSecurityForceDisable = 3;
+            try { word.AutomationSecurity = msoAutomationSecurityForceDisable; } catch { }
+            try { word.ScreenUpdating = false; } catch { }
+            try
+            {
+                dynamic opt = word.Options;
+                try { opt.CheckSpellingAsYouType = false; } catch { }
+                try { opt.CheckGrammarAsYouType = false; } catch { }
+                try { opt.SuggestSpellingCorrections = false; } catch { }
+                try { opt.CheckGrammarWithSpelling = false; } catch { }
+            }
+            catch { }
         }
 
         private const int WdAlertsAll = -1;

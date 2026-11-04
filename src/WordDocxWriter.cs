@@ -54,6 +54,7 @@ namespace ExcelMerger
 
                     for (int p = 0; p < pages.Count; p++)
                     {
+                        TraceWord("page " + (p + 1) + "/" + pages.Count);
                         Cancellation.ThrowIf(cancelled); // отмена между страницами; файл ещё не сохранён
                         if (p > 0)
                         {
@@ -90,18 +91,25 @@ namespace ExcelMerger
                             }
                             PageBlocks.Block blk = item.Single;
                             if (blk.Paragraph != null)
+                            {
+                                TraceWord("para list=" + blk.Paragraph.ListKind + " lines=" + blk.Paragraph.LineCount);
                                 WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent, lists, listState, textLeft, textRight, spaceBefore);
+                            }
                             else
                             {
                                 ClearInheritedList(sel, listState); // таблица/картинка обрывают список
                                 if (blk.Table != null)
                                 {
+                                    TraceWord("table " + blk.Table.Rows.Count + "x" + blk.Table.ColumnCount);
                                     if (spaceBefore > 0)
                                         InsertSpacer(sel, spaceBefore); // таблице SpaceBefore не задать — пустой абзац той же высоты
                                     WriteTable(word, doc, sel, blk.Table);
                                 }
                                 else
+                                {
+                                    TraceWord("image " + (blk.Image == null ? 0 : blk.Image.WidthPt) + "x" + (blk.Image == null ? 0 : blk.Image.HeightPt));
                                     InsertImage(sel, blk.Image, pages[p].WidthPt, tempDir, ref imgIndex, spaceBefore);
+                                }
                             }
                         }
                         if (progress != null)
@@ -119,6 +127,14 @@ namespace ExcelMerger
             {
                 try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { }
             }
+        }
+
+        private static void TraceWord(string msg)
+        {
+            if (Environment.GetEnvironmentVariable("IWO_WORD_TRACE") != "1")
+                return;
+            try { Console.WriteLine("WORD " + msg); }
+            catch { }
         }
 
         /// <summary>
@@ -166,6 +182,21 @@ namespace ExcelMerger
         /// а не кегль, — чтобы прокладки ужимались демпфером страниц (<see cref="FitSpacingToPages"/>)
         /// наравне с интервалами абзацев. Формат следующего абзаца очищается от наследства.
         /// </summary>
+        /// <summary>
+        /// Курсор за таблицу. sel.Start = Range.End часто остаётся В последней ячейке:
+        /// TypeParagraph тогда плодит абзац внутри таблицы, и следующий TypeText
+        /// висит минутами до смерти Word (RPC 0x800706BA на письмах с шапкой-колонками).
+        /// </summary>
+        private static void LeaveTable(dynamic sel, dynamic wtable)
+        {
+            try
+            {
+                wtable.Select();
+                sel.Collapse(WdCollapseEnd);
+            }
+            catch { }
+        }
+
         private static void InsertSpacer(dynamic sel, double gapPt)
         {
             try
@@ -506,6 +537,7 @@ namespace ExcelMerger
         /// </summary>
         private static void WriteParagraphInto(dynamic sel, dynamic doc, OcrParagraph paragraph, double firstLineIndent, bool inCell, int skipChars, double textLeftPt, double textRightPt, double spaceBeforePt = 0, bool anchor = true)
         {
+            TraceWord("into align=" + paragraph.Alignment + " runs=" + paragraph.Runs.Count);
             // Выравнивание из источника; центрированное — без красной строки.
             int align; double indent;
             switch (paragraph.Alignment)
@@ -568,7 +600,9 @@ namespace ExcelMerger
                 // уже другое, и формат следующего рана не должен зависеть от того, следует ли
                 // старый объект Font за курсором.
                 dynamic font = sel.Font;
-                font.Name = FontResolver.Resolve(run.FontName, text);
+                string face = FontResolver.Resolve(run.FontName, text);
+                TraceWord("run len=" + text.Length + " face=" + face + " srcFont=" + (run.FontName ?? ""));
+                font.Name = face;
                 font.Size = FontResolver.ClampSizePt(run.FontSizePt);
                 font.Bold = run.Bold ? 1 : 0;
                 font.Italic = run.Italic ? 1 : 0;
@@ -634,10 +668,7 @@ namespace ExcelMerger
 
                 MergeSpans(wtable, table, rows, cols);
 
-                // Курсор — за таблицу, отделить абзацем (иначе следующая таблица сольётся с этой).
-                sel.Start = wtable.Range.End;
-                sel.Collapse(WdCollapseEnd);
-                sel.TypeParagraph();
+                LeaveTable(sel, wtable);
             }
             catch
             {
@@ -890,70 +921,25 @@ namespace ExcelMerger
                 }
             }
             if (pendingSpace > 0)
-                InsertSpacer(sel, pendingSpace); // полоса — таблица, SpaceBefore ей не задать
-
-            double[] widths = BandColumnWidths(band, textLeftPt, textRightPt);
-            dynamic wtable = null;
-            try
-            {
-                wtable = doc.Tables.Add(sel.Range, 1, n);
-                wtable.AllowAutoFit = false;
-                wtable.Borders.Enable = 0; // полоса без видимых границ
-                for (int c = 0; c < n; c++)
+                InsertSpacer(sel, pendingSpace);
+            // 1×N таблица шапки: после ячеек любой выход курсора (TypeParagraph /
+            // Information / InsertParagraphAfter / Select) на живом Word вешает или
+            // убивает процесс (Fail Fast → RPC 0x800706BA). Колонки пишем подряд.
+            foreach (List<PageBlocks.Block> col in band.Columns)
+                foreach (PageBlocks.Block b in col)
                 {
-                    try { wtable.Columns[c + 1].Width = ColWidth(widths[c]); }
+                    try
+                    {
+                        if (b.Paragraph != null)
+                        {
+                            WriteParagraphInto(sel, doc, b.Paragraph, 0, false, 0, textLeftPt, textRightPt);
+                            sel.TypeParagraph();
+                        }
+                        else if (b.Image != null)
+                            InsertImage(sel, b.Image, pageWidthPt, tempDir, ref index);
+                    }
                     catch { }
                 }
-                for (int c = 0; c < n; c++)
-                {
-                    dynamic cellRange = wtable.Cell(1, c + 1).Range;
-                    cellRange.Collapse(WdCollapseStart);
-                    cellRange.Select();
-                    dynamic cellSel = word.Selection;
-                    List<PageBlocks.Block> col = band.Columns[c];
-                    // Колонка, начинающаяся НИЖЕ верха текстов полосы (Ф.И.О. напротив последней
-                    // строки многострочной подписи), опускается интервалом перед первым блоком —
-                    // ячейки выравниваются по верху, и без этого она всплывала на первую строку.
-                    double colTop = double.MinValue;
-                    foreach (PageBlocks.Block b in col)
-                        if (b.Top > colTop) colTop = b.Top;
-                    // Порог и кап — те же, что у межблочных зазоров (типичный зазор здесь ноль).
-                    double topInset = PageBlocks.ExtraGapPt(textTop - colTop, 0);
-                    for (int i = 0; i < col.Count; i++)
-                    {
-                        if (i > 0)
-                            cellSel.TypeParagraph(); // каждый блок колонки — своим абзацем
-                        PageBlocks.Block b = col[i];
-                        // Пустой промежуток исходника внутри колонки (пометка ниже верхнего блока)
-                        // возвращаем интервалом перед блоком — той же формулой, что и в потоке.
-                        double extra = i == 0 ? topInset
-                            : PageBlocks.ExtraGapPt(Math.Min(col[i - 1].Bottom, col[i - 1].Top) - b.Top, typicalGapPt);
-                        if (b.Paragraph != null)
-                            WriteParagraphInto(cellSel, doc, b.Paragraph, 0, true, 0, 0, 0, extra); // центрируется в ячейке
-                        else if (b.Image != null)
-                            InsertImageCore(cellSel, b.Image, tempDir, ref index, true, 0, 0, extra); // логотип по центру ячейки
-                    }
-                }
-                sel.Start = wtable.Range.End;
-                sel.Collapse(WdCollapseEnd);
-                sel.TypeParagraph(); // отделить полосу от следующего блока
-            }
-            catch
-            {
-                // Таблицу построить не удалось — недостроенную убираем (иначе плоский вывод
-                // задвоил бы уже записанные ячейки) и выводим колонки просто по очереди.
-                try { if (wtable != null) wtable.Delete(); } catch { }
-                foreach (List<PageBlocks.Block> col in band.Columns)
-                    foreach (PageBlocks.Block b in col)
-                    {
-                        try
-                        {
-                            if (b.Paragraph != null) { WriteParagraphInto(sel, doc, b.Paragraph, 0, false, 0, textLeftPt, textRightPt); sel.TypeParagraph(); }
-                            else if (b.Image != null) InsertImage(sel, b.Image, pageWidthPt, tempDir, ref index);
-                        }
-                        catch { }
-                    }
-            }
         }
 
         /// <summary>
