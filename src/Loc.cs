@@ -719,6 +719,9 @@ namespace ExcelMerger
             A("err.word.fileBusy", "«{0}» недоступен для записи — возможно, открыт в Word или другой программе.",
                 "“{0}” is not writable — it may be open in Word or another program.");
             A("err.word.saveFailed", "Не удалось сохранить «{0}»: {1}", "Could not save “{0}”: {1}");
+            A("err.word.serverGone",
+                "Word закрылся во время записи. Документ не сохранён — закройте окна Word с вопросами и повторите.",
+                "Word closed while writing. The document was not saved — close any Word prompts and try again.");
             A("word.label.docx", "Файл Word", "Word file");
             A("word.label.note", "Записка Word", "Word note");
             // cli.* — консольный режим

@@ -60,6 +60,7 @@ MAJOR.MINOR.PATCH ([SemVer](https://semver.org/)); one hotfix, 1.18.3.1, used a 
 
 ### Fixed
 - **Undo of a page rotation drops the old-angle thumbnail** (GR-15). A Ghostscript page raster larger than the pt-based reservation grows the memory lease or is dropped (GR-17). Indexed bitmaps no longer walk GetPixel (GR-16). Touch-pan on the page grid loads thumbs after LVN_ENDSCROLL (GR-19).
+- **If Word dies while writing a .docx, the app reports that Word closed instead of “RPC server unavailable”.** Fail Fast inside Word leaves RPC 0x800706BA; that is mapped to a clear message, not a raw COM HRESULT.
 - **A PDF larger than half the process memory budget no longer evicts every open document only to fail anyway.** The renderer refuses that file first (GR-6).
 - **Header Back/Home sizes are logical, then scaled once.** Measuring caption width with an already-scaled font and then auto-scaling the control made the chips 105 px at 125 % instead of ~90.
 - **Split’s minimum height is 660, same as the default window.** At 150 % the old 600 px minimum let “More operations” cover the compression picker.

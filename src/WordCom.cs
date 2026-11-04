@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace ExcelMerger
 {
@@ -67,9 +68,16 @@ namespace ExcelMerger
                 }
                 catch (Exception ex)
                 {
+                    COMException com = ex as COMException;
+                    if (com != null && MergeService.IsServerGone(com.ErrorCode))
+                        throw new MergeException(Loc.T("err.word.serverGone"));
                     throw new MergeException(string.Format(Loc.T("err.word.saveFailed"), Path.GetFileName(path), DiskSpace.Describe(ex, path)));
                 }
                 watchdog.End(); // запись вернулась без ошибки — файл записан, успех не перечёркиваем
+            }
+            catch (COMException ex) when (MergeService.IsServerGone(ex.ErrorCode))
+            {
+                throw new MergeException(Loc.T("err.word.serverGone"));
             }
             catch (Exception) when (watchdog != null && watchdog.Stop != WatchdogStop.None)
             {
