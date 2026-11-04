@@ -234,6 +234,8 @@ pill whose window region matches the stroke, so a rectangular Clear cannot leave
 corners on the gradient), one vertical alignment via `HeaderBand.AlignToText`, and a drawn
 chevron for Back instead of a triangle in the translation. `Primary` is the file action
 (bottom strip, or the compare row above the files) — never a child of `HeaderBand`.
+Move-earlier/later and Excel up/down use the same drawn `ButtonChevron` (not characters in `Loc`);
+Merge groups the side column into file / pages / print.
 
 `PushControl` is the base of every owner-drawn control that acts as a button (`ChoiceCard`,
 `RecentCard`, the hub's glyph buttons). It holds the one keyboard rule: Enter and Space press

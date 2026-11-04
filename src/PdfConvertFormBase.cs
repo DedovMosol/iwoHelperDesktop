@@ -103,9 +103,9 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnOpen, _spec.Text("tip.open"));
             Controls.Add(_btnOpen);
 
-            _btnUp = AddPanelButton(Loc.T("common.earlier"), Loc.T("common.tip.earlier"));
+            _btnUp = AddPanelButton(Loc.T("common.earlier"), Loc.T("common.tip.earlier"), ButtonChevron.Left);
             _btnUp.Click += delegate { MoveSelected(false); };
-            _btnDown = AddPanelButton(Loc.T("common.later"), Loc.T("common.tip.later"));
+            _btnDown = AddPanelButton(Loc.T("common.later"), Loc.T("common.tip.later"), ButtonChevron.Right);
             _btnDown.Click += delegate { MoveSelected(true); };
             _btnRemove = AddPanelButton(Loc.T("common.remove"), Loc.T("common.tip.remove"));
             _btnPrint = AddPanelButton(Loc.T("common.btn.print"), Loc.T("common.tip.print"));
@@ -166,10 +166,10 @@ namespace ExcelMerger
 
             int px = right - d(PanelWidth) + d(10), pw = d(PanelWidth) - d(10);
             SetBoundsIfChanged(_btnOpen, px, top, pw, d(32));
-            SetBoundsIfChanged(_btnUp, px, top + d(44), pw, d(30));
-            SetBoundsIfChanged(_btnDown, px, top + d(80), pw, d(30));
-            SetBoundsIfChanged(_btnRemove, px, top + d(124), pw, d(30));
-            SetBoundsIfChanged(_btnPrint, px, top + d(160), pw, d(30));
+            SetBoundsIfChanged(_btnUp, px, top + d(48), pw, d(32));
+            SetBoundsIfChanged(_btnDown, px, top + d(88), pw, d(32));
+            SetBoundsIfChanged(_btnRemove, px, top + d(128), pw, d(32));
+            SetBoundsIfChanged(_btnPrint, px, top + d(176), pw, d(32));
         }
 
         /// <summary>
@@ -359,10 +359,11 @@ namespace ExcelMerger
         }
 
         /// <summary>Кнопка правой колонки: место ей найдёт <see cref="LayoutBody"/>.</summary>
-        private Button AddPanelButton(string text, string tip)
+        private Button AddPanelButton(string text, string tip, ButtonChevron chevron = ButtonChevron.None)
         {
             var b = new RoundedButton(false);
             b.Text = text;
+            b.Chevron = chevron;
             _tips.SetToolTip(b, tip);
             Controls.Add(b);
             return b;

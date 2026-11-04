@@ -87,7 +87,7 @@ namespace ExcelMerger
             if (header == null || click == null)
                 return null;
             var b = new RoundedButton(ButtonLook.OnHeader);
-            b.ChevronLeft = kind == HeaderNavKind.Back;
+            b.Chevron = kind == HeaderNavKind.Back ? ButtonChevron.Left : ButtonChevron.None;
             b.Text = Loc.T(kind == HeaderNavKind.Back ? "hub.back" : "common.home");
             b.AccessibleName = b.Text;
             int width = kind == HeaderNavKind.Back ? 104 : 160;

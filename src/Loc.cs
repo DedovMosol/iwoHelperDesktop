@@ -193,11 +193,11 @@ namespace ExcelMerger
             A("common.err.browser", "Не удалось открыть браузер", "Could not open the browser");
             A("common.err.browserBody", "Откройте страницу вручную:\n{0}", "Open the page manually:\n{0}");
             // Общие для PDF-инструментов: перестановка/удаление страниц, диалоги выбора файлов
-            // Подпись — по оси сетки (она горизонтальная, стрелки стоят на самих кнопках, и
-            // клавиши те же Alt+←/→), а подсказка — по порядку страниц: на переносе строки
-            // «левее» перестаёт быть правдой, а «на одну позицию раньше» верно всегда.
-            A("common.earlier", "◀ Влево", "◀ Move left");
-            A("common.later", "Вправо ▶", "Move right ▶");
+            // Подпись — по оси сетки (горизонтальная, клавиши Alt+←/→). Шевроны рисует кнопка,
+            // не строка перевода. Подсказка — по порядку страниц: на переносе ряда «левее»
+            // перестаёт быть правдой, «на одну позицию раньше» верно всегда.
+            A("common.earlier", "Влево", "Move left");
+            A("common.later", "Вправо", "Move right");
             A("common.remove", "Удалить", "Remove");
             A("common.tip.earlier", "Переместить страницу на одну позицию раньше (Alt+←)",
                 "Move the page one position earlier (Alt+←)");
@@ -1337,9 +1337,9 @@ namespace ExcelMerger
                 "Build the digest from the files in the chosen folder (Enter)");
             A("excel.btn.cancel", "Отменить", "Cancel");
             A("excel.tip.cancel", "Остановить после текущего файла (Esc)", "Stop after the current file (Esc)");
-            A("excel.btn.up", "▲ Выше", "▲ Up");
+            A("excel.btn.up", "Выше", "Up");
             A("excel.tip.up", "Переместить выбранный файл выше (Alt+↑)", "Move the selected file up (Alt+↑)");
-            A("excel.btn.down", "▼ Ниже", "▼ Down");
+            A("excel.btn.down", "Ниже", "Down");
             A("excel.tip.down", "Переместить выбранный файл ниже (Alt+↓)", "Move the selected file down (Alt+↓)");
             A("excel.btn.sortName", "По имени", "By name");
             A("excel.tip.sortName", "Вернуть естественный порядок по имени файла", "Restore natural order by file name");

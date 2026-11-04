@@ -1448,8 +1448,8 @@ namespace ExcelMerger.Tests
                 AssertTrue(back != null && home != null, "кнопки созданы");
                 AssertTrue(back.Look == ButtonLook.OnHeader, "назад — вид шапки, не Secondary");
                 AssertTrue(home.Look == ButtonLook.OnHeader, "главная — тот же вид");
-                AssertTrue(back.ChevronLeft, "шеврон слева у назад");
-                AssertTrue(!home.ChevronLeft, "у главной шеврона нет");
+                AssertTrue(back.Chevron == ButtonChevron.Left, "шеврон слева у назад");
+                AssertTrue(home.Chevron == ButtonChevron.None, "у главной шеврона нет");
                 AssertEq(Loc.T("hub.back"), back.Text, "подпись назад из Loc");
                 AssertEq(Loc.T("common.home"), home.Text, "подпись главной из Loc");
                 AssertTrue(back.Left < home.Left, "назад слева, главная справа");
@@ -1458,6 +1458,13 @@ namespace ExcelMerger.Tests
                 RoundedButton.ChevronPoints(4, 30, 1f, out a, out b, out c);
                 AssertTrue(b.X < a.X && b.X < c.X, "остриё шеврона слева");
                 AssertTrue(a.Y < b.Y && c.Y > b.Y, "крылья шеврона сверху и снизу");
+                RoundedButton.ChevronPoints(ButtonChevron.Right, 4, 104, 30, 1f, out a, out b, out c);
+                AssertTrue(b.X > a.X && b.X > c.X, "остриё вправо");
+                AssertTrue(Loc.T("common.earlier").IndexOf('◀') < 0
+                    && Loc.T("common.later").IndexOf('▶') < 0
+                    && Loc.T("excel.btn.up").IndexOf('▲') < 0
+                    && Loc.T("excel.btn.down").IndexOf('▼') < 0,
+                    "шеврон не в строке перевода");
             }
         }
 

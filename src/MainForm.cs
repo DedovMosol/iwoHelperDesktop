@@ -296,10 +296,10 @@ namespace ExcelMerger
 
             // Кнопки управления списком (правая колонка на уровне списка)
             int fcol = right - 140;
-            _btnUp = AddListButton(Loc.T("excel.btn.up"), fcol, 528);
+            _btnUp = AddListButton(Loc.T("excel.btn.up"), fcol, 528, ButtonChevron.Up);
             _btnUp.Click += delegate { MoveSelectedFile(false); };
             _tips.SetToolTip(_btnUp, Loc.T("excel.tip.up"));
-            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 562);
+            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 562, ButtonChevron.Down);
             _btnDown.Click += delegate { MoveSelectedFile(true); };
             _tips.SetToolTip(_btnDown, Loc.T("excel.tip.down"));
             _btnSortName = AddListButton(Loc.T("excel.btn.sortName"), fcol, 604);
@@ -454,10 +454,11 @@ namespace ExcelMerger
                 _list.Columns[i].Width = (int)(width * ColumnWeights[i]);
         }
 
-        private Button AddListButton(string text, int x, int y)
+        private Button AddListButton(string text, int x, int y, ButtonChevron chevron = ButtonChevron.None)
         {
             var b = new RoundedButton(false);
             b.Text = text;
+            b.Chevron = chevron;
             b.SetBounds(x, y, 130, 30);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             Controls.Add(b);

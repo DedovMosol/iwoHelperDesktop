@@ -21,6 +21,16 @@ namespace ExcelMerger
         OnHeader
     }
 
+    /// <summary>Шеврон на кнопке. Рисуем сами — не символом в переводе.</summary>
+    internal enum ButtonChevron
+    {
+        None,
+        Left,
+        Right,
+        Up,
+        Down
+    }
+
     /// <summary>
     /// Кнопка со скруглёнными углами и состояниями normal / hover / pressed / disabled /
     /// focused. Рисуется вручную, поэтому выглядит одинаково на всех версиях Windows и не
@@ -43,8 +53,7 @@ namespace ExcelMerger
         private const float MinRadius = 5f, MaxRadius = 10f;
 
         private readonly ButtonLook _look;
-        /// <summary>Шеврон слева (шапка «Назад»). Рисуем сами, не символом в переводе.</summary>
-        internal bool ChevronLeft { get; set; }
+        internal ButtonChevron Chevron { get; set; }
         internal ButtonLook Look { get { return _look; } }
         private bool _selected;
         private bool _hover;
@@ -218,32 +227,60 @@ namespace ExcelMerger
             }
 
             int pad = TextPadFor(Width, s);
-            int chevron = ChevronLeft ? (int)Math.Round(12f * s) : 0;
-            var textArea = new Rectangle(pad + chevron, 0, Math.Max(1, Width - 2 * pad - chevron), Height);
-            if (ChevronLeft)
-                DrawChevronLeft(g, pad, Height, s, text);
+            int glyph = Chevron == ButtonChevron.None ? 0 : (int)Math.Round(12f * s);
+            int insetL = Chevron == ButtonChevron.Right ? 0 : glyph;
+            int insetR = Chevron == ButtonChevron.Right ? glyph : 0;
+            var textArea = new Rectangle(pad + insetL, 0, Math.Max(1, Width - 2 * pad - insetL - insetR), Height);
+            if (Chevron != ButtonChevron.None)
+                DrawChevron(g, pad, s, text);
             TextRenderer.DrawText(g, Text, Font, textArea, text,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
         }
 
-        /// <summary>Шеврон «назад»: две линии, без юникода в строке. Чистая геометрия — под тест.</summary>
+        /// <summary>Шеврон влево. Чистая геометрия — под тест.</summary>
         internal static void ChevronPoints(int left, int height, float scale, out Point a, out Point b, out Point c)
         {
-            int x = left + (int)Math.Round(3f * scale);
-            int mid = height / 2;
-            int arm = Math.Max(3, (int)Math.Round(5f * scale));
-            a = new Point(x + arm, mid - arm);
-            b = new Point(x, mid);
-            c = new Point(x + arm, mid + arm);
+            ChevronPoints(ButtonChevron.Left, left, 0, height, scale, out a, out b, out c);
         }
 
-        private void DrawChevronLeft(Graphics g, int left, int height, float scale, Color color)
+        internal static void ChevronPoints(ButtonChevron dir, int pad, int width, int height, float scale,
+            out Point a, out Point b, out Point c)
+        {
+            int arm = Math.Max(3, (int)Math.Round(5f * scale));
+            int o = pad + (int)Math.Round(3f * scale);
+            int midY = height / 2, midX = width / 2;
+            switch (dir)
+            {
+                case ButtonChevron.Right:
+                    a = new Point(width - o - arm, midY - arm);
+                    b = new Point(width - o, midY);
+                    c = new Point(width - o - arm, midY + arm);
+                    return;
+                case ButtonChevron.Up:
+                    a = new Point(o, midY + arm);
+                    b = new Point(o + arm, midY);
+                    c = new Point(o + 2 * arm, midY + arm);
+                    return;
+                case ButtonChevron.Down:
+                    a = new Point(o, midY - arm);
+                    b = new Point(o + arm, midY);
+                    c = new Point(o + 2 * arm, midY - arm);
+                    return;
+                default:
+                    a = new Point(o + arm, midY - arm);
+                    b = new Point(o, midY);
+                    c = new Point(o + arm, midY + arm);
+                    return;
+            }
+        }
+
+        private void DrawChevron(Graphics g, int pad, float scale, Color color)
         {
             if (_chevronPts == null)
                 _chevronPts = new Point[3];
             Point a, b, c;
-            ChevronPoints(left, height, scale, out a, out b, out c);
+            ChevronPoints(Chevron, pad, Width, Height, scale, out a, out b, out c);
             _chevronPts[0] = a;
             _chevronPts[1] = b;
             _chevronPts[2] = c;
