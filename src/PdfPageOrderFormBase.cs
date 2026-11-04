@@ -504,10 +504,7 @@ namespace ExcelMerger
             _order.Checkpoint();
             int moved = _order.MoveRange(indices, insertAt);
             RefreshGrid();
-            if (n == 1)
-                _grid.SelectIndex(moved);
-            else
-                _grid.SelectRange(moved, n);
+            _grid.SelectRange(moved, n);
         }
 
         /// <summary>Удалить выбранные страницы (кнопка, Delete).</summary>

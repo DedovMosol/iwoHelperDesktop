@@ -224,6 +224,24 @@ namespace ExcelMerger.Tests
                 AssertTrue(grid.ListControl.ShowItemToolTips, "ShowItemToolTips включён — иначе ToolTipText мёртв");
         }
 
+        [Test("Аудит SH-20: журнал --selftest в %TEMP%")]
+        private static void AuditSelfTestLogLivesInTemp()
+        {
+            string path = Program.SelfTestLogPath();
+            string temp = Path.GetFullPath(Path.GetTempPath());
+            AssertTrue(Path.GetFullPath(path).StartsWith(temp, StringComparison.OrdinalIgnoreCase),
+                "selftest.log не в каталоге запуска: " + path);
+            AssertEq("iwo_selftest.log", Path.GetFileName(path), "узнаваемое имя");
+        }
+
+        [Test("Аудит XL-10: AskToUpdateLinks не выключается в False")]
+        private static void AuditExcelDoesNotSetAskToUpdateLinksFalse()
+        {
+            string src = File.ReadAllText(Path.Combine(RepoRoot(), "src", "MergeService.cs"));
+            AssertTrue(src.IndexOf("AskToUpdateLinks = false", StringComparison.Ordinal) < 0,
+                "False в Excel значит «обновлять без вопроса»");
+        }
+
         // ---------- 9. StartupSweep: изоляция сбоев по журналам ----------
 
         /// <summary>

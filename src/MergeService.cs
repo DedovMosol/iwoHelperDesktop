@@ -422,7 +422,7 @@ namespace ExcelMerger
             dynamic target = null;
             OwnedOfficeProcess excelProcess = null; // страховка от осиротевшего EXCEL.EXE (см. finally)
             ComWatchdog watchdog = null;            // сторож зависшего вызова этого экземпляра
-            bool askToUpdateLinks = true; // настройка экземпляра до свода — вернуть, если он достанется человеку
+            bool askToUpdateLinks = true; // вернуть человеку, если экземпляр не гасим
             ComMessageFilter.Register(); // авто-повтор вызовов, отклонённых занятым Excel
             try
             {
@@ -436,8 +436,9 @@ namespace ExcelMerger
                 excel.EnableEvents = false;
                 try
                 {
+                    // False = обновлять связи без вопроса, не «не обновлять». Не трогаем:
+                    // источники открываются с UpdateLinks:0.
                     askToUpdateLinks = (bool)excel.AskToUpdateLinks;
-                    excel.AskToUpdateLinks = false;
                 }
                 catch { }
                 try { excel.AutomationSecurity = 3; } catch { } // msoAutomationSecurityForceDisable: макросы источников не выполняются

@@ -134,6 +134,12 @@ namespace ExcelMerger
         [DllImport("kernel32.dll")]
         private static extern bool AttachConsole(int processId);
 
+        /// <summary>Журнал сбоя --selftest: %TEMP%, не каталог запуска.</summary>
+        internal static string SelfTestLogPath()
+        {
+            return Path.Combine(Path.GetTempPath(), "iwo_selftest.log");
+        }
+
         /// <summary>
         /// Смоук-тест GUI без показа окна: конструктор формы и создание хэндла.
         /// 0 = OK, 3 = окно не создалось, 4 = в exe нет руководства пользователя,
@@ -245,7 +251,7 @@ namespace ExcelMerger
             }
             catch (Exception ex)
             {
-                try { File.WriteAllText("selftest.log", ex.ToString()); } catch { }
+                try { File.WriteAllText(SelfTestLogPath(), ex.ToString()); } catch { }
                 return 3;
             }
         }
@@ -447,7 +453,12 @@ namespace ExcelMerger
             });
             worker.IsBackground = false; // дать потоку завершиться штатно
             worker.Start();
-            worker.Join(); // синхронизация: rendered/overwritable/failure читаем после завершения потока
+            // Без срока Join держит процесс, если WinRT завис. 60 с — как у --gscheck.
+            if (!worker.Join(60000))
+            {
+                failure = "timeout";
+                rendered = false;
+            }
             int code = !rendered ? 2 : (overwritable ? 0 : 1);
             WriteConsole(
                 code == 0 ? "THUMBCHECK OK (rendered=True, overwritable=True)" :
