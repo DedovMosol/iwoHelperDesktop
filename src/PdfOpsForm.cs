@@ -28,9 +28,9 @@ namespace ExcelMerger
 
         // Ритм правой панели. Он плотнее, чем у соседних инструментов, потому что элементов
         // десять: иначе последняя кнопка не помещается над нижним строем на минимальном размере.
-        private const int BtnH = 28;      // высота кнопки действия
-        private const int BtnGap = 5;     // между кнопками одной группы
-        private const int GroupGap = 12;  // между группами
+        private const int BtnH = 28;      // плотнее Merge (32): иначе панель не встаёт над нижним строем
+        private const int BtnGap = 8;     // внутри группы — как Merge
+        private const int GroupGap = 16;  // между группами — как Merge
         private const int HeaderH = 16;   // заголовок группы
         private const int HeaderGap = 2;  // от заголовка до первой кнопки группы
 

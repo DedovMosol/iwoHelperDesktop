@@ -193,7 +193,7 @@ namespace ExcelMerger
                 _inputDebounce.Stop();
                 _inputDebounce.Start();
             };
-            _btnBrowseInput = AddButton(Loc.T("common.browse"), false, right - 100, 106, 100, 29);
+            _btnBrowseInput = AddButton(Loc.T("common.browse"), false, right - 100, 105, 100, 32);
             _btnBrowseInput.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseInput.Click += OnBrowseInput;
             // Сюда попадает и текст исключения чтения папки — растягиваем с многоточием.
@@ -214,7 +214,7 @@ namespace ExcelMerger
 
             Ui.Label(this, Loc.T("excel.lbl.folder"), 20, 230, Font, Theme.TextPrimary);
             _txtOutDir = AddTextBox(75, 227, right - 75 - 110);
-            _btnBrowseOut = AddButton(Loc.T("common.browse"), false, right - 100, 226, 100, 29);
+            _btnBrowseOut = AddButton(Loc.T("common.browse"), false, right - 100, 225, 100, 32);
             _btnBrowseOut.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseOut.Click += OnBrowseOutput;
 
