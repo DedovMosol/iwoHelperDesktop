@@ -63,42 +63,98 @@ public static class Shot {
 
 # ---------- sample documents ----------
 
+function Write-Col($g, $font, $text, [double]$x, [double]$y, [double]$w, [double]$maxY) {
+    $brush = [PdfSharp.Drawing.XBrushes]::Black
+    $words = $text.Split(' ')
+    $line = ''
+    foreach ($word in $words) {
+        $try = $(if ($line.Length -gt 0) { $line + ' ' + $word } else { $word })
+        $sz = $g.MeasureString($try, $font)
+        if ($sz.Width -gt $w -and $line.Length -gt 0) {
+            if ($y -gt $maxY) { return $y }
+            $g.DrawString($line, $font, $brush, (New-Object PdfSharp.Drawing.XPoint($x, $y)))
+            $y += 12.5
+            $line = $word
+        } else { $line = $try }
+    }
+    if ($line.Length -gt 0 -and $y -le $maxY) {
+        $g.DrawString($line, $font, $brush, (New-Object PdfSharp.Drawing.XPoint($x, $y)))
+        $y += 12.5
+    }
+    return $y
+}
+
 function New-Report([string]$path, [int]$pages, [string]$title, [bool]$revised = $false) {
     $doc = New-Object PdfSharp.Pdf.PdfDocument
-    $head = New-Object PdfSharp.Drawing.XFont('Times New Roman', 16.0, [PdfSharp.Drawing.XFontStyle]::Bold)
-    $body = New-Object PdfSharp.Drawing.XFont('Times New Roman', 10.0)
-    $lines = @(
-        'The quarter closed ahead of the plan in three of the five regions, and the two that',
-        'lagged did so for the same reason: a supplier change that moved deliveries into the',
-        'following month. Revenue is therefore reported both ways below - as booked and as',
-        'delivered - so that the gap is visible rather than argued about.',
-        '',
-        'Costs were flat against the previous quarter. The one line that grew, logistics, grew',
-        'by less than the volume it carried, which is the result the new routing was meant to',
-        'produce. Head count is unchanged.',
-        '',
-        'The risk register lost two entries and gained one. The entry gained concerns the',
-        'single-supplier dependency described above and is tracked weekly until a second',
-        'source is qualified.'
-    )
+    $mast = New-Object PdfSharp.Drawing.XFont('Times New Roman', 18.0, [PdfSharp.Drawing.XFontStyle]::Bold)
+    $sub = New-Object PdfSharp.Drawing.XFont('Times New Roman', 9.0, [PdfSharp.Drawing.XFontStyle]::Italic)
+    $body = New-Object PdfSharp.Drawing.XFont('Times New Roman', 8.5)
+    $small = New-Object PdfSharp.Drawing.XFont('Times New Roman', 8.0)
+    $bold = New-Object PdfSharp.Drawing.XFont('Times New Roman', 8.5, [PdfSharp.Drawing.XFontStyle]::Bold)
+    $colA = 'The quarter closed ahead of the plan in three of five regions. The two that lagged did so for one reason: a supplier change that moved deliveries into the next month. Revenue is therefore shown both as booked and as delivered, so the gap is visible rather than argued about. Costs were flat. Logistics grew by less than the volume it carried.'
+    $colB = 'Head count is unchanged. The routing change that was meant to cut empty miles is now the default for the north and west depots. Two risk-register entries were closed; one was added for the remaining single-supplier dependency and is reviewed weekly until a second source is qualified. Internal audit sampled forty invoices and found no exception that changed the total.'
+    $colC = 'What follows on this page is the layout the converter must keep: three newspaper columns, a nested numbered list, and a ruled table. A short last line of a paragraph is not a new story. A wrap inside a column is not a signature line. The right-hand list continues on the next page when the paper is A5, so nesting must survive the page break.'
     if ($revised) {
-        $lines[0] = 'The quarter closed ahead of the plan in four of the five regions, and the revised forecast is shown below.'
+        $colA = 'The quarter closed ahead of the plan in four of five regions. The revised forecast is the one in the table. Deliveries that slipped last month have been caught up, and booked revenue now matches delivered revenue in every region except East.'
     }
+    $items = @(
+        '1. Close the East gap in booked versus delivered revenue.',
+        '1.1 Confirm the second supplier before the next board.',
+        'a) Keep the weekly risk review until then.',
+        '2. Keep logistics cost below the volume it carries.',
+        '2.1 Do not reopen the two closed register entries.'
+    )
+    $rows = @(
+        @('Region', 'Booked', 'Delivered'),
+        @('North', '12.4', '12.1'),
+        @('West', '9.8', '9.8'),
+        @('East', $(if ($revised) { '8.9' } else { '7.1' }), '8.6'),
+        @('South', '6.2', '6.0')
+    )
     for ($p = 1; $p -le $pages; $p++) {
         $page = $doc.AddPage()
         $g = [PdfSharp.Drawing.XGraphics]::FromPdfPage($page)
-        $g.DrawString(("{0} - section {1}" -f $title, $p), $head, [PdfSharp.Drawing.XBrushes]::Black,
-            (New-Object PdfSharp.Drawing.XPoint(60.0, 80.0)))
-        $y = 120.0
-        for ($k = 0; $k -lt 4; $k++) {
-            foreach ($line in $lines) {
-                if ($line.Length -gt 0) {
-                    $g.DrawString($line, $body, [PdfSharp.Drawing.XBrushes]::Black,
-                        (New-Object PdfSharp.Drawing.XPoint(60.0, $y)))
-                }
-                $y += 14.0
+        $g.DrawString(("{0}  ·  p.{1}" -f $title, $p), $mast, [PdfSharp.Drawing.XBrushes]::Black,
+            (New-Object PdfSharp.Drawing.XPoint(48.0, 52.0)))
+        $g.DrawString('Operations bulletin  ·  three columns, nested list, ruled table', $sub,
+            [PdfSharp.Drawing.XBrushes]::DarkGray, (New-Object PdfSharp.Drawing.XPoint(48.0, 70.0)))
+        $g.DrawLine([PdfSharp.Drawing.XPens]::Black, 48.0, 78.0, $page.Width.Point - 48.0, 78.0)
+        $gap = 12.0
+        $left = 48.0
+        $usable = $page.Width.Point - 96.0
+        $cw = ($usable - 2.0 * $gap) / 3.0
+        $top = 92.0
+        $bot = $page.Height.Point - 200.0
+        [void](Write-Col $g $body $colA $left $top $cw $bot)
+        [void](Write-Col $g $body $colB ($left + $cw + $gap) $top $cw $bot)
+        [void](Write-Col $g $body $colC ($left + 2.0 * ($cw + $gap)) $top $cw $bot)
+        $ty = $bot + 16.0
+        $g.DrawString('Results by region', $bold, [PdfSharp.Drawing.XBrushes]::Black,
+            (New-Object PdfSharp.Drawing.XPoint($left, $ty)))
+        $ty += 14.0
+        $tw = 240.0
+        $th = 14.0
+        for ($r = 0; $r -lt $rows.Count; $r++) {
+            $rx = $left
+            for ($c = 0; $c -lt 3; $c++) {
+                $cell = New-Object PdfSharp.Drawing.XRect($rx, $ty, 80.0, $th)
+                $g.DrawRectangle([PdfSharp.Drawing.XPens]::Black, $cell)
+                $g.DrawString($rows[$r][$c], $(if ($r -eq 0) { $bold } else { $small }),
+                    [PdfSharp.Drawing.XBrushes]::Black,
+                    (New-Object PdfSharp.Drawing.XPoint(($rx + 4.0), ($ty + 10.0))))
+                $rx += 80.0
             }
-            $y += 8.0
+            $ty += $th
+        }
+        $ly = $bot + 16.0
+        $lx = $left + $tw + 28.0
+        $g.DrawString('Actions', $bold, [PdfSharp.Drawing.XBrushes]::Black,
+            (New-Object PdfSharp.Drawing.XPoint($lx, $ly)))
+        $ly += 14.0
+        foreach ($it in $items) {
+            $g.DrawString($it, $small, [PdfSharp.Drawing.XBrushes]::Black,
+                (New-Object PdfSharp.Drawing.XPoint($lx, $ly)))
+            $ly += 12.0
         }
         $g.Dispose()
     }
@@ -108,30 +164,54 @@ function New-Report([string]$path, [int]$pages, [string]$title, [bool]$revised =
 
 function New-Deck([string]$path, [string[]]$titles) {
     $doc = New-Object PdfSharp.Pdf.PdfDocument
-    $titleFont = New-Object PdfSharp.Drawing.XFont('Segoe UI', 28.0, [PdfSharp.Drawing.XFontStyle]::Bold)
-    $bodyFont = New-Object PdfSharp.Drawing.XFont('Segoe UI', 15.0)
+    $titleFont = New-Object PdfSharp.Drawing.XFont('Segoe UI', 22.0, [PdfSharp.Drawing.XFontStyle]::Bold)
+    $bodyFont = New-Object PdfSharp.Drawing.XFont('Segoe UI', 12.0)
+    $small = New-Object PdfSharp.Drawing.XFont('Segoe UI', 11.0)
+    $leftBits = @(
+        @('1. Keep text as text, not a snapshot', '1.1 Nested numbering stays a list', 'a) Markers survive a page break'),
+        @('North closed 4% above plan', 'West matched booked to delivered', 'East is the remaining gap'),
+        @('Week 1  qualify second supplier', 'Week 3  reroute East depot', 'Week 6  board review'),
+        @('Ops  14  logistics and audit', 'Finance  6  forecast owners', 'Risk  3  weekly watch'),
+        @('Do not reopen closed risks', 'Keep cost below carried volume', 'Publish the two-column pack'),
+        @('Columns, list and table on one slide', 'Background and bars stay pictures', 'No PowerPoint required to build')
+    )
+    $i = 0
     foreach ($t in $titles) {
         $page = $doc.AddPage()
         $page.Width = New-Object PdfSharp.Drawing.XUnit(720.0)
         $page.Height = New-Object PdfSharp.Drawing.XUnit(405.0)
         $g = [PdfSharp.Drawing.XGraphics]::FromPdfPage($page)
         $band = New-Object PdfSharp.Drawing.XSolidBrush ([PdfSharp.Drawing.XColor]::FromArgb(15, 108, 189))
-        $g.DrawRectangle($band, 0.0, 0.0, 720.0, 72.0)
-        $g.DrawString($t, $titleFont, [PdfSharp.Drawing.XBrushes]::White, (New-Object PdfSharp.Drawing.XPoint(48.0, 48.0)))
-        $y = 130.0
-        foreach ($line in @('Editable text, not a picture of text', 'Charts and background stay as they were',
-                            'Tables become slide tables', 'No PowerPoint required')) {
-            $g.DrawString(('- ' + $line), $bodyFont, [PdfSharp.Drawing.XBrushes]::Black,
-                (New-Object PdfSharp.Drawing.XPoint(60.0, $y)))
-            $y += 38.0
+        $g.DrawRectangle($band, 0.0, 0.0, 720.0, 56.0)
+        $g.DrawString($t, $titleFont, [PdfSharp.Drawing.XBrushes]::White, (New-Object PdfSharp.Drawing.XPoint(36.0, 38.0)))
+        $bits = $leftBits[$i % $leftBits.Count]
+        $y = 88.0
+        foreach ($line in $bits) {
+            $g.DrawString($line, $bodyFont, [PdfSharp.Drawing.XBrushes]::Black,
+                (New-Object PdfSharp.Drawing.XPoint(40.0, $y)))
+            $y += 28.0
+        }
+        $tx = 340.0
+        $ty = 88.0
+        $g.DrawString('Region', $small, [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint($tx, $ty)))
+        $g.DrawString('Booked', $small, [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint(($tx + 90), $ty)))
+        $g.DrawString('Done', $small, [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint(($tx + 170), $ty)))
+        $ty += 8.0
+        $g.DrawLine([PdfSharp.Drawing.XPens]::Black, $tx, $ty, ($tx + 240), $ty)
+        foreach ($pair in @(@('North','12.4','12.1'), @('West','9.8','9.8'), @('East','7.1','8.6'))) {
+            $ty += 22.0
+            $g.DrawString($pair[0], $small, [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint($tx, $ty)))
+            $g.DrawString($pair[1], $small, [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint(($tx + 90), $ty)))
+            $g.DrawString($pair[2], $small, [PdfSharp.Drawing.XBrushes]::Black, (New-Object PdfSharp.Drawing.XPoint(($tx + 170), $ty)))
         }
         $bar = New-Object PdfSharp.Drawing.XSolidBrush ([PdfSharp.Drawing.XColor]::FromArgb(16, 124, 65))
-        $h = 30.0
-        for ($i = 0; $i -lt 5; $i++) {
-            $g.DrawRectangle($bar, (450.0 + $i * 44), (350.0 - $h), 28.0, $h)
-            $h += 18.0
+        $h = 24.0
+        for ($k = 0; $k -lt 5; $k++) {
+            $g.DrawRectangle($bar, (500.0 + $k * 36), (360.0 - $h), 22.0, $h)
+            $h += 16.0
         }
         $g.Dispose()
+        $i++
     }
     $doc.Save($path)
     $doc.Dispose()
@@ -227,6 +307,12 @@ function Show-Loaded([string]$type, [string[]]$files, [int]$w, [int]$h, [int]$wa
     Show-Form $form $w $h
     $accept = $t.GetInterface('ExcelMerger.IFileAcceptor').GetMethod('AcceptFiles')
     [void]$accept.Invoke($form, @(, [string[]]$files))
+    if ($type -eq 'ExcelMerger.OcrForm' -or $type -eq 'ExcelMerger.PptxForm') {
+        Pump 800
+        $inst = [Reflection.BindingFlags]'NonPublic,Instance'
+        $grid = $t.GetField('_grid', $inst).GetValue($form)
+        $grid.SetTileWidth(200)
+    }
     if ($type -eq 'ExcelMerger.PdfReviewForm') {
         Pump 3000
         $inst = [Reflection.BindingFlags]'NonPublic,Instance'
