@@ -14201,9 +14201,7 @@ namespace ExcelMerger.Tests
                 {
                     CheckCyrillic(f.Text, "Form.Text", offenders, whitelist);
                     WalkControls(f, offenders, whitelist);
-                    if (f.MainMenuStrip != null)
-                        foreach (System.Windows.Forms.ToolStripItem it in f.MainMenuStrip.Items)
-                            WalkMenu(it, offenders, whitelist);
+                    WalkFormMenus(f, offenders, whitelist);
                     try { f.Dispose(); } catch { }
                 }
             });
@@ -21000,17 +20998,33 @@ namespace ExcelMerger.Tests
         }
 
 
+        private static void WalkFormMenus(System.Windows.Forms.Form form, List<string> offenders, HashSet<string> whitelist)
+        {
+            foreach (System.Windows.Forms.ContextMenuStrip menu in AppMenusOf(form))
+                foreach (System.Windows.Forms.ToolStripItem it in menu.Items)
+                    WalkMenu(it, offenders, whitelist);
+        }
+
+        private static System.Collections.Generic.IEnumerable<System.Windows.Forms.ContextMenuStrip> AppMenusOf(
+            System.Windows.Forms.Control root)
+        {
+            if (root.ContextMenuStrip != null)
+                yield return root.ContextMenuStrip;
+            foreach (System.Windows.Forms.Control child in root.Controls)
+                foreach (System.Windows.Forms.ContextMenuStrip m in AppMenusOf(child))
+                    yield return m;
+        }
+
         private static System.Windows.Forms.ToolStripMenuItem MenuItemWithText(
             System.Windows.Forms.Form form, string text)
         {
-            if (form.MainMenuStrip == null)
-                return null;
-            foreach (System.Windows.Forms.ToolStripItem root in form.MainMenuStrip.Items)
-            {
-                System.Windows.Forms.ToolStripMenuItem found = FindMenuItem(root, text);
-                if (found != null)
-                    return found;
-            }
+            foreach (System.Windows.Forms.ContextMenuStrip menu in AppMenusOf(form))
+                foreach (System.Windows.Forms.ToolStripItem root in menu.Items)
+                {
+                    System.Windows.Forms.ToolStripMenuItem found = FindMenuItem(root, text);
+                    if (found != null)
+                        return found;
+                }
             return null;
         }
 

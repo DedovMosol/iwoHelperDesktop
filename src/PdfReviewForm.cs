@@ -111,15 +111,14 @@ namespace ExcelMerger
 
         private void BuildReviewHeader()
         {
-            MenuStrip menu = HelpMenu.Create(this, ShowHelp);
-            MainMenuStrip = menu;
-            Controls.Add(menu);
+            ContextMenuStrip menu = HelpMenu.Create(this, ShowHelp);
             var header = new HeaderBand(Title, Loc.T("review.header.subtitle"),
                 Theme.ReviewBlue, Theme.ReviewBlueDark);
-            header.SetBounds(0, HelpMenu.Height, ClientSize.Width, 76);
+            header.SetBounds(0, 0, ClientSize.Width, 76);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(header);
             Ui.HomeOnHeader(header, _showHub, _tips, 22);
+            Ui.HeaderAppMenu(header, menu, _tips);
         }
 
         protected override string ToolTitle { get { return Title; } }

@@ -100,30 +100,25 @@ namespace ExcelMerger
 
         /// <summary>
         /// Меню «Справка», брендовая шапка и кнопка «Главная» (единые, DRY). Вызывать
-        /// после <see cref="InitShell"/>. Содержимое наследник кладёт ниже
-        /// HelpMenu.Height + высоты шапки (76).
+        /// после <see cref="InitShell"/>. Содержимое наследник кладёт ниже шапки (76).
         /// </summary>
         protected void BuildHeaderWithHome(string title, string subtitle, Color colorTop, Color colorBottom,
             Action showHelp, params ToolStripMenuItem[] extras)
         {
-            // Пункт «Горячие клавиши» — только у PDF-инструментов (у них сетка с клавишами).
             var shortcuts = new ToolStripMenuItem(Loc.T("menu.shortcuts"));
             shortcuts.Click += delegate { ShowShortcuts(); };
             var items = new List<ToolStripMenuItem>();
             items.Add(shortcuts);
             if (extras != null)
                 items.AddRange(extras);
-            MenuStrip menu = HelpMenu.Create(this, showHelp, items.ToArray());
-            MainMenuStrip = menu;
-            Controls.Add(menu);
+            ContextMenuStrip menu = HelpMenu.Create(this, showHelp, items.ToArray());
 
             var header = new HeaderBand(title, subtitle, colorTop, colorBottom);
-            header.SetBounds(0, HelpMenu.Height, ClientSize.Width, 76);
+            header.SetBounds(0, 0, ClientSize.Width, 76);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Controls.Add(header);
             Ui.HomeOnHeader(header, _showHub, _tips, 22);
-            // «Главная» уходит в конец обхода Tab не здесь, а в OnLoad: индекс, заданный
-            // при добавлении, поставил бы шапку, наоборот, первой (см. Ui.HeaderLastInTabOrder).
+            Ui.HeaderAppMenu(header, menu, _tips);
         }
 
         /// <summary>

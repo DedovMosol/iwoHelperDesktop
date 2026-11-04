@@ -12,7 +12,6 @@ namespace ExcelMerger
     public class MainForm : ScaledForm, IBusyAware, IUnsavedStateAware
     {
         private const string AppTitle = "iwo Helper Desktop";
-        private const int MenuHeight = HelpMenu.Height;
 
         private TextBox _txtInput;
         private Button _btnBrowseInput;
@@ -164,20 +163,20 @@ namespace ExcelMerger
             int right = ClientSize.Width - 20;
             var stretch = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
-            BuildMenu();
             var header = new HeaderBand(Loc.T("hub.excel.name"),
                 Loc.T("excel.header.subtitle"),
                 Theme.Accent, Theme.AccentPressed);
-            header.SetBounds(0, MenuHeight, ClientSize.Width, 82);
+            header.SetBounds(0, 0, ClientSize.Width, 82);
             header.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            // «Главная» уходит в конец обхода Tab не здесь, а в OnLoad: индекс, заданный
-            // при добавлении, поставил бы шапку, наоборот, первой (см. Ui.HeaderLastInTabOrder).
             Controls.Add(header);
             Ui.HomeOnHeader(header, _showHub, _tips, 24);
+            var reports = new ToolStripMenuItem(Loc.T("excel.menu.reports"));
+            reports.Click += delegate { OpenReportsFolder(); };
+            Ui.HeaderAppMenu(header, HelpMenu.Create(this, ShowHelp, reports), _tips);
 
             // Шаг 1: исходная папка
-            AddSectionLabel(Loc.T("excel.sec.inputFolder"), 115);
-            _txtInput = AddTextBox(20, 135, right - 20 - 110);
+            AddSectionLabel(Loc.T("excel.sec.inputFolder"), 87);
+            _txtInput = AddTextBox(20, 107, right - 20 - 110);
             // Дебаунс: набор пути вручную не сканирует папку на каждый символ.
             _inputDebounce = new System.Windows.Forms.Timer();
             _inputDebounce.Interval = 300;
@@ -194,51 +193,51 @@ namespace ExcelMerger
                 _inputDebounce.Stop();
                 _inputDebounce.Start();
             };
-            _btnBrowseInput = AddButton(Loc.T("common.browse"), false, right - 100, 134, 100, 29);
+            _btnBrowseInput = AddButton(Loc.T("common.browse"), false, right - 100, 106, 100, 29);
             _btnBrowseInput.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseInput.Click += OnBrowseInput;
             // Сюда попадает и текст исключения чтения папки — растягиваем с многоточием.
-            _lblFound = Ui.Ellipsize(Ui.Label(this, "", 20, 167, Font, Theme.TextMuted), right - 20, stretch);
+            _lblFound = Ui.Ellipsize(Ui.Label(this, "", 20, 139, Font, Theme.TextMuted), right - 20, stretch);
 
             // Шаг 2: итоговый файл
-            AddSectionLabel(Loc.T("excel.sec.output"), 199);
-            Ui.Label(this, Loc.T("excel.lbl.name"), 20, 222, Font, Theme.TextPrimary);
-            _txtName = AddTextBox(75, 219, 300);
+            AddSectionLabel(Loc.T("excel.sec.output"), 171);
+            Ui.Label(this, Loc.T("excel.lbl.name"), 20, 194, Font, Theme.TextPrimary);
+            _txtName = AddTextBox(75, 191, 300);
             _txtName.Anchor = AnchorStyles.Top | AnchorStyles.Left; // фиксированная ширина: справа выбор формата
             _txtName.TextChanged += delegate { UpdateReadiness(); };
             _cmbFormat = new ComboBox();
             _cmbFormat.DropDownStyle = ComboBoxStyle.DropDownList;
             _cmbFormat.Items.AddRange(OutputFormats.Extensions);
-            _cmbFormat.SetBounds(383, 219, 85, 27);
+            _cmbFormat.SetBounds(383, 191, 85, 27);
             Controls.Add(_cmbFormat);
             _tips.SetToolTip(_cmbFormat, Loc.T("excel.tip.format"));
 
-            Ui.Label(this, Loc.T("excel.lbl.folder"), 20, 258, Font, Theme.TextPrimary);
-            _txtOutDir = AddTextBox(75, 255, right - 75 - 110);
-            _btnBrowseOut = AddButton(Loc.T("common.browse"), false, right - 100, 254, 100, 29);
+            Ui.Label(this, Loc.T("excel.lbl.folder"), 20, 230, Font, Theme.TextPrimary);
+            _txtOutDir = AddTextBox(75, 227, right - 75 - 110);
+            _btnBrowseOut = AddButton(Loc.T("common.browse"), false, right - 100, 226, 100, 29);
             _btnBrowseOut.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBrowseOut.Click += OnBrowseOutput;
 
             // Параметры
-            AddSectionLabel(Loc.T("excel.sec.params"), 289);
-            Ui.Label(this, Loc.T("excel.lbl.sheets"), 20, 312, Font, Theme.TextPrimary);
+            AddSectionLabel(Loc.T("excel.sec.params"), 261);
+            Ui.Label(this, Loc.T("excel.lbl.sheets"), 20, 284, Font, Theme.TextPrimary);
             _cmbScope = new ComboBox();
             _cmbScope.DropDownStyle = ComboBoxStyle.DropDownList;
             _cmbScope.Items.AddRange(new object[] { Loc.T("excel.scope.first"), Loc.T("excel.scope.all") });
-            _cmbScope.SetBounds(75, 309, 200, 27);
+            _cmbScope.SetBounds(75, 281, 200, 27);
             Controls.Add(_cmbScope);
             _tips.SetToolTip(_cmbScope, Loc.T("excel.tip.scope"));
 
-            _chkToc = AddCheckBox(Loc.T("excel.chk.toc"), 20, 345, Loc.T("excel.tip.toc"));
-            _chkValues = AddCheckBox(Loc.T("excel.chk.values"), 20, 371, Loc.T("excel.tip.values"));
+            _chkToc = AddCheckBox(Loc.T("excel.chk.toc"), 20, 317, Loc.T("excel.tip.toc"));
+            _chkValues = AddCheckBox(Loc.T("excel.chk.values"), 20, 343, Loc.T("excel.tip.values"));
 
             // Действия: основная слева, отмена — у правого края, подальше от основной
-            _btnMerge = AddButton(Loc.T("excel.btn.merge"), true, 20, 407, 170, 40);
+            _btnMerge = AddButton(Loc.T("excel.btn.merge"), true, 20, 379, 170, 40);
             _btnMerge.Click += OnMergeClick;
             AcceptButton = _btnMerge;
             _tips.SetToolTip(_btnMerge, Loc.T("excel.tip.merge"));
 
-            _btnCancel = AddButton(Loc.T("excel.btn.cancel"), false, right - 130, 407, 130, 40);
+            _btnCancel = AddButton(Loc.T("excel.btn.cancel"), false, right - 130, 379, 130, 40);
             _btnCancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnCancel.Enabled = false;
             _btnCancel.Click += OnCancelClick;
@@ -246,19 +245,19 @@ namespace ExcelMerger
             _tips.SetToolTip(_btnCancel, Loc.T("excel.tip.cancel"));
 
             _progress = new ProgressBar();
-            _progress.SetBounds(20, 465, right - 20, 8);
+            _progress.SetBounds(20, 437, right - 20, 8);
             _progress.Anchor = stretch;
             _progress.Visible = false; // пустая полоса в простое только путает
             Controls.Add(_progress);
 
             // В статус попадают имя текущего файла и текст ошибки — тоже с многоточием.
             _lblStatus = Ui.Ellipsize(
-                Ui.Label(this, Loc.T("excel.status.chooseFolder"), 20, 483, Font, Theme.TextMuted), right - 20, stretch);
+                Ui.Label(this, Loc.T("excel.status.chooseFolder"), 20, 455, Font, Theme.TextMuted), right - 20, stretch);
 
             // Файлы: порядок и состав до слияния; после — результат в тех же строках
-            AddSectionLabel(Loc.T("excel.sec.files"), 508);
+            AddSectionLabel(Loc.T("excel.sec.files"), 480);
             _list = new ListView();
-            _list.SetBounds(20, 528, right - 20 - 150, ClientSize.Height - 528 - ListBottomGap);
+            _list.SetBounds(20, 500, right - 20 - 150, ClientSize.Height - 500 - ListBottomGap);
             _list.Anchor = stretch; // низ — PlaceBottomOfLayout, а не привязка (см. там)
             _list.View = View.Details;
             _list.FullRowSelect = true;
@@ -296,15 +295,15 @@ namespace ExcelMerger
 
             // Кнопки управления списком (правая колонка на уровне списка)
             int fcol = right - 140;
-            _btnUp = AddListButton(Loc.T("excel.btn.up"), fcol, 528, Loc.T("excel.tip.up"), ButtonChevron.Up);
+            _btnUp = AddListButton(Loc.T("excel.btn.up"), fcol, 500, Loc.T("excel.tip.up"), ButtonChevron.Up);
             _btnUp.Click += delegate { MoveSelectedFile(false); };
-            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 564, Loc.T("excel.tip.down"), ButtonChevron.Down);
+            _btnDown = AddListButton(Loc.T("excel.btn.down"), fcol, 536, Loc.T("excel.tip.down"), ButtonChevron.Down);
             _btnDown.Click += delegate { MoveSelectedFile(true); };
-            _btnSortName = AddListButton(Loc.T("excel.btn.sortName"), fcol, 604, Loc.T("excel.tip.sortName"));
+            _btnSortName = AddListButton(Loc.T("excel.btn.sortName"), fcol, 576, Loc.T("excel.tip.sortName"));
             _btnSortName.Click += delegate { SortFilesByName(); };
-            _btnCheckAll = AddListButton(Loc.T("excel.btn.checkAll"), fcol, 646, null);
+            _btnCheckAll = AddListButton(Loc.T("excel.btn.checkAll"), fcol, 616, null);
             _btnCheckAll.Click += delegate { SetAllChecked(true); };
-            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, 680, null);
+            _btnUncheckAll = AddListButton(Loc.T("excel.btn.uncheckAll"), fcol, 652, null);
             _btnUncheckAll.Click += delegate { SetAllChecked(false); };
 
             _dropLine = new Panel();
@@ -345,16 +344,6 @@ namespace ExcelMerger
         private const int BottomRowHeight = 40; // нижний ряд отсчитывается от низа клиентской области
         private const int ListBottomGap = 44;   // от низа списка файлов до низа раскладки
 
-
-        private void BuildMenu()
-        {
-            var reports = new ToolStripMenuItem(Loc.T("excel.menu.reports"));
-            reports.Click += delegate { OpenReportsFolder(); };
-
-            MenuStrip menu = HelpMenu.Create(this, ShowHelp, reports);
-            MainMenuStrip = menu;
-            Controls.Add(menu);
-        }
 
         private void ShowHelp()
         {

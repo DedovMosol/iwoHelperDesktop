@@ -3009,11 +3009,20 @@ static class Shots
 
     static void OpenMainMenu(Form f)
     {
-        var strip = (MenuStrip)FindByType(f, "MenuStrip");
-        var root = (ToolStripMenuItem)strip.Items[0];
-        root.ShowDropDown();
+        Control header = FindByType(f, "HeaderBand");
+        if (header == null) throw new Exception("нет шапки");
+        Control host = null;
+        ContextMenuStrip menu = null;
+        foreach (Control b in header.Controls)
+            if (b.ContextMenuStrip != null)
+            {
+                host = b;
+                menu = b.ContextMenuStrip;
+            }
+        if (menu == null) throw new Exception("нет меню на шапке");
+        menu.Show(host, new Point(0, host.Height));
         Pump(600);
-        _popup = root.DropDown.Bounds;
+        _popup = menu.Bounds;
     }
 
     static void ShowMenu(ContextMenuStrip menu, Control at, Point where)

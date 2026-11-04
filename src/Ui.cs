@@ -116,6 +116,30 @@ namespace ExcelMerger
             HeaderNav(header, showHub, HeaderNavKind.Home, tips, top);
         }
 
+        /// <summary>☰ на шапке слева от «Главная». Полосы MenuStrip нет.</summary>
+        public static RoundedButton HeaderAppMenu(HeaderBand header, ContextMenuStrip menu, ToolTip tips)
+        {
+            if (header == null || menu == null)
+                return null;
+            var b = new RoundedButton(ButtonLook.OnHeader);
+            b.Text = "☰";
+            b.AccessibleName = Loc.T("menu.root");
+            const int w = 32;
+            int homeLeft = header.Width - 12;
+            foreach (Control c in header.Controls)
+                if ((c.Anchor & AnchorStyles.Right) == AnchorStyles.Right && c.Left < homeLeft)
+                    homeLeft = c.Left;
+            b.SetBounds(Math.Max(8, homeLeft - 8 - w), 0, w, 30);
+            b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            b.ContextMenuStrip = menu;
+            b.Click += delegate { menu.Show(b, new Point(0, b.Height)); };
+            if (tips != null)
+                tips.SetToolTip(b, Loc.T("menu.root"));
+            header.Controls.Add(b);
+            header.AlignToText(b);
+            return b;
+        }
+
         /// <summary>Светлая кнопка панели инструмента: шеврон/знак и подсказка. Место задаёт форма.</summary>
         public static RoundedButton ToolButton(Control parent, string text, string tip, ToolTip tips,
             ButtonChevron chevron = ButtonChevron.None, ButtonMark mark = ButtonMark.None)

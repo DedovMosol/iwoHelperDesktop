@@ -12,53 +12,57 @@ namespace ExcelMerger
     /// </summary>
     internal static class HelpMenu
     {
-        public const int Height = 28;
+        /// <summary>Полосы меню нет: пункты на шапке. Ноль, чтобы раскладка окон не оставляла дыру.</summary>
+        public const int Height = 0;
 
         /// <summary>
-        /// Меню рисуются шрифтом ПРИЛОЖЕНИЯ, а не системным шрифтом меню. Причина простая:
-        /// полоса меню имеет фиксированную высоту (<see cref="Height"/>, её масштабирует DPI),
-        /// а системный размер шрифта задаётся ОТДЕЛЬНОЙ настройкой Windows — «размер текста» в
-        /// специальных возможностях. С крупным системным шрифтом подписи в полосе обрезались
-        /// бы снизу, и это единственное место, где системный шрифт вообще доставал до нашей
-        /// раскладки: все окна свой шрифт задают явно.
+        /// Меню рисуются шрифтом ПРИЛОЖЕНИЯ, а не системным шрифтом меню: системный кегль —
+        /// отдельная настройка Windows, и с ней подписи в меню обрезались бы. Все окна свой
+        /// шрифт задают явно.
         /// </summary>
         private static Font AppFont { get { return Ui.Font(9.75f); } }
 
-        public static MenuStrip Create(Form owner, Action showHowTo, params ToolStripMenuItem[] extras)
+        public static ContextMenuStrip Create(Form owner, Action showHowTo, params ToolStripMenuItem[] extras)
         {
-            var menu = new MenuStrip();
-            menu.Font = AppFont; // не системный шрифт меню — см. AppFont
-            menu.AutoSize = false;
-            menu.Height = Height;
-            menu.Dock = DockStyle.Top;
-            menu.BackColor = Color.White;
-            menu.Padding = new Padding(12, 4, 0, 0);
-
-            var root = new ToolStripMenuItem(Loc.T("menu.root"));
-
+            var menu = new ContextMenuStrip();
+            menu.Font = AppFont;
             var howTo = new ToolStripMenuItem(Loc.T("menu.howTo"));
-            howTo.ShortcutKeys = Keys.F1;
+            howTo.ShortcutKeyDisplayString = "F1";
             howTo.Click += delegate { showHowTo(); };
-            root.DropDownItems.Add(howTo);
+            menu.Items.Add(howTo);
 
-            // «Статистика» живёт внутри «Настроек» — отдельным пунктом её здесь больше нет:
-            // два входа в одно окно приходится помнить в двух местах при каждой правке.
             var settings = new ToolStripMenuItem(Loc.T("settings.title"));
             settings.Click += delegate { using (var form = new SettingsForm()) form.ShowDialog(owner); };
-            root.DropDownItems.Add(settings);
+            menu.Items.Add(settings);
 
-            root.DropDownItems.Add(new ToolStripSeparator());
-            root.DropDownItems.Add(BuildLanguageMenu());
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(BuildLanguageMenu());
 
             if (extras != null && extras.Length > 0)
             {
-                root.DropDownItems.Add(new ToolStripSeparator());
+                menu.Items.Add(new ToolStripSeparator());
                 foreach (ToolStripMenuItem item in extras)
-                    root.DropDownItems.Add(item);
+                    menu.Items.Add(item);
             }
 
-            menu.Items.Add(root);
+            BindF1(owner, showHowTo);
+            if (owner != null)
+                owner.Disposed += delegate { try { menu.Dispose(); } catch { } };
             return menu;
+        }
+
+        internal static void BindF1(Form form, Action showHowTo)
+        {
+            if (form == null || showHowTo == null)
+                return;
+            form.KeyPreview = true;
+            form.KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.KeyCode != Keys.F1 || e.Alt || e.Control || e.Shift)
+                    return;
+                e.Handled = true;
+                showHowTo();
+            };
         }
 
         /// <summary>Подменю «Язык / Language» с отметкой текущего языка; смена зовёт <see cref="Loc.Set"/>.</summary>
