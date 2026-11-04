@@ -504,7 +504,7 @@ namespace ExcelMerger
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
                     bool listBreak = StartsWithListMarker(lines[i])
                         && !DashContinuation(lines[i - 1], lines[i], bodyRight, em);
-                    bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft, bodyRight,
+                    bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft,
                         Math.Max(availRight, bodyRight), em);
                     // Висячий отступ пункта: продолжение выровнено по тексту после маркера,
                     // а не по полю колонки. Иначе строка 2 — новый абзац и «центрированный»
@@ -688,8 +688,9 @@ namespace ExcelMerger
                 if (i == skip)
                     continue;
                 List<PdfWord> ws = lines[i].Words;
+                double mid = (x0 + x1) / 2.0;
                 for (int w = 0; w < ws.Count; w++)
-                    if (ws[w].Left < x1 && ws[w].Right > x0)
+                    if (ws[w].Left < mid && ws[w].Right > mid)
                         return true;
             }
             return false;
@@ -724,19 +725,13 @@ namespace ExcelMerger
         /// многострочные подписи и контакты — иначе их строки склеивались в один абзац и
         /// Word перевёрстывал их произвольно. Чистая — под тест.
         /// </summary>
-        private static bool HardLineBreak(Line prev, Line cur, double bodyLeft, double bodyRight, double availRight, double em)
+        private static bool HardLineBreak(Line prev, Line cur, double bodyLeft, double availRight, double em)
         {
             double slot = availRight - bodyLeft;
             if (slot <= 0)
                 return false;
-            // Полноту строки мерим по рамке КОЛОНКИ (bodyRight), не по слоту до следующей:
-            // иначе в трёхколоночном Courier каждая строка «короткая» относительно листа
-            // и рвётся на свой абзац (RC-14 осколки).
-            double colW = bodyRight - bodyLeft;
-            if (colW > 0 && prev.Right > bodyLeft + HardBreakMaxPrevFill * colW)
-                return false;
-            else if (colW <= 0 && prev.Right > bodyLeft + HardBreakMaxPrevFill * slot)
-                return false;
+            if (prev.Right > bodyLeft + HardBreakMaxPrevFill * slot)
+                return false; // предыдущая строка почти полная — обычный мягкий перенос
             PdfWord first = cur.Words[0];
             double firstWidth = first.Right - first.Left;
             if (firstWidth < HardBreakMinWordEmFactor * em)
