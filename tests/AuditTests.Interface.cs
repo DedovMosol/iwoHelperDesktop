@@ -1481,8 +1481,8 @@ namespace ExcelMerger.Tests
             }
         }
 
-        [Test("Шапка: в покое нет белой плашки — виден акцент родителя")]
-        private static void AuditHeaderNavIdleIsGhost()
+        [Test("Шапка: в покое матовое стекло, не белый диалог и не голый акцент")]
+        private static void AuditHeaderNavIdleIsFrosted()
         {
             Color accent = Color.FromArgb(15, 76, 129);
             using (var band = new HeaderBand("T", "S", accent, Color.Black))
@@ -1493,8 +1493,9 @@ namespace ExcelMerger.Tests
                 {
                     back.DrawToBitmap(bmp, new Rectangle(0, 0, back.Width, back.Height));
                     Color corner = bmp.GetPixel(3, 3);
-                    AssertTrue(corner.R < 80 && corner.B > corner.R,
-                        "покой без белой заливки, угол=" + corner);
+                    AssertTrue(corner.R < 240, "не сплошная белая таблетка, угол=" + corner);
+                    AssertTrue(corner.R > 40 && corner.B > corner.R,
+                        "светлее акцента и холоднее серого, угол=" + corner);
                 }
             }
         }
