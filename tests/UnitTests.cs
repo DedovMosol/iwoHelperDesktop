@@ -391,6 +391,7 @@ namespace ExcelMerger.Tests
             Run("XyCut: три равные колонки остаются тремя (RC-14)", TestXyCutThreeEqualColumns);
             Run("XyCut: отбивка в левой колонке не зигзаг с правой (RC-14)", TestXyCutColumnParaGapNotZigzag);
             Run("XyCut: канал ровно vGapMin — две колонки (RC-14)", TestXyCutExactMinGutter);
+            Run("XyCut: короткая правая при общем верхе — не зигзаг (RC-14)", TestXyCutShortRightSameTop);
             Run("OcrLayout: канал колонок 12 pt — левая колонка целиком (RC-14)", TestLayoutNarrowColumnGutter);
             Run("OcrLayout: заголовок во всю ширину не мешает разрезу колонок (RC-14)", TestLayoutTitleThenColumns);
             Run("OcrLayout: неравные колонки под центрированным заголовком — левая целиком (RC-14)", TestLayoutUnevenColumnsAfterTitle);
@@ -598,7 +599,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 547;
+            const int ExactTests = 548;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -15058,6 +15059,19 @@ namespace ExcelMerger.Tests
             AssertEq(2, leaves.Count, "exact 12 pt gutter is a column split");
             AssertEq("0,1", TagsOf(leaves[0]), "left stack");
             AssertEq("2,3", TagsOf(leaves[1]), "right stack");
+        }
+
+        private static void TestXyCutShortRightSameTop()
+        {
+            var boxes = new List<CutBox>();
+            for (int r = 0; r < 8; r++)
+                boxes.Add(CB(r, 0, 200 - r * 16, 50, 12));
+            for (int r = 0; r < 3; r++)
+                boxes.Add(CB(10 + r, 70, 200 - r * 16, 50, 12));
+            List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 20, 12, 24, 1);
+            AssertEq(2, leaves.Count, "two columns, not Y-floors");
+            AssertEq("0,1,2,3,4,5,6,7", TagsOf(leaves[0]), "whole left first");
+            AssertEq("10,11,12", TagsOf(leaves[1]), "short right after");
         }
 
         private static void TestLayoutNarrowColumnGutter()

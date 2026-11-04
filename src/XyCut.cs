@@ -412,18 +412,34 @@ namespace ExcelMerger
             return false;
         }
 
+        /// <summary>
+        /// Newspaper vs sidebar: columns that start together are a newspaper even when
+        /// one is longer (leftover left text). A short right strip under a tall left
+        /// (footer) still needs the 0.4 height ratio (PlainText reading order).
+        /// </summary>
         private static bool ColumnsComparableHeight(CutContext ctx, List<List<int>> columns)
         {
             if (columns.Count < 2)
                 return false;
             double minE = double.MaxValue, maxE = 0;
+            double minTop = double.MaxValue, maxTop = double.MinValue;
             foreach (List<int> column in columns)
             {
                 double e = VerticalExtent(ctx, column);
                 if (e < minE) minE = e;
                 if (e > maxE) maxE = e;
+                double top = double.MinValue;
+                foreach (int i in column)
+                    if (ctx.Boxes[i].Top > top)
+                        top = ctx.Boxes[i].Top;
+                if (top < minTop) minTop = top;
+                if (top > maxTop) maxTop = top;
             }
-            return maxE > 0 && minE >= 0.4 * maxE;
+            if (maxE <= 0)
+                return false;
+            if (maxTop - minTop <= ctx.MinColumnExtent)
+                return true;
+            return minE >= 0.4 * maxE;
         }
 
         private static double VerticalExtent(CutContext ctx, List<int> items)
