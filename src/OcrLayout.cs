@@ -221,6 +221,9 @@ namespace ExcelMerger
         // выше сеточного SegmentGapEmFactor — обычный текст и «метка … значение» не рвутся.
         // Только для потока страницы: в ячейке таблицы (splitColumns=false) строка едина.
         private const double WideIntraGapEmFactor = 6.0;
+        // Уже отрезанная газетная колонка ≈ 12–16 em: дыра 6 em там — река Courier, не
+        // «подпись … дата». Рвём гигантский зазор, только если слот шире (вся полоса).
+        private const double WideGapMinRegionEmFactor = 22.0;
         // Тот же разрез для СЛАЙДА — порог в пять раз меньше. У документа строка едина, и рвать
         // её можно только по гигантскому зазору; на слайде «строка» — это чаще всего россыпь
         // независимых подписей (значения над столбиками, месяцы под осью, проценты у точек),
@@ -419,7 +422,8 @@ namespace ExcelMerger
             // дали бы нулевые зазоры и обрушили медиану), затем строки с гигантскими
             // внутренними зазорами рвутся на сегменты-«строки» — куски разных зон.
             double gapThreshold = ParagraphThreshold(lines);
-            if (splitColumns)
+            double slot = Math.Max(availRight, bodyRight) - bodyLeft;
+            if (splitColumns && slot >= Math.Max(240.0, WideGapMinRegionEmFactor * em))
                 lines = SplitWideGaps(lines, em);
             double indentTol = Math.Max(IndentFactor * em, IndentWidthFraction * width);
             double shortTol = ShortLineFraction * width;
@@ -450,7 +454,7 @@ namespace ExcelMerger
                     bool shortBreak = justified && lines[i - 1].Right < bodyRight - shortTol;
                     bool listBreak = StartsWithListMarker(lines[i])
                         && !DashContinuation(lines[i - 1], lines[i], bodyRight, em);
-                    bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft,
+                    bool hardBreak = HardLineBreak(lines[i - 1], lines[i], bodyLeft, bodyRight,
                         Math.Max(availRight, bodyRight), em);
                     // Висячий отступ пункта: продолжение выровнено по тексту после маркера,
                     // а не по полю колонки. Иначе строка 2 — новый абзац и «центрированный»
@@ -657,13 +661,19 @@ namespace ExcelMerger
         /// многострочные подписи и контакты — иначе их строки склеивались в один абзац и
         /// Word перевёрстывал их произвольно. Чистая — под тест.
         /// </summary>
-        private static bool HardLineBreak(Line prev, Line cur, double bodyLeft, double availRight, double em)
+        private static bool HardLineBreak(Line prev, Line cur, double bodyLeft, double bodyRight, double availRight, double em)
         {
-            double width = availRight - bodyLeft;
-            if (width <= 0)
+            double slot = availRight - bodyLeft;
+            if (slot <= 0)
                 return false;
-            if (prev.Right > bodyLeft + HardBreakMaxPrevFill * width)
-                return false; // предыдущая строка почти полная — обычный мягкий перенос
+            // Полноту строки мерим по рамке КОЛОНКИ (bodyRight), не по слоту до следующей:
+            // иначе в трёхколоночном Courier каждая строка «короткая» относительно листа
+            // и рвётся на свой абзац (RC-14 осколки).
+            double colW = bodyRight - bodyLeft;
+            if (colW > 0 && prev.Right > bodyLeft + HardBreakMaxPrevFill * colW)
+                return false;
+            else if (colW <= 0 && prev.Right > bodyLeft + HardBreakMaxPrevFill * slot)
+                return false;
             PdfWord first = cur.Words[0];
             double firstWidth = first.Right - first.Left;
             if (firstWidth < HardBreakMinWordEmFactor * em)
