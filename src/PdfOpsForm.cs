@@ -106,9 +106,9 @@ namespace ExcelMerger
             int pw = panelW - 10;
             int y = m + 84;
 
-            _btnOpen = AddButton(Loc.T("common.btn.openPdf"), px, y, pw, 32, Loc.T("common.tip.openPdf"), mark: ButtonMark.Open);
+            _btnOpen = AddButton(Loc.T("common.btn.openPdf"), px, y, pw, BtnH, Loc.T("common.tip.openPdf"), mark: ButtonMark.Open);
             _btnOpen.Click += delegate { PickAndOpenFile(); };
-            y += 32 + BtnGap;
+            y += BtnH + BtnGap;
             // Картинки — второй способ набрать страницы: снимки и сканы становятся документом
             // здесь же, а не в отдельном окне, потому что дальше с ними делают ровно то же —
             // поворачивают, переставляют, сжимают, печатают.

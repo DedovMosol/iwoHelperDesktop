@@ -158,19 +158,17 @@ namespace ExcelMerger
             // Кнопка «Ещё с документом» рядом с остальным вводом: те же пункты, что в «☰».
             // Без неё картинки, текст, серое, восстановление и свойства оставались невидимыми —
             // искать их в меню окна никто не догадывался.
-            int gap = 8;
-            int printW = (pw - gap) / 2;
             int printY = _txtNameTemplate.Bottom + 16;
             _btnPrint = Ui.ToolButton(this, Loc.T("split.btn.print"), Loc.T("split.tip.print"),
                 _tips, ButtonChevron.None, ButtonMark.Print);
-            _btnPrint.SetBounds(px, printY, printW, 32);
+            _btnPrint.SetBounds(px, printY, pw, 32);
             _btnPrint.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnPrint.Click += delegate { PrintSelectedPages(); };
 
             // Шесть операций над одним документом переехали в своё окно (их не находили в меню).
             // Здесь остался переход туда с УЖЕ ОТКРЫТЫМ файлом — открывать его заново не нужно.
             _btnOps = Ui.ToolButton(this, Loc.T("split.btn.ops"), Loc.T("split.tip.ops"), _tips);
-            _btnOps.SetBounds(px + printW + gap, printY, pw - printW - gap, 32);
+            _btnOps.SetBounds(px, printY + 40, pw, 32);
             _btnOps.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             // Открытый документ уезжает туда сам, а если ничего не открыто — окно просто
             // откроется: нажатие обязано что-то делать, иначе кнопку считают сломанной.

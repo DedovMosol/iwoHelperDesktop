@@ -188,7 +188,7 @@ namespace ExcelMerger
 
             int pad = TextPadFor(Width, s);
             int mark = Mark == ButtonMark.None ? 0 : (int)Math.Round(18f * s);
-            int glyph = Chevron == ButtonChevron.None ? 0 : (int)Math.Round(12f * s);
+            int glyph = Chevron == ButtonChevron.None ? 0 : (int)Math.Round(14f * s);
             bool markOnly = Mark != ButtonMark.None && string.IsNullOrEmpty(Text) && Chevron == ButtonChevron.None;
             int insetL = markOnly ? 0 : mark + (Chevron == ButtonChevron.Right ? 0 : glyph);
             int insetR = Chevron == ButtonChevron.Right ? glyph : 0;
@@ -270,7 +270,6 @@ namespace ExcelMerger
             float w = Math.Max(1.2f, 1.4f * scale);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             using (var p = new Pen(color, w))
-            using (var b = new SolidBrush(color))
             {
                 p.StartCap = LineCap.Round;
                 p.EndCap = LineCap.Round;
@@ -283,17 +282,16 @@ namespace ExcelMerger
                         g.DrawLine(p, x + m, y + 2, x + m, y + size - 2);
                         break;
                     case ButtonMark.Trash:
-                        g.DrawLine(p, x + m - 2.5f, y + 1.5f, x + m + 2.5f, y + 1.5f);
-                        g.DrawLine(p, x + 1.5f, y + 4.5f, x + size - 1.5f, y + 4.5f);
-                        g.DrawLine(p, x + 3.5f, y + 4.5f, x + 4.5f, y + size - 1.5f);
-                        g.DrawLine(p, x + size - 3.5f, y + 4.5f, x + size - 4.5f, y + size - 1.5f);
-                        g.DrawLine(p, x + 4.5f, y + size - 1.5f, x + size - 4.5f, y + size - 1.5f);
-                        g.DrawLine(p, x + m, y + 6.5f, x + m, y + size - 3.5f);
+                        g.DrawLine(p, x + m - 2f, y + 2f, x + m + 2f, y + 2f);
+                        g.DrawLine(p, x + 2f, y + 5f, x + size - 2f, y + 5f);
+                        g.DrawLine(p, x + 4f, y + 5f, x + 5.2f, y + size - 2f);
+                        g.DrawLine(p, x + size - 4f, y + 5f, x + size - 5.2f, y + size - 2f);
+                        g.DrawLine(p, x + 5.2f, y + size - 2f, x + size - 5.2f, y + size - 2f);
                         break;
                     case ButtonMark.Print:
-                        g.DrawRectangle(p, x + 4, y + 1.5f, size - 8, m - 1);
-                        g.DrawRectangle(p, x + 1.5f, y + m - 1, size - 3, m);
-                        g.FillRectangle(b, x + 4, y + m + 2, size - 8, m - 2);
+                        g.DrawRectangle(p, x + 4.5f, y + 1.5f, size - 9f, 5f);
+                        g.DrawRectangle(p, x + 1.5f, y + 6.5f, size - 3f, 5.5f);
+                        g.DrawLine(p, x + 4f, y + size - 2f, x + size - 4f, y + size - 2f);
                         break;
                     case ButtonMark.Menu:
                         float gap = 4.5f * scale;
@@ -304,12 +302,12 @@ namespace ExcelMerger
                         g.DrawLine(p, left, y + m + gap, right, y + m + gap);
                         break;
                     default:
-                        g.DrawLine(p, x + 1.5f, y + 5, x + 6, y + 5);
-                        g.DrawLine(p, x + 6, y + 5, x + 8, y + 2.5f);
-                        g.DrawLine(p, x + 8, y + 2.5f, x + size - 1.5f, y + 2.5f);
-                        g.DrawLine(p, x + size - 1.5f, y + 2.5f, x + size - 1.5f, y + size - 2);
-                        g.DrawLine(p, x + size - 1.5f, y + size - 2, x + 1.5f, y + size - 2);
-                        g.DrawLine(p, x + 1.5f, y + size - 2, x + 1.5f, y + 5);
+                        g.DrawLine(p, x + 2f, y + 6f, x + 6f, y + 6f);
+                        g.DrawLine(p, x + 6f, y + 6f, x + 8f, y + 3f);
+                        g.DrawLine(p, x + 8f, y + 3f, x + size - 2f, y + 3f);
+                        g.DrawLine(p, x + size - 2f, y + 3f, x + size - 2f, y + size - 2f);
+                        g.DrawLine(p, x + size - 2f, y + size - 2f, x + 2f, y + size - 2f);
+                        g.DrawLine(p, x + 2f, y + size - 2f, x + 2f, y + 6f);
                         break;
                 }
             }
