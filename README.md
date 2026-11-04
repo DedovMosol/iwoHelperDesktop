@@ -139,7 +139,7 @@ Launch the app, pick a section on the start screen (**PDF** or **Other tools**) 
 1. Select the source folder (Browse… or drop it onto the window). The file count is shown immediately.
 2. Set the output name and format (`.xlsx`/`.xlsm`/`.xlsb`/`.xls`). “Sheets” takes the first sheet of each file or all of them.
 3. Change the output folder if needed (defaults to the source folder).
-4. Arrange the **Files to merge** list — reorder by dragging or ▲/▼, exclude via checkboxes. “By name” restores natural order.
+4. Arrange the **Files to merge** list — reorder by dragging or Up/Down, exclude via checkboxes. “By name” restores natural order.
 5. Click **Merge** — progress shows on the list and taskbar, and the button flashes on completion when the window is inactive.
 6. Existing output prompts to overwrite, and a file open in Excel is detected up front.
 

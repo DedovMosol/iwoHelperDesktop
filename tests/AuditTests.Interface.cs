@@ -1465,6 +1465,11 @@ namespace ExcelMerger.Tests
                     && Loc.T("excel.btn.up").IndexOf('▲') < 0
                     && Loc.T("excel.btn.down").IndexOf('▼') < 0,
                     "шеврон не в строке перевода");
+                AssertTrue(Loc.T("pdf.help.body").IndexOf('◀') < 0
+                    && Loc.T("ocr.help.body").IndexOf('◀') < 0
+                    && Loc.T("pptx.help.body").IndexOf('◀') < 0
+                    && Loc.T("excel.help.body").IndexOf('▲') < 0,
+                    "справка не ссылается на треугольники в подписи кнопок");
             }
         }
 

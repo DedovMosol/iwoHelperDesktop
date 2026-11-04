@@ -1081,7 +1081,7 @@ namespace ExcelMerger
                 "1. Добавьте PDF-файлы — кнопкой «Добавить PDF…» или перетащите их в окно программы.\n" +
                 "2. Появится сетка миниатюр страниц. Масштаб — регулятором, полем «%» рядом " +
                 "(впишите число, Ctrl+0 или двойной клик по «%» — 100%) или Ctrl+колесо мыши.\n" +
-                "3. Задайте порядок: перетаскивайте миниатюры или используйте «◀ Влево» / «Вправо ▶».\n" +
+                "3. Задайте порядок: перетаскивайте миниатюры или используйте «Влево» / «Вправо».\n" +
                 "   Лишние страницы удаляйте кнопкой «Удалить».\n" +
                 "4. При необходимости выберите «Сжатие» (по умолчанию «Отлично» — без сжатия). " +
                 "«Хорошо»/«Нормально» уменьшают размер за счёт понижения разрешения изображений " +
@@ -1108,7 +1108,7 @@ namespace ExcelMerger
                 "1. Add PDF files — with “Add PDF…” or drag them onto the program window.\n" +
                 "2. A grid of page thumbnails appears. Zoom with the slider, the “%” box next to it " +
                 "(type a number, Ctrl+0 or double‑click “%” for 100%) or Ctrl+mouse wheel.\n" +
-                "3. Set the order: drag thumbnails or use “◀ Move left” / “Move right ▶”.\n" +
+                "3. Set the order: drag thumbnails or use “Move left” / “Move right”.\n" +
                 "   Remove pages you don’t need with “Remove”.\n" +
                 "4. Optionally choose “Compression” (default “Excellent” — no compression). " +
                 "“Good”/“Normal” shrink the size by downsampling images " +
@@ -1208,7 +1208,7 @@ namespace ExcelMerger
                 "1. Добавьте один или несколько PDF — кнопкой «Добавить PDF…» (можно выбрать сразу " +
                 "несколько) или перетащите их в окно программы. Страницы всех файлов показываются одной сеткой.\n" +
                 "2. При необходимости измените порядок страниц: перетащите миниатюру или выделите " +
-                "её и нажмите «◀ Влево»/«Вправо ▶» (Alt+←/→). Лишние страницы уберите из вывода " +
+                "её и нажмите «Влево»/«Вправо» (Alt+←/→). Лишние страницы уберите из вывода " +
                 "кнопкой «Удалить» (Delete). В презентацию попадут страницы в показанном порядке — " +
                 "по слайду на страницу.\n" +
                 "3. Нажмите «Конвертировать в PowerPoint…» и укажите имя .pptx.\n\n" +
@@ -1232,7 +1232,7 @@ namespace ExcelMerger
                 "1. Add one or several PDFs — with “Add PDF…” (you can pick several at once) or by " +
                 "dragging them onto the program window. Pages of all files are shown in a single grid.\n" +
                 "2. Reorder pages if needed: drag a thumbnail, or select it and click " +
-                "“◀ Left”/“Right ▶” (Alt+←/→). Remove pages you do not need with “Remove” (Delete). " +
+                "“Move left”/“Move right” (Alt+←/→). Remove pages you do not need with “Remove” (Delete). " +
                 "The presentation gets the pages in the order shown — one slide per page.\n" +
                 "3. Click “Convert to PowerPoint…” and choose the .pptx name.\n\n" +
                 "PowerPoint is NOT required — the file is built by the program itself.\n\n" +
@@ -1257,7 +1257,7 @@ namespace ExcelMerger
                 "1. Добавьте один или несколько PDF — кнопкой «Добавить PDF…» (можно выбрать сразу " +
                 "несколько) или перетащите их в окно программы. Страницы всех файлов показываются одной сеткой.\n" +
                 "2. При необходимости измените порядок страниц: перетащите миниатюру или выделите " +
-                "её и нажмите «◀ Влево»/«Вправо ▶» (Alt+←/→). Лишние страницы уберите из вывода " +
+                "её и нажмите «Влево»/«Вправо» (Alt+←/→). Лишние страницы уберите из вывода " +
                 "кнопкой «Удалить» (Delete). В Word попадут страницы в показанном порядке.\n" +
                 "3. Нажмите «Конвертировать в Word…» и укажите имя .docx — все выбранные страницы " +
                 "соберутся в один документ.\n\n" +
@@ -1282,7 +1282,7 @@ namespace ExcelMerger
                 "1. Add one or several PDFs — with “Add PDF…” (you can pick several at once) or by " +
                 "drag them onto the program window. Pages of all files are shown in a single grid.\n" +
                 "2. Reorder pages if needed: drag a thumbnail, or select it and click " +
-                "“◀ Move left”/“Move right ▶” (Alt+←/→). Drop pages you don’t need with " +
+                "“Move left”/“Move right” (Alt+←/→). Drop pages you don’t need with " +
                 "“Remove” (Delete). Word gets the pages in the order shown.\n" +
                 "3. Click “Convert to Word…” and choose a .docx name — all selected pages " +
                 "are assembled into one document.\n\n" +
@@ -1417,7 +1417,7 @@ namespace ExcelMerger
                 "1. Укажите папку с исходными файлами — «Обзор…» или перетащите папку в окно программы.\n" +
                 "2. Задайте имя свода; папку сохранения можно сменить (пустая — папка с исходными).\n" +
                 "3. В списке «Файлы для объединения» задайте порядок и состав: перетаскиванием " +
-                "строк или кнопками «▲ Выше»/«▼ Ниже»; снимите галочку у ненужного файла. " +
+                "строк или кнопками «Выше»/«Ниже»; снимите галочку у ненужного файла. " +
                 "«По имени» вернёт естественный порядок, «Отметить все»/«Снять все» — быстрый выбор.\n" +
                 "4. Нажмите «Объединить»: из каждого выбранного файла переносится первый видимый " +
                 "лист со всем оформлением, формулами и диаграммами.\n\n" +
@@ -1433,7 +1433,7 @@ namespace ExcelMerger
                 "1. Choose the source files folder — “Browse…” or drag a folder onto the program window.\n" +
                 "2. Set the digest name; you can change the save folder (empty — the sources folder).\n" +
                 "3. In the “Files to merge” list set the order and selection: drag rows or use " +
-                "“▲ Up”/“▼ Down”; untick a file you don’t need. " +
+                "“Up”/“Down”; untick a file you don’t need. " +
                 "“By name” restores natural order, “Check all”/“Uncheck all” select quickly.\n" +
                 "4. Click “Merge”: the first visible sheet of each selected file is transferred " +
                 "with all its formatting, formulas and charts.\n\n" +
