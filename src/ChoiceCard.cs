@@ -148,7 +148,9 @@ namespace ExcelMerger
             Func<int, int> d = delegate(int v) { return DpiScale.Device(this, v); };
             // Наведение — рамка карточки; фокус — отдельное кольцо внутри (UI-10): раньше оба
             // рисовались одной рамкой, и с клавиатуры нельзя было понять, где фокус, а где мышь.
-            float line = (Hover ? 2f : 1f) * Math.Max(1f, s);
+            // Рамка наведения — акцент, кольцо фокуса — тоже. Вместе это два зелёных контура.
+            bool hoverFrame = (Hover || Pressed) && !Focused;
+            float line = (hoverFrame ? 2f : 1f) * Math.Max(1f, s);
             var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
             Color fill, border, title = Theme.TextPrimary, description = Theme.TextMuted;
             if (Theme.HighContrast) // UI-7: системные цвета кнопки; описание — тем же текстом
@@ -156,7 +158,7 @@ namespace ExcelMerger
             else
             {
                 fill = Pressed ? Theme.SecondaryPressed : (Hover ? Theme.SecondaryHover : Color.White);
-                border = (Hover || Pressed) ? Theme.Accent : Theme.Border;
+                border = hoverFrame ? Theme.Accent : Theme.Border;
             }
             if (Theme.HighContrast)
                 description = title;
