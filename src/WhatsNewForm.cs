@@ -177,6 +177,7 @@ namespace ExcelMerger
                 NonSelectableText.MeasureHeight(text, body.Font,
                     Math.Max(100, DefaultWidth - 2 * Pad - 76)));
             body.Name = "whatsNewItem" + number;
+            card.Controls.Add(body);
             _cardBodies.Add(body);
             card.Height = Math.Max(58, body.Bottom + 14);
             numberLabel.Top = (card.Height - numberLabel.Height) / 2;
