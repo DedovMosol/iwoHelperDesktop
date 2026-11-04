@@ -191,11 +191,12 @@ namespace ExcelMerger
         // зазора: в узких шрифтах (напр. Calibri Light) пробел ≈ 0.18 кегля, поэтому прежние 0.2
         // роняли настоящие пробелы и слепляли слова («СЛОВОСЛОВО»). 0.08 надёжно ниже.
         private const double SpaceGapFactor = 0.08;
-        // Разрез колонок: канал Word ≈ 35 pt, LaTeX ≈ 10–12 pt; межсловный зазор ≈ 0.25 em.
-        // 2.5 em (~27 pt) не видел 12 pt канал (RC-14). 8 pt видит канал, а узкую полосу
-        // маркеров списка отсекает MinColumnWidth (3 em) — иначе «• | текст» две колонки.
+        // Разрез колонок: канал Word ≈ 35 pt, LaTeX ≈ 12 pt (после wrap ≈ 11.999).
+        // 8 pt ловил РЕКУ выключки Courier как газетный канал (три колонки #29 — 67
+        // однострочных осколков). 10 pt = PageBlocks.BlockColumnGapPt: 12 pt канал
+        // виден, межсловный зазор моноширинной выключки (~5–9 pt) — нет.
         private const double ColumnGapEmFactor = 0.6;
-        private const double ColumnGapMinPt = 8.0;
+        private const double ColumnGapMinPt = 10.0;
         // 4 em (40 pt при 10 pt) глотало узкий сайдбар 33 pt как «не колонка».
         // Полоса маркеров «•»/«1.» ≈ 8–15 pt — всё ещё ниже 3 em.
         private const double ColumnMinWidthEmFactor = 3.0;

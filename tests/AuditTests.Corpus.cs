@@ -277,6 +277,82 @@ namespace ExcelMerger.Tests
             AssertTrue(fails.Count == 0, "zigzag: " + string.Join("; ", fails.ToArray()));
         }
 
+        /// <summary>
+        /// Три колонки: после заголовка поток — колонка 0 целиком, затем 1, затем 2.
+        /// Построчный L/M/R — RC-14 (XY не держал вертикальный канал на всю высоту).
+        /// </summary>
+        [Test("Корпус: три колонки #0 и Courier — колонки целиком, не зигзаг (RC-14)")]
+        private static void CorpusThreeColumnReadingOrder()
+        {
+            EmbeddedAssemblies.Ensure();
+            var fails = new List<string>();
+            using (var dir = new TempDir("iwo_threecol_"))
+                foreach (int idx in new[] { 0, 29 })
+                {
+                    CCase c = CorpusCases.All(30).Find(x => x.Family == "три колонки" && x.Variant.Index == idx);
+                    AssertTrue(c != null, "variant " + idx);
+                    string path;
+                    RenderCase(c, dir, out path);
+                    List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                    AssertTrue(pages.Count >= 1, "page");
+                    var flow = new List<OcrParagraph>();
+                    foreach (PageBlocks.PageItem item in PageBlocks.CoalesceRowBands(PageBlocks.OrderedItems(pages[0])))
+                    {
+                        if (item.IsBand)
+                            foreach (List<PageBlocks.Block> col in item.Columns)
+                                foreach (PageBlocks.Block b in col)
+                                    if (b.Paragraph != null) flow.Add(b.Paragraph);
+                        else if (item.Single != null && item.Single.Paragraph != null)
+                            flow.Add(item.Single.Paragraph);
+                    }
+                    var body = new List<OcrParagraph>();
+                    foreach (OcrParagraph p in flow)
+                        if (p.Alignment != OcrAlignment.Center)
+                            body.Add(p);
+                    var dump = new List<string>();
+                    dump.Add("n=" + body.Count + " font=" + c.Variant.Font);
+                    foreach (OcrParagraph p in body)
+                        dump.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                            "L{0:0.#} R{1:0.#} T{2:0.#} lines {3}", p.LeftPt, p.RightPt, p.TopPt, p.LineCount));
+                    if (body.Count < 3)
+                    {
+                        fails.Add("#" + idx + " мало абзацев " + string.Join(" ", dump.ToArray()));
+                        continue;
+                    }
+                    double minL = body[0].LeftPt, maxL = body[0].LeftPt;
+                    foreach (OcrParagraph p in body)
+                    {
+                        if (p.LeftPt < minL) minL = p.LeftPt;
+                        if (p.LeftPt > maxL) maxL = p.LeftPt;
+                    }
+                    double span = maxL - minL;
+                    if (span < 40)
+                    {
+                        fails.Add("#" + idx + " нет трёх левых краёв: " + string.Join(" ", dump.ToArray()));
+                        continue;
+                    }
+                    double t1 = minL + span / 3.0, t2 = minL + 2.0 * span / 3.0;
+                    int last0 = -1, first1 = -1, last1 = -1, first2 = -1;
+                    for (int i = 0; i < body.Count; i++)
+                    {
+                        int col = body[i].LeftPt < t1 ? 0 : (body[i].LeftPt < t2 ? 1 : 2);
+                        if (col == 0) last0 = i;
+                        else if (col == 1)
+                        {
+                            if (first1 < 0) first1 = i;
+                            last1 = i;
+                        }
+                        else if (first2 < 0) first2 = i;
+                    }
+                    if (first1 < 0 || first2 < 0 || last0 < 0)
+                        fails.Add("#" + idx + " нет трёх колонок: " + string.Join(" ", dump.ToArray()));
+                    else if (!(last0 < first1 && last1 < first2))
+                        fails.Add("#" + idx + " зигзаг last0=" + last0 + " first1=" + first1 +
+                            " last1=" + last1 + " first2=" + first2 + " " + string.Join(" ", dump.ToArray()));
+                }
+            AssertTrue(fails.Count == 0, string.Join(" ;; ", fails.ToArray()));
+        }
+
         [Test("Корпус: генератор рисует ровно те слова, что описаны в модели")]
         private static void CorpusGeneratorDrawsTheModel()
         {

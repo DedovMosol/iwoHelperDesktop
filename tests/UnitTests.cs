@@ -389,6 +389,7 @@ namespace ExcelMerger.Tests
             Run("XyCut: полоса маркеров списка — не колонки (RC-14)", TestXyCutListMarkersNotColumns);
             Run("XyCut: река выключки не третья колонка (RC-14)", TestXyCutJustifyRiverNotThirdColumn);
             Run("XyCut: три равные колонки остаются тремя (RC-14)", TestXyCutThreeEqualColumns);
+            Run("XyCut: три колонки с узкой правой остаются тремя (RC-14)", TestXyCutThreeRaggedColumns);
             Run("XyCut: отбивка в левой колонке не зигзаг с правой (RC-14)", TestXyCutColumnParaGapNotZigzag);
             Run("XyCut: канал ровно vGapMin — две колонки (RC-14)", TestXyCutExactMinGutter);
             Run("XyCut: узкая река выключки — не вторая колонка (RC-14)", TestXyCutTwoColumnSkinnyRiver);
@@ -600,7 +601,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 549;
+            const int ExactTests = 550;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -15008,6 +15009,21 @@ namespace ExcelMerger.Tests
             }
             List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 1000, 12, 25, 2);
             AssertEq(3, leaves.Count, "равные три колонки");
+        }
+
+        private static void TestXyCutThreeRaggedColumns()
+        {
+            // Правая колонка короче по ширине (хвосты строк), но это бюллетень, не река.
+            var boxes = new List<CutBox>();
+            for (int r = 0; r < 6; r++)
+            {
+                double y = 200 - r * 16;
+                boxes.Add(CB(r, 0, y, 90, 10));
+                boxes.Add(CB(10 + r, 110, y, 90, 10));
+                boxes.Add(CB(20 + r, 220, y, 35, 10));
+            }
+            List<CutLeaf> leaves = XyCut.Order(boxes.ToArray(), 1000, 12, 25, 2);
+            AssertEq(3, leaves.Count, "узкая правая — всё ещё третья колонка");
         }
 
         private static void TestXyCutColumnParaGapNotZigzag()

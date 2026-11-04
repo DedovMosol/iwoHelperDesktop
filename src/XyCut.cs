@@ -274,10 +274,29 @@ namespace ExcelMerger
                 return columns;
             if (columns.Count == 2)
             {
-                var all = new List<int>(columns[0].Count + columns[1].Count);
-                all.AddRange(columns[0]);
-                all.AddRange(columns[1]);
-                return new List<List<int>> { all };
+                // Река выключки режет колонку на две ПОЛОВИНЫ с похожим числом слов.
+                // Сайдбар — узкая полоса с малым числом меток против тела; его не склеиваем.
+                int n0 = columns[0].Count, n1 = columns[1].Count;
+                int nMin = n0 < n1 ? n0 : n1, nMax = n0 > n1 ? n0 : n1;
+                if (nMin * 2 >= nMax)
+                {
+                    var all = new List<int>(n0 + n1);
+                    all.AddRange(columns[0]);
+                    all.AddRange(columns[1]);
+                    return new List<List<int>> { all };
+                }
+                return columns;
+            }
+            // Узкая КРАЙНЯЯ полоса при трёх и более — хвосты строк бюллетеня, не река
+            // выключки (река сидит МЕЖДУ двумя широкими, см. TestXyCutJustifyRiverNotThirdColumn).
+            if (columns.Count >= 3)
+            {
+                int minI = 0;
+                for (int i = 1; i < columns.Count; i++)
+                    if (rights[i] - lefts[i] < rights[minI] - lefts[minI])
+                        minI = i;
+                if ((minI == 0 || minI == columns.Count - 1) && ColumnSubstantial(ctx, columns[minI]))
+                    return columns;
             }
             double mid = (lefts[0] + rights[columns.Count - 1]) / 2.0;
             int best = 0;
