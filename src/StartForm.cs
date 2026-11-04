@@ -735,8 +735,6 @@ namespace ExcelMerger
                     TextRenderer.DrawText(g, Text, Font,
                         new Rectangle(nudge.X, nudge.Y, Width, Height), glyph, flags);
                 }
-                if (!OnAccentHeader)
-                    DrawFocusRing(g, bubble, Math.Min(Width, Height) / 2f, glyph);
             }
 
             /// <summary>MDL2 сидит в em-boxе криво: сдвиг, чтобы чернила совпали с центром круга.</summary>
