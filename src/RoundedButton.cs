@@ -50,6 +50,7 @@ namespace ExcelMerger
         private bool _hover;
         private bool _pressed;
         private Point[] _chevronPts; // переиспользуем в OnPaint, не new[] на кадр
+        private Region _headerShape; // живой: GetHrgn после Dispose даёт «недопустимый параметр»
 
         public bool Selected
         {
@@ -90,6 +91,61 @@ namespace ExcelMerger
         protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
         protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            if (!IsHandleCreated)
+                return;
+            ApplyHeaderShape();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (Visible && IsHandleCreated)
+                ApplyHeaderShape();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                Region = null;
+                if (_headerShape != null)
+                {
+                    _headerShape.Dispose();
+                    _headerShape = null;
+                }
+            }
+            base.Dispose(disposing);
+        }
+
+        /// <summary>Радиус пилюли на шапке. Совпадает у Region и у обводки, иначе торчат углы.</summary>
+        internal static float HeaderChipRadius(int height, float scale)
+        {
+            float line = Math.Max(1f, scale);
+            float cap = 14f * scale;
+            float r = height / 2f - line;
+            return r < cap ? r : cap;
+        }
+
+        private void ApplyHeaderShape()
+        {
+            if (_look != ButtonLook.OnHeader || !IsHandleCreated || Width < 4 || Height < 4)
+                return;
+            float radius = HeaderChipRadius(Height, DpiScale.Device(this));
+            using (GraphicsPath path = Ui.RoundedRect(new RectangleF(0, 0, Width, Height), radius))
+            {
+                Region next = new Region(path);
+                Region = next;
+                if (_headerShape != null)
+                    _headerShape.Dispose();
+                _headerShape = next;
+            }
+            if (Parent != null)
+                Parent.Invalidate(Bounds, false);
+        }
 
         /// <summary>
         /// Радиус скругления по высоте кнопки: пропорция вместо ступеньки. Пределы — логические
@@ -132,7 +188,7 @@ namespace ExcelMerger
             float s = DpiScale.Device(this);
             float line = Math.Max(1f, s);
             float radius = _look == ButtonLook.OnHeader
-                ? Math.Min(Height / 2f - line, 14f * s)
+                ? HeaderChipRadius(Height, s)
                 : RadiusFor(Height, s);
             var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
             using (GraphicsPath path = Ui.RoundedRect(rect, radius))

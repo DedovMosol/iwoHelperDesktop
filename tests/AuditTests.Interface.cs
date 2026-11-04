@@ -1499,6 +1499,33 @@ namespace ExcelMerger.Tests
             }
         }
 
+        [Test("Шапка: регион кнопки — пилюля, квадратные углы не рисуются")]
+        private static void AuditHeaderNavRegionIsPill()
+        {
+            RunSta(delegate
+            {
+                using (var form = new Form())
+                {
+                    var band = new HeaderBand("T", "S", Color.Navy, Color.Black);
+                    band.SetBounds(0, 0, 640, 78);
+                    form.Controls.Add(band);
+                    RoundedButton back = Ui.HeaderNav(band, delegate { }, Ui.HeaderNavKind.Back, null);
+                    form.Show();
+                    try
+                    {
+                        using (Region region = back.Region)
+                        {
+                            AssertTrue(region != null, "регион задан");
+                            AssertTrue(!region.IsVisible(new Point(0, 0)), "угол квадрата вне пилюли");
+                            AssertTrue(region.IsVisible(new Point(back.Width / 2, back.Height / 2)),
+                                "центр кнопки внутри");
+                        }
+                    }
+                    finally { form.Hide(); }
+                }
+            });
+        }
+
         [Test("Primary только у действия с файлом, на шапке его нет")]
         private static void AuditPrimaryStaysOffHeader()
         {

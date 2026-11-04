@@ -230,9 +230,10 @@ has four looks (`Primary`, `Secondary`, `OnDark`, `OnHeader`) with a **filled** 
 where half the buttons wait for an open document must show that without being clicked.
 Hub Back and tool Home share `Ui.HeaderNav`: `OnHeader` (a slight lift of the band and a thin
 rim — Fluent subtle, not milky glass and not a solid dialog chip), regular type, a rounder
-pill, one vertical alignment via `HeaderBand.AlignToText`, and a drawn chevron for Back
-instead of a triangle in the translation. `Primary` is the file action (bottom strip, or the
-compare row above the files) — never a child of `HeaderBand`.
+pill whose window region matches the stroke, so a rectangular Clear cannot leave square
+corners on the gradient), one vertical alignment via `HeaderBand.AlignToText`, and a drawn
+chevron for Back instead of a triangle in the translation. `Primary` is the file action
+(bottom strip, or the compare row above the files) — never a child of `HeaderBand`.
 
 `PushControl` is the base of every owner-drawn control that acts as a button (`ChoiceCard`,
 `RecentCard`, the hub's glyph buttons). It holds the one keyboard rule: Enter and Space press
