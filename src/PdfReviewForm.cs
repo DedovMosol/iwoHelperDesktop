@@ -163,6 +163,7 @@ namespace ExcelMerger
 
             _swap = Secondary(20, top + 34, 190, Loc.T("review.swap"));
             _swap.Click += delegate { SwapSides(); };
+            // Единственный Primary окна: панель над файлами (пути), не шапка и не сетка.
             _compare = new RoundedButton(true);
             _compare.Text = Loc.T("review.compare");
             _compare.SetBounds(right - 190, top + 32, 190, 34);

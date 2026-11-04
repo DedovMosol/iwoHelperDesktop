@@ -228,9 +228,10 @@ process by `Ui` (WinForms never disposes `Control.Font`/`Form.Icon`).
 card, so cards with descriptions of different lengths still look alike, and `RoundedButton`
 has four looks (`Primary`, `Secondary`, `OnDark`, `OnHeader`) with a **filled** disabled state — a panel
 where half the buttons wait for an open document must show that without being clicked.
-Hub Back and tool Home share `Ui.HeaderNav`: `OnHeader` (ghost on the accent band, not a white
-dialog chip), one vertical alignment via `HeaderBand.AlignToText`, and a drawn chevron for Back
-instead of a triangle in the translation.
+Hub Back and tool Home share `Ui.HeaderNav`: `OnHeader` (idle is transparent on the accent band;
+hover/press only, not a white dialog chip), one vertical alignment via `HeaderBand.AlignToText`,
+and a drawn chevron for Back instead of a triangle in the translation. `Primary` is the file
+action (bottom strip, or the compare row above the files) — never a child of `HeaderBand`.
 
 `PushControl` is the base of every owner-drawn control that acts as a button (`ChoiceCard`,
 `RecentCard`, the hub's glyph buttons). It holds the one keyboard rule: Enter and Space press

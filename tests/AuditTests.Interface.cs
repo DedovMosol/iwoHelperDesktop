@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using ExcelMerger;
@@ -1479,6 +1480,98 @@ namespace ExcelMerger.Tests
                 }
                 finally { form.Hide(); }
             }
+        }
+
+        [Test("Шапка: в покое нет белой плашки — виден акцент родителя")]
+        private static void AuditHeaderNavIdleIsGhost()
+        {
+            Color accent = Color.FromArgb(15, 76, 129);
+            using (var band = new HeaderBand("T", "S", accent, Color.Black))
+            {
+                band.SetBounds(0, 0, 400, 78);
+                RoundedButton back = Ui.HeaderNav(band, delegate { }, Ui.HeaderNavKind.Back, null);
+                using (var bmp = new Bitmap(back.Width, back.Height))
+                {
+                    back.DrawToBitmap(bmp, new Rectangle(0, 0, back.Width, back.Height));
+                    Color corner = bmp.GetPixel(3, 3);
+                    AssertTrue(corner.R < 80 && corner.B > corner.R,
+                        "покой без белой заливки, угол=" + corner);
+                }
+            }
+        }
+
+        [Test("Primary только у действия с файлом, на шапке его нет")]
+        private static void AuditPrimaryStaysOffHeader()
+        {
+            RunSta(AuditPrimaryStaysOffHeaderCore);
+        }
+
+        private static void AuditPrimaryStaysOffHeaderCore()
+        {
+            using (var hub = new StartForm())
+                AssertNoPrimaryOnHeaders(hub, "хаб");
+            using (var merge = new PdfMergeForm())
+            {
+                AssertNoPrimaryOnHeaders(merge, "объединение");
+                AssertPrimaryBottom(merge, "объединение");
+            }
+            using (var split = new PdfSplitForm())
+            {
+                AssertNoPrimaryOnHeaders(split, "разделение");
+                AssertPrimaryBottom(split, "разделение");
+            }
+            using (var review = new PdfReviewForm())
+            {
+                AssertNoPrimaryOnHeaders(review, "сравнение");
+                int n = 0;
+                WalkButtons(review, delegate(RoundedButton b)
+                {
+                    if (b.Look == ButtonLook.Primary)
+                    {
+                        n++;
+                        AssertTrue((b.Anchor & AnchorStyles.Top) == AnchorStyles.Top,
+                            "сравнение: Primary в панели над файлами");
+                    }
+                });
+                AssertEq(1, n, "у сравнения один Primary");
+            }
+        }
+
+        private static void AssertNoPrimaryOnHeaders(Control root, string where)
+        {
+            foreach (Control c in root.Controls)
+            {
+                var band = c as HeaderBand;
+                if (band == null)
+                    continue;
+                WalkButtons(band, delegate(RoundedButton b)
+                {
+                    AssertTrue(b.Look != ButtonLook.Primary, where + ": Primary на шапке «" + b.Text + "»");
+                });
+            }
+        }
+
+        private static void AssertPrimaryBottom(Control root, string where)
+        {
+            int n = 0;
+            WalkButtons(root, delegate(RoundedButton b)
+            {
+                if (b.Look != ButtonLook.Primary)
+                    return;
+                n++;
+                AssertTrue((b.Anchor & AnchorStyles.Bottom) == AnchorStyles.Bottom,
+                    where + ": Primary «" + b.Text + "» не внизу");
+            });
+            AssertTrue(n >= 1, where + ": есть Primary действия");
+        }
+
+        private static void WalkButtons(Control root, Action<RoundedButton> each)
+        {
+            var b = root as RoundedButton;
+            if (b != null)
+                each(b);
+            foreach (Control c in root.Controls)
+                WalkButtons(c, each);
         }
     }
 }

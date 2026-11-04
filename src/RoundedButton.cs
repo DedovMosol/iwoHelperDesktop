@@ -134,9 +134,12 @@ namespace ExcelMerger
             var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
             using (GraphicsPath path = Ui.RoundedRect(rect, radius))
             {
-                using (var b = new SolidBrush(fill))
-                    g.FillPath(b, path);
-                if (border != Color.Empty)
+                if (fill.A > 0)
+                {
+                    using (var b = new SolidBrush(fill))
+                        g.FillPath(b, path);
+                }
+                if (border != Color.Empty && border.A > 0)
                     using (var p = new Pen(border, line))
                         g.DrawPath(p, path);
             }
@@ -218,11 +221,13 @@ namespace ExcelMerger
 
                 case ButtonLook.OnHeader:
                     text = Enabled ? Color.White : Color.FromArgb(180, 255, 255, 255);
+                    // Покой — без плашки (как глобус). Подложка только наведение/нажатие.
                     fill = !Enabled ? Color.FromArgb(24, 255, 255, 255)
                         : _pressed ? Color.FromArgb(70, 255, 255, 255)
-                        : _hover || _selected ? Color.FromArgb(46, 255, 255, 255)
-                        : Color.FromArgb(20, 255, 255, 255);
-                    border = Color.FromArgb(55, 255, 255, 255);
+                        : (_hover || _selected) ? Color.FromArgb(46, 255, 255, 255)
+                        : Color.Empty;
+                    border = (_hover || _pressed || _selected) && Enabled
+                        ? Color.FromArgb(55, 255, 255, 255) : Color.Empty;
                     return;
 
                 default:
