@@ -376,6 +376,8 @@ namespace ExcelMerger.Tests
                     else if (!(last0 < first1 && last1 < first2))
                         fails.Add("#" + idx + " зигзаг last0=" + last0 + " first1=" + first1 +
                             " last1=" + last1 + " first2=" + first2 + " " + string.Join(" ", dump.ToArray()));
+                    else if (idx == 29 && body.Count > 24)
+                        fails.Add("#29 осколки ×" + body.Count + " " + dump[0]);
                 }
             AssertTrue(fails.Count == 0, string.Join(" ;; ", fails.ToArray()));
         }

@@ -174,7 +174,18 @@ namespace ExcelMerger
                 if (cols != null && ColumnsComparableHeight(ctx, cols))
                     return AssembleColumns(ctx, cols, depth, availRight);
             }
-            List<List<int>> floors = depth > 0 ? SplitAtGaps(ctx.Boxes, items, true, ctx.HGapMin) : null;
+            // Внутри колонки HGapMin страницы (~1.2 em) совпадает с межстрочным Courier ×1.5.
+            // Порог — 1.6× типичной щели ЭТОЙ колонки: строка не этаж, абзацная отбивка — да.
+            double yMin = ctx.HGapMin;
+            if (!splitX)
+            {
+                double typical = TypicalYGap(ctx, items);
+                if (typical > 0)
+                    yMin = typical * 1.6;
+                if (yMin < ctx.HGapMin)
+                    yMin = ctx.HGapMin;
+            }
+            List<List<int>> floors = depth > 0 ? SplitAtGaps(ctx.Boxes, items, true, yMin) : null;
             if (floors == null)
                 return splitX ? CutColumns(ctx, items, depth, colLeft, colRight, availRight) : MakeLeaf(ctx, items, colLeft, colRight, availRight);
             var node = new CutNode { SideBySide = false, Children = new List<CutNode>(floors.Count) };
@@ -319,6 +330,33 @@ namespace ExcelMerger
                 else right.AddRange(columns[i]);
             }
             return new List<List<int>> { left, right };
+        }
+
+        /// <summary>
+        /// Медиана положительных щелей рамок по Y в наборе (низ верхнего − верх нижнего).
+        /// 0 — не из чего считать. Нужна, чтобы в колонке не путать строку с абзацем.
+        /// </summary>
+        private static double TypicalYGap(CutContext ctx, List<int> items)
+        {
+            if (items.Count < 3)
+                return 0;
+            var order = new List<int>(items);
+            order.Sort(delegate(int a, int b)
+            {
+                int c = ctx.Boxes[b].Top.CompareTo(ctx.Boxes[a].Top);
+                return c != 0 ? c : a.CompareTo(b);
+            });
+            var gaps = new List<double>();
+            for (int i = 1; i < order.Count; i++)
+            {
+                double g = ctx.Boxes[order[i - 1]].Bottom - ctx.Boxes[order[i]].Top;
+                if (g > 0)
+                    gaps.Add(g);
+            }
+            if (gaps.Count == 0)
+                return 0;
+            gaps.Sort();
+            return gaps[gaps.Count / 2];
         }
 
         /// <summary>
