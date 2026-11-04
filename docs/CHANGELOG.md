@@ -60,7 +60,7 @@ MAJOR.MINOR.PATCH ([SemVer](https://semver.org/)); one hotfix, 1.18.3.1, used a 
 
 ### Fixed
 - **Undo of a page rotation drops the old-angle thumbnail** (GR-15). A Ghostscript page raster larger than the pt-based reservation grows the memory lease or is dropped (GR-17). Indexed bitmaps no longer walk GetPixel (GR-16). Touch-pan on the page grid loads thumbs after LVN_ENDSCROLL (GR-19).
-- **A two-column letterhead no longer kills Word during PDF → Word.** Filling a 1×N borderless table for a side-by-side header left the cursor in the last cell; the next paragraph hung for minutes and Word then Fail-Fasted (RPC 0x800706BA). Header columns are written as successive paragraphs. Spell-as-you-type is off in the hidden Word, and a three-minute fill timeout stops a wedged instance.
+- **A two-column letterhead no longer kills Word during PDF → Word.** Cell text is written through the cell Range (no Select). Logos and barcodes are floating shapes on the page, so they keep their PDF position instead of shoving the header. Spell-as-you-type is off in the hidden Word; a three-minute fill timeout stops a wedged instance.
 - **If Word dies while writing a .docx, the app reports that Word closed instead of “RPC server unavailable”.** Fail Fast inside Word leaves RPC 0x800706BA; that is mapped to a clear message, not a raw COM HRESULT.
 - **A PDF larger than half the process memory budget no longer evicts every open document only to fail anyway.** The renderer refuses that file first (GR-6).
 - **Header Back/Home sizes are logical, then scaled once.** Measuring caption width with an already-scaled font and then auto-scaling the control made the chips 105 px at 125 % instead of ~90.
