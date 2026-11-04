@@ -76,7 +76,7 @@ namespace ExcelMerger
             Cursor = Cursors.Hand;
             // Кэшированные шрифты: кнопок много (по 4–6 на окно), свой Font у каждой
             // копил бы GDI-объекты до финализатора при каждой пересборке окон.
-            Font = look == ButtonLook.Primary || look == ButtonLook.OnHeader
+            Font = look == ButtonLook.Primary
                 ? Ui.Font(10.5f, FontStyle.Bold)
                 : Ui.Font(9.75f);
             if (look == ButtonLook.OnHeader)
@@ -130,9 +130,10 @@ namespace ExcelMerger
 
             // Рисование — всегда после масштаба окна, в пикселях устройства (UI-25).
             float s = DpiScale.Device(this);
-            float radius = RadiusFor(Height, s);
-            float line = _look == ButtonLook.OnHeader
-                ? Math.Max(1.6f, 1.8f * s) : Math.Max(1f, s);
+            float line = Math.Max(1f, s);
+            float radius = _look == ButtonLook.OnHeader
+                ? Math.Min(Height / 2f - line, 14f * s)
+                : RadiusFor(Height, s);
             var rect = new RectangleF(line / 2, line / 2, Width - line, Height - line);
             using (GraphicsPath path = Ui.RoundedRect(rect, radius))
             {
@@ -227,16 +228,15 @@ namespace ExcelMerger
                     return;
 
                 case ButtonLook.OnHeader:
-                    // Не диалоговая белая таблетка и не голый текст: матовое стекло + яркая
-                    // кромка, чтобы кнопка читалась на синей/красной/зелёной шапке.
-                    text = Enabled ? Color.White : Color.FromArgb(200, 255, 255, 255);
-                    fill = !Enabled ? Color.FromArgb(50, 255, 255, 255)
-                        : _pressed ? Color.FromArgb(170, 255, 255, 255)
-                        : (_hover || _selected) ? Color.FromArgb(140, 255, 255, 255)
-                        : Color.FromArgb(100, 255, 255, 255);
+                    // Fluent subtle: лёгкий подъём тона полосы и тонкая кромка, не молоко.
+                    text = Enabled ? Color.White : Color.FromArgb(190, 255, 255, 255);
+                    fill = !Enabled ? Color.FromArgb(28, 255, 255, 255)
+                        : _pressed ? Color.FromArgb(72, 255, 255, 255)
+                        : (_hover || _selected) ? Color.FromArgb(56, 255, 255, 255)
+                        : Color.FromArgb(38, 255, 255, 255);
                     border = Enabled
-                        ? Color.FromArgb(_pressed ? 255 : (_hover || _selected) ? 245 : 230, 255, 255, 255)
-                        : Color.FromArgb(90, 255, 255, 255);
+                        ? Color.FromArgb(_hover || _pressed || _selected ? 160 : 110, 255, 255, 255)
+                        : Color.FromArgb(70, 255, 255, 255);
                     return;
 
                 default:
