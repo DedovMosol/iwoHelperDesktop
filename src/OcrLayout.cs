@@ -304,9 +304,59 @@ namespace ExcelMerger
             CutNode root = CutTree(words, splitColumns);
             var stats = new IndentStats();
             if (root != null)
+            {
+                GlueListMarkerColumns(root, words);
                 WalkCut(root, words, splitColumns, result.Paragraphs, stats, mode, new ListNesting());
+            }
             result.FirstLineIndentPt = stats.DocumentIndent();
             return result;
+        }
+
+        /// <summary>
+        /// Полоса «III.» / «1.1.» слева от текста пункта — не газетная колонка. XY режет её
+        /// при канале ≥10 pt (Courier), и маркер теряется в своём абзаце (RC-3).
+        /// </summary>
+        private static void GlueListMarkerColumns(CutNode node, IList<PdfWord> words)
+        {
+            if (node == null || node.IsLeaf)
+                return;
+            for (int i = 0; i < node.Children.Count; i++)
+                GlueListMarkerColumns(node.Children[i], words);
+            if (!node.SideBySide || node.Children.Count < 2)
+                return;
+            CutNode left = node.Children[0];
+            if (!left.IsLeaf || !LeafIsListMarkers(left, words))
+                return;
+            var tags = new List<int>();
+            CollectCutTags(node, tags);
+            node.Tags = tags;
+            node.Children = null;
+            node.SideBySide = false;
+        }
+
+        private static void CollectCutTags(CutNode node, List<int> acc)
+        {
+            if (node.IsLeaf)
+            {
+                acc.AddRange(node.Tags);
+                return;
+            }
+            for (int i = 0; i < node.Children.Count; i++)
+                CollectCutTags(node.Children[i], acc);
+        }
+
+        private static bool LeafIsListMarkers(CutNode leaf, IList<PdfWord> words)
+        {
+            if (leaf.Tags == null || leaf.Tags.Count == 0)
+                return false;
+            int marked = 0;
+            for (int i = 0; i < leaf.Tags.Count; i++)
+            {
+                PdfWord w = words[leaf.Tags[i]];
+                if (ListMarker.LooksLikeMarker(w.Text ?? ""))
+                    marked++;
+            }
+            return marked == leaf.Tags.Count;
         }
 
         /// <summary>
@@ -604,6 +654,10 @@ namespace ExcelMerger
                     // (снимок Courier «две колонки»). Подпись и дата — зазор пуст на всех строках.
                     if (GapCoveredByOtherLines(lines, li, x0, x1))
                         continue;
+                    // «III.» / «1.» слева и текст пункта через широкий пробел — один пункт,
+                    // не «подпись … дата». Иначе маркер теряется (RC-3, Courier 14).
+                    if (from == 0 && MarkerOnlySlice(ln, from, wi))
+                        continue;
                     if (parts == null)
                         parts = new List<Line>();
                     parts.Add(Slice(ln, from, wi));
@@ -639,6 +693,15 @@ namespace ExcelMerger
                         return true;
             }
             return false;
+        }
+
+        /// <summary>Левый кусок строки — только маркер списка («III.», «1.»), без текста пункта.</summary>
+        private static bool MarkerOnlySlice(Line ln, int from, int to)
+        {
+            Line part = Slice(ln, from, to);
+            if (part.Words.Count != 1 || !ListMarker.IsLineMarkerToken(part.Words[0].Text ?? ""))
+                return false;
+            return ListContentLeft(part) <= part.Left + 0.25 * Math.Max(part.Height, 1);
         }
 
         /// <summary>Сегмент строки [from..to) как самостоятельная строка (тот же MidY).</summary>
@@ -1389,8 +1452,14 @@ namespace ExcelMerger
             if (StartsWithListMarker(prev))
             {
                 double content = ListContentLeft(prev);
+                // Маркер один на строке: тело на следующей (не висячий отступ, а перенос).
                 if (content <= prev.Left + 0.25 * em)
-                    return false;
+                {
+                    string tok = prev.Words.Count == 1 ? (prev.Words[0].Text ?? "") : "";
+                    if (!ListMarker.IsLineMarkerToken(tok))
+                        return false;
+                    return cur.Left + tol >= prev.Left;
+                }
                 return Math.Abs(cur.Left - content) <= tol;
             }
             // Третья+ строка пункта: только если группа уже начата маркером.

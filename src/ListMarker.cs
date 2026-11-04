@@ -70,6 +70,23 @@ namespace ExcelMerger
         }
 
         /// <summary>
+        /// Маркер, который бывает ОДНИМ словом на строке («III.», «(1)», «12.»), а не
+        /// буква «о.» / «I.» как слово текста. Иначе висячий перенос делает ложный список.
+        /// </summary>
+        internal static bool IsLineMarkerToken(string text)
+        {
+            if (string.IsNullOrEmpty(text) || !LooksLikeMarker(text))
+                return false;
+            char c = text[0];
+            if (c == '(' || (c >= '0' && c <= '9'))
+                return true;
+            int r = 0;
+            while (r < text.Length && r < 7 && "IVXLCDMivxlcdm".IndexOf(text[r]) >= 0)
+                r++;
+            return r >= 2;
+        }
+
+        /// <summary>
         /// Цифра номера списка — ТОЛЬКО ASCII 0–9. char.IsDigit пропускает и другие десятичные
         /// цифры Юникода (полноширинные «１», арабско-индийские «١»), а «text[k] - '0'» превращал
         /// бы их в мусор порядка 65 000: Word такой начальный номер списка отвергает, исключение

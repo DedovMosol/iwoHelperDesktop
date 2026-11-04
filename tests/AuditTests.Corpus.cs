@@ -277,6 +277,33 @@ namespace ExcelMerger.Tests
             AssertTrue(fails.Count == 0, "zigzag: " + string.Join("; ", fails.ToArray()));
         }
 
+        [Test("Корпус: римский список #4 — маркеры на месте (RC-3)")]
+        private static void CorpusLetterListMarkers()
+        {
+            EmbeddedAssemblies.Ensure();
+            CCase c = CorpusCases.All(10).Find(x => x.Family.StartsWith("списки с буквами", StringComparison.Ordinal) && x.Variant.Index == 4);
+            AssertTrue(c != null, "variant 4");
+            using (var dir = new TempDir("iwo_letterlist_"))
+            {
+                string path;
+                RenderCase(c, dir, out path);
+                List<PdfPageText> pages = PdfTextExtract.Extract(path);
+                int numbered = 0;
+                var kinds = new List<string>();
+                foreach (PdfPageText p in pages)
+                    foreach (OcrParagraph para in p.Paragraphs)
+                    {
+                        kinds.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                            "{0} L{1:0} T{2:0} {3}",
+                            para.ListKind == ListKind.None ? "t" : "n" + para.ListNumber,
+                            para.LeftPt, para.TopPt,
+                            para.Text.Length > 36 ? para.Text.Substring(0, 36) : para.Text));
+                        if (para.ListKind == ListKind.Numbered) numbered++;
+                    }
+                AssertTrue(numbered >= 6, "letters+roman+compound: " + string.Join(" | ", kinds.ToArray()));
+            }
+        }
+
         /// <summary>
         /// Три колонки: после заголовка поток — колонка 0 целиком, затем 1, затем 2.
         /// Построчный L/M/R — RC-14 (XY не держал вертикальный канал на всю высоту).

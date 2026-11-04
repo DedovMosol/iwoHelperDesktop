@@ -331,6 +331,7 @@ namespace ExcelMerger.Tests
             Run("ListMarker: не список (год, проценты, без пробела, обычный текст)", TestListMarkerNegatives);
             Run("OcrLayout: плотный нумерованный список -> отдельные пункты с ListKind", TestOcrNumberedList);
             Run("OcrLayout: «(1)» «(2)» — два нумерованных абзаца (RC-3)", TestOcrParenNumberedList);
+            Run("OcrLayout: «III.» не отрывается от пункта через широкий зазор (RC-3)", TestOcrRomanMarkerStaysWithItem);
             Run("OcrLayout: маркированный список -> ListKind=Bulleted, содержимое без маркера", TestOcrBulletedList);
             Run("OcrLayout: пункт с полной первой строкой — Left, не Justify (RC-31)", TestOcrListNotJustified);
             Run("OcrLayout: вложенность списка не сбрасывается на следующем этаже (RC-9)", TestOcrListLevelAcrossFloors);
@@ -601,7 +602,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 550;
+            const int ExactTests = 551;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -11884,6 +11885,16 @@ namespace ExcelMerger.Tests
                             "ручное открытие без owner центрируется на рабочем экране");
                         AssertTrue(!support.Visible,
                             "реквизиты не навязываются и изначально свернуты");
+                        int withText = 0;
+                        foreach (Control child in scroll.Controls)
+                        {
+                            var card = child as Panel;
+                            if (card == null || card == support) continue;
+                            foreach (Control c in card.Controls)
+                                if (c is NonSelectableText && !string.IsNullOrEmpty(c.Text))
+                                    withText++;
+                        }
+                        AssertTrue(withText > 0, "текст пунктов лежит на карточках, не рядом");
                         AssertTrue(option.Checked,
                             "ручное окно отражает отключённый автопоказ");
 
@@ -13918,6 +13929,25 @@ namespace ExcelMerger.Tests
             AssertEq(2, ps[1].ListNumber, "(2) = 2");
             AssertEq("Alpha", ps[0].Text.Substring(ps[0].ListContentStart), "content after (1)");
             AssertEq("Beta", ps[1].Text.Substring(ps[1].ListContentStart), "content after (2)");
+        }
+
+        private static void TestOcrRomanMarkerStaysWithItem()
+        {
+            // Courier: «III.» и текст через >6 em на одной высоте — не «подпись … дата».
+            var words = new List<PdfWord>
+            {
+                W("III.", 0, 200, 28, 10), W("Relevant", 100, 200, 80, 10), W("term", 185, 200, 40, 10),
+                W("IV.", 0, 184, 22, 10), W("Next", 100, 184, 50, 10), W("item", 155, 184, 40, 10),
+                W("pad", 400, 200, 20, 10)
+            };
+            List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
+            var lists = new List<OcrParagraph>();
+            foreach (OcrParagraph p in ps)
+                if (p.ListKind == ListKind.Numbered) lists.Add(p);
+            AssertTrue(lists.Count >= 2, "два римских пункта: " + ps.Count);
+            AssertEq(3, lists[0].ListNumber, "III. = 3");
+            AssertTrue(lists[0].Text.IndexOf("Relevant", StringComparison.Ordinal) >= 0, "маркер с текстом");
+            AssertEq(4, lists[1].ListNumber, "IV. = 4");
         }
 
         private static void TestOcrBulletedList()
