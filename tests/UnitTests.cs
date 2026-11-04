@@ -919,37 +919,27 @@ namespace ExcelMerger.Tests
         private static void TestHelpMenu()
         {
             var extra = new System.Windows.Forms.ToolStripMenuItem("Папка отчётов");
-            using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }, extra))
+            using (System.Windows.Forms.ContextMenuStrip menu = HelpMenu.Create(null, delegate { }, extra))
             {
-                AssertEq(1, menu.Items.Count, "один пункт строки меню");
-                var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
-                AssertEq(Loc.T("menu.root"), help.Text, "название пункта");
-
                 var texts = new List<string>();
-                foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
+                foreach (System.Windows.Forms.ToolStripItem it in menu.Items)
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         texts.Add(it.Text);
                 AssertTrue(texts.Contains(Loc.T("menu.howTo")), "есть «Как пользоваться»");
-                // Статистика переехала ВНУТРЬ «Настроек»: отдельного пункта в меню быть не
-                // должно, иначе одно окно открывалось бы двумя путями и оба пришлось бы
-                // помнить при каждой правке.
                 AssertTrue(texts.Contains(Loc.T("settings.title")), "есть «Настройки»");
                 AssertTrue(!texts.Contains(Loc.T("menu.stats")), "отдельного пункта «Статистика» больше нет");
                 AssertTrue(texts.Contains(Loc.T("menu.language")), "есть выбор языка");
                 AssertTrue(texts.Contains("Папка отчётов"), "доп. пункт вставлен");
-                // «О программе» перенесена на стартовый экран — в меню её быть не должно.
                 AssertTrue(!texts.Contains(Loc.T("hub.about")), "«О программе» убрана из меню");
             }
 
-            // Без доп. пунктов: «Как пользоваться», «Статистика», «Язык / Language».
-            using (System.Windows.Forms.MenuStrip menu = HelpMenu.Create(null, delegate { }))
+            using (System.Windows.Forms.ContextMenuStrip menu = HelpMenu.Create(null, delegate { }))
             {
-                var help = (System.Windows.Forms.ToolStripMenuItem)menu.Items[0];
                 int menuItems = 0;
-                foreach (System.Windows.Forms.ToolStripItem it in help.DropDownItems)
+                foreach (System.Windows.Forms.ToolStripItem it in menu.Items)
                     if (it is System.Windows.Forms.ToolStripMenuItem)
                         menuItems++;
-                AssertEq(3, menuItems, "без extras — три пункта (справка, статистика, язык)");
+                AssertEq(3, menuItems, "без extras — три пункта (справка, настройки, язык)");
             }
         }
 
@@ -19571,18 +19561,13 @@ namespace ExcelMerger.Tests
                         try { form.Dispose(); } catch { }
                 }
 
-                // Полоса меню: свой шрифт и подписи, помещающиеся в её фиксированную высоту.
                 using (var owner = new System.Windows.Forms.Form())
                 {
-                    System.Windows.Forms.MenuStrip menu = HelpMenu.Create(owner, delegate { });
+                    System.Windows.Forms.ContextMenuStrip menu = HelpMenu.Create(owner, delegate { });
                     if (Math.Abs(menu.Font.SizeInPoints - 9.75f) > 0.01f)
-                        offenders.Add("полоса меню: шрифт " + menu.Font.SizeInPoints + " pt (системный?)");
-                    foreach (System.Windows.Forms.ToolStripItem item in menu.Items)
-                    {
-                        int need = System.Windows.Forms.TextRenderer.MeasureText(item.Text, menu.Font).Height;
-                        if (need > HelpMenu.Height - 6)
-                            offenders.Add("пункт «" + item.Text + "» не помещается в полосу: нужно " + need);
-                    }
+                        offenders.Add("меню: шрифт " + menu.Font.SizeInPoints + " pt (системный?)");
+                    if (menu.Items.Count < 3)
+                        offenders.Add("меню: мало пунктов");
                     menu.Dispose();
                 }
             });
