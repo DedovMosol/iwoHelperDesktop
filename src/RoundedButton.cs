@@ -49,6 +49,7 @@ namespace ExcelMerger
         private bool _selected;
         private bool _hover;
         private bool _pressed;
+        private Point[] _chevronPts; // переиспользуем в OnPaint, не new[] на кадр
 
         public bool Selected
         {
@@ -179,16 +180,21 @@ namespace ExcelMerger
             c = new Point(x + arm, mid + arm);
         }
 
-        private static void DrawChevronLeft(Graphics g, int left, int height, float scale, Color color)
+        private void DrawChevronLeft(Graphics g, int left, int height, float scale, Color color)
         {
+            if (_chevronPts == null)
+                _chevronPts = new Point[3];
             Point a, b, c;
             ChevronPoints(left, height, scale, out a, out b, out c);
+            _chevronPts[0] = a;
+            _chevronPts[1] = b;
+            _chevronPts[2] = c;
             using (var p = new Pen(color, Math.Max(1.5f, 1.6f * scale)))
             {
                 p.StartCap = LineCap.Round;
                 p.EndCap = LineCap.Round;
                 p.LineJoin = LineJoin.Round;
-                g.DrawLines(p, new[] { a, b, c });
+                g.DrawLines(p, _chevronPts);
             }
         }
 

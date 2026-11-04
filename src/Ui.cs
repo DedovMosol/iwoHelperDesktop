@@ -82,7 +82,7 @@ namespace ExcelMerger
         /// Одна кнопка навигации на шапке (DRY): вид OnHeader, вертикаль через AlignToText.
         /// Back слева, Home справа. Не белая Secondary — она чужая на градиенте.
         /// </summary>
-        public static RoundedButton HeaderNav(HeaderBand header, Action click, HeaderNavKind kind, ToolTip tips)
+        public static RoundedButton HeaderNav(HeaderBand header, Action click, HeaderNavKind kind, ToolTip tips, int top = 0)
         {
             if (header == null || click == null)
                 return null;
@@ -92,7 +92,7 @@ namespace ExcelMerger
             b.AccessibleName = b.Text;
             int width = kind == HeaderNavKind.Back ? 104 : 160;
             int left = kind == HeaderNavKind.Back ? 12 : Math.Max(12, header.Width - width - 12);
-            b.SetBounds(left, 0, width, 30);
+            b.SetBounds(left, top, width, 30);
             b.Anchor = kind == HeaderNavKind.Back
                 ? AnchorStyles.Top | AnchorStyles.Left
                 : AnchorStyles.Top | AnchorStyles.Right;
@@ -107,13 +107,13 @@ namespace ExcelMerger
         /// <summary>
         /// Кнопка «Главная» в правом углу брендовой шапки (единая для всех инструментов, DRY).
         /// showHub == null (запуск вне хаба, напр. смоук-тест) — кнопки нет.
-        /// top оставлен в подписи вызовов; вертикаль задаёт шапка (AlignToText).
+        /// top — стартовый Y до первой раскладки шапки; дальше AlignToText.
         /// </summary>
         public static void HomeOnHeader(HeaderBand header, Action showHub, ToolTip tips, int top)
         {
             if (showHub == null)
                 return;
-            HeaderNav(header, showHub, HeaderNavKind.Home, tips);
+            HeaderNav(header, showHub, HeaderNavKind.Home, tips, top);
         }
 
         public static Label Label(Control parent, string text, int x, int y, Font font, Color color)
