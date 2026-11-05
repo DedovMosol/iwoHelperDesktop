@@ -102,11 +102,11 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 
 |  |  |
 |:--:|:--:|
-| <img src="docs/screenshots/hub-main.png" width="400" alt="Start screen"><br>**Start screen** — pick a section | <img src="docs/screenshots/hub.png" width="400" alt="PDF tools"><br>**PDF tools** — six tools in the section |
-| <img src="docs/screenshots/pdf-merge.png" width="400" alt="Merge PDF"><br>**Merge PDF** — thumbnails & four levels of compression | <img src="docs/screenshots/pdf-split.png" width="400" alt="Split PDF"><br>**Split PDF** — four modes, ready page ranges |
-| <img src="docs/screenshots/pdf-ops.png" width="400" alt="More operations"><br>**More operations** — convert, extract, print, properties | <img src="docs/screenshots/pdf-word.png" width="400" alt="PDF to Word with newspaper columns, nested list and table"><br>**PDF → Word** — columns, nested lists and tables into an editable `.docx` |
-| <img src="docs/screenshots/pdf-pptx.png" width="400" alt="PDF to PowerPoint with lists, table and chart"><br>**PDF → PowerPoint** — those pages as slides with real text, tables and chart bars | <img src="docs/screenshots/excel.png" width="400" alt="Merge Excel"><br>**Merge Excel** — sheets of a folder into one digest |
-| <img src="docs/screenshots/review.png" width="400" alt="Compare PDF beta review"><br>**Compare PDF (beta) review** — earlier/left removals and later/right additions |  |
+| <img src="docs/screenshots/hub-main.png" width="560" alt="Start screen"><br>**Start screen** — pick a section | <img src="docs/screenshots/hub.png" width="560" alt="PDF tools"><br>**PDF tools** — six tools in the section |
+| <img src="docs/screenshots/pdf-merge.png" width="560" alt="Merge PDF"><br>**Merge PDF** — thumbnails & four levels of compression | <img src="docs/screenshots/pdf-split.png" width="560" alt="Split PDF"><br>**Split PDF** — four modes, ready page ranges |
+| <img src="docs/screenshots/pdf-ops.png" width="560" alt="More operations"><br>**More operations** — convert, extract, print, properties | <img src="docs/screenshots/pdf-word.png" width="560" alt="PDF to Word with newspaper columns, nested list and table"><br>**PDF → Word** — columns, nested lists and tables into an editable `.docx` |
+| <img src="docs/screenshots/pdf-pptx.png" width="560" alt="PDF to PowerPoint with lists, table and chart"><br>**PDF → PowerPoint** — those pages as slides with real text, tables and chart bars | <img src="docs/screenshots/excel.png" width="560" alt="Merge Excel"><br>**Merge Excel** — sheets of a folder into one digest |
+| <img src="docs/screenshots/review.png" width="560" alt="Compare PDF beta review"><br>**Compare PDF (beta) review** — earlier/left removals and later/right additions |  |
 
 ## ⬇️ Download
 

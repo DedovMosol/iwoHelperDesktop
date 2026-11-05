@@ -58,8 +58,12 @@ using System.Runtime.InteropServices;
 public static class Shot {
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("shcore.dll")] public static extern int SetProcessDpiAwareness(int value);
+    public struct RECT { public int L, T, R, B; }
 }
 "@
+try { [void][Shot]::SetProcessDpiAwareness(2) } catch { }
 
 # ---------- sample documents ----------
 
@@ -278,8 +282,15 @@ function Pump([int]$ms) {
 }
 
 function Save-Shot($form, [string]$name) {
-    $bmp = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
+    $rect = New-Object Shot+RECT
+    [void][Shot]::GetWindowRect($form.Handle, [ref]$rect)
+    $w = [Math]::Max($form.Width, $rect.R - $rect.L)
+    $h = [Math]::Max($form.Height, $rect.B - $rect.T)
+    if ($w -lt 1) { $w = $form.Width }
+    if ($h -lt 1) { $h = $form.Height }
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.Clear([System.Drawing.Color]::White)
     $hdc = $g.GetHdc()
     [void][Shot]::PrintWindow($form.Handle, $hdc, 2)
     $g.ReleaseHdc($hdc)
