@@ -14,7 +14,7 @@
 
 <div align="center">
 
-**Contents** — 🚀 [Features](#-features) · 📸 [Screenshots](#-screenshots) · ⬇️ [Download](#️-download) · 🖥️ [Usage](#️-usage)<br>🛠️ [Build from source](#️-build-from-source) · 🧩 [Built with](#-built-with) · 🔒 [Privacy](#-privacy) · ⚖️ [License](#️-license)
+**Contents** — 🚀 [Features](#-features) · 📸 [Screenshots](#-screenshots) · ⬇️ [Download](#️-download) · 🗺️ [What's next](#️-whats-next) · 🖥️ [Usage](#️-usage)<br>🛠️ [Build from source](#️-build-from-source) · 🧩 [Built with](#-built-with) · 🔒 [Privacy](#-privacy) · ⚖️ [License](#️-license)
 
 </div>
 
@@ -151,6 +151,19 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 - The x64 and x86 packages have the same tools, the 32‑bit one runs with lower memory limits (image export up to 300 dpi, smaller caches) — take **x64** unless your Windows is 32‑bit.
 
 > Requirements: Windows 8.1 / 10 / 11 with [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) — built into Windows 10 1903+ and Windows 11, on Windows 8.1 it installs once (the installer checks and opens the download page). **Merge Excel** needs Microsoft Excel (and Microsoft Word for its cover note), and **PDF → Word** needs Microsoft Word to write the `.docx`. **Merge PDF, Split, Compare, More operations and PDF → PowerPoint** need no Office at all.
+
+## 🗺️ What's next
+
+The next one or two versions are meant to add, in no fixed order:
+
+- scanning from inside the app (OCR for image-only PDFs);
+- setting a password on a PDF;
+- more work on PDF Compare;
+- more work on turning born-digital PDFs into Word and PowerPoint;
+- smaller interface polish;
+- and, perhaps, a Chinese translation.
+
+This is independent work done in available time. Optional support (in the app: **About → Support the project**) helps the same items land sooner; without it they still move, just more slowly. None of the list is a delivery date.
 
 ## 🖥️ Usage
 
