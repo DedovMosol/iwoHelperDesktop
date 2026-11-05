@@ -117,10 +117,11 @@ namespace ExcelMerger
             {
                 _option = new AccentCheckBox();
                 _option.Text = optionText;
+                _option.AutoSize = false;
                 Controls.Add(_option); // шрифт наследуется от окна: мерить только после этого
-                Size want = DpiScale.ToLogical(_option.GetPreferredSize(Size.Empty));
-                _option.SetBounds(textLeft, textBottom + 16, Math.Min(want.Width, textW), want.Height);
-                textBottom = _option.Top + want.Height;
+                Size want = DpiScale.ToLogical(_option.GetPreferredSize(new Size(DpiScale.Px(this, textW), 0)));
+                _option.SetBounds(textLeft, textBottom + 16, textW, Math.Max(want.Height, 22));
+                textBottom = _option.Top + _option.Height;
             }
 
             int btnY = textBottom + 24;

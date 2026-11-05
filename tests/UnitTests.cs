@@ -12241,8 +12241,16 @@ namespace ExcelMerger.Tests
                         { failure = "раскрывающиеся секции не найдены"; return; }
                         if (about.ProjectPanel.Visible || about.SupportPanel.Visible)
                         { failure = "редкие секции должны быть свёрнуты по умолчанию"; return; }
+                        if (about.ProjectToggle.Text.IndexOf('▸') >= 0 ||
+                            about.ProjectToggle.Text.IndexOf('▾') >= 0)
+                        { failure = "шеврон в тексте кнопки, а не нарисован"; return; }
+                        var projectBtn = about.ProjectToggle as RoundedButton;
+                        if (projectBtn == null || projectBtn.Chevron != ButtonChevron.Open)
+                        { failure = "свёрнутая секция без шеврона Open"; return; }
                         about.ProjectToggle.PerformClick();
                         about.SupportToggle.PerformClick();
+                        if (projectBtn.Chevron != ButtonChevron.Down)
+                        { failure = "раскрытая секция без шеврона Down"; return; }
                         if (!about.ProjectPanel.Visible || !about.SupportPanel.Visible)
                         { failure = "секции не раскрылись независимо"; return; }
                         System.Windows.Forms.TextBoxBase account = FindSelectable(about, AboutForm.DonationAccount);
@@ -13094,9 +13102,18 @@ namespace ExcelMerger.Tests
         {
             var para = new OcrParagraph { LeftPt = 10, RightPt = 50, TopPt = 80, BottomPt = 70 };
             var imgs = new List<OcrImage> { new OcrImage { LeftPt = 0, TopPt = 100, WidthPt = 80, HeightPt = 40 } };
-            AssertTrue(PageBlocks.CoveredByImage(para, imgs), "абзац внутри картинки");
+            AssertTrue(PageBlocks.CoveredByImage(para, imgs, 595, 842), "абзац внутри штампа");
             imgs[0].LeftPt = 200;
-            AssertTrue(!PageBlocks.CoveredByImage(para, imgs), "картинка сбоку");
+            AssertTrue(!PageBlocks.CoveredByImage(para, imgs, 595, 842), "картинка сбоку");
+            imgs[0].LeftPt = 0;
+            imgs[0].TopPt = 200;
+            imgs[0].WidthPt = 400;
+            imgs[0].HeightPt = 180;
+            AssertTrue(!PageBlocks.CoveredByImage(para, imgs, 595, 842), "полоса скана не глотает текстовый слой");
+            imgs[0].TopPt = 842;
+            imgs[0].WidthPt = 595;
+            imgs[0].HeightPt = 842;
+            AssertTrue(!PageBlocks.CoveredByImage(para, imgs, 595, 842), "полностраничный скан не глотает текст");
         }
 
         private static void TestOcrParagraphs()
@@ -20127,7 +20144,10 @@ namespace ExcelMerger.Tests
                                     pad = c.Left;
                             int room = f.ClientSize.Width - box.Left - pad;
                             box.Text = Loc.T("update.skip"); // настоящая подпись вместо нейтральной
-                            int want = box.GetPreferredSize(System.Drawing.Size.Empty).Width;
+                            if (box.Text.IndexOf("…", StringComparison.Ordinal) >= 0 ||
+                                box.Text.EndsWith("...", StringComparison.Ordinal))
+                                offenders.Add(lang + ": подпись обрезана: «" + box.Text + "»");
+                            int want = box.GetPreferredSize(new System.Drawing.Size(room, 0)).Width;
                             if (want > room)
                                 offenders.Add(lang + ": подпись «" + box.Text + "» просит " + want +
                                               " px, а колонка " + room);

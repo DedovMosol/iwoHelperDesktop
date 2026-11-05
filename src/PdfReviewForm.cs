@@ -32,7 +32,7 @@ namespace ExcelMerger
         private PdfReviewPageView _leftSource, _rightSource, _unifiedSource;
         // Один рендерер на окно: панели рендерят по очереди и делят загруженные документы.
         private readonly PdfReviewRenderSession _renderSession = new PdfReviewRenderSession();
-        private Label _summary, _position;
+        private Label _summary, _position, _limitsNote;
         private Button _previous, _next, _manual;
         private PdfReviewResult _result;
         private long _contentRevision;
@@ -63,6 +63,7 @@ namespace ExcelMerger
         internal PdfReviewPageView LeftSourceView { get { return _leftSource; } }
         internal PdfReviewPageView RightSourceView { get { return _rightSource; } }
         internal Label SummaryLabel { get { return _summary; } }
+        internal Label LimitsNoteLabel { get { return _limitsNote; } }
         internal PdfReviewResult ReviewResult { get { return _result; } }
         internal bool RightSourceChecking { get { return _rightSourceChecking; } }
         internal PdfReviewSourceError LeftSourceError { get { return _leftSourceError; } }
@@ -184,6 +185,11 @@ namespace ExcelMerger
             // диктор объявляет сам, даже когда фокус в списке страниц или на холсте.
             _summary.LiveSetting = AutomationLiveSetting.Polite;
             _lblStatus = _summary;
+
+            _limitsNote = Ui.Label(this, Loc.T("review.limits.note"), 20, top + 72, Font, Theme.TextMuted);
+            _limitsNote.Name = "reviewLimitsNote";
+            _limitsNote.AutoSize = false;
+            _limitsNote.AccessibleName = Loc.T("review.limits.note");
 
             _body = new SplitContainer();
             _body.SetBounds(20, top + 80, right - 20, ClientSize.Height - (top + 80) - 112);
@@ -654,6 +660,30 @@ namespace ExcelMerger
             if (_pickRight == null)
                 return;
             LayoutPathRow();
+            LayoutLimitsAndBody();
+        }
+
+        /// <summary>
+        /// Примечание о границах сравнения — отдельная строка между кнопками и холстом:
+        /// высота по тексту, ширина по окну, холст начинается ниже.
+        /// </summary>
+        private void LayoutLimitsAndBody()
+        {
+            if (_limitsNote == null || _body == null)
+                return;
+            Func<int, int> d = delegate(int v) { return DpiScale.Px(this, v); };
+            int margin = d(20);
+            int right = ClientSize.Width - margin;
+            int noteTop = d(_pathTop) + d(72);
+            int noteW = Math.Max(d(80), right - margin);
+            Size measured = TextRenderer.MeasureText(_limitsNote.Text, _limitsNote.Font,
+                new Size(noteW, int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix);
+            int noteH = Math.Max(d(16), measured.Height);
+            _limitsNote.SetBounds(margin, noteTop, noteW, noteH);
+            int bodyTop = _limitsNote.Bottom + d(8);
+            int bodyH = Math.Max(d(120), ClientSize.Height - bodyTop - d(112));
+            _body.SetBounds(margin, bodyTop, Math.Max(d(80), right - margin), bodyH);
         }
 
         private void BuildNavigation(int right)

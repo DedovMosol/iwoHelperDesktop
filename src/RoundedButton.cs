@@ -28,7 +28,9 @@ namespace ExcelMerger
         Left,
         Right,
         Up,
-        Down
+        Down,
+        /// <summary>Вправо, но слева от текста — свёрнутый раскрывающийся список.</summary>
+        Open
     }
 
     /// <summary>16 px знак слева на светлой кнопке панели (не шрифт — Windows 8.1 без MDL2).</summary>
@@ -188,7 +190,7 @@ namespace ExcelMerger
 
             int pad = TextPadFor(Width, s);
             int mark = Mark == ButtonMark.None ? 0 : (int)Math.Round(18f * s);
-            int glyph = Chevron == ButtonChevron.None ? 0 : (int)Math.Round(14f * s);
+            int glyph = Chevron == ButtonChevron.None ? 0 : (int)Math.Round(18f * s);
             bool markOnly = Mark != ButtonMark.None && string.IsNullOrEmpty(Text) && Chevron == ButtonChevron.None;
             int insetL = markOnly ? 0 : mark + (Chevron == ButtonChevron.Right ? 0 : glyph);
             int insetR = Chevron == ButtonChevron.Right ? glyph : 0;
@@ -216,7 +218,7 @@ namespace ExcelMerger
         internal static void ChevronPoints(ButtonChevron dir, int pad, int width, int height, float scale,
             out Point a, out Point b, out Point c)
         {
-            int arm = Math.Max(3, (int)Math.Round(5f * scale));
+            int arm = Math.Max(4, (int)Math.Round(7f * scale));
             int o = pad + (int)Math.Round(3f * scale);
             int midY = height / 2;
             switch (dir)
@@ -225,6 +227,11 @@ namespace ExcelMerger
                     a = new Point(width - o - arm, midY - arm);
                     b = new Point(width - o, midY);
                     c = new Point(width - o - arm, midY + arm);
+                    return;
+                case ButtonChevron.Open:
+                    a = new Point(o, midY - arm);
+                    b = new Point(o + arm, midY);
+                    c = new Point(o, midY + arm);
                     return;
                 case ButtonChevron.Up:
                     a = new Point(o, midY + arm);

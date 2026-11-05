@@ -377,6 +377,11 @@ namespace ExcelMerger.Tests
                         Application.DoEvents();
                         InvokeReviewApplyResult(form, live);
                         Label summary = form.SummaryLabel;
+                        Label limits = form.LimitsNoteLabel;
+                        AssertTrue(limits != null && limits.Visible, "примечание о границах сравнения на месте");
+                        AssertEq(Loc.T("review.limits.note"), limits.Text, "текст примечания из перевода");
+                        AssertTrue(limits.Bottom <= form.BodySplit.Top, "примечание не перекрывает холст");
+                        AssertTrue(summary.Bottom <= limits.Top, "примечание не перекрывает строку статуса");
                         AssertEq(System.Windows.Forms.Automation.AutomationLiveSetting.Polite,
                             summary.LiveSetting, "итог сравнения объявляется диктором при смене");
                         // Не живая область бросила бы InvalidOperationException.

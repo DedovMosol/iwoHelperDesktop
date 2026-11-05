@@ -35,10 +35,15 @@ namespace ExcelMerger
         {
             // Всё в пикселях устройства, как и замер текста: вызывающий переводит размер целиком
             // (DpiScale.ToLogical), и логический квадрат рядом с экранным текстом ужался бы.
-            Size text = TextRenderer.MeasureText(Text, Font);
             int box = Box, gap = Gap;
-            return new Size(box + gap + text.Width + DpiScale.Device(this, 4),
-                Math.Max(box + DpiScale.Device(this, 4), text.Height + DpiScale.Device(this, 6)));
+            int extra = DpiScale.Device(this, 4);
+            int textMax = proposedSize.Width > 0
+                ? Math.Max(8, proposedSize.Width - box - gap - extra)
+                : int.MaxValue;
+            Size text = TextRenderer.MeasureText(Text, Font, new Size(textMax, int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.TextBoxControl);
+            return new Size(box + gap + text.Width + extra,
+                Math.Max(box + extra, text.Height + DpiScale.Device(this, 6)));
         }
 
         /// <summary>Сторона квадрата в пикселях устройства (UI-25: при 150 % — 27, а не 18).</summary>

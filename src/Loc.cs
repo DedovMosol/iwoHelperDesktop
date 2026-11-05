@@ -363,6 +363,9 @@ namespace ExcelMerger
                 "The clipboard is busy or unavailable; try copying again");
             A("review.swap", "⇄ Поменять местами", "⇄ Swap sides");
             A("review.compare", "Сравнить", "Compare");
+            A("review.limits.note",
+                "Не сравнивается: сканы и PDF без текстового слоя, оформление (шрифт, размер, цвет), положение на странице.",
+                "Not compared: scans and PDFs without a text layer, styling (font, size, colour), or position on the page.");
             A("review.previous", "← Предыдущее", "← Previous");
             A("review.next", "Следующее →", "Next →");
             A("review.manualPair", "Сопоставить страницы…", "Pair pages…");
@@ -762,7 +765,7 @@ namespace ExcelMerger
             A("update.none.body", "У вас последняя версия ({0}).", "You have the latest version ({0}).");
             // Флажок пропускает эту версию, но не глушит проверку навсегда: следующий
             // выпуск снова напомнит, даже если про этот просили не спрашивать.
-            A("update.skip", "Больше не спрашивать", "Don't ask again");
+            A("update.skip", "Больше не напоминать об этом", "Don't remind me about this");
 
             // settings.* — окно «Настройки» (общее для всей программы, не для документа)
             A("whatsnew.title", "Что нового в версии {0}", "What's new in version {0}");
@@ -917,7 +920,7 @@ namespace ExcelMerger
             // about.* — окно «О программе» (AboutForm)
             A("about.version", "Версия {0}", "Version {0}");
             A("about.desc",
-                "Для PDF: объединение, разделение, сравнение версий, сжатие и другие операции, а также перевод цифрового PDF в Word или PowerPoint. Для Excel (.xls, .xlsx, .xlsb, .xlsm): объединение листов нескольких книг в один свод. Обработка выполняется локально; отсканированные PDF требуют OCR, которого пока нет.",
+                "Для PDF: объединение, разделение, сравнение версий, сжатие и другие операции, а также перевод цифрового PDF в Word или PowerPoint. Для Excel (.xls, .xlsx, .xlsb, .xlsm): объединение листов нескольких книг в один свод. Обработка выполняется локально, отсканированные PDF требуют OCR, которого пока нет.",
                 "For PDF: merge, split, compare versions, compress and more, plus conversion of born-digital PDF to Word or PowerPoint. For Excel (.xls, .xlsx, .xlsb, .xlsm): merge worksheets from multiple workbooks into one digest. Processing stays local; scanned PDFs require OCR, which is not provided yet.");
             A("about.author", "Автор: Dodonov Andrey (DedovMosol)", "Author: Dodonov Andrey (DedovMosol)");
             A("about.manual", "Инструкция по работе с программой:", "User guide:");

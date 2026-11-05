@@ -84,7 +84,7 @@ namespace ExcelMerger
             if (page.Paragraphs != null)
                 foreach (OcrParagraph par in page.Paragraphs)
                 {
-                    if (CoveredByImage(par, page.Images))
+                    if (CoveredByImage(par, page.Images, page.WidthPt, page.HeightPt))
                         continue; // подпись-плейсхолдер под штампом: картинка уже несёт вид
                     blocks.Add(new Block { Paragraph = par, Top = par.TopPt, Left = par.LeftPt, Right = par.RightPt, Bottom = par.BottomPt });
                 }
@@ -172,8 +172,15 @@ namespace ExcelMerger
 
         /// <summary>
         /// Абзац почти целиком внутри картинки (плейсхолдер «место для подписи» под штампом).
+        /// Полностраничный скан не считается штампом: невидимый текстовый слой должен остаться.
         /// </summary>
         internal static bool CoveredByImage(OcrParagraph par, IList<OcrImage> images)
+        {
+            return CoveredByImage(par, images, 0, 0);
+        }
+
+        internal static bool CoveredByImage(OcrParagraph par, IList<OcrImage> images,
+            double pageWidthPt, double pageHeightPt)
         {
             if (par == null || images == null || images.Count == 0)
                 return false;
@@ -181,10 +188,15 @@ namespace ExcelMerger
             double area = (r - l) * (t - b);
             if (area <= 0)
                 return false;
+            double pageArea = pageWidthPt * pageHeightPt;
             for (int i = 0; i < images.Count; i++)
             {
                 OcrImage img = images[i];
                 if (img == null)
+                    continue;
+                double imgArea = img.WidthPt * img.HeightPt;
+                // Штамп маленький. Скан — полоса контента или вся страница: текст оставляем.
+                if (pageArea > 0 && imgArea >= 0.08 * pageArea)
                     continue;
                 double il = img.LeftPt, ir = il + img.WidthPt, it = img.TopPt, ib = it - img.HeightPt;
                 double ol = l > il ? l : il, oright = r < ir ? r : ir;

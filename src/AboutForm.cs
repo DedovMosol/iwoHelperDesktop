@@ -179,7 +179,10 @@ namespace ExcelMerger
 
         private static void UpdateDisclosure(Button button, string text, bool expanded)
         {
-            button.Text = (expanded ? "▾ " : "▸ ") + text;
+            button.Text = text;
+            var rounded = button as RoundedButton;
+            if (rounded != null)
+                rounded.Chevron = expanded ? ButtonChevron.Down : ButtonChevron.Open;
             button.AccessibleDescription = expanded ? "expanded" : "collapsed";
         }
 
