@@ -64,6 +64,10 @@ class PendingAssetTest(unittest.TestCase):
         self.assertFalse(check_readme_links.is_pending_asset_url(
             self.PREFIX + "iwoHelperDesktop-1.2.4.zip", "1.2.4"))
 
+    def test_wrong_name_on_current_version_is_not_pending(self):
+        self.assertFalse(check_readme_links.is_pending_asset_url(
+            self.PREFIX + "iwoHelperDesktop-1.2.3.exe", "1.2.3"))
+
 
 class GithubReleaseDownloadTest(unittest.TestCase):
     def test_parses_owner_repo_tag_name(self):

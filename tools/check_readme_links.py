@@ -154,7 +154,12 @@ def main():
                     status, names = fetch_release_assets(owner, repo, tag)
                     if status == "ok":
                         if filename not in names:
-                            broken.append("%s -> asset not on %s" % (target, tag))
+                            # Релиз уже есть, ассет ещё грузится (tag CI стартует
+                            # сразу после push тега, upload setup.exe идёт следом).
+                            if is_pending_asset_url(target, version):
+                                flaky.append("%s -> pending asset on %s" % (target, tag))
+                            else:
+                                broken.append("%s -> asset not on %s" % (target, tag))
                     elif status == "missing":
                         if is_pending_asset_url(target, version):
                             flaky.append("%s -> pending release v%s (name is valid)" %
