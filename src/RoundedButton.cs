@@ -142,6 +142,24 @@ namespace ExcelMerger
             return pad < cap ? pad : cap;
         }
 
+        /// <summary>
+        /// Ширина кнопки, в которой подпись не упрётся в шеврон и не станет «Наз…».
+        /// Совпадает с полями OnPaint: pad + glyph/mark + замер текста.
+        /// </summary>
+        internal static int FitCaptionWidth(string text, Font font, ButtonChevron chevron,
+            ButtonMark mark, float scale)
+        {
+            if (scale < 0.01f) scale = 1f;
+            int glyph = chevron == ButtonChevron.None ? 0 : (int)Math.Round(18f * scale);
+            int markW = mark == ButtonMark.None ? 0 : (int)Math.Round(18f * scale);
+            int insetL = markW + (chevron == ButtonChevron.Right ? 0 : glyph);
+            int insetR = chevron == ButtonChevron.Right ? glyph : 0;
+            int pad = (int)Math.Round(TextPad * scale);
+            Size sz = TextRenderer.MeasureText(text ?? "", font, Size.Empty,
+                TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            return pad + insetL + sz.Width + insetR + pad;
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;

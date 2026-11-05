@@ -92,10 +92,10 @@ namespace ExcelMerger
             b.AccessibleName = b.Text;
             // Font уже с EmulatedScale, а SetBounds — в логических: иначе AutoScale
             // шапки умножит ширину второй раз (105 вместо 90 при 125 %, UI-1).
-            int extra = kind == HeaderNavKind.Back ? 28 : 20;
             float emul = DpiScale.EmulatedScale;
             if (emul < 0.01f) emul = 1f;
-            int width = (int)Math.Round(TextRenderer.MeasureText(b.Text, b.Font).Width / emul) + extra;
+            int width = (int)Math.Round(
+                RoundedButton.FitCaptionWidth(b.Text, b.Font, b.Chevron, b.Mark, 1f) / emul);
             if (width < 72) width = 72;
             int left = kind == HeaderNavKind.Back ? 12 : Math.Max(12, header.Width - width - 12);
             b.SetBounds(left, top, width, 30);

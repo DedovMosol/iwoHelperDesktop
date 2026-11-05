@@ -1452,6 +1452,10 @@ namespace ExcelMerger.Tests
                 AssertTrue(home.Chevron == ButtonChevron.None, "у главной шеврона нет");
                 AssertEq(Loc.T("hub.back"), back.Text, "подпись назад из Loc");
                 AssertEq(Loc.T("common.home"), home.Text, "подпись главной из Loc");
+                int backNeed = RoundedButton.FitCaptionWidth(back.Text, back.Font, back.Chevron, back.Mark, 1f);
+                AssertTrue(back.Width >= backNeed, "«Назад» не влезает: " + back.Width + " < " + backNeed);
+                int homeNeed = RoundedButton.FitCaptionWidth(home.Text, home.Font, home.Chevron, home.Mark, 1f);
+                AssertTrue(home.Width >= homeNeed, "«Главная» не влезает: " + home.Width + " < " + homeNeed);
                 AssertTrue(back.Left < home.Left, "назад слева, главная справа");
                 AssertEq(AnchorStyles.Top | AnchorStyles.Right, home.Anchor, "главная привязана справа");
                 Point a, b, c;
