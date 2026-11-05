@@ -1526,6 +1526,53 @@ namespace ExcelMerger.Tests
             }
         }
 
+        [Test("Хаб: карточки растут с окном и не наезжают друг на друга")]
+        private static void AuditHubCardsScaleWithoutOverlap()
+        {
+            RunSta(delegate
+            {
+                InIsolatedSettings("iwo_hubscale_", delegate
+                {
+                    using (var hub = new StartForm())
+                    {
+                        hub.Show();
+                        Application.DoEvents();
+                        hub.ClientSize = new Size(1200, 900);
+                        hub.PerformLayout();
+                        Application.DoEvents();
+                        var cards = new List<ChoiceCard>();
+                        CollectChoiceCards(hub, cards);
+                        AssertTrue(cards.Count >= 2, "на хабе есть карточки");
+                        foreach (ChoiceCard c in cards)
+                        {
+                            AssertTrue(c.Height > ChoiceCard.DesignCardH,
+                                "карточка выросла вместе с окном: " + c.Height);
+                            AssertTrue(ChoiceCard.GlyphSide(c.Height) > 60, "значок крупнее исходного");
+                        }
+                        for (int i = 0; i < cards.Count; i++)
+                            for (int j = i + 1; j < cards.Count; j++)
+                            {
+                                if (cards[i].Parent != cards[j].Parent)
+                                    continue;
+                                AssertTrue(!cards[i].Bounds.IntersectsWith(cards[j].Bounds),
+                                    "карточки пересеклись");
+                            }
+                    }
+                });
+            });
+        }
+
+        private static void CollectChoiceCards(Control root, List<ChoiceCard> into)
+        {
+            foreach (Control c in root.Controls)
+            {
+                var card = c as ChoiceCard;
+                if (card != null && card.Visible)
+                    into.Add(card);
+                CollectChoiceCards(c, into);
+            }
+        }
+
         [Test("Primary только у действия с файлом, на шапке его нет")]
         private static void AuditPrimaryStaysOffHeader()
         {

@@ -39,6 +39,8 @@ namespace ExcelMerger
         private Font TitleFont { get { return Ui.Font(this, 12.5f, FontStyle.Bold); } }
 
         // Ритм содержимого: значок, отступ, заголовок в одну строку, отступ, описание с переносами.
+        // DesignCardH — высота карточки в исходной раскладке хаба: значок растёт с карточкой.
+        internal const int DesignCardH = 250;
         private const int GlyphSize = 60, GlyphGap = 12, TitleGap = 6, MinTop = 18;
         private const int TitlePad = 10, DescPad = 18;
         private const TextFormatFlags TitleFlags =
@@ -174,13 +176,14 @@ namespace ExcelMerger
             // Блок «значок + заголовок + описание» ставим по центру карточки: описания
             // разной длины, и при верхней привязке карточки с короткой подписью выглядели
             // пустыми снизу. Высоту меряем теми же флагами, какими рисуем.
-            int glyph = d(GlyphSize), glyphGap = d(GlyphGap), titleGap = d(TitleGap);
+            int glyphGap = d(GlyphGap), titleGap = d(TitleGap);
             int titlePad = d(TitlePad), descPad = d(DescPad);
             int titleW = Width - 2 * titlePad, descW = Width - 2 * descPad;
             int titleH = TextRenderer.MeasureText(g, _title, TitleFont,
                 new Size(titleW, int.MaxValue), TitleFlags).Height;
             int descH = TextRenderer.MeasureText(g, _description, Font,
                 new Size(descW, int.MaxValue), DescFlags).Height;
+            int glyph = GlyphSide(Height, titleH + descH + glyphGap + titleGap + d(MinTop));
             int top = ContentTop(Height, glyph + glyphGap + titleH + titleGap + descH, d(MinTop));
 
             var glyphRect = new Rectangle((Width - glyph) / 2, top, glyph, glyph);
@@ -201,6 +204,19 @@ namespace ExcelMerger
         {
             int top = (cardHeight - blockHeight) / 2;
             return top < minTop ? minTop : top; // очень длинное описание прижимаем к верху, а не режем сверху
+        }
+
+        /// <summary>
+        /// Сторона значка: доля высоты карточки, но не больше места над текстом.
+        /// </summary>
+        internal static int GlyphSide(int cardHeight, int reservedBelow = 0)
+        {
+            int g = (int)Math.Round(cardHeight * (GlyphSize / (float)DesignCardH));
+            if (g < 24) g = 24;
+            int room = cardHeight - reservedBelow;
+            if (reservedBelow > 0 && room > 24 && g > room)
+                g = room;
+            return g;
         }
 
         // Значок-документ с загнутым уголком (стиль file-excel): единое семейство

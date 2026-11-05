@@ -21348,6 +21348,15 @@ namespace ExcelMerger.Tests
             // Описание во всю карточку не должно уезжать под верхний край.
             AssertTrue(ChoiceCard.ContentTop(250, 240) >= 18, "переполненная карточка прижата к верху");
             AssertTrue(ChoiceCard.ContentTop(250, 400) >= 18, "блок выше карточки не уходит в минус");
+
+            AssertEq(60, ChoiceCard.GlyphSide(250), "исходная карточка — исходный значок");
+            AssertTrue(ChoiceCard.GlyphSide(400) > 60, "выше карточка — крупнее значок");
+            AssertTrue(ChoiceCard.GlyphSide(400, 350) <= 50, "значок уступает место тексту");
+            AssertEq(1f, StartForm.ContentScale(800, 500, 804, 554), "окно не ниже исходника — масштаб 1");
+            AssertTrue(StartForm.ContentScale(1608, 1108, 804, 554) > 1.9f, "двойное окно — почти ×2");
+            Rectangle a = StartForm.MapHome(new Rectangle(24, 18, 240, 250), 2f, 0, 0);
+            Rectangle b = StartForm.MapHome(new Rectangle(282, 18, 240, 250), 2f, 0, 0);
+            AssertTrue(a.Right <= b.Left, "соседние карточки после масштаба не пересекаются");
         }
 
         /// <summary>Сколько карточек ВИДНО на текущем уровне хаба (уровни — панели одного окна).</summary>

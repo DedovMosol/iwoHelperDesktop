@@ -37,7 +37,7 @@ namespace ExcelMerger
         // Раздел PDF — шесть инструментов сеткой 3×2. Третий РЯД не поместился бы: окно и так
         // почти во всю высоту экрана 1366×768, а третья КОЛОНКА помещается свободно —
         // экраны шире, чем выше. Карточки при этом остаются полноразмерными.
-        private const int CardW = 240, WideW = 756, CardH = 250, Row1 = 96, Row2 = 364;
+        private const int CardW = 240, WideW = 756, CardH = ChoiceCard.DesignCardH, Row1 = 96, Row2 = 364;
         private const int Col2 = 282, Col3 = 540, Pad = 24;
         private const int HeaderH = 78, BottomRowY = 632, BottomRowH = 36;
         /// <summary>От низа окна до верха нижнего ряда — постоянная величина исходной раскладки.</summary>
@@ -75,9 +75,9 @@ namespace ExcelMerger
             // Окно разворачивается на весь экран, как и окна инструментов: на большом мониторе
             // карточки в маленьком неподвижном прямоугольнике выглядят потерянными, а часть
             // работы (перетащить сюда файлы) удобнее делать в развёрнутом окне.
-            // Раскладка карточек задана координатами, поэтому при изменении размера они
-            // ЦЕНТРИРУЮТСЯ целой группой (CenterLevels) — растягивать их незачем, а
-            // прижиматься к левому верхнему углу они не должны.
+            // Раскладка карточек задана координатами. При росте окна группа масштабируется
+            // целиком (один коэффициент, без наложений) и центрируется; меньше исходного
+            // размера не сжимаем — тогда уровень прокручивается.
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = true;
             // Высота минимума — ниже карточек: на ноутбуке 1080p при 150 % рабочая область —
@@ -238,31 +238,52 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Сдвинуть карточки каждого уровня так, чтобы группа стояла по центру окна. Растягивать
-        /// их было бы хуже: у карточки есть свой размер, при котором значок, название и описание
-        /// читаются, и растянутая на полэкрана карточка перестаёт быть карточкой.
+        /// Карточки уровня: один масштаб от исходной сетки, затем центр в свободном поле.
+        /// Масштаб не ниже 1 — на малом окне сетка как спроектирована, панель скроллится.
         /// </summary>
         private void CenterLevels()
         {
             if (_designSize.Width <= 0)
                 return;
-            // Исходная раскладка (_designSize, _cardHome) запомнена в логических единицах.
-            int dx = (ClientSize.Width - D(_designSize.Width)) / 2;
-            // По вертикали центрируем внутри ТОГО места, что осталось уровню: полоса недавних
-            // забирает низ, и считать от высоты окна значило бы сдвинуть карточки под неё.
-            int dy = (LevelBottom() - D(HeaderH)) - D(_designHeightOfLevel > 0 ? _designHeightOfLevel : 0);
-            dy = dy / 2;
+            int designW = D(_designSize.Width);
+            int designH = D(_designHeightOfLevel > 0 ? _designHeightOfLevel : 0);
+            int areaW = ClientSize.Width;
+            int areaH = LevelBottom() - D(HeaderH);
+            float scale = ContentScale(areaW, areaH, designW, designH);
+            int dx = (int)Math.Round((areaW - designW * scale) / 2f);
+            int dy = (int)Math.Round((areaH - designH * scale) / 2f);
+            if (dx < 0) dx = 0;
+            if (dy < 0) dy = 0;
             foreach (KeyValuePair<Control, Rectangle> home in _cardHome)
             {
                 Rectangle r = home.Value;
-                // Уровень прокручивается, когда окно ниже карточек: положение ребёнка
-                // прокручиваемой панели включает её текущий сдвиг (он отрицательный).
                 Point scroll = ((ScrollableControl)home.Key.Parent).AutoScrollPosition;
-                var want = new Point(D(r.X) + (dx > 0 ? dx : 0) + scroll.X,
-                    D(r.Y) + (dy > 0 ? dy : 0) + scroll.Y);
-                if (home.Key.Location != want)
-                    home.Key.Location = want;
+                Rectangle want = MapHome(new Rectangle(D(r.X), D(r.Y), D(r.Width), D(r.Height)),
+                    scale, dx + scroll.X, dy + scroll.Y);
+                if (home.Key.Bounds != want)
+                    home.Key.Bounds = want;
             }
+        }
+
+        /// <summary>Один коэффициент: влезает в ширину и в высоту, не меньше исходника.</summary>
+        internal static float ContentScale(int areaW, int areaH, int designW, int designH)
+        {
+            if (designW <= 0 || designH <= 0)
+                return 1f;
+            float s = Math.Min((float)areaW / designW, (float)areaH / designH);
+            return s < 1f ? 1f : s;
+        }
+
+        /// <summary>Исходный прямоугольник карточки после масштаба группы и сдвига.</summary>
+        internal static Rectangle MapHome(Rectangle home, float scale, int originX, int originY)
+        {
+            if (scale < 0.01f)
+                scale = 1f;
+            return new Rectangle(
+                originX + (int)Math.Round(home.X * scale),
+                originY + (int)Math.Round(home.Y * scale),
+                Math.Max(1, (int)Math.Round(home.Width * scale)),
+                Math.Max(1, (int)Math.Round(home.Height * scale)));
         }
 
         /// <summary>
