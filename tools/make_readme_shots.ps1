@@ -36,10 +36,14 @@ $outDir = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 [void](New-Item -ItemType Directory -Path $outDir -Force)
 # The fixed default keeps visible paths and PNGs reproducible. Refuse an existing directory:
 # cleanup is allowed to remove only the directory this invocation created.
+# Public Documents — never %USERPROFILE% (a username in the path would appear on README).
 $work = if ([string]::IsNullOrWhiteSpace($SampleDirectory)) {
-    Join-Path ([Environment]::GetFolderPath('CommonDocuments')) 'iwo-readme-shot-samples'
+    Join-Path $env:PUBLIC 'Documents\iwo-readme-shot-samples'
 } else {
     [IO.Path]::GetFullPath($SampleDirectory)
+}
+if ($work -match '(?i)\\Users\\(?!Public\\)[^\\]+\\') {
+    throw "Sample path would show a user profile on the screenshot: $work"
 }
 if (Test-Path -LiteralPath $work) {
     throw "Sample directory already exists; move it or pass an unused -SampleDirectory: $work"
