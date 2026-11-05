@@ -417,6 +417,8 @@ namespace ExcelMerger.Tests
             Run("ListNesting: шаг ровно MinNestStepPt открывает уровень (RC-9)", TestListNestingExactMinStep);
             Run("OcrLayout: двухколоночная шапка — абзацы колонок не смешаны, левая раньше", TestOcrTwoColumnsSeparated);
             Run("OcrLayout: ячейка таблицы (splitColumns=false) — «метка … число» одной строкой", TestOcrCellNoColumns);
+            Run("OcrLayout: должность и ФИО не склеиваются из‑за тела письма ниже", TestOcrSignatureNotGluedByBodyRiver);
+            Run("PageBlocks: абзац под штампом не идёт в поток", TestPageBlocksCoveredByImage);
             Run("OcrLayout: шапка не размывает красную строку тела (гейт по justified)", TestOcrIndentWithHeader);
             Run("PageBlocks.OrderedItems: колонки -> side-by-side полоса (левая|правая), нижний одиночный", TestOrderedItemsColumns);
             Run("PageBlocks.OrderedItems: неравные колонки под заголовком не зигзаг (RC-14)", TestOrderedItemsUnevenNewspaper);
@@ -602,7 +604,7 @@ namespace ExcelMerger.Tests
             // Точное число регистраций: удалённая ИЛИ случайно дублированная строка Run(...)
             // не должна проходить незаметно. Обновляется осознанно вместе с набором.
             // При фильтре счёт не сверяется: выбрана заведомо часть набора.
-            const int ExactTests = 551;
+            const int ExactTests = 553;
             if (_filter == null)
             {
                 if (registered != ExactTests)
@@ -13060,6 +13062,43 @@ namespace ExcelMerger.Tests
             AssertEq("Hello world second line", p[0], "порядок чтения");
         }
 
+        private static void TestOcrSignatureNotGluedByBodyRiver()
+        {
+            var words = new List<PdfWord>();
+            for (int row = 0; row < 5; row++)
+            {
+                double y = 400 - row * 14;
+                words.Add(W("AAAAAA", 90, y, 80, 10));
+                words.Add(W("BBBBBB", 180, y, 80, 10));
+                words.Add(W("CCCCCC", 270, y, 80, 10));
+                words.Add(W("DDDDDD", 360, y, 80, 10));
+                words.Add(W("EEEEEE", 450, y, 80, 10));
+            }
+            words.Add(W("LeftRole", 90, 80, 90, 10));
+            words.Add(W("RightName", 450, 80, 90, 10));
+            words.Add(W("MidLabel", 250, 68, 80, 10)); // короткая метка в зазоре, как плейсхолдер штампа
+            List<OcrParagraph> ps = OcrLayout.Analyze(words).Paragraphs;
+            bool left = false, right = false, glued = false;
+            foreach (OcrParagraph para in ps)
+            {
+                bool hasL = para.Text.IndexOf("LeftRole", StringComparison.Ordinal) >= 0;
+                bool hasR = para.Text.IndexOf("RightName", StringComparison.Ordinal) >= 0;
+                if (hasL && hasR) glued = true;
+                if (hasL) left = true;
+                if (hasR) right = true;
+            }
+            AssertTrue(left && right && !glued, "должность и ФИО — разные абзацы");
+        }
+
+        private static void TestPageBlocksCoveredByImage()
+        {
+            var para = new OcrParagraph { LeftPt = 10, RightPt = 50, TopPt = 80, BottomPt = 70 };
+            var imgs = new List<OcrImage> { new OcrImage { LeftPt = 0, TopPt = 100, WidthPt = 80, HeightPt = 40 } };
+            AssertTrue(PageBlocks.CoveredByImage(para, imgs), "абзац внутри картинки");
+            imgs[0].LeftPt = 200;
+            AssertTrue(!PageBlocks.CoveredByImage(para, imgs), "картинка сбоку");
+        }
+
         private static void TestOcrParagraphs()
         {
             // Три плотные строки + одна с большим зазором -> два абзаца.
@@ -13878,6 +13917,7 @@ namespace ExcelMerger.Tests
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("1.без пробела").Kind, "без пробела после точки — не маркер");
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("•безпробела").Kind, "буллет без пробела — не маркер");
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("Обычный текст").Kind, "обычный текст — не список");
+            AssertEq((int)ListKind.None, (int)ListMarker.Detect("И.о. министра").Kind, "аббревиатура И.о. — не пункт И.");
             AssertEq((int)ListKind.None, (int)ListMarker.Detect("").Kind, "пусто — не список");
         }
 

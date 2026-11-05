@@ -705,12 +705,21 @@ namespace ExcelMerger
 
         private static bool GapCoveredByOtherLines(List<Line> lines, int skip, double x0, double x1)
         {
+            // Только соседние по Y строки: тело письма ниже закрывает X зазора
+            // «должность … ФИО», но это не река выключки в той же колонке.
+            double y = lines[skip].MidY;
+            double band = Math.Max(3 * Math.Max(lines[skip].Height, 1), 24);
+            double mid = (x0 + x1) / 2.0;
             for (int i = 0; i < lines.Count; i++)
             {
                 if (i == skip)
                     continue;
+                if (Math.Abs(lines[i].MidY - y) > band)
+                    continue;
+                // Короткая метка в дыре («место для подписи») — не река колонки.
+                if (lines[i].Right - lines[i].Left < x1 - x0)
+                    continue;
                 List<PdfWord> ws = lines[i].Words;
-                double mid = (x0 + x1) / 2.0;
                 for (int w = 0; w < ws.Count; w++)
                     if (ws[w].Left < mid && ws[w].Right > mid)
                         return true;

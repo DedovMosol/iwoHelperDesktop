@@ -124,12 +124,17 @@ namespace ExcelMerger
         {
             if (insertAt < 0) insertAt = 0;
             if (insertAt > _items.Count) insertAt = _items.Count;
-            for (int i = 0; i < pageCount; i++)
+            if (pageCount > 0)
             {
-                var page = new PdfPageRef();
-                page.SourcePath = path;
-                page.PageIndex = i;
-                _items.Insert(insertAt + i, page);
+                var batch = new List<PdfPageRef>(pageCount);
+                for (int i = 0; i < pageCount; i++)
+                {
+                    var page = new PdfPageRef();
+                    page.SourcePath = path;
+                    page.PageIndex = i;
+                    batch.Add(page);
+                }
+                _items.InsertRange(insertAt, batch);
             }
             return insertAt;
         }
@@ -142,9 +147,11 @@ namespace ExcelMerger
         {
             if (insertAt < 0) insertAt = 0;
             if (insertAt > _items.Count) insertAt = _items.Count;
-            if (pages != null)
-                for (int i = 0; i < pages.Count; i++)
-                    _items.Insert(insertAt + i, pages[i]);
+            if (pages != null && pages.Count > 0)
+            {
+                var batch = pages as List<PdfPageRef>;
+                _items.InsertRange(insertAt, batch ?? new List<PdfPageRef>(pages));
+            }
             return insertAt;
         }
 

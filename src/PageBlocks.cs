@@ -83,7 +83,11 @@ namespace ExcelMerger
             var blocks = new List<Block>();
             if (page.Paragraphs != null)
                 foreach (OcrParagraph par in page.Paragraphs)
+                {
+                    if (CoveredByImage(par, page.Images))
+                        continue; // подпись-плейсхолдер под штампом: картинка уже несёт вид
                     blocks.Add(new Block { Paragraph = par, Top = par.TopPt, Left = par.LeftPt, Right = par.RightPt, Bottom = par.BottomPt });
+                }
             if (page.Tables != null)
                 foreach (OcrTable table in page.Tables)
                     blocks.Add(new Block { Table = table, Top = table.TopPt, Left = table.LeftPt, Right = table.RightPt, Bottom = table.BottomPt });
@@ -164,6 +168,33 @@ namespace ExcelMerger
                 i = j + 1;
             }
             return result;
+        }
+
+        /// <summary>
+        /// Абзац почти целиком внутри картинки (плейсхолдер «место для подписи» под штампом).
+        /// </summary>
+        internal static bool CoveredByImage(OcrParagraph par, IList<OcrImage> images)
+        {
+            if (par == null || images == null || images.Count == 0)
+                return false;
+            double l = par.LeftPt, r = par.RightPt, t = par.TopPt, b = par.BottomPt;
+            double area = (r - l) * (t - b);
+            if (area <= 0)
+                return false;
+            for (int i = 0; i < images.Count; i++)
+            {
+                OcrImage img = images[i];
+                if (img == null)
+                    continue;
+                double il = img.LeftPt, ir = il + img.WidthPt, it = img.TopPt, ib = it - img.HeightPt;
+                double ol = l > il ? l : il, oright = r < ir ? r : ir;
+                double ot = t < it ? t : it, ob = b > ib ? b : ib;
+                if (oright <= ol || ot <= ob)
+                    continue;
+                if ((oright - ol) * (ot - ob) >= 0.6 * area)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>Соседи ли по «строке»: одиночные абзац/картинка, сильное вертикальное перекрытие, канал по X.</summary>

@@ -58,6 +58,7 @@ namespace ExcelMerger
                 word.DisplayAlerts = 0; // wdAlertsNone
                 QuietAutomation(word);
                 doc = word.Documents.Add();
+                try { doc.AutoHyphenation = false; } catch { }
                 // Окно Word (а с ним и процесс) появляется только с документом; запуск до этого — без сторожа.
                 watchdog = new ComWatchdog(OwnWordProcess((object)word), cancelled, WatchdogLimits);
 
@@ -149,6 +150,7 @@ namespace ExcelMerger
                 try { opt.CheckGrammarAsYouType = false; } catch { }
                 try { opt.SuggestSpellingCorrections = false; } catch { }
                 try { opt.CheckGrammarWithSpelling = false; } catch { }
+                try { opt.AutoHyphenate = false; } catch { }
             }
             catch { }
         }

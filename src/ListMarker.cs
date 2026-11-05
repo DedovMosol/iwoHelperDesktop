@@ -164,11 +164,12 @@ namespace ExcelMerger
                         return new Result { Kind = ListKind.Numbered, Number = val, ContentStart = c };
                 }
             }
+            // «a) item» / «C. Appendix». Точка без пробела — это «И.о.», не пункт «И.».
             if (text.Length >= 3 && (text[1] == '.' || text[1] == ')'))
             {
                 int n = LetterIndex(text[0]);
                 int c = ContentAfter(text, 2);
-                if (n > 0 && c >= 0)
+                if (n > 0 && c >= 0 && (text[1] == ')' || char.IsWhiteSpace(text[2])))
                     return new Result { Kind = ListKind.Numbered, Number = n, ContentStart = c };
             }
             return none;

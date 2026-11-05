@@ -23,6 +23,8 @@ namespace ExcelMerger
         private const double MinColWidthPt = 6;   // защита от вырожденной колонки
         private const double MinPagePt = 72;    // 1"; разумные пределы размера страницы
         private const double MaxPagePt = 1584;  // 22" — максимум Word
+        private const double FooterBandFrac = 0.14; // низ листа: номер/дата — в подвал, не в поток
+        private const int WdHeaderFooterPrimary = 1;
 
         /// <summary>
         /// Пишет .docx из абзацев и изображений страниц. Занятый файл/нет Word — MergeException.
@@ -63,6 +65,7 @@ namespace ExcelMerger
                             // нумерует его — лишний номер на границе страниц. Номер следующего
                             // пункта при этом сохраняется: LastNumber очистка не трогает.
                             ClearInheritedList(sel, listState);
+                            LeaveIfInTable(sel, doc);
                             sel.InsertBreak(WdSectionBreakNextPage); // новый раздел = свой размер листа
                         }
                         ApplySectionSetup(sel, pages[p]); // размер и поля страницы из источника
@@ -77,15 +80,60 @@ namespace ExcelMerger
                         List<PageBlocks.PageItem> items = PageBlocks.CoalesceRowBands(PageBlocks.OrderedItems(pages[p]));
                         double typicalGap = PageBlocks.TypicalItemGap(items);
                         PageBlocks.PageItem prev = null;
-                        foreach (PageBlocks.PageItem item in items)
+                        for (int ii = 0; ii < items.Count; ii++)
                         {
+                            PageBlocks.PageItem item = items[ii];
+                            PageBlocks.PageItem next = ii + 1 < items.Count ? items[ii + 1] : null;
                             // Лишний вертикальный зазор до предыдущего блока → интервал перед этим.
                             double spaceBefore = prev == null ? 0 : PageBlocks.ExtraGapPt(prev.Bottom - item.Top, typicalGap);
+                            if (next != null && !next.IsBand && next.Single.Table != null && spaceBefore < 14)
+                                spaceBefore = 14;
+                            if (prev != null && !item.IsBand && item.Single.Paragraph != null &&
+                                !prev.IsBand && prev.Single.Paragraph != null)
+                            {
+                                OcrParagraph pp = prev.Single.Paragraph, ip = item.Single.Paragraph;
+                                double rawGap = prev.Bottom - item.Top;
+                                if (pp.Alignment == OcrAlignment.Justify && ip.Alignment == OcrAlignment.Left &&
+                                    ip.LineCount == 1 && spaceBefore < 18)
+                                    spaceBefore = 18;
+                                // Заголовок письма: одна пустая строка до, две после (перед телом).
+                                if (pp.Alignment == OcrAlignment.Left && ip.Alignment == OcrAlignment.Justify &&
+                                    pp.LineCount == 1 && spaceBefore < 36)
+                                    spaceBefore = 36;
+                                if (pp.Alignment == OcrAlignment.Left && ip.Alignment == OcrAlignment.Left &&
+                                    pp.LineCount == 1 && ip.LineCount == 1)
+                                {
+                                    if (rawGap >= 30 && spaceBefore < 36)
+                                        spaceBefore = 36;
+                                    else if (rawGap >= 18 && spaceBefore < 14)
+                                        spaceBefore = 14;
+                                }
+                            }
+                            if (item.IsBand && prev != null && !prev.IsBand && prev.Single.Paragraph != null &&
+                                prev.Single.Paragraph.Alignment == OcrAlignment.Left &&
+                                prev.Single.Paragraph.LineCount == 1 && spaceBefore < 36)
+                                spaceBefore = 36;
+                            if (p == 0 && item.Top < pages[p].HeightPt * FooterBandFrac && prev != null)
+                            {
+                                double raw = prev.Bottom - item.Top;
+                                if (raw > 24) raw = 24;
+                                if (raw > spaceBefore) spaceBefore = raw;
+                            }
+                            if (prev != null && prev.IsBand && !item.IsBand && spaceBefore > 6)
+                                spaceBefore = 0;
                             prev = item;
+                            // Низ приложений (номер внизу листа) — подвал раздела, не первая страница:
+                            // служебная строка там — обычный абзац, не колонтитул всего документа.
+                            if (p > 0 && !item.IsBand && item.Single.Paragraph != null &&
+                                item.Single.Top < pages[p].HeightPt * FooterBandFrac)
+                            {
+                                WriteParagraph(sel, doc, item.Single.Paragraph, 0, lists, listState, textLeft, textRight, 0);
+                                continue;
+                            }
                             if (item.IsBand)
                             {
                                 ClearInheritedList(sel, listState); // таблица обрывает список
-                                WriteColumnBand(word, doc, sel, item, textLeft, textRight, pages[p].WidthPt, pages[p].HeightPt,
+                                WriteColumnBand(word, doc, sel, item, textLeft, textRight, pages[p].WidthPt,
                                     tempDir, ref imgIndex, spaceBefore, typicalGap);
                                 continue;
                             }
@@ -93,7 +141,12 @@ namespace ExcelMerger
                             if (blk.Paragraph != null)
                             {
                                 TraceWord("para list=" + blk.Paragraph.ListKind + " lines=" + blk.Paragraph.LineCount);
+                                OcrAlignment savedAlign = blk.Paragraph.Alignment;
+                                if (next != null && !next.IsBand && next.Single.Table != null &&
+                                    blk.Paragraph.RightPt - blk.Paragraph.LeftPt > 0.4 * pages[p].WidthPt)
+                                    blk.Paragraph.Alignment = OcrAlignment.Center;
                                 WriteParagraph(sel, doc, blk.Paragraph, firstLineIndent, lists, listState, textLeft, textRight, spaceBefore);
+                                blk.Paragraph.Alignment = savedAlign;
                             }
                             else
                             {
@@ -101,6 +154,12 @@ namespace ExcelMerger
                                 if (blk.Table != null)
                                 {
                                     TraceWord("table " + blk.Table.Rows.Count + "x" + blk.Table.ColumnCount);
+                                    if (spaceBefore < 14)
+                                        spaceBefore = 14;
+                                    if (spaceBefore > 28)
+                                        spaceBefore = 28; // стол не уезжает вниз из‑за шапки-картинки
+                                    if (spaceBefore < 12)
+                                        spaceBefore = 12;
                                     if (spaceBefore > 0)
                                         InsertSpacer(sel, spaceBefore); // таблице SpaceBefore не задать — пустой абзац той же высоты
                                     WriteTable(word, doc, sel, blk.Table);
@@ -108,7 +167,7 @@ namespace ExcelMerger
                                 else
                                 {
                                     TraceWord("image " + (blk.Image == null ? 0 : blk.Image.WidthPt) + "x" + (blk.Image == null ? 0 : blk.Image.HeightPt));
-                                    InsertImage(sel, doc, blk.Image, pages[p].HeightPt, tempDir, ref imgIndex);
+                                    InsertImage(sel, blk.Image, pages[p].WidthPt, tempDir, ref imgIndex, spaceBefore);
                                 }
                             }
                         }
@@ -116,7 +175,7 @@ namespace ExcelMerger
                             progress(p + 1, pages.Count);
                     }
                     ClearInheritedList(sel, listState); // хвостовой пустой абзац не должен унаследовать маркер
-                    FitSpacingToPages(doc, pages.Count, cancelled); // интервалы не должны выталкивать лишнюю страницу
+                    TrimTrailingEmptyPages(doc, pages.Count);
                     // Наполнение завершено, последний Cancellation.ThrowIf позади: дальше WordCom
                     // сохраняет .docx (Ghostscript-подобная точка невозврата) — снять кнопку отмены.
                     if (onCommitting != null)
@@ -133,7 +192,12 @@ namespace ExcelMerger
         {
             if (Environment.GetEnvironmentVariable("IWO_WORD_TRACE") != "1")
                 return;
-            try { Console.WriteLine("WORD " + msg); }
+            try { Console.WriteLine("WORD " + msg); } catch { }
+            try
+            {
+                System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "iwo_word.log"),
+                    DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + Environment.NewLine);
+            }
             catch { }
         }
 
@@ -153,6 +217,7 @@ namespace ExcelMerger
                 normal.SpaceBefore = 0;
                 normal.SpaceAfter = 0;
                 normal.LineSpacingRule = WdLineSpaceSingle;
+                try { normal.Hyphenation = 0; } catch { }
             }
             catch { } // интервалы косметические — при сбое стиля просто наследуем шаблон
         }
@@ -187,14 +252,42 @@ namespace ExcelMerger
         /// TypeParagraph тогда плодит абзац внутри таблицы, и следующий TypeText
         /// висит минутами до смерти Word (RPC 0x800706BA на письмах с шапкой-колонками).
         /// </summary>
-        private static void TypeInto(dynamic dest, string text)
+        private static void ApplyFont(dynamic font, OcrRun run, string face)
         {
-            try { dest.TypeText(text); }
-            catch
+            font.Name = face;
+            font.Size = FontResolver.ClampSizePt(run.FontSizePt);
+            font.Bold = run.Bold ? 1 : 0;
+            font.Italic = run.Italic ? 1 : 0;
+            font.Superscript = run.Super ? 1 : 0;
+            font.Subscript = run.Sub ? 1 : 0;
+            font.Underline = run.Underline ? 1 : 0;
+            font.StrikeThrough = run.Strike ? 1 : 0;
+            font.Color = ToBgr(run.ColorArgb);
+        }
+
+        /// <summary>
+        /// Selection.TypeText — поток. Range в ячейке TypeText не умеет: InsertAfter и шрифт
+        /// только на вставленный кусок (иначе последний ран перекрашивает всю ячейку).
+        /// </summary>
+        private static void TypeInto(dynamic dest, string text, OcrRun run, string face)
+        {
+            try
             {
-                dest.InsertAfter(text);
-                dest.Collapse(WdCollapseEnd);
+                ApplyFont(dest.Font, run, face);
+                dest.TypeText(text);
+                return;
             }
+            catch { }
+            int start = RangeEnd(dest);
+            dest.InsertAfter(text);
+            try
+            {
+                dynamic piece = dest.Duplicate;
+                piece.SetRange(start, RangeEnd(dest));
+                ApplyFont(piece.Font, run, face);
+            }
+            catch { }
+            try { dest.Collapse(WdCollapseEnd); } catch { }
         }
 
         private static int RangeEnd(dynamic dest)
@@ -203,7 +296,37 @@ namespace ExcelMerger
             catch { return (int)dest.End; }
         }
 
-        private static void LeaveTable(dynamic sel, dynamic wtable)
+        private static void LeaveTable(dynamic sel, dynamic doc, dynamic wtable)
+        {
+            ExitTable(sel, doc, wtable);
+        }
+
+        /// <summary>
+        /// Если курсор в какой-то таблице — выйти из неё. Не прыгать к последней таблице
+        /// документа: это возвращало каретку в шапку и рвало тело письма.
+        /// </summary>
+        private static bool LeaveIfInTable(dynamic sel, dynamic doc)
+        {
+            try
+            {
+                int pos = (int)sel.Start;
+                int n = (int)doc.Tables.Count;
+                for (int i = n; i >= 1; i--)
+                {
+                    dynamic t = doc.Tables[i];
+                    int a = (int)t.Range.Start, b = (int)t.Range.End;
+                    if (pos >= a && pos < b)
+                    {
+                        ExitTable(sel, doc, t);
+                        return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static void ExitTable(dynamic sel, dynamic doc, dynamic wtable)
         {
             try
             {
@@ -213,19 +336,87 @@ namespace ExcelMerger
             catch { }
         }
 
-        private static void InsertSpacer(dynamic sel, double gapPt)
+        private static bool TrySplitSidebarTitle(OcrParagraph src, double pageWidthPt, out OcrParagraph head, out OcrParagraph tail)
+        {
+            head = null;
+            tail = null;
+            if (src == null || src.Runs == null || src.Runs.Count < 2)
+                return false;
+            if (src.RightPt - src.LeftPt > 0.25 * pageWidthPt)
+                return false;
+            int n0 = src.Runs[0].Text == null ? 0 : src.Runs[0].Text.Length;
+            int rest = 0;
+            for (int i = 1; i < src.Runs.Count; i++)
+                rest += src.Runs[i].Text == null ? 0 : src.Runs[i].Text.Length;
+            if (n0 < 8 || n0 > 24 || rest < 24)
+                return false;
+            head = new OcrParagraph
+            {
+                Alignment = OcrAlignment.Right,
+                TopPt = src.TopPt,
+                LeftPt = src.LeftPt,
+                RightPt = src.RightPt,
+                BottomPt = src.BottomPt,
+                LineCount = 1
+            };
+            head.Runs.Add(src.Runs[0]);
+            tail = new OcrParagraph
+            {
+                Alignment = OcrAlignment.Center,
+                TopPt = src.BottomPt,
+                LeftPt = 0,
+                RightPt = pageWidthPt,
+                BottomPt = src.BottomPt,
+                LineCount = Math.Max(1, src.LineCount - 1)
+            };
+            for (int i = 1; i < src.Runs.Count; i++)
+                tail.Runs.Add(src.Runs[i]);
+            return true;
+        }
+
+        private static void WriteFooterPara(dynamic sel, dynamic doc, OcrParagraph paragraph)
         {
             try
             {
-                sel.ParagraphFormat.SpaceBefore = gapPt;
+                dynamic footer = sel.Sections.Last.Footers(WdHeaderFooterPrimary);
+                try { footer.LinkToPrevious = false; } catch { }
+                dynamic r = footer.Range;
+                string existing = "";
+                try { existing = (string)r.Text; } catch { }
+                if (!string.IsNullOrEmpty(existing) && existing.Trim().Length > 0)
+                {
+                    r.InsertAfter("\r");
+                    r.Collapse(WdCollapseEnd);
+                }
+                else
+                    r.Collapse(WdCollapseStart);
+                WriteParagraphInto(r, doc, paragraph, 0, true, 0, 0, 0, 0, false);
+            }
+            catch { }
+        }
+
+        private static void InsertBlankLines(dynamic sel, int n)
+        {
+            if (n <= 0)
+                return;
+            try
+            {
+                sel.ParagraphFormat.SpaceBefore = n * 12;
+                sel.ParagraphFormat.SpaceAfter = 0;
                 sel.ParagraphFormat.FirstLineIndent = 0;
-                sel.ParagraphFormat.LeftIndent = 0;
-                sel.ParagraphFormat.RightIndent = 0;
                 sel.Font.Size = 1;
                 sel.TypeParagraph();
-                sel.ParagraphFormat.SpaceBefore = 0; // наследство прокладки не должно уехать за таблицу
+                sel.ParagraphFormat.SpaceBefore = 0;
             }
-            catch { } // прокладка — косметика, не срываем документ
+            catch { }
+        }
+
+        private static void InsertSpacer(dynamic sel, double gapPt)
+        {
+            int n = (int)Math.Round(gapPt / 14.0);
+            if (n < 1) n = 1;
+            if (n > 3) n = 3;
+            InsertBlankLines(sel, n);
         }
 
         /// <summary>
@@ -237,6 +428,29 @@ namespace ExcelMerger
         /// а пересчёт страниц и обход абзацев большого документа долгие — отмена проверяется
         /// перед каждым пересчётом и на каждом абзаце.
         /// </summary>
+        private static void TrimTrailingEmptyPages(dynamic doc, int sourcePages)
+        {
+            const int WdStatisticPages = 2;
+            try
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    int got = (int)doc.ComputeStatistics(WdStatisticPages);
+                    if (got <= sourcePages)
+                        return;
+                    dynamic last = doc.Paragraphs.Last;
+                    string t = "";
+                    try { t = ((string)last.Range.Text).Trim(); } catch { return; }
+                    if (t.IndexOf('\a') >= 0)
+                        return; // маркер ячейки — не трогаем таблицу
+                    if (t.Length > 0 && t != "\r")
+                        return;
+                    last.Range.Delete();
+                }
+            }
+            catch { }
+        }
+
         private static void FitSpacingToPages(dynamic doc, int sourcePages, Func<bool> cancelled)
         {
             const int WdStatisticPages = 2;
@@ -253,7 +467,7 @@ namespace ExcelMerger
                     {
                         Cancellation.ThrowIf(cancelled);
                         double sb = (double)p.Format.SpaceBefore;
-                        if (sb > 0)
+                        if (sb > 0 && sb < 40) // крупные зазоры — низ листа, не сжимаем
                             p.Format.SpaceBefore = sb * factor;
                     }
                 }
@@ -592,6 +806,7 @@ namespace ExcelMerger
             }
 
             sel.ParagraphFormat.Alignment = align;
+            try { sel.ParagraphFormat.Hyphenation = 0; } catch { }
             sel.ParagraphFormat.FirstLineIndent = indent;
             // Интервал перед абзацем ставим ВСЕГДА (0 — обычный случай): Selection наследует
             // прямое форматирование предыдущего абзаца, и без сброса зазор «поехал» бы дальше.
@@ -615,27 +830,17 @@ namespace ExcelMerger
                 // у каждого рана, в текущей точке вставки: после TypeText и гиперссылки выделение
                 // уже другое, и формат следующего рана не должен зависеть от того, следует ли
                 // старый объект Font за курсором.
-                dynamic font = sel.Font;
                 string face = FontResolver.Resolve(run.FontName, text);
                 TraceWord("run len=" + text.Length + " face=" + face + " srcFont=" + (run.FontName ?? ""));
-                font.Name = face;
-                font.Size = FontResolver.ClampSizePt(run.FontSizePt);
-                font.Bold = run.Bold ? 1 : 0;
-                font.Italic = run.Italic ? 1 : 0;
-                font.Superscript = run.Super ? 1 : 0;
-                font.Subscript = run.Sub ? 1 : 0;
-                font.Underline = run.Underline ? 1 : 0; // wdUnderlineSingle / None
-                font.StrikeThrough = run.Strike ? 1 : 0;
-                font.Color = ToBgr(run.ColorArgb);
                 if (string.IsNullOrEmpty(run.Uri))
                 {
-                    TypeInto(sel, text);
+                    TypeInto(sel, text, run, face);
                 }
                 else
                 {
                     int start = RangeEnd(sel);
-                    TypeInto(sel, text);
-                    try { doc.Hyperlinks.Add(doc.Range(start, (int)sel.Range.End), run.Uri); }
+                    TypeInto(sel, text, run, face);
+                    try { doc.Hyperlinks.Add(doc.Range(start, RangeEnd(sel)), run.Uri); }
                     catch { } // не удалось оформить ссылку — текст всё равно на месте
                 }
             }
@@ -659,13 +864,29 @@ namespace ExcelMerger
             dynamic wtable = null;
             try
             {
+                LeaveIfInTable(sel, doc);
+                try { sel.ParagraphFormat.SpaceBefore = 0; sel.TypeParagraph(); } catch { }
                 wtable = doc.Tables.Add(sel.Range, rows, cols);
+                TraceWord("added " + (int)wtable.Rows.Count + "x" + (int)wtable.Columns.Count);
                 wtable.AllowAutoFit = false;
                 wtable.Borders.Enable = table.Borderless ? 0 : 1; // сетка без линовки — без границ
+                try { wtable.TopPadding = 0; wtable.BottomPadding = 0; } catch { }
+                try { wtable.LeftPadding = 2; wtable.RightPadding = 2; } catch { }
 
+                double usable = 0;
+                try
+                {
+                    dynamic ps = sel.PageSetup;
+                    usable = (double)ps.PageWidth - (double)ps.LeftMargin - (double)ps.RightMargin;
+                }
+                catch { }
+                double sum = 0;
+                for (int c = 0; c < cols; c++)
+                    sum += ColWidth(table.ColumnWidthsPt[c]);
+                double scale = (usable > MinColWidthPt && sum > usable) ? usable / sum : 1;
                 for (int c = 0; c < cols; c++)
                 {
-                    try { wtable.Columns[c + 1].Width = ColWidth(table.ColumnWidthsPt[c]); }
+                    try { wtable.Columns[c + 1].Width = ColWidth(table.ColumnWidthsPt[c] * scale); }
                     catch { } // ширина косметическая; сбой одной колонки не критичен
                 }
 
@@ -678,16 +899,18 @@ namespace ExcelMerger
                         OcrTableCell cell = row.Cells[c];
                         if (cell.Covered || cell.Paragraphs == null || cell.Paragraphs.Count == 0)
                             continue;
-                        WriteCell(word, doc, wtable, r + 1, c + 1, cell, row.SpaceAfterPt); // Word адресует ячейки с 1
+                        WriteCell(word, doc, wtable, r + 1, c + 1, cell, row.SpaceAfterPt, r == 0);
                     }
                 }
 
                 MergeSpans(wtable, table, rows, cols);
+                try { wtable.Rows.Alignment = 1; } catch { } // wdAlignRowCenter — стол как в макете, не на всю полосу
 
-                LeaveTable(sel, wtable);
+                LeaveTable(sel, doc, wtable);
             }
-            catch
+            catch (Exception ex)
             {
+                TraceWord("table fail " + rows + "x" + cols + " " + ex.GetType().Name + " " + ex.Message);
                 // Частично построенную таблицу убираем (иначе плоский вывод задвоил бы уже
                 // записанные ячейки); если и удаление не удалось — выводим как есть, это
                 // сбой внутри сбоя, хуже прежнего поведения не станет.
@@ -749,7 +972,7 @@ namespace ExcelMerger
         /// доп. интервал после последнего абзаца ячейки: у безлиновочной сетки так возвращается
         /// пустой промежуток между группами полей (см. GridDetector); 0 — обычный случай.
         /// </summary>
-        private static void WriteCell(dynamic word, dynamic doc, dynamic wtable, int row, int col, OcrTableCell cell, double spaceAfterPt)
+        private static void WriteCell(dynamic word, dynamic doc, dynamic wtable, int row, int col, OcrTableCell cell, double spaceAfterPt, bool headerRow = false)
         {
             dynamic cellRange = wtable.Cell(row, col).Range;
             try { cellRange.MoveEnd(1, -1); } catch { } // не съесть маркер ячейки
@@ -761,8 +984,13 @@ namespace ExcelMerger
                     try { cellRange.InsertAfter("\r"); cellRange.Collapse(WdCollapseEnd); }
                     catch { }
                 }
-                WriteParagraphInto(cellRange, doc, cell.Paragraphs[i], 0, true, 0, 0, 0);
+                OcrParagraph p = cell.Paragraphs[i];
+                if (headerRow)
+                    p.Alignment = OcrAlignment.Center;
+                WriteParagraphInto(cellRange, doc, p, 0, true, 0, 0, 0);
             }
+            if (headerRow)
+                try { cellRange.ParagraphFormat.Alignment = WdAlignCenter; } catch { }
             if (spaceAfterPt > 0)
                 try { cellRange.ParagraphFormat.SpaceAfter = spaceAfterPt; } catch { }
         }
@@ -774,22 +1002,24 @@ namespace ExcelMerger
         }
 
         /// <summary>
-        /// Вставляет изображение inline в текущую позицию и переводит строку; размер — по рамке
-        /// PDF (pt), с защитой пределов. Горизонтально центрированное на странице изображение
-        /// (логотип) выводится по центру, как в оригинале, иначе — по левому краю. Сбой одной картинки
-        /// не срывает документ. PNG кладётся во временный файл (встраивается в .docx при вставке),
-        /// временная папка чистится в Write.
+        /// Inline-картинка в потоке и перевод строки. Размер — рамка PDF. Центр страницы —
+        /// логотип по центру, иначе левый край. Сбой одной не срывает документ.
         /// </summary>
-        private static void InsertImage(dynamic sel, dynamic doc, OcrImage img, double pageHeightPt, string tempDir, ref int index)
+        private static void InsertImage(dynamic sel, OcrImage img, double pageWidthPt, string tempDir, ref int index, double spaceBeforePt = 0)
         {
-            InsertImageCore(sel, doc, img, pageHeightPt, tempDir, ref index);
+            if (InsertImageCore(sel, img, tempDir, ref index, IsImageCentered(img.LeftPt, img.WidthPt, pageWidthPt), 0, 0, spaceBeforePt))
+            {
+                if (img.HeightPt >= 28)
+                    try { sel.TypeParagraph(); } catch { }
+            }
         }
 
         /// <summary>
-        /// Картинка (штрихкод, логотип, штамп) — плавающая на странице, как в PDF.
-        /// Inline в потоке увозил шапки и терял коды. Сбой одной не срывает документ.
+        /// InlineShapes.AddPicture в dest (Selection или Range ячейки). Плавающий Shape
+        /// ложился поверх текста и проглатывался (якорь в ячейке / RPC) — картинок не было.
         /// </summary>
-        private static bool InsertImageCore(dynamic sel, dynamic doc, OcrImage img, double pageHeightPt, string tempDir, ref int index)
+        private static bool InsertImageCore(dynamic dest, OcrImage img, string tempDir, ref int index, bool centered,
+            double leftIndent = 0, double rightIndent = 0, double spaceBeforePt = 0)
         {
             if (img == null || img.Png == null || img.Png.Length == 0)
                 return false;
@@ -798,23 +1028,16 @@ namespace ExcelMerger
             try
             {
                 File.WriteAllBytes(file, img.Png);
-                double w = ClampSize(img.WidthPt), h = ClampSize(img.HeightPt);
-                double left = img.LeftPt, top = pageHeightPt - img.TopPt;
-                if (top < 0) top = 0;
-                dynamic shape = doc.Shapes.AddPicture(file, false, true, left, top, w, h, sel.Range);
-                try
-                {
-                    shape.RelativeHorizontalPosition = WdRelativePositionPage;
-                    shape.RelativeVerticalPosition = WdRelativePositionPage;
-                    shape.Left = left;
-                    shape.Top = top;
-                    shape.LockAnchor = -1;
-                    shape.WrapFormat.Type = WdWrapFront;
-                    shape.LockAspectRatio = 0;
-                    shape.Width = w;
-                    shape.Height = h;
-                }
-                catch { }
+                dest.ParagraphFormat.Alignment = centered ? WdAlignCenter : WdAlignLeft;
+                dest.ParagraphFormat.FirstLineIndent = 0;
+                dest.ParagraphFormat.LeftIndent = leftIndent;
+                dest.ParagraphFormat.RightIndent = rightIndent;
+                dest.ParagraphFormat.SpaceBefore = spaceBeforePt;
+                dynamic shape = dest.InlineShapes.AddPicture(file, false, true);
+                shape.LockAspectRatio = 0;
+                shape.Width = ClampSize(img.WidthPt);
+                shape.Height = ClampSize(img.HeightPt);
+                try { dest.Collapse(WdCollapseEnd); } catch { }
                 return true;
             }
             catch { return false; }
@@ -913,7 +1136,7 @@ namespace ExcelMerger
         /// Сбой построения таблицы не срывает документ: колонки выводятся последовательно (фолбэк).
         /// </summary>
         private static void WriteColumnBand(dynamic word, dynamic doc, dynamic sel, PageBlocks.PageItem band,
-            double textLeftPt, double textRightPt, double pageWidthPt, double pageHeightPt, string tempDir, ref int index,
+            double textLeftPt, double textRightPt, double pageWidthPt, string tempDir, ref int index,
             double spaceBeforePt = 0, double typicalGapPt = 0)
         {
             int n = band.Columns.Count;
@@ -923,22 +1146,121 @@ namespace ExcelMerger
                 foreach (PageBlocks.Block bb in col0)
                     if (bb.Paragraph != null && bb.Top > textTop)
                         textTop = bb.Top;
-            if (spaceBeforePt > 0)
-                InsertSpacer(sel, spaceBeforePt);
+            double pendingSpace = spaceBeforePt;
             for (int c = 0; c < n; c++)
             {
                 List<PageBlocks.Block> col = band.Columns[c];
                 while (col.Count > 0 && col[0].Image != null && col[0].Bottom >= textTop)
                 {
-                    InsertImageCore(sel, doc, col[0].Image, pageHeightPt, tempDir, ref index);
+                    double li, ri;
+                    ColumnConfineIndents(true, band.ColLeft[c], band.ColRight[c], textLeftPt, textRightPt, out li, out ri);
+                    if (InsertImageCore(sel, col[0].Image, tempDir, ref index, true, li, ri, pendingSpace))
+                    {
+                        pendingSpace = 0;
+                        try { sel.TypeParagraph(); } catch { }
+                    }
                     col.RemoveAt(0);
                 }
+            }
+            var wideAfter = new List<OcrParagraph>();
+            bool bandHasImage = false;
+            for (int c = 0; c < n && !bandHasImage; c++)
+                foreach (PageBlocks.Block b in band.Columns[c])
+                    if (b.Image != null) { bandHasImage = true; break; }
+            if (bandHasImage)
+            {
+                for (int c = 0; c < n; c++)
+                {
+                    List<PageBlocks.Block> col = band.Columns[c];
+                    int pc = 0;
+                    foreach (PageBlocks.Block b in col)
+                        if (b.Paragraph != null) pc++;
+                    if (pc != 2)
+                        continue;
+                    int i0 = -1, i1 = -1;
+                    double w0 = 0, w1 = 0;
+                    for (int i = 0; i < col.Count; i++)
+                    {
+                        OcrParagraph wp = col[i].Paragraph;
+                        if (wp == null)
+                            continue;
+                        double w = wp.RightPt - wp.LeftPt;
+                        if (i0 < 0) { i0 = i; w0 = w; }
+                        else { i1 = i; w1 = w; }
+                    }
+                    if (i1 < 0)
+                        continue;
+                    int longI = w0 >= w1 ? i0 : i1;
+                    int shortI = w0 >= w1 ? i1 : i0;
+                    double longW = w0 >= w1 ? w0 : w1;
+                    double shortW = w0 >= w1 ? w1 : w0;
+                    if (longW < 0.3 * pageWidthPt || shortW > 0.25 * pageWidthPt)
+                        continue;
+                    wideAfter.Insert(0, col[longI].Paragraph);
+                    col.RemoveAt(longI);
+                }
+                for (int c = 0; c < n; c++)
+                {
+                    List<PageBlocks.Block> col = band.Columns[c];
+                    for (int i = col.Count - 1; i >= 0; i--)
+                    {
+                        OcrParagraph wp = col[i].Paragraph;
+                        OcrParagraph head, tail;
+                        if (wp == null || !TrySplitSidebarTitle(wp, pageWidthPt, out head, out tail))
+                            continue;
+                        col[i].Paragraph = head;
+                        wideAfter.Insert(0, tail);
+                    }
+                }
+            }
+            var belowImages = new List<OcrImage>();
+            for (int c = 0; c < n; c++)
+            {
+                List<PageBlocks.Block> col = band.Columns[c];
+                for (int i = col.Count - 1; i >= 0; i--)
+                {
+                    if (col[i].Image != null && col[i].Top < textTop - 4)
+                    {
+                        belowImages.Insert(0, col[i].Image);
+                        col.RemoveAt(i);
+                    }
+                }
+            }
+            if (pendingSpace > 0)
+                InsertSpacer(sel, pendingSpace);
+
+            for (int c = n - 1; c >= 0; c--)
+            {
+                if (band.Columns[c].Count > 0)
+                    continue;
+                band.Columns.RemoveAt(c);
+                // ColLeft/ColRight stay; BandColumnWidths uses Columns.Count
+            }
+            n = band.Columns.Count;
+            if (n == 0)
+            {
+                foreach (OcrParagraph wp in wideAfter)
+                {
+                    try
+                    {
+                        WriteParagraphInto(sel, doc, wp, 0, false, 0, textLeftPt, textRightPt);
+                        sel.TypeParagraph();
+                    }
+                    catch { }
+                }
+                foreach (OcrImage img in belowImages)
+                {
+                    if (InsertImageCore(sel, img, tempDir, ref index, true))
+                        try { sel.TypeParagraph(); } catch { }
+                }
+                return;
             }
 
             double[] widths = BandColumnWidths(band, textLeftPt, textRightPt);
             dynamic wtable = null;
             try
             {
+                LeaveIfInTable(sel, doc);
                 wtable = doc.Tables.Add(sel.Range, 1, n);
                 wtable.AllowAutoFit = false;
                 wtable.Borders.Enable = 0;
@@ -963,13 +1285,18 @@ namespace ExcelMerger
                         PageBlocks.Block b = col[i];
                         double extra = i == 0 ? topInset
                             : PageBlocks.ExtraGapPt(Math.Min(col[i - 1].Bottom, col[i - 1].Top) - b.Top, typicalGapPt);
+                        if (i > 0)
+                        {
+                            try { cellRange.InsertAfter("\r"); cellRange.Collapse(WdCollapseEnd); }
+                            catch { }
+                        }
                         if (b.Paragraph != null)
                             WriteParagraphInto(cellRange, doc, b.Paragraph, 0, true, 0, 0, 0, extra);
                         else if (b.Image != null)
-                            InsertImageCore(sel, doc, b.Image, pageHeightPt, tempDir, ref index);
+                            InsertImageCore(cellRange, b.Image, tempDir, ref index, false, 0, 0, extra);
                     }
                 }
-                LeaveTable(sel, wtable);
+                LeaveTable(sel, doc, wtable);
             }
             catch
             {
@@ -985,10 +1312,24 @@ namespace ExcelMerger
                                 sel.TypeParagraph();
                             }
                             else if (b.Image != null)
-                                InsertImage(sel, doc, b.Image, pageHeightPt, tempDir, ref index);
+                                InsertImage(sel, b.Image, pageWidthPt, tempDir, ref index);
                         }
                         catch { }
                     }
+            }
+            foreach (OcrParagraph wp in wideAfter)
+            {
+                try
+                {
+                    WriteParagraphInto(sel, doc, wp, 0, false, 0, textLeftPt, textRightPt);
+                    sel.TypeParagraph();
+                }
+                catch { }
+            }
+            foreach (OcrImage img in belowImages)
+            {
+                if (InsertImageCore(sel, img, tempDir, ref index, true))
+                    try { sel.TypeParagraph(); } catch { }
             }
         }
 
