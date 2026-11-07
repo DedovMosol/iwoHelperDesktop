@@ -156,14 +156,15 @@ A page workshop over one document. **Assemble** what you need — open a PDF and
 
 The next one or two versions are meant to add, in no fixed order:
 
-- scanning from inside the app (OCR for image-only PDFs);
-- setting a password on a PDF;
-- more work on PDF Compare;
-- more work on turning born-digital PDFs into Word and PowerPoint;
-- smaller interface polish;
+- scanning from inside the app (OCR for image-only PDFs),
+- setting a password on a PDF,
+- more work on PDF Compare,
+- more work on turning born-digital PDFs into Word and PowerPoint,
+- converting Word, Excel and PowerPoint files to PDF on this computer, with no Microsoft Office install required,
+- smaller interface polish,
 - and, perhaps, a Chinese translation.
 
-This is independent work done in available time. Optional support (in the app: **About → Support the project**) helps the same items land sooner; without it they still move, just more slowly. None of the list is a delivery date.
+This is independent work done in available time. Optional support (in the app: **About → Support the project**) helps the same items land sooner, without it they still move, just more slowly. None of the list is a delivery date.
 
 ## 🖥️ Usage
 

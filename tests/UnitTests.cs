@@ -21331,6 +21331,19 @@ namespace ExcelMerger.Tests
             AssertEq(4, RoundedButton.TextPadFor(32), "квадратная кнопка лупы");
             AssertTrue(RoundedButton.TextPadFor(32) * 2 < 32, "под подпись остаётся место");
             AssertTrue(RoundedButton.TextPadFor(1) >= 0, "вырожденная ширина не даёт отрицательного поля");
+
+            using (var font = new Font("Segoe UI", 9f))
+            {
+                int markX, textX, textW;
+                RoundedButton.LayoutCaption(220, font, "Print", ButtonChevron.None,
+                    ButtonMark.Print, 1f, out markX, out textX, out textW);
+                AssertTrue(markX > 8, "знак и подпись не прижаты влево на широкой кнопке");
+                AssertTrue(textX >= markX + 18, "подпись правее знака");
+                AssertTrue(markX + textW < 220 - 8, "кластер не вылезает за край");
+                RoundedButton.LayoutCaption(220, font, "Delete", ButtonChevron.None,
+                    ButtonMark.Trash, 1f, out markX, out textX, out textW);
+                AssertTrue(textX >= markX + 18, "Удалить не наезжает на корзину");
+            }
         }
 
         private static void TestCardContentCentered()

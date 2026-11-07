@@ -367,6 +367,11 @@ $f = Show-Loaded 'ExcelMerger.PdfSplitForm' @($report) 802 692
 Save-Shot $f 'pdf-split'
 $f.Close(); $f.Dispose(); Pump 300
 
+# 5b. More operations — current panel, not the old Convert/Extract layout.
+$f = Show-Loaded 'ExcelMerger.PdfOpsForm' @($report) 820 720
+Save-Shot $f 'pdf-ops'
+$f.Close(); $f.Dispose(); Pump 300
+
 # 6. PDF to Word.
 $f = Show-Loaded 'ExcelMerger.OcrForm' @($report, $appendix) 802 692
 Save-Shot $f 'pdf-word'

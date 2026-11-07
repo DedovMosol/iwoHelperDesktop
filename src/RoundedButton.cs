@@ -157,7 +157,60 @@ namespace ExcelMerger
             int pad = (int)Math.Round(TextPad * scale);
             Size sz = TextRenderer.MeasureText(text ?? "", font, Size.Empty,
                 TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
-            return pad + insetL + sz.Width + insetR + pad;
+            int gap = MarkTextGap(markW, text, scale);
+            return pad + insetL + gap + sz.Width + insetR + pad;
+        }
+
+        /// <summary>Просвет между знаком и подписью, чтобы они не слипались.</summary>
+        internal static int MarkTextGap(int markWidth, string text, float scale)
+        {
+            if (markWidth <= 0 || string.IsNullOrEmpty(text))
+                return 0;
+            return Math.Max(3, (int)Math.Round(4f * scale));
+        }
+
+        /// <summary>
+        /// Раскладка знака и подписи: пара «знак + текст» по центру кнопки, без наложений.
+        /// Чистая — под тест.
+        /// </summary>
+        internal static void LayoutCaption(int width, Font font, string text,
+            ButtonChevron chevron, ButtonMark mark, float scale,
+            out int markX, out int textX, out int textWidth)
+        {
+            if (scale < 0.01f) scale = 1f;
+            int pad = TextPadFor(width, scale);
+            int markW = mark == ButtonMark.None ? 0 : (int)Math.Round(18f * scale);
+            int glyph = chevron == ButtonChevron.None ? 0 : (int)Math.Round(18f * scale);
+            int insetL = markW + (chevron == ButtonChevron.Right ? 0 : glyph);
+            int insetR = chevron == ButtonChevron.Right ? glyph : 0;
+            bool markOnly = mark != ButtonMark.None && string.IsNullOrEmpty(text) &&
+                chevron == ButtonChevron.None;
+            if (markOnly)
+            {
+                markX = (int)Math.Round((width - 16f * scale) / 2f);
+                textX = pad;
+                textWidth = 1;
+                return;
+            }
+            int gap = MarkTextGap(markW, text, scale);
+            Size sz = TextRenderer.MeasureText(text ?? "", font, Size.Empty,
+                TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            if (mark != ButtonMark.None && chevron == ButtonChevron.None &&
+                !string.IsNullOrEmpty(text))
+            {
+                int cluster = markW + gap + sz.Width;
+                int start = (width - cluster) / 2;
+                if (start < pad) start = pad;
+                int room = width - pad - start - markW - gap;
+                if (room < 1) room = 1;
+                markX = start;
+                textX = start + markW + gap;
+                textWidth = sz.Width > room ? room : sz.Width;
+                return;
+            }
+            markX = pad;
+            textX = pad + insetL + gap;
+            textWidth = Math.Max(1, width - 2 * pad - insetL - insetR - gap);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -208,13 +261,10 @@ namespace ExcelMerger
 
             int pad = TextPadFor(Width, s);
             int mark = Mark == ButtonMark.None ? 0 : (int)Math.Round(18f * s);
-            int glyph = Chevron == ButtonChevron.None ? 0 : (int)Math.Round(18f * s);
-            bool markOnly = Mark != ButtonMark.None && string.IsNullOrEmpty(Text) && Chevron == ButtonChevron.None;
-            int insetL = markOnly ? 0 : mark + (Chevron == ButtonChevron.Right ? 0 : glyph);
-            int insetR = Chevron == ButtonChevron.Right ? glyph : 0;
-            var textArea = new Rectangle(pad + insetL, 0, Math.Max(1, Width - 2 * pad - insetL - insetR), Height);
+            int markX, textX, textW;
+            LayoutCaption(Width, Font, Text, Chevron, Mark, s, out markX, out textX, out textW);
             if (Mark != ButtonMark.None)
-                DrawMark(g, markOnly ? (int)Math.Round((Width - 16f * s) / 2f) : pad, s, text);
+                DrawMark(g, markX, s, text);
             if (Chevron != ButtonChevron.None)
                 DrawChevron(g, pad + mark, s, text);
             if (!string.IsNullOrEmpty(Text))
@@ -223,7 +273,7 @@ namespace ExcelMerger
                     TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
                 if (Mark == ButtonMark.None && Chevron == ButtonChevron.None)
                     tf |= TextFormatFlags.HorizontalCenter;
-                TextRenderer.DrawText(g, Text, Font, textArea, text, tf);
+                TextRenderer.DrawText(g, Text, Font, new Rectangle(textX, 0, textW, Height), text, tf);
             }
         }
 
